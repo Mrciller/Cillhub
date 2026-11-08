@@ -1,0 +1,8 @@
+/* v8 module panels (CONTRACT-v8 §6). The side panel reuses .side-panel (threads.css: 420 px, full-screen sheet below 900 px). */
+.module-frame { display: block; width: 100%; border: 0; background: var(--chat); }
+.module-panel .module-frame, .module-page .module-frame { flex: 1; min-height: 0; }
+.module-page { display: flex; flex-direction: column; }
+.module-icon { display: inline-grid; place-items: center; width: 20px; height: 20px; font-size: 16px; line-height: 1; }
+.module-entries { flex: none; list-style: none; margin: 0; padding: 8px 8px 0; }
+.module-accessory { max-width: 520px; margin-top: 4px; border: 1px solid var(--border); border-radius: var(--radius-m); overflow: hidden; background: var(--card); }
+

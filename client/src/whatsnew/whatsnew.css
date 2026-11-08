@@ -1,0 +1,10 @@
+/* What's New (WhatsNew.tsx): the changelog in User Settings and in its dialog. No motion added. */
+.modal.whats-new { width: min(600px, calc(100% - 32px)); }
+.whats-new-list { max-height: min(60dvh, 560px); overflow-y: auto; margin: 0 -8px; padding: 0 8px; border-radius: var(--radius-s); }
+.changelog > section + section { margin-top: 28px; }
+.changelog :is(.changelog-product, .changelog-version) { color: var(--header); font-weight: 600; }
+.changelog .changelog-product { font-size: 18px; padding-bottom: 6px; border-bottom: 1px solid var(--border); margin: 0 0 12px; }
+.changelog .changelog-version { font-size: 16px; margin: 16px 0 6px; }
+.changelog .changelog-group { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin: 10px 0 4px; }
+.changelog ul { list-style: disc; padding-left: 20px; }
+.changelog li { margin: 2px 0; line-height: 1.45; }

@@ -1,0 +1,15 @@
+{
+  "name": "cillcord-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test 'test/*.test.js'"
+  },
+  "dependencies": {
+    "@jitl/quickjs-ng-wasmfile-release-sync": "0.32.0",
+    "quickjs-emscripten-core": "0.32.0",
+    "web-push": "^3.6.7",
+    "ws": "^8.22.1"
+  }
+}

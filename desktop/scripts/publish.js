@@ -1,0 +1,67 @@
+// Copies the built installers, blockmaps and update feeds to <download dir>/desktop/ and the download page to
+// <download dir>/index.html (the directory the hub serves as /download/):
+//   DOWNLOAD_DIR=/path/to/download npm run publish      or      node scripts/publish.js /path/to/download
+// Older versions are kept (their blockmaps enable differential updates); feeds are written last.
+const fs = require('fs');
+const path = require('path');
+const { PROD_HUB } = require('../src/config');
+
+const DIST = path.join(__dirname, '..', 'dist');
+const ROOT = process.argv[2] || process.env.DOWNLOAD_DIR;
+if (!ROOT) {
+  console.error('usage: DOWNLOAD_DIR=<dir> npm run publish   (or: node scripts/publish.js <dir>)');
+  process.exit(2);
+}
+const DEST = path.join(ROOT, 'desktop');
+
+const readYml = (name) => fs.readFileSync(path.join(DIST, name), 'utf8');
+const field = (yml, key) => {
+  const m = new RegExp(`^${key}: '?([^'\\n]+)'?$`, 'm').exec(yml);
+  if (!m) throw new Error(`${key} missing in feed`);
+  return m[1].trim();
+};
+const urls = (yml) => [...yml.matchAll(/^\s+- url: (.+)$/gm)].map((m) => m[1].trim());
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+const win = readYml('latest.yml');
+const linux = readYml('latest-linux.yml');
+const version = field(win, 'version');
+if (field(linux, 'version') !== version) throw new Error('Windows and Linux feeds have different versions');
+const winFile = field(win, 'path');
+const appImage = field(linux, 'path');
+const deb = urls(linux).find((u) => u.endsWith('.deb'));
+const rustDeb = `cillhub-desktop-rust_${version}_amd64.deb`;
+const rustTar = `Cillhub-Rust-${version}-linux-x64.tar.gz`;
+const rustWinZip = `Cillhub-Rust-${version}-windows-x64.zip`;
+const rustWinExe = `Cillhub-Rust-${version}-windows-x64.exe`;
+const rustWinSetup = `Cillhub-Rust-Setup-${version}.exe`;
+const files = [winFile, `${winFile}.blockmap`, appImage, deb, rustDeb, rustTar, rustWinZip, rustWinExe, rustWinSetup].filter((f) => f && fs.existsSync(path.join(DIST, f)));
+for (const f of [winFile, `${winFile}.blockmap`, appImage, deb].filter(Boolean)) if (!fs.existsSync(path.join(DIST, f))) throw new Error(`missing dist/${f}`);
+
+for (const d of [ROOT, DEST]) { fs.mkdirSync(d, { recursive: true, mode: 0o755 }); fs.chmodSync(d, 0o755); }
+const put = (name, data, dir = DEST) => {
+  const tmp = path.join(dir, `.${name}.tmp`);
+  if (Buffer.isBuffer(data) || typeof data === 'string') fs.writeFileSync(tmp, data);
+  else fs.copyFileSync(data.from, tmp);
+  fs.chmodSync(tmp, 0o644);
+  fs.renameSync(tmp, path.join(dir, name)); // atomic swap: no half-written file is ever served
+};
+
+for (const f of files) put(f, { from: path.join(DIST, f) });
+
+const date = new Date(field(win, 'releaseDate')).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+const vars = { HUB: PROD_HUB, VERSION: version, RELEASE_DATE: date, WIN_FILE: encodeURI(winFile), APPIMAGE_FILE: encodeURI(appImage), DEB_FILE: encodeURI(deb || appImage) };
+const page = fs.readFileSync(path.join(__dirname, '..', 'download-page', 'index.html'), 'utf8')
+  .replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vars ? esc(vars[k]) : m));
+if (/\{\{\w+\}\}/.test(page)) throw new Error('unfilled template variable in download page');
+put('index.html', page, ROOT);
+
+// Feeds last, so clients only see a new version once its files are in place.
+put('latest.yml', win);
+put('latest-linux.yml', linux);
+
+console.log(`published ${version} to ${DEST}`);
+for (const f of fs.readdirSync(DEST).sort()) {
+  const st = fs.statSync(path.join(DEST, f));
+  console.log(`${(st.mode & 0o777).toString(8)} ${String(st.size).padStart(11)}  ${f}`);
+}

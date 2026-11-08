@@ -1,0 +1,112 @@
+/* Themes (CONTRACT-v4: dark, light, ash, onyx) override the palette in index.css's :root. */
+:root[data-theme="light"] {
+  --rail: #dfe5ef; --sidebar: #eef2f7; --chat: #fafbfd; --panel: #e5ebf3; --input: #e8eef6; --accent: #0068a8; --accent-hover: #00548a; --on-accent: #ffffff;
+  --text: #1c2536; --header: #0b111e; --muted: #505e75; --hover: #e3e9f2; --selected: #d5dfed; --menu: #ffffff; --focus: #0068a8;
+  --mention-bg: rgb(194 24 91 / .08); --signal: #c2185b; --signal-strong: #be123c; --danger: #d93a42; --online: #15803d; --offline: #647189;
+  --interactive: #3b485e; --btn-secondary: #48566d; --btn-secondary-hover: #364257; --border: #c6d0e1;
+  --danger-text: #b91c1c; --card: #f0f4f9; --scroll-thumb: #b4c0d4; --strong: #0b111e; --shadow: 0 10px 28px rgb(11 17 30 / .14), 0 2px 6px rgb(11 17 30 / .08); color-scheme: light;
+}
+/* Ash: softer gunmetal slate, lifted for bright rooms. */
+:root[data-theme="ash"] {
+  --rail: #151922; --sidebar: #1b212e; --chat: #222938; --panel: #181d29; --input: #2b3345; --text: #e6ecf8; --hover: #293144; --selected: #323c52;
+  --menu: #242c3d; --card: #1f2635; --border: #364158; --scroll-thumb: #364158; --dot-bg: var(--sidebar); --muted: #a8b4ce;
+}
+/* Onyx: true black for OLED screens. */
+:root[data-theme="onyx"] {
+  --rail: #000000; --sidebar: #05070c; --chat: #080a10; --panel: #030408; --input: #111520; --hover: #121723; --selected: #1a2132;
+  --menu: #0c0f17; --card: #0c0f17; --border: #1d2436; --scroll-thumb: #1d2436;
+}
+:root[data-theme="light"] .avatar, :root[data-theme="light"] .badge { color: #fff; }
+:root[data-theme="light"] .mention { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--header); }
+:root[data-theme="light"] .mention:hover { background: var(--accent); color: var(--on-accent); }
+:root[data-theme="light"] .row.muted { color: color-mix(in srgb, var(--muted) 92%, var(--sidebar)); }
+/* WCAG AA (4.5:1) on the light surfaces: status colours that are made for dark backgrounds get darker variants */
+:root[data-theme="light"] .vp-state { color: #8a5a00; }
+:root[data-theme="light"] .vp-state.connected, :root[data-theme="light"] .success, :root[data-theme="light"] .audit-changes .new { color: #157140; }
+:root[data-theme="light"] .crown { color: #8a5c00; }
+:root[data-theme="light"] .tab.add[aria-selected="true"] { color: var(--focus); }
+:root[data-theme="light"] .bot-card-lfg { --kind: #157140; }
+/* The voice and stage grid stays dark in the light theme, so its text and cards use the dark palette. */
+:root[data-theme="light"] .voice-view .voice-body {
+  --text: #dfe6f4; --header: #f5f8ff; --strong: #fff; --muted: #929fb8; --interactive: #b8c4dc; --sidebar: #0f141e; --dot-bg: #0f141e;
+  --panel: #0b0f18; --card: #101622; --input: #1b2333; --hover: #1c2436; --selected: #232e45; --border: #253047; --danger-text: #ff8589;
+  --btn-secondary: #263149; --btn-secondary-hover: #313f5d; --focus: #38bdf8; color: var(--text); color-scheme: dark;
+}
+/* Increase Contrast (OS setting): secondary text as strong as body text, firmer lines, thicker focus rings. */
+@media (prefers-contrast: more) {
+  :root { --muted: var(--text); --interactive: var(--text); --border: #6b7a9e; }
+  :root[data-theme="light"] { --border: #647189; }
+  :focus-visible { outline-width: 3px !important; }
+}
+
+/* Chat font scaling and compact UI display */
+.messages { font-size: var(--chat-font); }
+:root[data-compact] {
+  --rail-width: 56px;
+  --sidebar-width: 196px;
+  --members-width: 196px;
+  --side-panel-width: 320px;
+  --chat-font: 13.5px;
+  font-size: 13.5px;
+}
+:root[data-compact] .rail-icon { width: 38px; height: 38px; font-size: 14px; }
+:root[data-compact] :is(.rail-item, .rail-entry, .rail-folder) { width: 56px; }
+:root[data-compact] :is(.chat-header, .sidebar-header, .panel-header, .voice-chat-head) { height: 40px; padding: 0 10px; }
+:root[data-compact] .user-panel { height: 44px; padding: 0 8px; }
+:root[data-compact] :is(.row, .member-btn, .thread-row) { min-height: 27px; height: 27px; padding: 3px 6px; font-size: 13.5px; gap: 6px; }
+:root[data-compact] .member-btn { padding: 2px 4px; }
+:root[data-compact] :is(.dm-row, .member-btn) .avatar { width: 20px !important; height: 20px !important; font-size: 9px; }
+:root[data-compact] .msg.head { padding-top: 2px; margin-top: 2px; }
+:root[data-compact] .msg { padding-left: 14px !important; min-height: 0; }
+:root[data-compact] .msg .avatar-btn { display: none; }
+:root[data-compact] .msg.head .msg-meta { display: inline-flex; margin-right: 6px; vertical-align: baseline; }
+:root[data-compact] .msg.head .msg-meta time { order: -1; margin: 0 6px 0 0; }
+:root[data-compact] .msg .gutter-time { position: static; display: inline; opacity: 1; margin-right: 6px; width: auto; }
+:root[data-compact] .msg .content { display: inline; }
+:root[data-compact] .msg .join-arrow { position: static; flex: none; align-self: center; }
+:root[data-compact] .scroller { padding-bottom: 8px; }
+:root[data-compact] .composer { padding: 0 10px; }
+:root[data-compact] .composer textarea { padding: 8px 6px; }
+
+/* Laptop and compact viewport scaling */
+@media (max-width: 1366px), (max-height: 820px) {
+  :root:not([data-sidebar-resized]) {
+    --sidebar-width: 196px;
+    --members-width: 196px;
+    --side-panel-width: 320px;
+  }
+  :root {
+    --rail-width: 56px;
+    --chat-font: 13.5px;
+    font-size: 13.5px;
+  }
+  :is(.rail-item, .rail-entry, .rail-folder) { width: 56px; }
+  .rail-icon { width: 38px; height: 38px; font-size: 14px; }
+  :is(.chat-header, .sidebar-header, .panel-header, .voice-chat-head) { height: 40px; padding: 0 10px; }
+  .user-panel { height: 44px; padding: 0 8px; }
+  :is(.row, .member-btn, .thread-row) { min-height: 27px; height: 27px; padding: 3px 6px; font-size: 13.5px; gap: 6px; }
+  .member-btn { padding: 2px 4px; }
+  :is(.dm-row, .member-btn) .avatar { width: 20px !important; height: 20px !important; font-size: 9px; }
+  .msg.head { margin-top: 8px; }
+  .msg { padding-left: 54px; }
+  .msg > .avatar, .msg .avatar-btn { left: 10px; }
+  .msg :is(> .avatar, .avatar-btn) .avatar, .msg > .avatar { width: 34px !important; height: 34px !important; }
+  .gutter-time { width: 54px; }
+}
+
+/* Reduced motion: "on" forces it; "auto" follows the OS (prefers-reduced-motion rules elsewhere). */
+:root[data-reduced-motion] *, :root[data-reduced-motion] *::before, :root[data-reduced-motion] *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
+
+/* Appearance settings page */
+.theme-swatches { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0 24px; }
+.theme-swatch { display: grid; justify-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; }
+.theme-swatch input { position: absolute; opacity: 0; }
+.theme-swatch span.chip { width: 56px; height: 56px; border-radius: 50%; border: 2px solid var(--border); box-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 2px 6px rgb(0 0 0 / .2); pointer-events: none; transition: transform .14s var(--ease-out), border-color .14s; }
+.theme-swatch:hover span.chip { transform: translateY(-2px); }
+.theme-swatch input:checked + span.chip { outline: 3px solid var(--accent); outline-offset: 2px; border-color: transparent; }
+.theme-swatch input:focus-visible + span.chip { outline: 2px solid var(--focus); outline-offset: 2px; }
+.theme-preview { padding: 14px 16px; border-radius: var(--radius-m); background: var(--chat); border: 1px solid var(--border); margin-bottom: 24px; box-shadow: inset 0 1px 0 rgb(255 255 255 / .04); }
+.range-field input[type="range"] { width: 100%; accent-color: var(--accent); }
+.range-ticks { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+.settings-section { margin-bottom: 28px; }
+.settings-section h2 { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 8px; }

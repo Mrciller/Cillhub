@@ -1,0 +1,168 @@
+/* v6 customization (CONTRACT-v6 sections 1–3). Fonts are bundled in public/fonts (SIL OFL 1.1, licences next to them). */
+@font-face { font-family: "Inter"; font-weight: 400; font-display: swap; src: url(/fonts/inter-latin-400-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Inter"; font-weight: 700; font-display: swap; src: url(/fonts/inter-latin-700-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Inter"; font-weight: 400; font-display: swap; src: url(/fonts/inter-latin-ext-400-normal.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Inter"; font-weight: 700; font-display: swap; src: url(/fonts/inter-latin-ext-700-normal.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(/fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 700; font-display: swap; src: url(/fonts/jetbrains-mono-latin-700-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(/fonts/jetbrains-mono-latin-ext-400-normal.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 700; font-display: swap; src: url(/fonts/jetbrains-mono-latin-ext-700-normal.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "OpenDyslexic"; font-weight: 400; font-display: swap; src: url(/fonts/opendyslexic-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "OpenDyslexic"; font-weight: 700; font-display: swap; src: url(/fonts/opendyslexic-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: "Orbitron"; font-weight: 700; font-display: swap; src: url(/fonts/orbitron-latin-700-normal.woff2) format("woff2"); }
+
+/* ---------- custom themes ---------- */
+:root[data-custom-theme] { background: var(--app-bg); }
+:root[data-custom-theme] .primary, :root[data-custom-theme] .file-btn.primary { color: var(--on-accent); }
+
+/* ---------- chat look ---------- */
+.messages { font-family: var(--chat-family, inherit); }
+.messages .content, .messages .msg-meta { line-height: var(--chat-lh, 1.375); }
+:root[data-msg-spacing]:not([data-compact]) .msg.head { margin-top: var(--msg-spacing); }
+:root[data-hide-avatars] .msg { padding-left: 16px !important; }
+:root[data-hide-avatars] .msg .avatar-btn, :root[data-hide-avatars] .reply-preview .avatar { display: none; }
+:root[data-hide-avatars] .msg .gutter-time { display: none; }
+/* Hidden visually only: screen readers still read message times. */
+:root[data-hide-timestamps] .msg time { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+:root[data-chat-bg] .chat { isolation: isolate; }
+:root[data-chat-bg] .chat::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: var(--chat-bg-image) center / cover no-repeat; opacity: var(--chat-bg-opacity, .3); }
+
+/* ---------- display name styles ---------- */
+.ns-f14 { font-family: "Orbitron", system-ui, sans-serif; letter-spacing: .02em; }
+.ns-f100 { font-family: "Inter", system-ui, sans-serif; }
+.ns-f101 { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.ns-f102 { font-family: "OpenDyslexic", system-ui, sans-serif; }
+.ns-x2, .ns-x7 { background: linear-gradient(90deg, var(--ns1), var(--ns2), var(--ns3)); -webkit-background-clip: text; background-clip: text; color: transparent !important; }
+.ns-x3 { text-shadow: 0 0 6px var(--ns1), 0 0 1px var(--ns1); }
+.ns-x6 { animation: ns-pulse 2.4s ease-in-out infinite; }
+.ns-x7 { background-size: 200% 100%; animation: ns-prism 4s linear infinite; }
+@keyframes ns-pulse { 50% { text-shadow: 0 0 8px var(--ns1); } }
+@keyframes ns-prism { to { background-position: 200% 0; } }
+@media (forced-colors: active) { .ns-x2, .ns-x7 { color: CanvasText !important; background: none; } }
+
+.role-icon { display: inline-block; vertical-align: -3px; margin-left: 4px; object-fit: contain; line-height: 1; }
+.server-tag { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0 5px; height: 18px; border-radius: 4px; background: var(--hover); color: var(--text); font-size: 12px; font-weight: 600; vertical-align: 1px; letter-spacing: .02em; }
+.member-name .server-tag, .member-name .role-icon { flex: none; }
+
+/* ---------- avatar decorations ---------- */
+.avatar > .deco { position: absolute; inset: -12%; width: 124%; height: 124%; pointer-events: none; border-radius: 0; object-fit: contain; }
+.deco-spin { transform-origin: 60px 60px; animation: deco-spin 6s linear infinite; }
+.deco-flicker { animation: deco-flicker 1.6s ease-in-out infinite; }
+.deco-glitch { animation: deco-glitch 2.2s steps(2) infinite; }
+@keyframes deco-spin { to { transform: rotate(360deg); } }
+@keyframes deco-flicker { 50% { opacity: .55; } }
+@keyframes deco-glitch { 0%, 88% { transform: none; } 92% { transform: translate(2px, -1px); } 96% { transform: translate(-2px, 1px); } }
+
+/* ---------- nameplates: fade in from the right so names keep their contrast ---------- */
+li.nameplate { position: relative; }
+li.nameplate::before { content: ""; position: absolute; inset: 1px 0; border-radius: 4px; pointer-events: none; z-index: 0;
+  background: var(--np-img, linear-gradient(90deg, transparent 35%, color-mix(in srgb, var(--np, transparent) 38%, transparent))) right / cover no-repeat; }
+li.nameplate > * { position: relative; z-index: 1; }
+
+/* ---------- profile themes, effects and widgets ---------- */
+.pcard { position: relative; }
+.pcard.themed { --pc-bg-solid: var(--panel); background: var(--pc-bg); color: var(--pc-text); --text: var(--pc-text); --muted: var(--pc-muted); --header: var(--pc-text); --strong: var(--pc-text); --dot-bg: transparent; }
+.pcard.themed .pcard-avatar { background: var(--pc-inner); }
+.pcard.themed .hint, .pcard.themed .list-heading { color: var(--pc-muted); }
+.pcard.themed .pcard-section, .pcard.themed .activity-card, .pcard.themed .widget { background: var(--pc-inner); border-radius: 8px; padding: 6px 10px; }
+.pcard.themed .role-chip { background: var(--pc-inner); }
+.pcard.themed .pcard-section.widgets { background: none; padding: 0; }
+.pfx { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 2; }
+.pfx i { position: absolute; top: -10px; left: calc(var(--i) * 8.3%); width: 6px; height: 10px; border-radius: 2px; opacity: .8; animation: pfx-fall 6s linear infinite; animation-delay: calc(var(--i) * -.5s); }
+.pfx.fx_confetti i:nth-child(3n) { background: #ff4fa3; } .pfx.fx_confetti i:nth-child(3n+1) { background: #00d4ff; } .pfx.fx_confetti i:nth-child(3n+2) { background: #ffc23d; }
+.pfx.fx_snow i { width: 5px; height: 5px; border-radius: 50%; background: #fff; animation-duration: 9s; }
+.pfx.fx_embers i { top: auto; bottom: -10px; width: 4px; height: 4px; border-radius: 50%; background: #ff7a1a; box-shadow: 0 0 6px #ff7a1a; animation-name: pfx-rise; animation-duration: 4s; }
+.pfx.fx_scanlines { background: repeating-linear-gradient(0deg, rgb(255 255 255 / .05) 0 1px, transparent 1px 4px); animation: pfx-scan 8s linear infinite; }
+.pfx.fx_scanlines i { display: none; }
+@keyframes pfx-fall { to { transform: translate(-20px, 520px) rotate(540deg); } }
+@keyframes pfx-rise { to { transform: translate(14px, -520px); opacity: 0; } }
+@keyframes pfx-scan { to { background-position: 0 200px; } }
+:root[data-reduced-motion] .pfx { display: none; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-reduced-motion]) .pfx { display: none; } }
+.widgets { display: grid; gap: 8px; }
+.widget-big { font-weight: 600; font-size: 15px; }
+.widget-links { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.widget-links a { color: var(--text); text-decoration: underline; }
+
+/* ---------- channel and server accents ---------- */
+.chan-emoji { width: 20px; flex: none; text-align: center; font-size: 15px; line-height: 20px; }
+.chat-header.accented { box-shadow: inset 0 -3px 0 var(--channel-accent), 0 1px 0 rgb(0 0 0 / .2); }
+.sidebar-header.accented { box-shadow: inset 0 3px 0 var(--guild-accent), 0 1px 0 rgb(0 0 0 / .25); }
+.accent-btn[style*="--guild-accent"] { background: var(--guild-accent); color: var(--on-guild-accent); }
+.auth-card[style*="--guild-accent"] .accent-btn { background: var(--guild-accent); color: var(--on-guild-accent); }
+.auth-card[style*="--guild-accent"] { border-top: 4px solid var(--guild-accent); }
+.auth-bg.splashed { background-size: cover; background-position: center; }
+.invite-desc { margin: 0 0 12px; }
+.welcome-hero { height: 120px; margin: -16px -16px 12px; border-radius: 8px 8px 0 0; background: var(--guild-accent, var(--accent)) center / cover no-repeat; }
+
+/* ---------- settings: themes ---------- */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.theme-card { display: grid; gap: 6px; padding: 6px; border-radius: 8px; border: 2px solid var(--border); cursor: pointer; font-size: 13px; }
+.theme-card input { position: absolute; opacity: 0; }
+.theme-card.on { border-color: var(--accent); }
+.theme-card:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.theme-card-art { position: relative; display: block; height: 56px; border-radius: 4px; overflow: hidden; }
+.theme-card-art.builtin { background: linear-gradient(135deg, #111829 50%, #ffffff 50%); }
+.theme-card-art i { position: absolute; inset: 0 auto 0 0; width: 30%; }
+.theme-card-art b { position: absolute; right: 8px; bottom: 8px; width: 24px; height: 8px; border-radius: 4px; }
+.theme-card-art em { position: absolute; left: 38%; top: 8px; font-style: normal; font-weight: 700; }
+.theme-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.own-themes { display: grid; gap: 4px; margin-bottom: 8px; }
+.theme-editor { display: grid; gap: 8px; margin-top: 12px; padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); }
+.color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 16px; }
+.color-field input[type="color"] { width: 40px; height: 40px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: none; }
+.hex-input { width: 110px; font-family: ui-monospace, monospace; }
+.theme-live { padding: 16px; border-radius: 8px; }
+.theme-live > div { padding: 12px; border-radius: 6px; }
+.theme-live p { margin: 4px 0 8px; }
+.theme-live-btn { display: inline-block; padding: 4px 12px; border-radius: 4px; font-weight: 600; font-size: 14px; }
+.contrast-warning ul { margin: 4px 0; padding-left: 20px; }
+.font-choice .radio-card { display: flex; gap: 8px; align-items: baseline; }
+.tones { gap: 4px; }
+.tone { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; font-size: 22px; cursor: pointer; border: 2px solid transparent; }
+.tone.on { border-color: var(--accent); background: var(--selected); }
+.tone:focus-within { outline: 2px solid var(--focus); }
+.chat-bg-thumb, .splash-thumb { display: block; width: 96px; height: 54px; border-radius: 4px; background: center / cover no-repeat var(--rail); border: 1px solid var(--border); }
+.splash-thumb { width: 192px; height: 108px; margin-bottom: 8px; }
+.code-input { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px; min-height: 160px; }
+.inline-check { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+
+/* ---------- settings: sounds and keybinds ---------- */
+.sound-table, .keybind-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.sound-table th, .sound-table td, .keybind-table th, .keybind-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; font-weight: 400; }
+.sound-table thead th, .keybind-table thead th { font-size: 12px; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.sound-table select { height: 32px; padding: 4px 8px; }
+.own-sounds { display: grid; gap: 4px; margin-bottom: 8px; }
+.keybind-btn { min-width: 140px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--rail); text-align: left; }
+.keybind-btn.recording { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.keybind-table tr.clash th { color: var(--danger-text); }
+
+/* ---------- settings: profile extras ---------- */
+.profile-extras { display: grid; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.name-style-preview { margin: 4px 0 8px; padding: 8px 12px; border-radius: 6px; background: var(--chat); font-size: 18px; font-weight: 600; }
+.choice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.choice-grid legend { grid-column: 1 / -1; }
+.choice-tile { display: grid; justify-items: center; gap: 4px; padding: 8px 4px; border-radius: 8px; border: 2px solid var(--border); font-size: 12px; text-align: center; cursor: pointer; }
+.choice-tile input { position: absolute; opacity: 0; }
+.choice-tile.on { border-color: var(--accent); background: var(--selected); }
+.choice-tile:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.choice-art { position: relative; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--rail); overflow: hidden; }
+.choice-art.none { background: repeating-linear-gradient(45deg, var(--rail) 0 6px, var(--hover) 6px 12px); }
+.deco-art { width: 48px; height: 48px; }
+.np-art { width: 48px; height: 48px; background: linear-gradient(90deg, transparent, var(--np)); }
+.pfx-art.fx_confetti { inset: 0; position: absolute; background: radial-gradient(circle at 20% 30%, #ff4fa3 3px, transparent 4px), radial-gradient(circle at 70% 60%, #00d4ff 3px, transparent 4px), radial-gradient(circle at 45% 80%, #ffc23d 3px, transparent 4px); }
+.pfx-art.fx_embers { inset: 0; position: absolute; background: radial-gradient(circle at 30% 70%, #ff7a1a 3px, transparent 5px), radial-gradient(circle at 65% 40%, #ffc23d 2px, transparent 4px); }
+.pfx-art.fx_scanlines { inset: 0; position: absolute; background: repeating-linear-gradient(0deg, rgb(255 255 255 / .2) 0 1px, transparent 1px 4px); }
+.pfx-art.fx_snow { inset: 0; position: absolute; background: radial-gradient(circle at 25% 30%, #fff 2px, transparent 3px), radial-gradient(circle at 70% 55%, #fff 2px, transparent 3px), radial-gradient(circle at 45% 80%, #fff 2px, transparent 3px); }
+.widget-edit { display: grid; gap: 4px; padding: 8px 12px; margin-bottom: 8px; border-radius: 8px; background: var(--card); }
+
+/* ---------- settings: server customization and roles ---------- */
+.badge-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.badge-pick { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; border: 2px solid var(--border); background: var(--rail); cursor: pointer; }
+.badge-pick.on { border-color: var(--accent); }
+.badge-pick:focus-within { outline: 2px solid var(--focus); }
+.tag-input { width: 96px; text-transform: uppercase; font-weight: 700; letter-spacing: .08em; }
+.greetings { display: grid; gap: 6px; margin-bottom: 8px; }
+.deco-list { display: grid; gap: 6px; margin-bottom: 8px; }
+.emoji-input { width: 88px; text-align: center; font-size: 18px; }
+.role-name-preview { margin: 4px 0 12px; font-weight: 600; }

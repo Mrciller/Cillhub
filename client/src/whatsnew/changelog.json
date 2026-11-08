@@ -1,0 +1,1284 @@
+{
+ "en": [
+  {
+   "title": "Web app and server",
+   "releases": [
+    {
+     "version": "7.7.0",
+     "date": "2026-11-06",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Command Palette: press Ctrl+K or Cmd+K for quick switcher with integrated action palette (/mute, /deafen, /disconnect, /settings, /status).",
+        "Custom soundboard packs: organize guild sounds into themed collections with custom icons and descriptions.",
+        "Automated scheduled announcements: recurring messages running on daily, weekly, or monthly intervals in any channel.",
+        "Anti-raid quarantine mode: automated join spike detection, automatic invite pausing, and quarantine role assignment.",
+        "Full server backup archive: export and restore guild structure, channels, roles, and settings with .cillpack archives.",
+        "Scheduled server events with iCal / WebCal sync: subscribe to community events directly in external calendar apps with personal .ics feeds.",
+        "View-once media attachments: send self-destructing media that deletes immediately from the server upon retrieval.",
+        "Granular session management: detailed active device audits with platform and network hashes, plus one-click remote session revocation.",
+        "Spatial 3D audio: immersive Web Audio stereo panning in voice rooms for natural conversation depth.",
+        "Interactive collaborative whiteboard: shared real-time vector drawing canvas in voice channels for sketching and notes.",
+        "Cross-node federated direct messages: route signed encrypted direct messages between users on independent linked nodes.",
+        "Federated public channel directory: publish and search community channels across the global Cillhub network.",
+        "Node health and network telemetry: real-time monitoring of latency, SFU packet loss, CPU, and memory metrics for node operators.",
+        "Visual redesign: obsidian and daylight studio palette with tactile surfaces, refined typography, and electric cyan accent.",
+        "Bookmarks: save messages as bookmarks directly to an Inbox Bookmarks tab.",
+        "Copy button header for code blocks, formatting shortcut tooltips in composer, and date dividers in chat.",
+        "Message link quotes and rich preview cards: pasting a message link renders an inline quote with author, preview snippet, and jump button.",
+        "Advanced search filters: narrow search queries by sender (from:), channel (in:), attachments and links (has:), and dates (before:, after:).",
+        "Ephemeral messages: channels can configure a message time-to-live (TTL) to automatically delete messages after a set duration.",
+        "Voice high-fidelity music mode: voice channels can switch to full 48 kHz stereo audio capture with studio-grade dynamics processing.",
+        "Channel canvas: shared persistent notes panel in text channels with live collaborative markdown rendering.",
+        "Interactive server onboarding: custom multi-select prompt questionnaires and server rules modal for new server members.",
+        "Server activity analytics: privacy-preserving growth insights with daily messages, chatters, voice minutes, joins, and leaves.",
+        "Screen share audio: toggle system or tab audio streaming directly during screen sharing.",
+        "WebAuthn passkeys: biometric and security key passwordless login and multi-factor authentication via FIDO2 standards.",
+        "Federated module catalog: browse and install verified community modules from the Cillhub Network directory in one click.",
+        "End-to-end encrypted direct messages: cryptographically secure 1-on-1 private messaging with client-side key generation and encryption.",
+        "Direct message list reordering and pinning: drag-and-drop or context menu to reorder and pin DM conversations.",
+        "DM chat vertical splitter: resize call height and move chat higher or lower with double-click reset.",
+        "Right-click \"Invite to Server\": invite friends directly to any server with invite permissions.",
+        "Stream fullscreen: click any active screen share or camera stream to open it in fullscreen with auto-hiding HUD and native display fullscreen.",
+        "Independent stream resizing: resize different streams independently via interactive corner drag handles, step buttons ([-]/[+]), and double-click reset.",
+        "Stream aspect fit and fill: toggle between letterboxed fit view and cropped fill view on individual streams.",
+        "Change stream source while live: switch which window or screen is shared without having to stop and restart your stream, accessible directly from the media controls, stream quality modal, and stream hover toolbar."
+       ]
+      },
+      {
+       "title": "Changed",
+       "items": [
+        "Permissions: prevent administrator self-lockout on channel overwrites, enforce thread access permissions, and respect role hierarchy in voice moderation.",
+        "Federation: hub events bound to node verification, persistence of node suspensions across unlinking, and automatic directory unpublishing."
+       ]
+      },
+      {
+       "title": "Fixed",
+       "items": [
+        "On Cillhub's own voice server, people who join a call now see at once who is already speaking.",
+        "Memory and connection leaks on voice room teardown, group call disconnects, and stream permission clamping.",
+        "Custom emoji role and external emoji access restrictions are now strictly validated on message edits.",
+        "Deleting pinned or unread messages correctly rewinds channels, clears mention counts, and dispatches pins update events.",
+        "Prototype property name rejection in module settings and automod allow-lists.",
+        "WebRTC simulcast RID negotiation fix for simultaneous multi-user screen sharing."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.6.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Modules: instance admins can install their own modules from a file or a Git URL under Admin › Modules, review the permissions each one asks for, choose its servers, fill in its settings and read its log.",
+        "Modules run in a sandbox with only the permissions the admin approved. They can answer slash commands and buttons, react to messages, new members, reactions and voice changes, run on a schedule, receive webhooks and show their own panels in the app.",
+        "Module bots carry a MODULE badge. Panels open next to a channel, in the channel list or under a module's message."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.5.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Cillhub is open source under the GNU Affero General Public License v3.0.",
+        "What's New: this changelog in the app, under User Settings and in the status menu. It opens once after an update.",
+        "Self-hosted servers can update themselves: off, patch and security updates only, or all updates, at a maintenance hour you pick. The setup wizard and the Updates page offer it.",
+        "Self-hosted servers that join the network check that every answer from the network hub is signed by it."
+       ]
+      },
+      {
+       "title": "Changed",
+       "items": [
+        "One of the colour theme presets is now called Midnight Blue. If you used it, pick it again under Appearance."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.4.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "AV1 for screen sharing. With the Screen Share Encoder set to Auto, Cillhub uses AV1 only when your graphics card can encode it in hardware and H.264 otherwise. You can also pick AV1 by hand; the app warns that it costs more CPU without a hardware encoder.",
+        "Viewers whose browser cannot play AV1 get the share in H.264 automatically, on both voice servers."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.3.2",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Fixed",
+       "items": [
+        "On LiveKit voice servers, the first screen share after joining a call reaches full quality in about two seconds instead of more than 30."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.3.1",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "Sharper screen shares: the resolution now holds in both Motion and Clarity mode, and the bitrates are higher (2.5, 6, 10 and 16 Mbit/s for 720p, 1080p, 1440p and Source)."
+       ]
+      },
+      {
+       "title": "Fixed",
+       "items": [
+        "Screen shares on Cillhub's own voice server were capped at about 4 Mbit/s whatever quality you picked.",
+        "After turning a camera or screen share off and on again, later quality changes were ignored.",
+        "Viewers could get stuck on the lower-quality layer of a screen share."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.3.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Screen Share Encoder setting (Voice & Video): Auto, H.264, VP8 or VP9. Auto prefers H.264, which most graphics cards encode in hardware.",
+        "Connection details and the Stream Quality dialog show the screen share encoder or decoder and whether it runs on the GPU.",
+        "Drag a member onto another voice channel to move them (needs the Move Members permission)."
+       ]
+      },
+      {
+       "title": "Changed",
+       "items": [
+        "Virtual microphones from noise-removal apps: Cillhub keeps the exact device, finds it again when it comes back, tells you when it had to use another microphone, and turns off its own noise suppression and gain for them."
+       ]
+      },
+      {
+       "title": "Fixed",
+       "items": [
+        "Crackling voices on a busy computer, for example while a game is running: voice playback now uses a larger buffer."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.2.1",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Fixed",
+       "items": [
+        "Zoom is saved per device, so zooming in on a PC no longer shrinks the app on your phone.",
+        "A zoomed page still fills the whole screen.",
+        "On narrow screens the settings close button floats in the corner instead of taking up a column."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.2.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Server owners can choose the voice server per server (Server Settings › Overview › Voice Server) when the instance offers more than one."
+       ]
+      },
+      {
+       "title": "Fixed",
+       "items": [
+        "Settings no longer show a second scrollbar or jump out of view when you click a colour swatch."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.1.1",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Watch Together: volume and mute per device, and \"Lower while people talk\".",
+        "The connection details of a call show which voice server it uses."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.1.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "New look: night navy surfaces, cyan for actions and selection, pink for mentions, unread and live, and bevelled corners on server icons and primary buttons.",
+        "Better contrast for secondary text, readable text on every accent colour, support for the system's high-contrast setting, and larger touch targets on touch screens.",
+        "On phones the header keeps the channel name; search collapses to its icon."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.0.3",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Fixed",
+       "items": [
+        "Importing a server template with forum channels failed."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.0.2",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Fixed",
+       "items": [
+        "Online status: when all your sessions are inactive for two minutes, or the phone app is in the background, you show as idle instead of online around the clock.",
+        "An automatic idle status could be saved as your chosen status."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.0.1",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Five starter templates in \"Add a server\": Gaming, Esports Team, Friends, Study Group and Community.",
+        "Server template links can be imported with categories, channels, order, topics, roles, colours and permissions copied one to one."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.0.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Run your own Cillhub server: a signed installer, a setup wizard, and updates with automatic rollback.",
+        "A self-hosted server can stay on its own or join the Cillhub network. On a joined server you sign in with your network account and see its servers next to your others in the same app.",
+        "Server directory for finding public servers across the network.",
+        "Admin pages for self-hosted servers: Federation, Updates and Release Channel."
+       ]
+      },
+      {
+       "title": "Changed",
+       "items": [
+        "The app is now called Cillhub."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "6.0.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Admin dashboard for instance admins (requires two-factor authentication): overview, users, servers, reports, instance settings, announcements and the audit log.",
+        "Report a message to the instance admins.",
+        "Registration modes (open, invite only, closed) and registration codes.",
+        "Colour themes: 12 presets and up to 10 of your own, with share codes and automatic contrast fixes.",
+        "Custom CSS with a safe mode, chat fonts, line height, message spacing and a chat background.",
+        "Sound sets and your own notification sounds, plus entrance sounds when you join a voice channel.",
+        "Every keyboard shortcut can be rebound.",
+        "Profile themes, display name styles, avatar decorations, profile effects and nameplates.",
+        "Server customization: invite splash, accent colour, welcome background, greeting messages, server tag and badge, role gradients and role icons."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "5.2.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Support for the Android app, including optional push notifications.",
+        "Cillhub's own voice and video server as an alternative to LiveKit, for instances that turn it on."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "5.1.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Fixed",
+       "items": [
+        "Undeafening restores your previous mute state.",
+        "Moving a member into a voice channel requires that they may connect to it.",
+        "Seeking in long uploaded videos works.",
+        "Large uploads no longer fill the server's memory; size limits apply while the file arrives.",
+        "The emoji and sticker animation setting is respected everywhere.",
+        "The light and compact themes meet WCAG AA contrast.",
+        "Bots: editing a reply, select menus after a bot edit, slash command attachment options and files in bot replies work."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "5.0.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Watch Together: watch YouTube videos in sync in a voice channel.",
+        "Enhanced noise suppression.",
+        "Cillhub Bot, built in: /roll, /coinflip, /remind, /giveaway, /scrim and /lfg.",
+        "Send later (scheduled messages) and Remind me.",
+        "Voice channel status.",
+        "Server templates, plus server export and import.",
+        "Game activity from the desktop app."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "4.0.0",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Group DMs, voice and video calls in DMs and group DMs, and blocking.",
+        "Profiles with banner and bio, per-server profiles, and custom status.",
+        "Notification settings per server and channel, Web Push notifications, and an inbox for mentions and unread messages.",
+        "Settings sync across devices, a light theme, and the full app in German.",
+        "Server folders, the quick switcher (Ctrl+K) and keyboard shortcuts.",
+        "Account security: change password, username and email, two-factor authentication with backup codes, and a list of logged-in devices.",
+        "Developer portal: bots with slash commands, buttons, select menus and modals, and bot installs through OAuth2."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "3.0.1",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Fixed",
+       "items": [
+        "Stickers larger than 320×320 failed to upload; still images are now scaled down in the browser.",
+        "Form errors name the field and the reason instead of \"Invalid Form Body\"."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "3.0.0",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Threads, forum channels, announcement channels you can follow, and stage channels.",
+        "Text chat in voice channels, slowmode, age-restricted channels and an AFK channel.",
+        "Link previews, polls, forwarding, voice messages, spoilers and image descriptions.",
+        "Message search.",
+        "Custom emoji, stickers, a soundboard and a GIF picker.",
+        "Scheduled events.",
+        "Moderation: timeouts, audit log, AutoMod, a welcome screen, rules screening and vanity invite links.",
+        "Webhooks.",
+        "A banner that tells you when a new version is available."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "2.0.1",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Voice: switches for noise suppression, echo cancellation and automatic gain, and a voice quality setting.",
+        "Input and output volume up to 300 %, and per-user volume up to 300 %.",
+        "Stream quality for screen sharing: resolution, frame rate, and motion or clarity, also while live.",
+        "Ping with connection details."
+       ]
+      },
+      {
+       "title": "Fixed",
+       "items": [
+        "The microphone test plays your microphone back and no longer reopens the microphone in a loop."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "2.0.0",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Categories, and voice, video and screen sharing.",
+        "Roles and permissions, including per-channel overrides.",
+        "Moderation: kick, ban, nicknames, and server mute, deafen, move and disconnect in voice.",
+        "Invites with limits, file uploads, avatars and server icons.",
+        "Reactions, replies, pins and mentions, with unread and mention badges.",
+        "Friends, and a status that stays as you set it."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.0.0",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "First release: accounts, servers, text channels, direct messages, invites, online status, typing indicators and live updates."
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Desktop app",
+   "releases": [
+    {
+     "version": "Unreleased",
+     "date": null,
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "Align window controls, titlebar, settings page, and screen-share picker with the Argon obsidian design system."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "2.1.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Includes web app 7.6.0: module panels and the modules admin page."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "2.0.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "The desktop app has a new app ID (io.github.mrciller.cillhub) and a new update feed. Install it once from the download page and log in again; after that it updates itself."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.2.2",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Includes web app 7.4.0 (AV1 screen sharing).",
+        "\"Use the GPU for screen sharing\" also turns on hardware AV1 encoding on Windows."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.2.1",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "Includes web app 7.3.2: sharper screen shares and a fast first share on LiveKit voice servers."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.2.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "The web app is built into the desktop app instead of being loaded from the website. Your login and local settings move over once on first start.",
+        "The update banner installs app updates.",
+        "Setting \"Use the GPU for screen sharing\" for hardware H.264 on Windows."
+       ]
+      },
+      {
+       "title": "Fixed",
+       "items": [
+        "Lag while resizing or moving the window."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.1.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Game activity: show what you are playing.",
+        "Global hotkeys for mute and deafen.",
+        "A settings window and release notes."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.0.0",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "First release: Windows installer and Linux AppImage and .deb, updates itself, screen share picker, tray icon with unread badge, and invite links that open in the app."
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Android app",
+   "releases": [
+    {
+     "version": "Unreleased",
+     "date": null,
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "The app is now fully native: servers, channels, chat, direct messages, friends, inbox and settings are built for Android, with a tablet layout, light and dark themes, and English and German.",
+        "Smaller downloads: the app comes in one version per processor type (about 10 MB instead of 29 MB), and updates pick the right one by themselves."
+       ]
+      },
+      {
+       "title": "Added",
+       "items": [
+        "Use another server: sign in to a self-hosted Cillhub server from the sign-in screen.",
+        "Native voice and video: voice channels, stages (listening) and calls run in the app itself, on both voice servers, with mute, deafen, push to talk, speaking indicators and a volume for each person.",
+        "Camera with front and back camera, and other people's cameras and screen shares in full screen with zoom and picture-in-picture.",
+        "Share your phone's screen in a call, in 720p or 1080p.",
+        "Calls and voice channels behave like phone calls: pick speaker, earpiece, headset or Bluetooth, the screen turns off at your ear, and a phone call puts Cillhub on hold. The call notification has Mute and Leave.",
+        "Android Auto: your conversations with read aloud, voice reply and mark as read, voice channels to join with mute, deafen and leave, calls to your DMs, and your status."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "2.0.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "Cillhub for Android is a new app (io.github.mrciller.cillhub). Install it once and log in again; the old app points you to it."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.1.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "New colours to match the web app, a new launcher icon, and the name Cillhub."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.0.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "First release: the web app in a native Android app, with messages delivered in the background, notifications with reply and mark as read, Android Auto messaging, calls that ring like phone calls, and updates from inside the app."
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "de": [
+  {
+   "title": "Web-App und Server",
+   "releases": [
+    {
+     "version": "7.7.0",
+     "date": "2026-11-06",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Befehlspalette: Drücke Strg+K oder Befehl+K für den Schnellwechsler mit integrierter Aktionspalette (/mute, /deafen, /disconnect, /settings, /status).",
+        "Eigene Soundboard-Pakete: Server-Sounds in thematischen Sammlungen mit eigenen Icons und Beschreibungen organisieren.",
+        "Automatisierte Ankündigungen: Wiederkehrende Nachrichten mit täglichen, wöchentlichen oder monatlichen Intervallen planen.",
+        "Anti-Raid-Quarantänemodus: Automatische Erkennung von Beitrittswellen, Pausieren von Einladungen und Zuweisung von Quarantänerollen.",
+        "Vollständige Server-Backups: Export und Wiederherstellung von Serverstruktur, Kanälen, Rollen und Einstellungen über .cillpack-Archive.",
+        "Kalender-Synchronisation für Events: Community-Termine per persönlichem iCal- / WebCal-Feed (.ics) in externen Kalendern abonnieren.",
+        "Einmalige Medienanhänge: Selbstzerstörende Dateien und Bilder senden, die nach dem ersten Abruf sofort vom Server gelöscht werden.",
+        "Detaillierte Sitzungsverwaltung: Geräte-Audit mit Plattform- und Netzwerk-Hashes sowie Fernabmeldung aller anderen Sitzungen mit einem Klick.",
+        "Räumliches 3D-Audio: Natürliche Tiefenstaffelung im Sprachkanal durch Web-Audio-Stereo-Panning.",
+        "Interaktives Whiteboard: Gemeinsame Echtzeit-Vektorzeichenfläche in Sprachkanälen für Skizzen und Notizen.",
+        "Föderierte Direktnachrichten: Signierte und verschlüsselte Direktnachrichten zwischen Nutzern auf unterschiedlichen Knoten austauschen.",
+        "Föderiertes Kanalverzeichnis: Öffentliche Community-Kanäle netzwerkweit veröffentlichen und durchsuchen.",
+        "Knoten-Telemetrie und Systemdiagnose: Echtzeit-Überwachung von Latenzen, SFU-Paketverlust, CPU- und Speicherauslastung für Administratoren.",
+        "Visuelles Redesign: Obsidian- und Daylight-Studio-Palette mit taktilen Oberflächen, verfeinerter Typografie und elektrischem Cyan-Akzent.",
+        "Lesezeichen: Nachrichten als Lesezeichen direkt in einem Lesezeichen-Tab im Posteingang speichern.",
+        "Codeblock-Kopfzeile mit Kopier-Button, Formatierungshinweise im Eingabefeld und Datumstrennlinien im Chat.",
+        "Nachrichten-Link-Zitate und Vorschaukarten: Das Einfügen eines Nachrichten-Links zeigt ein Zitat mit Autor, Vorschautext und Sprung-Button.",
+        "Erweiterte Suchfilter: Suchanfragen nach Absender (from:), Kanal (in:), Anhängen und Links (has:) sowie Datum (before:, after:) filtern.",
+        "Vergängliche Nachrichten: Kanäle können eine Ablaufzeit (TTL) festlegen, nach der Nachrichten automatisch gelöscht werden.",
+        "Hi-Fi-Sprach- und Musikmodus: Sprachkanäle können auf 48-kHz-Stereo-Audioaufnahme mit optimierter Dynamikverarbeitung umschalten.",
+        "Kanal-Notizen (Canvas): Geteilte Notizen-Seitenleiste in Textkanälen mit Live-Markdown-Darstellung.",
+        "Interaktives Server-Onboarding: Anpassbare Fragenkataloge und Server-Regeln für neue Mitglieder beim Beitreten.",
+        "Server-Aktivitätsstatistiken: Datenschutzfreundliche Einblicke mit täglichen Nachrichten, aktiven Nutzern, Sprachminuten und Beitritten.",
+        "Bildschirm-Audioübertragung: System- und Tab-Audio kann direkt während der Bildschirmübertragung mitgesendet werden.",
+        "WebAuthn-Passkeys: Passwortlose Anmeldung und Zwei-Faktor-Authentifizierung mit biometrischen Sensoren und Sicherheitsschlüsseln.",
+        "Föderierter Modulkatalog: Verifizierte Community-Module aus dem Cillhub-Netzwerkverzeichnis mit einem Klick installieren.",
+        "Ende-zu-Ende-verschlüsselte Direktnachrichten: Kryptografisch private 1-zu-1-Nachrichten mit clientseitiger Verschlüsselung.",
+        "Neuordnung und Anheften von Direktnachrichten: Konversationen per Drag-and-Drop oder Kontextmenü anordnen und anheften.",
+        "Vertikaler DM-Chat-Teiler: Anrufhöhe anpassen und den Chat mit Doppelklick-Zurücksetzung höher oder niedriger ziehen.",
+        "Rechtsklick-Aktion „Auf Server einladen“: Freunde per Rechtsklick direkt auf jeden Server einladen, für den Einladungsrechte vorliegen.",
+        "Vollbildmodus für Streams: Ein Klick auf eine Bildschirmübertragung oder einen Videostream öffnet diesen im Vollbild mit automatisch ausblendendem Steuerungs-HUD.",
+        "Individuelle Größenanpassung für Streams: Jeder Stream kann über einen Ziehgriff oder Schnelltasten ([-]/[+]) separat vergrößert, verkleinert und zurückgesetzt werden.",
+        "Umschaltung zwischen Einpassen und Ausfüllen: Beliebige Streams zwischen formatfüllender Ansicht und vollständiger Bilddarstellung umschalten.",
+        "Stream-Quelle live wechseln: Übertragenes Fenster oder Bildschirm direkt während des Streams wechseln, ohne den Stream beenden zu müssen."
+       ]
+      },
+      {
+       "title": "Geändert",
+       "items": [
+        "Berechtigungen: Schutz vor Administrator-Selbstausschluss bei Kanal-Überschreibungen, strikte Thread-Zugriffsberechtigungen und Einhaltung der Rollenhierarchie bei der Sprachmoderation.",
+        "Föderation: Bindung von Hub-Ereignissen an die Knotenüberprüfung, dauerhafte Knotensperren über Entkopplungen hinweg und automatische Verzeichnis-Ausblendung."
+       ]
+      },
+      {
+       "title": "Behoben",
+       "items": [
+        "Auf Cillhubs eigenem Sprachserver sieht man beim Beitreten sofort, wer schon spricht.",
+        "Speicher- und Verbindungslecks beim Schließen von Sprachräumen, Gruppenanruf-Trennungen und Berechtigungsbegrenzungen für Streams.",
+        "Rollen- und externe Berechtigungen für benutzerdefinierte Emojis werden jetzt auch beim Bearbeiten von Nachrichten durchgesetzt.",
+        "Das Löschen angehefteter oder ungelesener Nachrichten aktualisiert Kanäle, Mention-Zähler und Pins-Ereignisse korrekt.",
+        "Ablehnung von Prototyp-Eigenschaftsnamen in Moduleinstellungen und Automod-Erlaubnislisten.",
+        "WebRTC-Simulcast-RID-Aushandlung für gleichzeitige Bildschirmübertragungen mit mehreren Personen korrigiert."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.6.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Module: Instanz-Admins können im Admin-Dashboard unter „Module“ eigene Module aus einer Datei oder einer Git-URL installieren, die angefragten Berechtigungen prüfen, die Server auswählen, Einstellungen ausfüllen und das Protokoll lesen.",
+        "Module laufen in einer Sandbox und dürfen nur, was der Admin freigegeben hat. Sie können Slash-Befehle und Buttons beantworten, auf Nachrichten, neue Mitglieder, Reaktionen und Sprachkanäle reagieren, zeitgesteuert laufen, Webhooks empfangen und eigene Bereiche in der App zeigen.",
+        "Modul-Bots tragen ein MODUL-Abzeichen. Ihre Bereiche öffnen sich neben einem Kanal, in der Kanalliste oder unter einer Nachricht des Moduls."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.5.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Cillhub ist Open Source unter der GNU Affero General Public License v3.0.",
+        "Neuigkeiten: dieses Änderungsprotokoll in der App, in den Benutzereinstellungen und im Statusmenü. Es öffnet sich nach einem Update einmal von selbst.",
+        "Selbst gehostete Server können sich selbst aktualisieren: aus, nur Patch- und Sicherheitsupdates oder alle Updates, zu einer Wartungsstunde deiner Wahl. Der Einrichtungsassistent und die Seite „Updates“ bieten das an.",
+        "Selbst gehostete Server im Netzwerk prüfen, dass jede Antwort des Netzwerk-Hubs von ihm signiert ist."
+       ]
+      },
+      {
+       "title": "Geändert",
+       "items": [
+        "Eine der Farbvorlagen heißt jetzt Mitternachtsblau. Wenn du sie verwendet hast, wähle sie unter „Darstellung“ erneut aus."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.4.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "AV1 für die Bildschirmübertragung. Steht der Encoder auf „Automatisch“, nutzt Cillhub AV1 nur, wenn deine Grafikkarte AV1 in Hardware kodieren kann, sonst H.264. Du kannst AV1 auch von Hand wählen; ohne Hardware-Encoder warnt die App vor der höheren CPU-Last.",
+        "Wer AV1 im Browser nicht abspielen kann, bekommt die Übertragung automatisch in H.264, auf beiden Sprachservern."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.3.2",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Behoben",
+       "items": [
+        "Auf LiveKit-Sprachservern erreicht die erste Bildschirmübertragung nach dem Beitreten die volle Qualität in etwa zwei Sekunden statt in über 30."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.3.1",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Schärfere Bildschirmübertragungen: Die Auflösung bleibt jetzt im Bewegungs- und im Klarheitsmodus erhalten, und die Bitraten sind höher (2,5, 6, 10 und 16 Mbit/s für 720p, 1080p, 1440p und Quelle)."
+       ]
+      },
+      {
+       "title": "Behoben",
+       "items": [
+        "Bildschirmübertragungen auf Cillhubs eigenem Sprachserver waren auf etwa 4 Mbit/s begrenzt, egal welche Qualität gewählt war.",
+        "Nach dem Aus- und wieder Einschalten von Kamera oder Bildschirmübertragung wurden spätere Qualitätsänderungen ignoriert.",
+        "Zuschauer konnten auf der schwächeren Qualitätsstufe einer Übertragung hängen bleiben."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.3.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Einstellung „Encoder für Bildschirmübertragung“ (Sprache & Video): Automatisch, H.264, VP8 oder VP9. Automatisch bevorzugt H.264, das die meisten Grafikkarten in Hardware kodieren.",
+        "Verbindungsdetails und der Dialog „Streamqualität“ zeigen Encoder oder Decoder der Übertragung und ob er auf der GPU läuft.",
+        "Ziehe ein Mitglied auf einen anderen Sprachkanal, um es zu verschieben (braucht die Berechtigung „Mitglieder verschieben“)."
+       ]
+      },
+      {
+       "title": "Geändert",
+       "items": [
+        "Virtuelle Mikrofone von Apps zur Geräuschentfernung: Cillhub hält genau dieses Gerät fest, findet es wieder, wenn es zurückkommt, sagt Bescheid, wenn ein anderes Mikrofon genutzt werden musste, und schaltet dafür die eigene Rauschunterdrückung und Verstärkung ab."
+       ]
+      },
+      {
+       "title": "Behoben",
+       "items": [
+        "Knisternde Stimmen auf einem ausgelasteten Rechner, etwa während ein Spiel läuft: Die Sprachwiedergabe nutzt jetzt einen größeren Puffer."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.2.1",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Behoben",
+       "items": [
+        "Der Zoom wird pro Gerät gespeichert, ein Zoom am PC verkleinert die App am Handy also nicht mehr.",
+        "Eine gezoomte Seite füllt weiterhin den ganzen Bildschirm.",
+        "Auf schmalen Bildschirmen schwebt die Schließen-Schaltfläche der Einstellungen in der Ecke, statt eine eigene Spalte zu belegen."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.2.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Servereigentümer können den Sprachserver pro Server wählen (Servereinstellungen › Übersicht › Sprachserver), wenn die Instanz mehr als einen anbietet."
+       ]
+      },
+      {
+       "title": "Behoben",
+       "items": [
+        "Die Einstellungen zeigen keine zweite Bildlaufleiste mehr und springen nicht mehr aus dem Bild, wenn du ein Farbfeld anklickst."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.1.1",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Gemeinsam schauen: Lautstärke und Stummschaltung pro Gerät sowie „Leiser, während jemand spricht“.",
+        "Die Verbindungsdetails eines Anrufs zeigen, welchen Sprachserver er nutzt."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.1.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Neues Aussehen: nachtblaue Flächen, Cyan für Aktionen und Auswahl, Pink für Erwähnungen, Ungelesenes und Live, abgeschrägte Ecken an Server-Icons und Hauptschaltflächen.",
+        "Besserer Kontrast für Nebentext, lesbarer Text auf jeder Akzentfarbe, Unterstützung für die Systemeinstellung „Mehr Kontrast“ und größere Tippflächen auf Touchscreens.",
+        "Auf dem Handy behält die Kopfzeile den Kanalnamen; die Suche schrumpft auf ihr Symbol."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.0.3",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Behoben",
+       "items": [
+        "Der Import einer Servervorlage mit Forenkanälen schlug fehl."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.0.2",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Behoben",
+       "items": [
+        "Onlinestatus: Sind alle deine Sitzungen zwei Minuten lang inaktiv oder läuft die Handy-App im Hintergrund, wirst du als abwesend angezeigt statt rund um die Uhr als online.",
+        "Ein automatischer Abwesend-Status konnte als dein gewählter Status gespeichert werden."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.0.1",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Fünf Startvorlagen unter „Server hinzufügen“: Gaming, E-Sport-Team, Freunde, Lerngruppe und Community.",
+        "Links zu Servervorlagen lassen sich importieren, mit Kategorien, Kanälen, Reihenfolge, Themen, Rollen, Farben und Berechtigungen eins zu eins."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "7.0.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Betreibe deinen eigenen Cillhub-Server: signierter Installer, Einrichtungsassistent und Updates mit automatischem Zurückrollen.",
+        "Ein selbst gehosteter Server kann für sich bleiben oder dem Cillhub-Netzwerk beitreten. Auf einem beigetretenen Server meldest du dich mit deinem Netzwerkkonto an und siehst seine Server neben deinen anderen in derselben App.",
+        "Serververzeichnis, um öffentliche Server im ganzen Netzwerk zu finden.",
+        "Adminseiten für selbst gehostete Server: Föderation, Updates und Release-Kanal."
+       ]
+      },
+      {
+       "title": "Geändert",
+       "items": [
+        "Die App heißt jetzt Cillhub."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "6.0.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Admin-Dashboard für Instanz-Admins (mit Zwei-Faktor-Authentifizierung): Übersicht, Benutzer, Server, Meldungen, Instanzeinstellungen, Ankündigungen und Audit-Log.",
+        "Nachrichten an die Instanz-Admins melden.",
+        "Registrierungsmodi (offen, nur mit Einladung, geschlossen) und Registrierungscodes.",
+        "Farbthemen: 12 Vorlagen und bis zu 10 eigene, mit Teilen-Codes und automatischer Kontrastkorrektur.",
+        "Eigenes CSS mit abgesichertem Modus, Chat-Schriften, Zeilenhöhe, Nachrichtenabstand und ein Chat-Hintergrund.",
+        "Sound-Sets und eigene Benachrichtigungstöne, dazu Eintrittssounds beim Betreten eines Sprachkanals.",
+        "Jedes Tastenkürzel lässt sich neu belegen.",
+        "Profilthemen, Stile für Anzeigenamen, Avatar-Dekorationen, Profileffekte und Namensschilder.",
+        "Server-Anpassung: Einladungs-Splash, Akzentfarbe, Willkommenshintergrund, Begrüßungsnachrichten, Server-Tag und Abzeichen, Rollenverläufe und Rollensymbole."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "5.2.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Unterstützung für die Android-App, auch mit optionalen Push-Benachrichtigungen.",
+        "Cillhubs eigener Sprach- und Videoserver als Alternative zu LiveKit, für Instanzen, die ihn einschalten."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "5.1.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Behoben",
+       "items": [
+        "Beim Aufheben der Taubschaltung kehrt die vorherige Stummschaltung zurück.",
+        "Ein Mitglied lässt sich nur in einen Sprachkanal verschieben, dem es auch beitreten darf.",
+        "Spulen in langen hochgeladenen Videos funktioniert.",
+        "Große Uploads füllen nicht mehr den Arbeitsspeicher des Servers; Größenlimits greifen schon während der Übertragung.",
+        "Die Einstellung für animierte Emojis und Sticker gilt überall.",
+        "Das helle und das kompakte Design erfüllen den Kontrast nach WCAG AA.",
+        "Bots: Antworten bearbeiten, Auswahlmenüs nach einer Bot-Änderung, Anhang-Optionen in Slash-Befehlen und Dateien in Bot-Antworten funktionieren."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "5.0.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Gemeinsam schauen: YouTube-Videos synchron in einem Sprachkanal ansehen.",
+        "Erweiterte Rauschunterdrückung.",
+        "Der eingebaute Cillhub Bot: /roll, /coinflip, /remind, /giveaway, /scrim und /lfg.",
+        "Später senden (geplante Nachrichten) und „Erinnere mich“.",
+        "Status für Sprachkanäle.",
+        "Servervorlagen sowie Export und Import von Servern.",
+        "Spielaktivität aus der Desktop-App."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "4.0.0",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Gruppen-DMs, Sprach- und Videoanrufe in DMs und Gruppen-DMs sowie Blockieren.",
+        "Profile mit Banner und Bio, Serverprofile und eigener Status.",
+        "Benachrichtigungseinstellungen pro Server und Kanal, Web-Push-Benachrichtigungen und ein Posteingang für Erwähnungen und Ungelesenes.",
+        "Einstellungen werden zwischen Geräten abgeglichen, ein helles Design und die ganze App auf Deutsch.",
+        "Serverordner, der Schnellwechsler (Strg+K) und Tastenkürzel.",
+        "Kontosicherheit: Passwort, Benutzername und E-Mail ändern, Zwei-Faktor-Authentifizierung mit Backup-Codes und eine Liste angemeldeter Geräte.",
+        "Entwicklerportal: Bots mit Slash-Befehlen, Schaltflächen, Auswahlmenüs und Formularen sowie Bot-Installation über OAuth2."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "3.0.1",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Behoben",
+       "items": [
+        "Sticker über 320×320 ließen sich nicht hochladen; Standbilder werden jetzt im Browser verkleinert.",
+        "Formularfehler nennen das Feld und den Grund statt „Invalid Form Body“."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "3.0.0",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Threads, Forenkanäle, Ankündigungskanäle zum Folgen und Bühnenkanäle.",
+        "Textchat in Sprachkanälen, Slowmode, altersbeschränkte Kanäle und ein AFK-Kanal.",
+        "Linkvorschauen, Umfragen, Weiterleiten, Sprachnachrichten, Spoiler und Bildbeschreibungen.",
+        "Nachrichtensuche.",
+        "Eigene Emojis, Sticker, ein Soundboard und eine GIF-Auswahl.",
+        "Geplante Events.",
+        "Moderation: Timeouts, Audit-Log, AutoMod, ein Willkommensbildschirm, Regelprüfung und eigene Einladungslinks.",
+        "Webhooks.",
+        "Ein Hinweis, wenn eine neue Version bereitsteht."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "2.0.1",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Sprache: Schalter für Rauschunterdrückung, Echounterdrückung und automatische Verstärkung sowie eine Einstellung für die Sprachqualität.",
+        "Eingangs- und Ausgangslautstärke bis 300 % und Lautstärke pro Person bis 300 %.",
+        "Streamqualität für die Bildschirmübertragung: Auflösung, Bildrate sowie Bewegung oder Klarheit, auch während der Übertragung.",
+        "Ping mit Verbindungsdetails."
+       ]
+      },
+      {
+       "title": "Behoben",
+       "items": [
+        "Der Mikrofontest spielt dein Mikrofon ab und öffnet das Mikrofon nicht mehr in einer Schleife."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "2.0.0",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Kategorien sowie Sprache, Video und Bildschirmübertragung.",
+        "Rollen und Berechtigungen, auch mit Ausnahmen pro Kanal.",
+        "Moderation: Kicken, Bannen, Spitznamen sowie Server-Stummschaltung, -Taubschaltung, Verschieben und Trennen im Sprachkanal.",
+        "Einladungen mit Limits, Datei-Uploads, Avatare und Server-Icons.",
+        "Reaktionen, Antworten, Anpinnen und Erwähnungen, mit Abzeichen für Ungelesenes und Erwähnungen.",
+        "Freunde und ein Status, der so bleibt, wie du ihn setzt."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.0.0",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Erste Version: Konten, Server, Textkanäle, Direktnachrichten, Einladungen, Onlinestatus, Tippanzeige und Live-Aktualisierung."
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Desktop-App",
+   "releases": [
+    {
+     "version": "Unreleased",
+     "date": null,
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Fenstersteuerung, Titelleiste, Einstellungsseite und Bildschirmauswahl an das Argon-Obsidian-Designsystem angepasst."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "2.1.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Enthält die Web-App 7.6.0: Modul-Panels und die Modulverwaltung für Admins."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "2.0.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Die Desktop-App hat eine neue App-ID (io.github.mrciller.cillhub) und einen neuen Update-Kanal. Installiere sie einmal von der Download-Seite und melde dich neu an; danach aktualisiert sie sich selbst."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.2.2",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Enthält die Web-App 7.4.0 (AV1 für die Bildschirmübertragung).",
+        "„GPU für die Bildschirmübertragung nutzen“ schaltet unter Windows auch die AV1-Hardwarekodierung ein."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.2.1",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Enthält die Web-App 7.3.2: schärfere Bildschirmübertragungen und ein schneller Start der ersten Übertragung auf LiveKit-Sprachservern."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.2.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Die Web-App steckt jetzt in der Desktop-App, statt von der Website geladen zu werden. Anmeldung und lokale Einstellungen werden beim ersten Start einmal übernommen.",
+        "Der Update-Hinweis installiert App-Updates.",
+        "Einstellung „GPU für die Bildschirmübertragung nutzen“ für H.264 in Hardware unter Windows."
+       ]
+      },
+      {
+       "title": "Behoben",
+       "items": [
+        "Ruckeln beim Ändern der Größe oder beim Verschieben des Fensters."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.1.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Spielaktivität: zeigt, was du gerade spielst.",
+        "Globale Tastenkürzel für Stummschalten und Taubschalten.",
+        "Ein Einstellungsfenster und Versionshinweise."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.0.0",
+     "date": "2026-11-03",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Erste Version: Windows-Installer sowie Linux-AppImage und .deb, aktualisiert sich selbst, Auswahl für die Bildschirmübertragung, Tray-Symbol mit Ungelesen-Zähler und Einladungslinks, die sich in der App öffnen."
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Android-App",
+   "releases": [
+    {
+     "version": "Unreleased",
+     "date": null,
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Die App ist jetzt komplett nativ: Server, Kanäle, Chat, Direktnachrichten, Freunde, Posteingang und Einstellungen sind für Android gebaut, mit Tablet-Layout, hellem und dunklem Design sowie Englisch und Deutsch.",
+        "Kleinere Downloads: Die App gibt es in einer Fassung pro Prozessortyp (etwa 10 MB statt 29 MB), und Updates wählen die passende von selbst."
+       ]
+      },
+      {
+       "title": "Hinzugefügt",
+       "items": [
+        "Anderen Server verwenden: Melde dich vom Anmeldebildschirm aus bei einem selbst betriebenen Cillhub-Server an.",
+        "Native Sprache und Video: Sprachkanäle, Bühnen (zum Zuhören) und Anrufe laufen in der App selbst, auf beiden Sprachservern, mit Stummschalten, Taubschalten, Push-to-Talk, Sprechanzeige und einer Lautstärke für jede Person.",
+        "Kamera mit Front- und Rückkamera, dazu Kameras und Bildschirmübertragungen der anderen im Vollbild mit Zoom und Bild-im-Bild.",
+        "Teile im Anruf den Bildschirm deines Telefons, in 720p oder 1080p.",
+        "Anrufe und Sprachkanäle verhalten sich wie Telefonate: Lautsprecher, Hörmuschel, Headset oder Bluetooth wählbar, der Bildschirm geht am Ohr aus, und ein Telefonanruf hält Cillhub an. Die Anrufbenachrichtigung hat Stummschalten und Verlassen.",
+        "Android Auto: deine Unterhaltungen mit Vorlesen, Antworten per Sprache und Als-gelesen-Markieren, Sprachkanäle zum Beitreten mit Stummschalten, Taubschalten und Verlassen, Anrufe zu deinen Direktnachrichten und dein Status."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "2.0.0",
+     "date": "2026-11-05",
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Cillhub für Android ist eine neue App (io.github.mrciller.cillhub). Installiere sie einmal und melde dich neu an; die alte App weist dich darauf hin."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.1.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Neue Farben passend zur Web-App, ein neues App-Symbol und der Name Cillhub."
+       ]
+      }
+     ]
+    },
+    {
+     "version": "1.0.0",
+     "date": "2026-11-04",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Erste Version: die Web-App als native Android-App, mit Nachrichten im Hintergrund, Benachrichtigungen mit Antworten und „Als gelesen markieren“, Android-Auto-Nachrichten, Anrufen, die wie Telefonanrufe klingeln, und Updates direkt aus der App."
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

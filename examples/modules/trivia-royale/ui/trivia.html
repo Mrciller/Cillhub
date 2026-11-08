@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trivia Royale</title>
+  <link rel="stylesheet" href="trivia.css">
+  <script src="cillhub-panel.js" defer></script>
+  <script src="trivia.js" defer></script>
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-main">
+        <h1 class="app-title">🧠 Trivia Royale</h1>
+        <div class="champion-badge" id="champion-badge" title="Reigning Server Champion">👑 No Champion</div>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="Trivia Royale Navigation">
+        <button type="button" role="tab" class="tab-btn active" id="tab-btn-game" aria-selected="true" aria-controls="view-game">Game</button>
+        <button type="button" role="tab" class="tab-btn" id="tab-btn-lobbies" aria-selected="false" aria-controls="view-lobbies">Lobbies (<span id="lobby-count">0</span>)</button>
+        <button type="button" role="tab" class="tab-btn" id="tab-btn-custom" aria-selected="false" aria-controls="view-custom">Custom Questions</button>
+        <button type="button" role="tab" class="tab-btn" id="tab-btn-leaderboard" aria-selected="false" aria-controls="view-leaderboard">Leaderboard</button>
+      </nav>
+    </header>
+
+    <div id="status-bar" role="status" aria-live="polite" class="status-bar hidden"></div>
+
+    <!-- MAIN GAME TAB -->
+    <main id="view-game" class="tab-view active" role="tabpanel" aria-labelledby="tab-btn-game">
+      <!-- Empty state when not in a game -->
+      <div id="no-game-prompt" class="empty-state">
+        <p class="empty-text">You are not in an active trivia match.</p>
+        <div class="empty-actions">
+          <button type="button" class="btn primary" id="quick-create-btn">Host a Match</button>
+          <button type="button" class="btn" id="browse-lobbies-btn">Browse Lobbies</button>
+        </div>
+      </div>
+
+      <!-- In-Game Area -->
+      <div id="game-active-area" class="game-layout hidden">
+        <!-- Waiting Room Phase -->
+        <div id="phase-waiting" class="waiting-card hidden">
+          <h2>Match Lobby</h2>
+          <p class="waiting-desc">Waiting for the host to start the game...</p>
+          <div class="participants-list-box">
+            <h3>Joined Contestants (<span id="waiting-player-count">0</span>)</h3>
+            <ul id="waiting-players-list" class="waiting-players-list"></ul>
+          </div>
+          <div class="waiting-actions">
+            <button type="button" class="btn primary hidden" id="host-start-btn">Start Game Now!</button>
+          </div>
+        </div>
+
+        <!-- Question / Answer Phase -->
+        <div id="phase-question" class="question-container hidden">
+          <div class="question-meta-bar">
+            <span class="category-badge" id="question-category">Science</span>
+            <span class="round-counter" id="question-counter">Question 1 / 5</span>
+          </div>
+
+          <!-- Animated Countdown Timer Bar -->
+          <div class="timer-wrapper">
+            <div class="timer-bar" id="timer-bar"></div>
+          </div>
+
+          <div class="question-card">
+            <h2 class="question-text" id="question-text">Loading question...</h2>
+          </div>
+
+          <!-- 4 Multiple Choice Cards -->
+          <div class="choices-grid" id="choices-grid">
+            <button type="button" class="choice-btn" data-index="0" id="choice-0">
+              <span class="choice-letter">A</span>
+              <span class="choice-text" id="choice-text-0"></span>
+            </button>
+            <button type="button" class="choice-btn" data-index="1" id="choice-1">
+              <span class="choice-letter">B</span>
+              <span class="choice-text" id="choice-text-1"></span>
+            </button>
+            <button type="button" class="choice-btn" data-index="2" id="choice-2">
+              <span class="choice-letter">C</span>
+              <span class="choice-text" id="choice-text-2"></span>
+            </button>
+            <button type="button" class="choice-btn" data-index="3" id="choice-3">
+              <span class="choice-letter">D</span>
+              <span class="choice-text" id="choice-text-3"></span>
+            </button>
+          </div>
+
+          <!-- Reveal & Explanation Box -->
+          <div id="reveal-box" class="reveal-box hidden">
+            <div class="reveal-result" id="reveal-result"></div>
+            <div class="explanation-text" id="explanation-text"></div>
+            <button type="button" class="btn primary small" id="next-round-btn">Next ➔</button>
+          </div>
+
+          <!-- Live Scoreboard -->
+          <div class="live-scoreboard">
+            <div class="scoreboard-title">Live Match Scoreboard</div>
+            <div class="scoreboard-chips" id="scoreboard-chips"></div>
+          </div>
+        </div>
+
+        <!-- Finished Victory Screen -->
+        <div id="phase-finished" class="finished-card hidden">
+          <div class="trophy-icon">🏆</div>
+          <h2 id="finished-winner-title">Match Finished!</h2>
+          <p id="finished-winner-sub" class="finished-sub"></p>
+          <div class="final-podium" id="final-podium"></div>
+          <button type="button" class="btn primary" id="back-to-lobbies-btn">Play Another Match</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- LOBBIES TAB -->
+    <section id="view-lobbies" class="tab-view hidden" role="tabpanel" aria-labelledby="tab-btn-lobbies">
+      <div class="card">
+        <h2>⚔️ Host a Match</h2>
+        <div class="host-form">
+          <div class="form-group">
+            <label for="lobby-category">Category:</label>
+            <select id="lobby-category" class="select-input">
+              <option value="all">All Categories (Mixed)</option>
+              <option value="Science">Science</option>
+              <option value="Gaming">Gaming</option>
+              <option value="Computing">Computing</option>
+              <option value="History">History</option>
+              <option value="Geography">Geography</option>
+              <option value="Pop Culture">Pop Culture</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="lobby-count">Questions:</label>
+            <select id="lobby-count" class="select-input">
+              <option value="5">5 Questions (Fast)</option>
+              <option value="8">8 Questions</option>
+              <option value="10">10 Questions (Championship)</option>
+            </select>
+          </div>
+          <button type="button" class="btn primary" id="create-lobby-btn">Create Match Lobby</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Open Match Lobbies</h2>
+        <ul id="open-lobbies-list" class="item-list" aria-label="Open Lobbies"></ul>
+      </div>
+    </section>
+
+    <!-- CUSTOM QUESTIONS TAB -->
+    <section id="view-custom" class="tab-view hidden" role="tabpanel" aria-labelledby="tab-btn-custom">
+      <div class="card" id="custom-add-card">
+        <h2>➕ Add Server Question</h2>
+        <p class="card-desc">Add unique server-specific trivia questions (Server Managers only).</p>
+        <div class="custom-form">
+          <label for="custom-category">Category</label>
+          <input id="custom-category" class="text-input" placeholder="e.g. Server Lore, Gaming, Tech" maxlength="30">
+
+          <label for="custom-question">Question</label>
+          <input id="custom-question" class="text-input" placeholder="Type your trivia question here..." maxlength="200">
+
+          <div class="custom-choices-group">
+            <label>Answer Choices (Pick the correct option)</label>
+            <div class="choice-input-row">
+              <input type="radio" name="custom-correct" value="0" id="radio-0" checked>
+              <input id="custom-choice-0" class="text-input" placeholder="Option A" maxlength="100">
+            </div>
+            <div class="choice-input-row">
+              <input type="radio" name="custom-correct" value="1" id="radio-1">
+              <input id="custom-choice-1" class="text-input" placeholder="Option B" maxlength="100">
+            </div>
+            <div class="choice-input-row">
+              <input type="radio" name="custom-correct" value="2" id="radio-2">
+              <input id="custom-choice-2" class="text-input" placeholder="Option C" maxlength="100">
+            </div>
+            <div class="choice-input-row">
+              <input type="radio" name="custom-correct" value="3" id="radio-3">
+              <input id="custom-choice-3" class="text-input" placeholder="Option D" maxlength="100">
+            </div>
+          </div>
+
+          <label for="custom-explanation">Fun Fact / Explanation (Optional)</label>
+          <input id="custom-explanation" class="text-input" placeholder="Why is this answer correct?" maxlength="300">
+
+          <button type="button" class="btn primary" id="add-question-btn">Save Question</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD TAB -->
+    <section id="view-leaderboard" class="tab-view hidden" role="tabpanel" aria-labelledby="tab-btn-leaderboard">
+      <div class="card">
+        <h2>🏆 All-Time Trivia Leaderboard</h2>
+        <div class="table-wrapper">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Player</th>
+                <th>Total Points</th>
+                <th>Wins</th>
+                <th>Matches</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jukebox Queue</title>
+  <link rel="stylesheet" href="jukebox.css">
+  <script src="cillhub-panel.js" defer></script>
+  <script src="jukebox.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="panel-header">
+      <div class="header-title">
+        <h1>🎵 Jukebox Queue</h1>
+        <span id="queue-count" class="badge">0 in queue</span>
+      </div>
+      <button id="toggle-add-btn" type="button" class="primary">+ Add Track</button>
+    </header>
+
+    <p id="status-bar" role="status" aria-live="polite"></p>
+
+    <!-- Now Playing Banner -->
+    <section id="now-playing-card" class="now-playing-card empty" aria-label="Now Playing">
+      <div class="np-disc">🎵</div>
+      <div class="np-info">
+        <span class="np-badge">NOW PLAYING</span>
+        <h2 id="np-title">Nothing playing right now</h2>
+        <div id="np-meta" class="np-meta">Add a track to start the queue</div>
+      </div>
+      <div id="np-actions" class="np-actions hidden">
+        <button id="np-link-btn" type="button" class="icon-btn" title="Open media link">🔗</button>
+        <button id="btn-skip" type="button" class="secondary" title="Skip to next track">⏭ Skip</button>
+      </div>
+    </section>
+
+    <!-- Add Track Form (Not a <form>) -->
+    <section id="add-panel" class="card hidden" aria-labelledby="add-title">
+      <h2 id="add-title">Add Track or Topic</h2>
+
+      <div class="form-row">
+        <label for="track-title">Title</label>
+        <input id="track-title" type="text" maxlength="100" placeholder="e.g. Song name, Video title, Topic" autocomplete="off">
+      </div>
+
+      <div class="form-grid">
+        <div class="form-row">
+          <label for="track-url">Media URL (optional)</label>
+          <input id="track-url" type="url" maxlength="300" placeholder="https://...">
+        </div>
+        <div class="form-row">
+          <label for="track-duration">Duration (optional)</label>
+          <input id="track-duration" type="text" maxlength="20" placeholder="e.g. 3:45, 10m">
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button id="submit-track-btn" type="button" class="primary">Add to Queue</button>
+        <button id="cancel-add-btn" type="button">Cancel</button>
+      </div>
+    </section>
+
+    <!-- Host Controls Bar -->
+    <div id="mod-toolbar" class="mod-toolbar hidden">
+      <span class="mod-label">👑 Host Controls:</span>
+      <button id="btn-play-next" type="button" class="small-btn">▶ Play Next</button>
+      <button id="btn-clear" type="button" class="small-btn danger">Clear Queue</button>
+    </div>
+
+    <!-- Queue List -->
+    <ul id="queue-list" class="queue-list" aria-label="Jukebox Queue"></ul>
+  </main>
+</body>
+</html>

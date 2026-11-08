@@ -1,0 +1,31 @@
+{
+  "manifest_version": 1,
+  "id": "cill-chess",
+  "name": "Chess Arena",
+  "version": "1.0.0",
+  "description": "Multiplayer Chess Arena with matchmaking, legal move engine, ELO ratings, and interactive channel panel.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": ["commands", "storage", "ui", "messages.send"],
+  "http_hosts": [],
+  "commands": [
+    {
+      "name": "chess",
+      "description": "Show Chess Arena top ELO ratings and active games",
+      "options": []
+    }
+  ],
+  "settings": [],
+  "ui": {
+    "panels": [
+      {
+        "id": "arena",
+        "slot": "channel_panel",
+        "title": "Chess Arena",
+        "entry": "ui/chess.html",
+        "height": 560,
+        "icon": "♟️"
+      }
+    ]
+  }
+}

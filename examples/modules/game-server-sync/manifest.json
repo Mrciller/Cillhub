@@ -1,0 +1,115 @@
+{
+  "manifest_version": 1,
+  "id": "game-server-sync",
+  "name": "Game Server Live Bridge",
+  "version": "1.0.0",
+  "description": "Live status monitoring, bidirectional chat relay, and secure console RCON commands for Minecraft, Rust, and Source game servers.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": [
+    "commands",
+    "messages.read",
+    "messages.send",
+    "storage",
+    "schedule",
+    "http.fetch",
+    "http.routes"
+  ],
+  "http_hosts": [
+    "api.mcsrvstat.us",
+    "api.minetools.eu",
+    "localhost",
+    "*.example.com",
+    "*.cillerian.org"
+  ],
+  "settings": [
+    {
+      "key": "server_type",
+      "type": "select",
+      "label": "Server Type",
+      "description": "Game server engine or protocol type.",
+      "options": [
+        { "value": "minecraft", "label": "Minecraft (Java / Bedrock)" },
+        { "value": "rust", "label": "Rust (Web RCON)" },
+        { "value": "source", "label": "Source Engine / Custom Web RCON" }
+      ],
+      "default": "minecraft",
+      "per_server": true,
+      "required": true
+    },
+    {
+      "key": "host",
+      "type": "text",
+      "label": "Server Hostname",
+      "description": "Hostname or domain of the game server (e.g. mc.example.com).",
+      "max_length": 253,
+      "placeholder": "mc.example.com",
+      "per_server": true,
+      "required": true
+    },
+    {
+      "key": "port",
+      "type": "number",
+      "integer": true,
+      "min": 1,
+      "max": 65535,
+      "label": "Server Port",
+      "description": "Game or RCON port (default 25565 for Minecraft, 28016 for Rust RCON).",
+      "default": 25565,
+      "per_server": true,
+      "required": false
+    },
+    {
+      "key": "rcon_password",
+      "type": "secret",
+      "label": "RCON Password",
+      "description": "Secret password used to authenticate console RCON commands.",
+      "per_server": true,
+      "required": false
+    },
+    {
+      "key": "status_channel_id",
+      "type": "channel",
+      "channel_types": [0],
+      "label": "Status Embed Channel",
+      "description": "Channel where the live status embed is pinned and periodically updated.",
+      "per_server": true,
+      "required": false
+    },
+    {
+      "key": "chat_sync_channel_id",
+      "type": "channel",
+      "channel_types": [0],
+      "label": "Chat Sync Channel",
+      "description": "Text channel bridged bidirectionally with in-game chat.",
+      "per_server": true,
+      "required": false
+    }
+  ],
+  "commands": [
+    {
+      "name": "rcon",
+      "description": "Execute a game server console command via secure RCON",
+      "options": [
+        {
+          "name": "command",
+          "description": "Console command to run on the server",
+          "type": 3,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "gameserver",
+      "description": "View game server status and player list",
+      "options": [
+        {
+          "name": "status",
+          "description": "Display live player count, latency, and online player list",
+          "type": 1,
+          "options": []
+        }
+      ]
+    }
+  ]
+}

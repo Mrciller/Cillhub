@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CubeCoders AMP Control Center</title>
+  <link rel="stylesheet" href="amp.css">
+  <script src="cillhub-panel.js" defer></script>
+  <script src="amp.js" defer></script>
+</head>
+<body>
+  <div class="app-layout">
+    <header class="app-header">
+      <div class="header-titles">
+        <span class="brand-icon" aria-hidden="true">🖥️</span>
+        <div>
+          <h1>CubeCoders AMP</h1>
+          <p class="subtitle" id="connection-status">Connecting to instances...</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-refresh" type="button" class="btn secondary" title="Refresh instances">
+          <span class="icon-refresh" aria-hidden="true">⟳</span> Refresh
+        </button>
+      </div>
+    </header>
+
+    <div id="notice-banner" class="notice-banner" role="status" aria-live="polite" hidden></div>
+
+    <main class="main-content">
+      <section aria-labelledby="servers-heading">
+        <div class="section-header">
+          <h2 id="servers-heading">Managed Game Servers</h2>
+          <span id="server-count-badge" class="badge">0 Servers</span>
+        </div>
+        <div id="instances-grid" class="instances-grid" aria-label="Game servers list">
+          <div class="loading-state">Loading instances...</div>
+        </div>
+      </section>
+    </main>
+
+    <!-- RCON Console Drawer -->
+    <div id="console-drawer" class="console-drawer" hidden aria-labelledby="console-title" role="dialog" aria-modal="true">
+      <div class="console-header">
+        <div class="console-title-group">
+          <span class="terminal-dot"></span>
+          <h3 id="console-title">RCON Console: <span id="console-instance-name">Server</span></h3>
+        </div>
+        <button id="btn-close-console" type="button" class="btn-icon" aria-label="Close Console">✕</button>
+      </div>
+      <div id="console-output" class="console-output" tabindex="0" role="log" aria-live="polite">
+        <div class="console-line info">Connecting to RCON stream...</div>
+      </div>
+      <div class="console-input-row">
+        <span class="prompt-symbol">&gt;</span>
+        <input id="console-input" type="text" placeholder="Type a command (e.g. list, help, say hello)..." autocomplete="off" spellcheck="false">
+        <button id="btn-send-cmd" type="button" class="btn primary">Send</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

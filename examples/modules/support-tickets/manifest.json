@@ -1,0 +1,114 @@
+{
+  "manifest_version": 1,
+  "id": "support-tickets",
+  "name": "Support Tickets & ModMail",
+  "version": "1.0.0",
+  "description": "Support tickets and ModMail system with category organization, private ticket channels, transcripts, and staff management.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": [
+    "commands",
+    "messages.read",
+    "messages.send",
+    "storage"
+  ],
+  "http_hosts": [],
+  "settings": [
+    {
+      "key": "ticket_category_id",
+      "type": "channel",
+      "channel_types": [4],
+      "label": "Ticket Category",
+      "description": "Category category under which newly created ticket channels are placed.",
+      "per_server": true,
+      "required": false
+    },
+    {
+      "key": "support_role_id",
+      "type": "role",
+      "label": "Support Role",
+      "description": "Staff role granted access to view, claim, and respond to ticket channels.",
+      "per_server": true,
+      "required": false
+    },
+    {
+      "key": "transcript_channel_id",
+      "type": "channel",
+      "channel_types": [0],
+      "label": "Transcript Channel",
+      "description": "Text channel where closed ticket summaries and transcripts are archived.",
+      "per_server": true,
+      "required": false
+    },
+    {
+      "key": "welcome_message",
+      "type": "text",
+      "multiline": true,
+      "max_length": 1000,
+      "label": "Welcome Message",
+      "description": "Greeting message posted inside newly opened ticket channels.",
+      "default": "Thank you for reaching out! A support representative will be with you shortly. Please provide details regarding your inquiry.",
+      "per_server": true,
+      "required": false
+    }
+  ],
+  "commands": [
+    {
+      "name": "ticket",
+      "description": "Support ticket management commands",
+      "options": [
+        {
+          "name": "panel",
+          "description": "Post the interactive ticket creation panel in this channel",
+          "type": 1,
+          "options": []
+        },
+        {
+          "name": "open",
+          "description": "Open a new support ticket",
+          "type": 1,
+          "options": [
+            {
+              "name": "subject",
+              "description": "Brief subject or summary of your issue",
+              "type": 3,
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "close",
+          "description": "Close this support ticket and generate a transcript",
+          "type": 1,
+          "options": [
+            {
+              "name": "reason",
+              "description": "Reason for closing this ticket",
+              "type": 3,
+              "required": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "modmail",
+      "description": "Send a private inquiry or report to server moderators",
+      "options": [
+        {
+          "name": "send",
+          "description": "Send a modmail message to the staff team",
+          "type": 1,
+          "options": [
+            {
+              "name": "message",
+              "description": "Message content to deliver to moderators",
+              "type": 3,
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

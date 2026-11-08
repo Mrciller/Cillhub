@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>System Status</title>
+  <link rel="stylesheet" href="status.css">
+  <script src="cillhub-panel.js" defer></script>
+  <script src="status.js" defer></script>
+</head>
+<body>
+  <div class="layout">
+    <!-- Top System Overall Banner -->
+    <header id="status-banner" class="status-banner operational">
+      <div class="banner-icon" aria-hidden="true">✔</div>
+      <div class="banner-content">
+        <h1 id="overall-status-text">All Systems Operational</h1>
+        <p class="banner-sub" id="last-updated-text">Updated just now</p>
+      </div>
+      <div class="banner-actions">
+        <button id="btn-check-now" type="button" class="btn secondary">
+          <span class="refresh-icon" aria-hidden="true">⟳</span> Check Now
+        </button>
+      </div>
+    </header>
+
+    <div id="notice-msg" class="notice-box" role="status" aria-live="polite" hidden></div>
+
+    <main class="content-body">
+      <!-- Monitored Endpoints Section -->
+      <section aria-labelledby="endpoints-heading">
+        <div class="section-title-row">
+          <h2 id="endpoints-heading">Monitored Services</h2>
+          <div class="admin-buttons" id="admin-header-btns" hidden>
+            <button id="btn-open-add" type="button" class="btn small primary">+ Add Service</button>
+            <button id="btn-open-incident" type="button" class="btn small secondary">📢 Post Incident</button>
+          </div>
+        </div>
+        <div id="endpoints-list" class="endpoints-list" aria-label="Services list">
+          <div class="loading-state">Loading services...</div>
+        </div>
+      </section>
+
+      <!-- Incidents Section -->
+      <section aria-labelledby="incidents-heading" class="incidents-section">
+        <div class="section-title-row">
+          <h2 id="incidents-heading">Recent Incidents</h2>
+          <span id="incidents-badge" class="badge">0 Active</span>
+        </div>
+        <div id="incidents-list" class="incidents-list" aria-label="Incidents list">
+          <div class="empty-incidents">No incidents reported. All systems healthy.</div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modal for Adding Service -->
+    <div id="modal-add" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="modal-add-title">Add Monitored Endpoint</h3>
+          <button id="btn-close-add" type="button" class="btn-icon" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <label for="input-ep-name">Service Name</label>
+          <input id="input-ep-name" type="text" placeholder="e.g. Auth Gateway" maxlength="50">
+
+          <label for="input-ep-url">Endpoint HTTPS URL</label>
+          <input id="input-ep-url" type="url" placeholder="https://api.cillerian.org/health" maxlength="200">
+          <p class="field-hint">Must match allowed hosts (*.cillerian.org, example.com)</p>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-cancel-add" type="button" class="btn secondary">Cancel</button>
+          <button id="btn-save-add" type="button" class="btn primary">Add Endpoint</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal for Posting Incident -->
+    <div id="modal-incident" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="modal-inc-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="modal-inc-title">Post Incident Notice</h3>
+          <button id="btn-close-inc" type="button" class="btn-icon" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <label for="input-inc-title">Incident Title</label>
+          <input id="input-inc-title" type="text" placeholder="e.g. Database Connectivity Investigation" maxlength="80">
+
+          <label for="select-inc-status">Current Status</label>
+          <select id="select-inc-status">
+            <option value="Investigating">Investigating</option>
+            <option value="Identified">Identified</option>
+            <option value="Monitoring">Monitoring</option>
+            <option value="Resolved">Resolved</option>
+          </select>
+
+          <label for="select-inc-endpoint">Impacted Service (Optional)</label>
+          <select id="select-inc-endpoint">
+            <option value="">All / General Infrastructure</option>
+          </select>
+
+          <label for="input-inc-msg">Status Update Message</label>
+          <textarea id="input-inc-msg" rows="3" placeholder="Describe the current issue and steps being taken..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-cancel-inc" type="button" class="btn secondary">Cancel</button>
+          <button id="btn-save-inc" type="button" class="btn primary">Publish Update</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

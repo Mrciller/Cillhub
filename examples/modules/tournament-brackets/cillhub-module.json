@@ -1,0 +1,131 @@
+{
+  "manifest_version": 1,
+  "id": "tournament-brackets",
+  "name": "Tournament Brackets",
+  "version": "1.0.0",
+  "description": "Interactive single-elimination & round-robin tournament brackets with visual bracket UI, live score reporting, and champion roles.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": [
+    "commands",
+    "storage",
+    "ui",
+    "messages.send",
+    "roles.manage"
+  ],
+  "http_hosts": [],
+  "settings": [
+    {
+      "key": "winner_role",
+      "type": "role",
+      "label": "Tournament Champion Role",
+      "description": "Role automatically granted to the tournament winner.",
+      "per_server": true
+    },
+    {
+      "key": "announce_channel",
+      "type": "channel",
+      "channel_types": [0],
+      "label": "Tournament Announcements Channel",
+      "description": "Channel for bracket start, match results, and championship announcements.",
+      "per_server": true
+    }
+  ],
+  "commands": [
+    {
+      "name": "tournament",
+      "description": "Manage and participate in tournament brackets",
+      "options": [
+        {
+          "name": "create",
+          "description": "Create a new tournament (Organizers only)",
+          "type": 1,
+          "options": [
+            {
+              "name": "title",
+              "description": "Tournament title (e.g. Spring Smash 1v1)",
+              "type": 3,
+              "required": true
+            },
+            {
+              "name": "game",
+              "description": "Game or sport name",
+              "type": 3,
+              "required": true
+            },
+            {
+              "name": "size",
+              "description": "Bracket size (4, 8, or 16 players)",
+              "type": 4,
+              "required": true,
+              "choices": [
+                { "name": "4 Players", "value": 4 },
+                { "name": "8 Players", "value": 8 },
+                { "name": "16 Players", "value": 16 }
+              ]
+            },
+            {
+              "name": "format",
+              "description": "Tournament format",
+              "type": 3,
+              "required": false,
+              "choices": [
+                { "name": "Single Elimination", "value": "single_elim" },
+                { "name": "Round Robin", "value": "round_robin" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "view",
+          "description": "View current active tournament bracket status",
+          "type": 1,
+          "options": []
+        },
+        {
+          "name": "join",
+          "description": "Join the registration queue for the tournament",
+          "type": 1,
+          "options": []
+        },
+        {
+          "name": "leave",
+          "description": "Leave the tournament registration queue",
+          "type": 1,
+          "options": []
+        },
+        {
+          "name": "report",
+          "description": "Report scores for a match",
+          "type": 1,
+          "options": [
+            {
+              "name": "match_id",
+              "description": "Match ID (e.g. M-1)",
+              "type": 3,
+              "required": true
+            },
+            {
+              "name": "score",
+              "description": "Match score in format X-Y (e.g. 2-1)",
+              "type": 3,
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "ui": {
+    "panels": [
+      {
+        "id": "brackets",
+        "slot": "guild_sidebar",
+        "title": "Tournaments",
+        "entry": "ui/brackets.html",
+        "height": 600,
+        "icon": "🏆"
+      }
+    ]
+  }
+}

@@ -1,0 +1,204 @@
+/* Connections Settings Styles */
+.connections-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.connections-grid-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.connect-services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.service-connect-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--bg-secondary, #2b2d31);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  padding: 12px 8px;
+  cursor: pointer;
+  color: var(--text-normal, #dbdee1);
+  transition: background 0.15s, transform 0.15s, border-color 0.15s;
+}
+
+.service-connect-btn:hover {
+  background: var(--bg-secondary-hover, #313338);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-2px);
+}
+
+.service-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.service-connect-name {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.connected-accounts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.connected-accounts-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.connected-account-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary, #2b2d31);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  padding: 12px 16px;
+  gap: 12px;
+}
+
+.account-card-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.account-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.account-service-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #fff;
+}
+
+.verified-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--green, #23a55a);
+  color: #fff;
+}
+
+.account-external-link {
+  font-size: 13px;
+  color: var(--accent-light, #5865f2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.account-external-link:hover {
+  text-decoration: underline;
+}
+
+.account-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-checkbox {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.danger-hover:hover {
+  color: var(--red, #f23f43);
+}
+
+.connect-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 8px 0;
+}
+
+.connect-service-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.connect-service-banner h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.handle-input {
+  background: var(--bg-tertiary, #1e1f22);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #fff;
+  font-size: 14px;
+  width: 100%;
+}
+
+.handle-input:focus {
+  border-color: var(--accent, #5865f2);
+  outline: none;
+}
+
+.display-profile-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-normal, #dbdee1);
+}

@@ -1,0 +1,31 @@
+{
+  "manifest_version": 1,
+  "id": "word-duel",
+  "name": "Word Duel",
+  "version": "1.0.0",
+  "description": "Multiplayer 5-letter word game with Daily Server Word and Live Speed Duels.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": ["commands", "storage", "ui"],
+  "http_hosts": [],
+  "commands": [
+    {
+      "name": "wordduel",
+      "description": "Show Word Duel stats, daily word status, and active duels",
+      "options": []
+    }
+  ],
+  "settings": [],
+  "ui": {
+    "panels": [
+      {
+        "id": "duel",
+        "slot": "channel_panel",
+        "title": "Word Duel",
+        "entry": "ui/duel.html",
+        "height": 520,
+        "icon": "🔤"
+      }
+    ]
+  }
+}

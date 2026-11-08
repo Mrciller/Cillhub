@@ -1,0 +1,12 @@
+/* Server Template settings page and the template / file forms in "Add a server". */
+.template-card { display: grid; gap: 10px; padding: 16px; border-radius: 8px; background: var(--card); margin: 12px 0; max-width: 640px; }
+.template-card .row-buttons .grow { flex: 1; min-width: 0; }
+.template-preview { padding: 8px 10px; border-radius: 6px; background: var(--input); font-size: 14px; margin-bottom: 8px; }
+
+.starter-list { border: 0; margin: 0 0 8px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.starter { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 8px; background: var(--card); border: 2px solid transparent; cursor: pointer; }
+.starter:hover { background: var(--hover, var(--card)); }
+.starter.selected, .starter:focus-within { border-color: var(--accent); }
+.starter input { position: absolute; opacity: 0; pointer-events: none; }
+.starter-title { font-weight: 600; }
+.starter-desc { font-size: 12px; opacity: .8; }

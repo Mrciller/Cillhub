@@ -1,0 +1,74 @@
+{
+  "manifest_version": 1,
+  "id": "ticket-desk",
+  "name": "Support Ticket Desk",
+  "version": "1.0.0",
+  "description": "Support ticket & modmail desk with categories, staff claiming, reply threads, and closed ticket log summaries.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": ["commands", "storage", "ui", "messages.send"],
+  "http_hosts": [],
+  "settings": [
+    {
+      "key": "staff_role",
+      "type": "role",
+      "label": "Staff Role",
+      "description": "Role granted staff access to manage tickets.",
+      "required": false,
+      "per_server": true
+    },
+    {
+      "key": "log_channel",
+      "type": "channel",
+      "channel_types": [0],
+      "label": "Ticket Log Channel",
+      "description": "Channel where closed ticket logs and transcripts are posted.",
+      "required": false,
+      "per_server": true
+    }
+  ],
+  "commands": [
+    {
+      "name": "ticket",
+      "description": "Open a support ticket or view your tickets",
+      "options": [
+        {
+          "type": 3,
+          "name": "subject",
+          "description": "Short summary of your issue or question",
+          "required": false
+        },
+        {
+          "type": 3,
+          "name": "category",
+          "description": "Ticket category",
+          "required": false,
+          "choices": [
+            { "name": "General Inquiry", "value": "General" },
+            { "name": "Bug Report", "value": "Bug" },
+            { "name": "Moderation / Report", "value": "Moderation" },
+            { "name": "Account & Roles", "value": "Account" }
+          ]
+        },
+        {
+          "type": 3,
+          "name": "message",
+          "description": "Detailed explanation of your ticket",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "ui": {
+    "panels": [
+      {
+        "id": "desk",
+        "slot": "guild_sidebar",
+        "title": "Support Tickets",
+        "entry": "ui/tickets.html",
+        "height": 600,
+        "icon": "🎫"
+      }
+    ]
+  }
+}

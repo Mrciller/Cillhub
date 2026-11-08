@@ -1,0 +1,58 @@
+/* DM / group DM call area above the messages, reusing the voice grid's .tile styles. */
+.call-panel { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 0; background: var(--rail); max-height: 55vh; }
+.call-panel .tiles { flex: 1; min-height: 0; overflow-y: auto; }
+.call-panel .tile { min-width: 160px; flex-basis: 220px; flex-grow: 0; }
+.call-panel .tile-focus .tile { min-height: 240px; }
+.call-panel .call-bar { padding: 8px 0 12px; }
+
+/* Splitter to move the chat higher or lower in DMs */
+.chat-call-splitter {
+  height: 8px;
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--rail);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  touch-action: none;
+  position: relative;
+  z-index: 5;
+  transition: background 0.15s ease;
+}
+.chat-call-splitter:hover, .chat-call-splitter.dragging {
+  background: var(--surface);
+}
+.splitter-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--muted);
+  opacity: 0.6;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.chat-call-splitter:hover .splitter-handle,
+.chat-call-splitter.dragging .splitter-handle {
+  opacity: 1;
+  background: var(--accent);
+}
+.tile.absent .tile-inner { align-content: center; gap: 8px; opacity: .8; }
+.tile.absent .tile-name { position: static; background: none; }
+.tile.ringing .avatar { animation: call-pulse 1.4s ease-in-out infinite; }
+@keyframes call-pulse { 50% { box-shadow: 0 0 0 6px rgb(47 211 127 / .45); } }
+.ring-state { color: var(--online); font-size: 13px; font-weight: 600; }
+.join-call { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--online); }
+.join-call:hover:not(:disabled) { background: #1a8a4a; }
+
+/* Incoming call: a ringing card in the corner. */
+.incoming-call { position: fixed; z-index: 30; right: 24px; bottom: 24px; width: 240px; display: grid; justify-items: center; align-items: center; gap: 8px; padding: 20px 16px; border-radius: 12px;
+  background: var(--menu); color: var(--text); box-shadow: 0 8px 24px rgb(0 0 0 / .4); text-align: center; animation: call-in .2s ease-out; }
+.incoming-call h2 { max-width: 100%; color: var(--header); font-size: 18px; text-align: center; }
+.incoming-avatar .avatar { animation: call-pulse 1.4s ease-in-out infinite; margin: 0 auto; }
+.incoming-actions { display: flex; align-items: center; justify-content: center; gap: 32px; margin-top: 8px; }
+.round-btn.big { width: 52px; height: 52px; color: #fff; }
+.round-btn.big.danger { background: var(--danger); }
+.round-btn.big.ok { background: var(--online); }
+.round-btn.big.danger:hover, .round-btn.big.ok:hover { color: #fff; filter: brightness(1.1); }
+@keyframes call-in { from { translate: 0 20px; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .incoming-call, .incoming-avatar .avatar, .tile.ringing .avatar { animation: none; } }

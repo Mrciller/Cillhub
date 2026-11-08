@@ -1,0 +1,320 @@
+/* Media Channel Gallery Layout (Feature 8) */
+.media-gallery-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--chat, #313338);
+  box-sizing: border-box;
+}
+
+.media-gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.media-gallery-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.media-gallery-count {
+  font-size: 13px;
+  color: var(--muted, #949ba4);
+  background: var(--rail, #2b2d31);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.media-gallery-views {
+  display: flex;
+  gap: 4px;
+  background: var(--rail, #2b2d31);
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.media-view-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: none;
+  background: none;
+  color: var(--muted, #949ba4);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.media-view-btn:hover {
+  color: var(--strong, #fff);
+}
+
+.media-view-btn.active {
+  background: var(--hover, rgba(255, 255, 255, 0.1));
+  color: var(--strong, #fff);
+}
+
+/* Responsive Masonry Grid using CSS columns */
+.media-gallery-masonry {
+  columns: 4 220px;
+  column-gap: 12px;
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .media-gallery-masonry {
+    columns: 3 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .media-gallery-masonry {
+    columns: 2 160px;
+  }
+}
+
+@media (max-width: 480px) {
+  .media-gallery-masonry {
+    columns: 1 100%;
+  }
+}
+
+.media-gallery-card {
+  break-inside: avoid;
+  margin-bottom: 12px;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-secondary, #2b2d31);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s cubic-bezier(0.2, 0, 0, 1);
+  display: block;
+  width: 100%;
+  border: none;
+  padding: 0;
+  text-align: left;
+}
+
+.media-gallery-card:hover,
+.media-gallery-card:focus-visible {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  outline: none;
+}
+
+.media-gallery-thumb {
+  width: 100%;
+  height: auto;
+  max-height: 480px;
+  object-fit: cover;
+  display: block;
+}
+
+.media-video-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+/* Hover overlay */
+.media-gallery-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.7) 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px;
+  color: #fff;
+  z-index: 3;
+}
+
+.media-gallery-card:hover .media-gallery-overlay,
+.media-gallery-card:focus-visible .media-gallery-overlay {
+  opacity: 1;
+}
+
+.media-overlay-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.media-overlay-author {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.media-overlay-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.media-overlay-caption {
+  font-size: 12px;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.media-overlay-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.media-overlay-reactions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+/* Empty State */
+.media-gallery-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 16px;
+  text-align: center;
+  color: var(--muted, #949ba4);
+}
+
+.media-gallery-empty-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--rail, #2b2d31);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  color: var(--muted, #949ba4);
+}
+
+.media-gallery-empty h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--strong, #fff);
+  margin: 0 0 8px 0;
+}
+
+/* Lightbox Modal styles */
+.gallery-lightbox-modal {
+  display: flex;
+  flex-direction: column;
+  max-width: 90vw;
+  max-height: 90vh;
+  background: var(--bg-floating, #111214);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.gallery-lightbox-media-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  min-height: 240px;
+  max-height: 65vh;
+  overflow: hidden;
+}
+
+.gallery-lightbox-img {
+  max-width: 100%;
+  max-height: 65vh;
+  object-fit: contain;
+  transition: transform 0.2s ease;
+  cursor: zoom-in;
+}
+
+.gallery-lightbox-img.zoomed {
+  transform: scale(1.6);
+  cursor: zoom-out;
+}
+
+.gallery-lightbox-video {
+  max-width: 100%;
+  max-height: 65vh;
+}
+
+.gallery-lightbox-details {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--chat, #313338);
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.gallery-lightbox-author-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gallery-lightbox-author-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gallery-lightbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gallery-lightbox-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.gallery-lightbox-reaction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--rail, #2b2d31);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}

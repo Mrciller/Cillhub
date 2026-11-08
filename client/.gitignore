@@ -1,0 +1,3 @@
+# smoke test screenshots and TypeScript build info (generated)
+smoke*.png
+tsconfig.tsbuildinfo

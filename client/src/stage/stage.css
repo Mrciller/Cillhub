@@ -1,0 +1,13 @@
+.stage-body { gap: 4px; }
+.stage-banner { display: grid; gap: 6px; justify-items: start; padding: 16px; border-radius: 8px; background: linear-gradient(135deg, var(--panel), var(--sidebar)); margin-bottom: 8px; }
+.stage-topic { color: var(--header); font-size: 20px; font-weight: 700; }
+.stage-speakers { display: flex; flex-wrap: wrap; gap: 12px; padding: 4px 8px 12px; }
+.stage-audience { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 8px; }
+.stage-member-btn { position: relative; display: grid; justify-items: center; gap: 6px; width: 88px; padding: 8px 4px; border-radius: 8px; color: var(--text); font-size: 13px; text-align: center; --dot-bg: #000; }
+.stage-member.speaker .stage-member-btn { width: 140px; padding: 16px 8px; background: var(--sidebar); }
+.stage-member-btn:hover { background: var(--hover); }
+.stage-name { max-width: 100%; }
+.stage-hand { position: absolute; top: 6px; right: 14px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--idle); color: #000; }
+.stage-requests { display: grid; gap: 4px; padding: 4px 8px 12px; }
+.stage-request { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; background: var(--sidebar); color: var(--text); }
+.stage-view .call-bar { align-items: center; }

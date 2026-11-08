@@ -1,0 +1,16 @@
+Cillhub
+Copyright (C) 2026 Pascal Oraze
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General
+Public License as published by the Free Software Foundation, version 3. This program is distributed in the hope that it
+will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the LICENSE file for details.
+
+Source code: https://github.com/Mrciller/cillhub
+
+Third-party components keep their own licenses (see each package's license in node_modules or the Gradle
+dependencies), among them: ws (MIT), web-push (MPL-2.0), React (MIT), livekit-client (Apache-2.0), Electron and
+electron-updater (MIT), AndroidX and OkHttp (Apache-2.0), @sapphi-red/web-noise-suppressor (MIT, with RNNoise,
+BSD-3-Clause), qrcode-generator (MIT). Bundled fonts (Inter, JetBrains Mono, OpenDyslexic, Orbitron) are under the SIL
+Open Font License; their license texts are in client/public/fonts/.
+cillvoice, the built-in SFU, was written for this project; mediasoup (ISC) served as a design reference only.

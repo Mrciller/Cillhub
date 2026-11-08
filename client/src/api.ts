@@ -1,0 +1,135 @@
+import { t } from './i18n'
+import { inbound, instanceById, outbound, outboundPath, route, tokenOf } from './instances/registry'
+
+export const ORIGIN = import.meta.env.VITE_API_BASE ?? ''
+/** The hub's public web address, for links people share or open elsewhere (the desktop app runs on app://cillhub). */
+export const WEB_ORIGIN = ORIGIN || location.origin
+const BASE = ORIGIN + '/api/v9'
+
+/** Root-relative CDN paths (avatars, icons, attachments) resolved against the API origin, or the node's origin for node ids (v7). */
+export const cdn = (path: string) => (/^https?:\/\//.test(path) || path.startsWith('data:') ? path : (instanceById(route(path))?.url ?? ORIGIN) + path)
+
+type FieldErrors = Record<string, { _errors?: { code: string; message: string }[] }>
+
+/** The first field message of a 50035 "Invalid Form Body" answer, e.g. "Stickers are at most 320x320.". */
+function firstFieldError(errors: unknown): string | undefined {
+  if (!errors || typeof errors !== 'object') return undefined
+  const own = (errors as { _errors?: { message?: string }[] })._errors?.[0]?.message
+  if (own) return own
+  for (const v of Object.values(errors)) {
+    const m = firstFieldError(v)
+    if (m) return m
+  }
+  return undefined
+}
+
+export class ApiError extends Error {
+  status: number
+  code: number
+  errors: FieldErrors
+  /** Seconds to wait, from a 429 (slowmode) answer. */
+  retryAfter: number
+  /** The elevation ticket of a 401 60003 answer (trade it with a code at POST /mfa/finish). */
+  ticket?: string
+  constructor(status: number, body: { code?: number; message?: string; errors?: FieldErrors; retry_after?: number; mfa?: { ticket?: string } } | null) {
+    // Show the field's reason instead of the bare "Invalid Form Body".
+    super((body?.code === 50035 && firstFieldError(body.errors)) || body?.message || (status ? t('Request failed ({status})', { status }) : t("Can't reach the server.")))
+    this.status = status
+    this.code = body?.code ?? 0
+    this.errors = body?.errors ?? {}
+    this.retryAfter = body?.retry_after ?? 0
+    this.ticket = body?.mfa?.ticket
+  }
+}
+
+const auth = (node?: string): Record<string, string> => {
+  const token = node ? tokenOf(node) : localStorage.getItem('token')
+  return token ? { Authorization: token } : {}
+}
+
+/** Where a call goes: the hub (this origin), or a linked node (v7) chosen by `instance` or by the node-owned ids in the path/body. */
+function target(path: string, body: unknown, instance?: string) {
+  const node = instance ?? route(path, body)
+  const info = instanceById(node)
+  return info ? { node: info.id, url: info.url + '/api/v9' + outboundPath(info.id, path), body: outbound(info.id, body) } : { node: undefined, url: BASE + path, body }
+}
+
+/** `reason` goes into the X-Audit-Log-Reason header (URL-encoded). `instance` sends the call to a linked node (v7). */
+export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; reason?: string; instance?: string; headers?: Record<string, string> } = {}): Promise<T> {
+  const to = target(path, init.body, init.instance)
+  const headers = { ...init.headers, ...auth(to.node) }
+  if (init.body !== undefined) headers['Content-Type'] = 'application/json'
+  if (init.reason) headers['X-Audit-Log-Reason'] = encodeURIComponent(init.reason)
+  let res: Response
+  const sent = Date.now()
+  try {
+    res = await fetch(to.url, { method: init.method ?? 'GET', headers, body: to.body === undefined ? undefined : JSON.stringify(to.body) })
+  } catch {
+    throw new ApiError(0, null)
+  }
+  if (!to.node) clockSample(res.headers.get('Date'), sent, Date.now())
+  if (res.status === 204) return undefined as T
+  const data = await res.json().catch(() => null)
+  // A 200 that is not JSON means something other than the API answered (e.g. an SPA fallback).
+  if (!res.ok || data === null) throw new ApiError(res.ok ? 0 : res.status, data)
+  return (to.node ? inbound(to.node, data) : data) as T
+}
+
+// Server clock offset (Watch Together sync) from the Date header. The header has 1 s resolution, so each answer bounds the
+// offset to [D - received, D + 1000 - sent]; intersecting the bounds of many answers narrows it well below a second.
+let lo = -Infinity
+let hi = Infinity
+function clockSample(date: string | null, sent: number, received: number) {
+  const d = date ? Date.parse(date) : NaN
+  if (Number.isNaN(d)) return
+  const l = d - received
+  const h = d + 1000 - sent
+  if (l > hi || h < lo) (lo = l), (hi = h) // the clock jumped: start over
+  else (lo = Math.max(lo, l)), (hi = Math.min(hi, h))
+}
+/** Milliseconds to add to Date.now() to get the server's time (0 until an answer carried a Date header). */
+export const serverOffset = () => (Number.isFinite(lo) && Number.isFinite(hi) ? (lo + hi) / 2 : 0)
+
+/** Multipart POST with upload progress (fetch has no upload progress events). */
+export function upload<T>(path: string, form: FormData, onProgress: (fraction: number) => void = () => {}): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    const to = target(path, undefined)
+    xhr.open('POST', to.url)
+    for (const [k, v] of Object.entries(auth(to.node))) xhr.setRequestHeader(k, v)
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+    xhr.onerror = () => reject(new ApiError(0, null))
+    xhr.onload = () => {
+      let data = null
+      try { data = JSON.parse(xhr.responseText) } catch { /* not JSON */ }
+      if (xhr.status === 204) resolve(undefined as T)
+      else if (xhr.status >= 200 && xhr.status < 300 && data) resolve((to.node ? inbound(to.node, data) : data) as T)
+      else reject(new ApiError(xhr.status, data))
+    }
+    xhr.send(form)
+  })
+}
+
+/** Query string from params; arrays repeat the key like the search endpoint expects (`has=link&has=file`). */
+export function qs(params: Record<string, string | number | boolean | (string | number)[] | undefined | null>) {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(params))
+    if (Array.isArray(v)) v.forEach((x) => q.append(k, String(x)))
+    else if (v !== undefined && v !== null && v !== '') q.append(k, String(v))
+  const s = q.toString()
+  return s ? `?${s}` : ''
+}
+
+/** Reads a file as a data URI for avatar and icon uploads (contract: at most 8 MiB decoded). */
+export function dataUri(file: File, maxBytes = 8 * 1024 * 1024, types = /^image\/(png|jpeg|gif|webp)$/): Promise<string> {
+  if (file.size > maxBytes) return Promise.reject(new Error(t('Files must be {size} or smaller.', { size: formatLimit(maxBytes) })))
+  if (!types.test(file.type)) return Promise.reject(new Error(types.source.includes('image') ? t('Use a PNG, JPEG, GIF or WebP image.') : t('That file type is not supported.')))
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result))
+    r.onerror = () => reject(new Error(t('Could not read the file.')))
+    r.readAsDataURL(file)
+  })
+}
+
+const formatLimit = (n: number) => (n >= 1024 * 1024 ? `${n / 1024 / 1024} MB` : `${n / 1024} KB`)

@@ -1,0 +1,189 @@
+/* Role Hierarchy Simulator ("View Server as Role") styling */
+
+.role-simulator-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 16px;
+  background: linear-gradient(90deg, #b45309 0%, #d97706 100%);
+  color: #ffffff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 20;
+  font-size: 13px;
+  position: relative;
+}
+
+.role-sim-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.role-sim-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.role-sim-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.role-sim-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+}
+
+.role-sim-pill:hover {
+  background: rgba(0, 0, 0, 0.55);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.role-sim-pill.active {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: #ffffff;
+}
+
+.role-sim-pill-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.2);
+  margin-left: 2px;
+}
+
+.role-sim-pill-remove:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.role-sim-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.role-sim-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px dashed rgba(255, 255, 255, 0.5);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.role-sim-add-btn:hover {
+  background: rgba(0, 0, 0, 0.45);
+  border-color: #fff;
+}
+
+.role-sim-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.role-sim-stop-btn {
+  padding: 5px 14px;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.role-sim-stop-btn:hover {
+  background: #fef3c7;
+  transform: translateY(-1px);
+}
+
+.role-sim-stop-btn:active {
+  transform: translateY(0);
+}
+
+/* Popover role picker dropdown */
+.role-sim-popover {
+  background: var(--card, #1e1f22);
+  border: 1px solid var(--border, #35363c);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 8px;
+  max-height: 280px;
+  width: 240px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.role-sim-popover-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text, #dbdee1);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.role-sim-popover-item:hover {
+  background: var(--hover, rgba(255, 255, 255, 0.08));
+}
+
+.role-sim-popover-item.checked {
+  color: #fff;
+  font-weight: 600;
+}
+
+.role-sim-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

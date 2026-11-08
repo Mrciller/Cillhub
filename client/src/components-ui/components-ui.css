@@ -1,0 +1,34 @@
+/* Message components: buttons and selects under bot messages (developers/components). */
+.components { display: grid; gap: 8px; margin-top: 8px; max-width: 520px; }
+.crow { display: flex; flex-wrap: wrap; gap: 8px; }
+.cbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; min-width: 60px; padding: 2px 16px; border-radius: 4px; font-size: 14px; font-weight: 500; color: #fff; transition: filter .15s; }
+.cbtn:hover:not(:disabled) { filter: brightness(1.12); }
+.cbtn.primary { background: var(--accent); }
+.cbtn.secondary { background: var(--btn-secondary); }
+.cbtn.success { background: var(--online-strong); }
+.cbtn.danger { background: var(--danger-strong); }
+.cbtn.link { background: var(--btn-secondary); }
+.cbtn.premium { background: var(--btn-secondary); }
+.cbtn.busy { cursor: progress; }
+.cbtn .emoji { font-size: 18px; }
+.cselect { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; max-width: 400px; min-height: 40px; text-align: left; cursor: pointer; }
+.popover.cselect-pop { width: 360px; max-height: 320px; overflow-y: auto; padding: 4px; background: var(--menu); border-radius: 4px; }
+.copt { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border-radius: 4px; text-align: left; }
+.copt:hover, .copt.on { background: var(--hover); }
+.copt-text { display: grid; flex: 1; min-width: 0; }
+.copt .check { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--interactive); flex: none; }
+.copt .check.on { background: var(--accent); border-color: var(--accent); }
+.interaction-failed { display: flex; align-items: center; gap: 4px; color: var(--danger-text); font-size: 14px; }
+.dots { display: inline-flex; gap: 3px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: dot-blink 1.2s infinite ease-in-out; }
+.dots i:nth-child(2) { animation-delay: .2s; }
+.dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes dot-blink { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }
+.interaction-modal .req { color: var(--danger); }
+/* Interaction message parts */
+.interaction-line { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 14px; margin-left: -58px; padding-left: 58px; }
+.interaction-line .avatar { margin-right: 2px; }
+.ephemeral-note { display: flex; align-items: center; gap: 6px; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.msg.ephemeral { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.thinking { color: var(--muted); font-style: italic; display: inline-flex; gap: 6px; align-items: center; }
+.pending-command { color: var(--muted); }

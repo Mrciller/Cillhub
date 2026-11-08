@@ -1,0 +1,106 @@
+{
+  "manifest_version": 1,
+  "id": "xp-levels",
+  "name": "XP & Level Rewards",
+  "version": "1.0.0",
+  "description": "Chat and voice XP leveling system with anti-spam cooldown, milestone reward roles, and server leaderboard.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": [
+    "commands",
+    "storage",
+    "ui",
+    "messages.read",
+    "messages.send",
+    "voice.read",
+    "roles.manage",
+    "schedule"
+  ],
+  "http_hosts": [],
+  "settings": [
+    {
+      "key": "xp_per_message",
+      "type": "number",
+      "label": "XP per message",
+      "description": "XP awarded per eligible chat message (60-second cooldown per user).",
+      "min": 5,
+      "max": 100,
+      "integer": true,
+      "default": 20,
+      "required": false,
+      "per_server": true
+    },
+    {
+      "key": "level_up_channel",
+      "type": "channel",
+      "channel_types": [0],
+      "label": "Level Up Announcement Channel",
+      "description": "Channel where level-up messages are posted (leave empty to announce in chat).",
+      "required": false,
+      "per_server": true
+    },
+    {
+      "key": "role_level_5",
+      "type": "role",
+      "label": "Level 5 Reward Role",
+      "description": "Role granted upon reaching level 5.",
+      "required": false,
+      "per_server": true
+    },
+    {
+      "key": "role_level_10",
+      "type": "role",
+      "label": "Level 10 Reward Role",
+      "description": "Role granted upon reaching level 10.",
+      "required": false,
+      "per_server": true
+    },
+    {
+      "key": "role_level_25",
+      "type": "role",
+      "label": "Level 25 Reward Role",
+      "description": "Role granted upon reaching level 25.",
+      "required": false,
+      "per_server": true
+    }
+  ],
+  "commands": [
+    {
+      "name": "rank",
+      "description": "View your level, XP, and rank or check another member",
+      "options": [
+        {
+          "type": 6,
+          "name": "user",
+          "description": "Member to check rank card for",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "leaderboard",
+      "description": "Show the server XP and level leaderboard",
+      "options": [
+        {
+          "type": 4,
+          "name": "page",
+          "description": "Leaderboard page number (default 1)",
+          "required": false,
+          "min_value": 1
+        }
+      ]
+    }
+  ],
+  "ui": {
+    "panels": [
+      {
+        "id": "levels",
+        "slot": "guild_sidebar",
+        "title": "Leaderboard & XP",
+        "entry": "ui/leaderboard.html",
+        "height": 560,
+        "icon": "⭐"
+      }
+    ]
+  }
+}

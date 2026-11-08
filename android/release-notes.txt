@@ -1,0 +1,6 @@
+Cillhub 3.0.0 — Full Native Android Release:
+- 100% Native Jetpack Compose & Material 3 UI (including native Forums, Threads, Solved & Pinned posts, and Polls with Quiz Mode, Anonymous voting, Role restrictions & CSV export).
+- Native Voice, Video, Screen Share & Telecom Calls on both LiveKit and cillvoice, plus Android Auto support.
+- 5-Engine Voice & Audio DSP Studio: Off, Standard WebRTC, Low-CPU SpeexDSP, Enhanced RNNoise, Studio AI Deep Neural, Hysteresis Noise Gate (Open/Close dB & Hold ms), 80 Hz High-Pass Rumble Filter, Broadcast Voice Compressor, and 200% Soundboard Boost with per-user mute.
+- Interactive Waveform Audio Player with 0.5x–2x pitch-preserving playback speed for voice notes and audio files.
+- Moderator Bulk Delete/Purge mode, clickable (edited) word-diff history, DM Read Receipts, Media/Files/Links Gallery, !tag Server Snippets, Markdown Tables (Copy CSV), Collapsible Diff Code Blocks with line numbers, Active Threads Inbox tab, Draft persistence, Clone Channel, and Account Data Export.

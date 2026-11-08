@@ -1,0 +1,10 @@
+<!-- Material Symbols (Apache License 2.0) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M680,480L680,200L720,200L720,120L240,120L240,200L280,200L280,480L200,560L200,640L440,640L440,840L480,880L520,840L520,640L760,640L760,560L680,480ZM360,200L600,200L600,480L640,520L320,520L360,480L360,200Z"/>
+</vector>

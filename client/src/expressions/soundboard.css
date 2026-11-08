@@ -1,0 +1,12 @@
+.soundboard { width: 340px; padding: 12px; background: var(--sidebar); }
+.sb-title { color: var(--header); font-size: 16px; margin-bottom: 4px; }
+.sb-volume { padding: 4px 0 8px; }
+.sb-scroll { max-height: 320px; overflow-y: auto; }
+.sb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.sb-item { display: flex; align-items: center; gap: 2px; border-radius: 6px; background: var(--rail); }
+.sb-play { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: 6px; font-size: 14px; text-align: left; }
+.sb-play:hover { background: var(--hover); }
+.sb-play .emoji.custom { width: 20px; height: 20px; }
+.sb-preview { margin-right: 6px; }
+.sb-empty { padding: 16px 0; }
+.vp-btn:disabled { opacity: .4; }

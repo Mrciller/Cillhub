@@ -1,0 +1,17 @@
+{
+  "manifest_version": 1,
+  "id": "welcome-roles",
+  "name": "Welcome Roles",
+  "version": "1.0.0",
+  "description": "Greets new members in a channel and gives them a role.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": ["members.read", "messages.send", "roles.manage"],
+  "http_hosts": [],
+  "settings": [
+    { "key": "enabled", "type": "toggle", "label": "Greet new members", "default": true, "per_server": true },
+    { "key": "channel", "type": "channel", "label": "Welcome channel", "description": "Leave empty to send no message.", "channel_types": [0, 5], "per_server": true },
+    { "key": "role", "type": "role", "label": "Role for new members", "description": "Leave empty to give no role. Must be below the module's own role.", "per_server": true },
+    { "key": "message", "type": "text", "label": "Welcome message", "description": "{user} becomes a mention of the new member, {server} the server name.", "max_length": 1000, "multiline": true, "default": "Welcome {user} to {server}!", "per_server": true }
+  ]
+}

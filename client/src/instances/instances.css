@@ -1,0 +1,14 @@
+/* v7: linked instances (node marker in the rail, status line, directory and setup share these tokens) */
+.node-marker { position: absolute; left: 8px; bottom: -2px; width: 18px; height: 18px; border-radius: 6px; border: 3px solid var(--rail); box-sizing: content-box;
+  display: grid; place-items: center; background: var(--interactive); color: var(--rail); font-size: 10px; font-weight: 700; line-height: 1; pointer-events: none; }
+.node-marker.ready { background: var(--online); color: #fff; }
+.node-marker.offline, .node-marker.connecting { background: var(--idle); color: #000; }
+.node-marker.suspended, .node-marker.signed-out { background: var(--danger); color: #fff; }
+.rail-entry { position: relative; }
+.rail-entry.node-down .rail-icon { filter: grayscale(1); opacity: .55; }
+.node-status { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; justify-content: center; align-items: baseline; }
+.node-status .link { color: var(--on-accent); text-decoration: underline; font-weight: 600; }
+.instance-list { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 8px; }
+.instance-list li { display: flex; align-items: center; gap: 10px; }
+.instance-list li > span:nth-child(2) { flex: 1; }
+.instance-list .node-marker { position: static; border-color: var(--chat); }

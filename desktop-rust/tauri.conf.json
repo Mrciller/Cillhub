@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
+  "productName": "Cillhub",
+  "version": "2.2.1",
+  "identifier": "io.github.mrciller.cillhub",
+  "build": {
+    "beforeDevCommand": "npm --prefix ../client run build",
+    "beforeBuildCommand": "npm --prefix ../client run build",
+    "frontendDist": "../desktop/web"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Cillhub",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 380,
+        "minHeight": 320,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' tauri: http: https: data: blob:; script-src 'self' tauri: 'unsafe-inline' 'wasm-unsafe-eval' https://www.youtube.com https://s.ytimg.com; style-src 'self' tauri: 'unsafe-inline'; img-src 'self' tauri: https: data: blob:; media-src 'self' tauri: https: data: blob:; font-src 'self' tauri: data:; connect-src 'self' tauri: https: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; object-src 'none'; base-uri 'none';"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ]
+  }
+}

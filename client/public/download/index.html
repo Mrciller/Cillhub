@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Download Cillhub (Betacord)</title>
+<style>
+  :root { --bg: #0b0f19; --panel: #111726; --deep: #070a14; --text: #dbdee1; --muted: #949ba4; --head: #f2f3f5; --brand: #00d2b4; --brand-hover: #00eed0; --link: #00d2b4; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 "gg sans", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+  a { color: var(--link); }
+  a:focus-visible, .btn:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 20px; }
+  header { background: var(--deep); border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+  header .wrap { display: flex; align-items: center; gap: 12px; padding-block: 16px; }
+  header strong { color: var(--head); font-size: 20px; letter-spacing: .01em; }
+  header a { margin-left: auto; text-decoration: none; font-weight: 600; padding: 8px 16px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); }
+  header a:hover { background: rgba(255, 255, 255, 0.1); }
+  .hero { text-align: center; padding: 56px 0 40px; }
+  .hero svg { width: 96px; height: 96px; }
+  h1 { color: var(--head); font-size: clamp(28px, 5vw, 44px); line-height: 1.15; margin: 18px 0 8px; }
+  h2 { color: var(--head); font-size: 22px; margin: 0 0 12px; }
+  .lead { color: var(--muted); margin: 0 auto 28px; max-width: 34em; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 28px; border-radius: 28px;
+    background: var(--panel); color: var(--head); text-decoration: none; font-weight: 600; border: 1px solid rgba(255, 255, 255, 0.15); transition: all 0.2s; }
+  .btn:hover { border-color: var(--muted); transform: translateY(-2px); }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #070a14; font-size: 18px; min-height: 56px; font-weight: 700; box-shadow: 0 4px 14px rgba(0, 210, 180, 0.3); }
+  .btn.primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+  .buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .meta { color: var(--muted); font-size: 14px; margin-top: 18px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; padding-bottom: 56px; }
+  section.card { background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 22px 24px; }
+  section.card p, section.card li { color: var(--muted); }
+  ol { padding-left: 1.2em; margin: 0; }
+  li + li { margin-top: 6px; }
+  kbd, b { color: var(--head); }
+  kbd { background: var(--deep); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 14px; }
+  footer { color: var(--muted); font-size: 14px; text-align: center; padding: 24px 0 40px; }
+  .server { padding-bottom: 56px; }
+  .server .card + .card { margin-top: 16px; }
+  pre { background: var(--deep); color: var(--brand); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font-size: 14px; margin: 0 0 12px; }
+  code.fp { display: block; color: var(--head); font-size: 13px; word-break: break-all; }
+  dl.modes { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+  dl.modes dt { color: var(--head); font-weight: 600; }
+  dl.modes dd { color: var(--muted); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden="true"><rect x="4" y="4" width="92" height="92" rx="22" fill="#00d2b4"/><path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke="#fff" stroke-width="13.5" stroke-linecap="butt"/></svg>
+    <strong>Cillhub <span style="color: #00d2b4; font-size: 13px; font-weight: 600;">Betacord</span></strong>
+    <a href="/channels/@me">Open in browser</a>
+  </div>
+</header>
+<main>
+  <div class="hero wrap">
+    <svg viewBox="0 0 100 100" role="img" aria-label="Cillhub logo"><rect x="4" y="4" width="92" height="92" rx="22" fill="#00d2b4"/><path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke="#fff" stroke-width="13.5"/></svg>
+    <h1>Get Cillhub for desktop & mobile</h1>
+    <p class="lead">Notifications, screen sharing, spatial audio, and automatic updates directly from Betacord.</p>
+    <div class="buttons">
+      <a class="btn primary" id="dl-win" data-os="windows" href="/download/desktop/Cillhub-Setup-2.2.1.exe" download="Cillhub-Setup-2.2.1.exe">Download for Windows</a>
+      <a class="btn" id="dl-rust-win-exe" href="/download/desktop/Cillhub-Rust-2.2.1-windows-x64.exe" download="Cillhub-Rust-2.2.1-windows-x64.exe" style="border-color: #eb6428; color: #eb6428;">🦀 Native Rust Windows (.exe - 4.8 MB)</a>
+      <a class="btn" id="dl-rust-win-zip" href="/download/desktop/Cillhub-Rust-2.2.1-windows-x64.zip" download="Cillhub-Rust-2.2.1-windows-x64.zip" style="border-color: #eb6428; color: #eb6428;">🦀 Native Rust Windows (.zip - 2.0 MB)</a>
+      <a class="btn" id="dl-appimage" data-os="linux" href="/download/desktop/Cillhub-2.2.1.AppImage" download="Cillhub-2.2.1.AppImage">Linux AppImage</a>
+      <a class="btn" id="dl-deb" href="/download/desktop/cillhub_2.2.1_amd64.deb" download="cillhub_2.2.1_amd64.deb">Linux .deb</a>
+      <a class="btn" id="dl-rust-deb" href="/download/desktop/cillhub-desktop-rust_2.2.1_amd64.deb" download="cillhub-desktop-rust_2.2.1_amd64.deb" style="border-color: #eb6428; color: #eb6428;">🦀 Native Rust Linux (.deb - 883 KB)</a>
+      <a class="btn" id="dl-rust-tar" href="/download/desktop/Cillhub-Rust-2.2.1-linux-x64.tar.gz" download="Cillhub-Rust-2.2.1-linux-x64.tar.gz" style="border-color: #eb6428; color: #eb6428;">🦀 Native Rust Linux (.tar.gz - 1.1 MB)</a>
+      <a class="btn" id="dl-android" data-os="android" href="/download/android/Cillhub.apk" download="Cillhub.apk">Android app (APK)</a>
+    </div>
+    <p class="meta">Version 2.2.1 · Native Rust 2.2.1 · Windows 10/11 64-bit, Linux x64, Android</p>
+  </div>
+  <div class="cards wrap">
+    <section class="card" aria-labelledby="h-win">
+      <h2 id="h-win">Windows SmartScreen Note</h2>
+      <p>Click <b>More info</b>, then <b>Run anyway</b>. The installer sets up Cillhub for your user with desktop and Start menu shortcuts.</p>
+    </section>
+    <section class="card" aria-labelledby="h-linux">
+      <h2 id="h-linux">Linux Quick Install</h2>
+      <p>AppImage: make it executable (<kbd>chmod +x Cillhub-*.AppImage</kbd>) and run it. Debian/Ubuntu: install with <kbd>sudo apt install ./cillhub_*.deb</kbd>. For ultra-low audio latency and instant startup, try the Native Rust client (<kbd>.deb</kbd> or portable <kbd>.tar.gz</kbd>).</p>
+    </section>
+    <section class="card" aria-labelledby="h-phone">
+      <h2 id="h-phone">On your phone</h2>
+      <ol>
+        <li><b>Android:</b> download the <a href="/download/android/Cillhub.apk" download="Cillhub.apk">Android app</a> and open it. The app updates itself and delivers calls and messages in the background.</li>
+        <li><b>iPhone/iPad (Safari) / Chrome:</b> open this site and tap <b>Share › Add to Home Screen</b> or <b>Install App</b>.</li>
+      </ol>
+    </section>
+  </div>
+  <div class="server wrap">
+    <section class="card" aria-labelledby="h-server">
+      <h2 id="h-server">Run your own node</h2>
+      <p>Host Cillhub on any Linux machine with Docker. Voice and WebRTC SFU work immediately:</p>
+      <pre><code id="curl-cmd">curl -fsSLO /download/server/install.sh
+sh install.sh</code></pre>
+      <dl class="modes">
+        <dt>Standalone</dt><dd>Fully independent: your own accounts, no data leaves your server.</dd>
+        <dt>Connected</dt><dd>Linked to the Cillhub network so people can discover your public channels.</dd>
+      </dl>
+    </section>
+  </div>
+</main>
+<footer>Cillhub Betacord · AGPL-3.0 · © Pascal Oraze</footer>
+<script>
+  (function () {
+    var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent;
+    var os = /android/i.test(navigator.userAgent) ? 'android' : /win/i.test(p) ? 'windows' : /linux|x11/i.test(p) ? 'linux' : null;
+    var el = os && document.querySelector('[data-os="' + os + '"]');
+    if (!el) el = document.getElementById('dl-win');
+    el.classList.add('primary');
+    el.parentNode.insertBefore(el, el.parentNode.firstChild);
+
+    var codeEl = document.getElementById('curl-cmd');
+    if (codeEl) {
+      codeEl.textContent = 'curl -fsSLO ' + window.location.origin + '/download/server/install.sh\nsh install.sh';
+    }
+  })();
+</script>
+</body>
+</html>

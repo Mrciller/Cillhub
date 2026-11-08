@@ -1,0 +1,50 @@
+{
+  "manifest_version": 1,
+  "id": "jukebox-queue",
+  "name": "Jukebox & Watch Queue",
+  "version": "1.0.0",
+  "description": "Collaborative media and watch queue with community upvoting, auto-sorting, host playback controls, and live updates.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": ["commands", "storage", "ui", "messages.send"],
+  "http_hosts": [],
+  "commands": [
+    {
+      "name": "jukebox",
+      "description": "Show the jukebox queue or submit a track/video to play",
+      "options": [
+        {
+          "type": 3,
+          "name": "title",
+          "description": "Track title, song name, or topic (leave empty to view queue)",
+          "required": false
+        },
+        {
+          "type": 3,
+          "name": "url",
+          "description": "Media URL or link (optional)",
+          "required": false
+        },
+        {
+          "type": 3,
+          "name": "duration",
+          "description": "Estimated duration (e.g. 3:45, 10m)",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "settings": [],
+  "ui": {
+    "panels": [
+      {
+        "id": "jukebox",
+        "slot": "channel_panel",
+        "title": "Jukebox Queue",
+        "entry": "ui/jukebox.html",
+        "height": 460,
+        "icon": "🎵"
+      }
+    ]
+  }
+}

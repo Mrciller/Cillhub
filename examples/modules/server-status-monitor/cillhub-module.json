@@ -1,0 +1,77 @@
+{
+  "manifest_version": 1,
+  "id": "server-status-monitor",
+  "name": "Uptime & Latency Monitor",
+  "version": "1.0.0",
+  "description": "Monitors HTTP/HTTPS service uptime, response time, and latency history with status alerts.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": [
+    "commands",
+    "storage",
+    "ui",
+    "http.fetch",
+    "messages.send",
+    "schedule"
+  ],
+  "http_hosts": [
+    "*.cillerian.org",
+    "cillhub.cillerian.org",
+    "example.com"
+  ],
+  "settings": [
+    {
+      "key": "alert_channel",
+      "type": "channel",
+      "channel_types": [0],
+      "label": "Incident & Status Alert Channel",
+      "description": "Channel where outage and recovery alerts are posted.",
+      "per_server": true
+    },
+    {
+      "key": "ping_role",
+      "type": "role",
+      "label": "On-Call Alert Role",
+      "description": "Role to mention when an outage is detected.",
+      "per_server": true
+    }
+  ],
+  "commands": [
+    {
+      "name": "status",
+      "description": "View uptime and latency of monitored services",
+      "options": [
+        {
+          "name": "overview",
+          "description": "View current uptime and latency overview of monitored services",
+          "type": 1,
+          "options": []
+        },
+        {
+          "name": "check",
+          "description": "Trigger an immediate health check of all monitored endpoints",
+          "type": 1,
+          "options": []
+        },
+        {
+          "name": "incidents",
+          "description": "List active and recent service incidents",
+          "type": 1,
+          "options": []
+        }
+      ]
+    }
+  ],
+  "ui": {
+    "panels": [
+      {
+        "id": "status",
+        "slot": "guild_sidebar",
+        "title": "System Status",
+        "entry": "ui/status.html",
+        "height": 560,
+        "icon": "📡"
+      }
+    ]
+  }
+}

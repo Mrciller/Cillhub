@@ -1,0 +1,11 @@
+# Release images must not contain server/test: with it, NODE_ENV=test could swap the pinned network key.
+server/test
+# Never in the build context: secrets, data, host dependencies and the app shells.
+.env
+data
+**/data
+**/node_modules
+client/dist
+desktop
+android
+.git

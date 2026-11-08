@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Cillhub Desktop — Main Workspace</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg-0: #0d0f12;
+    --bg-1: #13161b;
+    --bg-2: #181c22;
+    --bg-3: #1f242c;
+    --bg-4: #272d37;
+    --border: rgba(255, 255, 255, 0.07);
+    --border-strong: rgba(255, 255, 255, 0.12);
+    --text-1: #f2f4f8;
+    --text-2: #a6b0bf;
+    --text-3: #6c7686;
+    --accent: #4f6ef7;
+    --accent-soft: rgba(79, 110, 247, 0.14);
+    --green: #22c55e;
+    --green-soft: rgba(34, 197, 94, 0.13);
+    --red: #ef4444;
+    --red-soft: rgba(239, 68, 68, 0.13);
+    --amber: #f59e0b;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", "SFMono-Regular", Consolas, monospace;
+  }
+  body {
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: var(--bg-0);
+    color: var(--text-1);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Native Window Titlebar */
+  .titlebar {
+    height: 34px;
+    background: var(--bg-0);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    font-size: 12px;
+    color: var(--text-3);
+    user-select: none;
+  }
+  .titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .app-mark {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pill-badge {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: var(--bg-3);
+    color: var(--text-2);
+    border: 1px solid var(--border);
+    font-weight: 500;
+  }
+  .pill-badge.rust {
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.1);
+    border-color: rgba(56, 189, 248, 0.22);
+  }
+  .win-controls {
+    display: flex;
+    gap: 14px;
+    color: var(--text-3);
+    font-size: 13px;
+  }
+
+  /* Main Layout Grid */
+  .workspace {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 68px 248px 1fr 328px;
+    min-height: 0;
+  }
+
+  /* 1. Guild Rail */
+  .guild-rail {
+    background: var(--bg-0);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+    gap: 10px;
+  }
+  .guild-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-2);
+    position: relative;
+  }
+  .guild-icon.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: transparent;
+  }
+  .guild-icon.active::before {
+    content: "";
+    position: absolute;
+    left: -12px;
+    width: 4px;
+    height: 28px;
+    border-radius: 0 4px 4px 0;
+    background: #fff;
+  }
+  .rail-sep {
+    width: 28px;
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+  }
+
+  /* 2. Channel Sidebar */
+  .sidebar {
+    background: var(--bg-1);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .guild-header {
+    height: 50px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .channel-scroll {
+    flex: 1;
+    padding: 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .cat-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-3);
+    padding: 12px 8px 4px;
+  }
+  .ch-row {
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--text-2);
+    font-size: 13.5px;
+  }
+  .ch-row.active {
+    background: var(--bg-3);
+    color: var(--text-1);
+    font-weight: 500;
+  }
+  .ch-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .ch-hash {
+    color: var(--text-3);
+    font-family: var(--font-mono);
+    font-size: 14px;
+  }
+  .draft-pill {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(245, 158, 11, 0.14);
+    color: #fbbf24;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .voice-users {
+    margin-left: 22px;
+    padding: 4px 0 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .voice-user {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .voice-user-left {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .avatar-xs {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--bg-4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+  .avatar-xs.speaking {
+    box-shadow: 0 0 0 2px var(--green);
+  }
+  .hifi-tag {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--green);
+    background: var(--green-soft);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  /* User Footer Dock */
+  .user-dock {
+    height: 56px;
+    background: var(--bg-0);
+    border-top: 1px solid var(--border);
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .user-dock-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .avatar-sm {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #3b82f6;
+    color: #fff;
+    font-weight: 600;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--green);
+    border: 2px solid var(--bg-0);
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+  }
+  .user-meta-name { font-size: 13px; font-weight: 600; color: var(--text-1); }
+  .user-meta-sub { font-size: 11px; color: var(--green); }
+  .dock-actions { display: flex; gap: 6px; }
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+  }
+
+  /* 3. Center Chat Viewport */
+  .chat-pane {
+    background: var(--bg-2);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .chat-header {
+    height: 50px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .chat-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .chat-title { font-weight: 600; font-size: 15px; }
+  .chat-topic {
+    font-size: 12.5px;
+    color: var(--text-3);
+    padding-left: 10px;
+    border-left: 1px solid var(--border);
+  }
+  .header-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .toolbar-btn {
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 6px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 12.5px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .toolbar-btn.active {
+    background: var(--accent-soft);
+    color: #93afff;
+    border-color: rgba(79, 110, 247, 0.35);
+  }
+
+  .messages-area {
+    flex: 1;
+    padding: 18px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    overflow: hidden;
+  }
+  .msg {
+    display: grid;
+    grid-template-columns: 38px 1fr;
+    gap: 12px;
+  }
+  .msg-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--bg-4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-1);
+  }
+  .msg-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .msg-author { font-weight: 600; font-size: 14px; color: var(--text-1); }
+  .role-tag {
+    font-size: 10.5px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(79, 110, 247, 0.15);
+    color: #93afff;
+    font-weight: 600;
+  }
+  .msg-time { font-size: 11.5px; color: var(--text-3); }
+  .edited-btn {
+    font-size: 11px;
+    color: var(--text-3);
+    background: var(--bg-3);
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .msg-text {
+    color: var(--text-1);
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+
+  /* Task 6.12: Enhanced Collapsible Diff Code Block */
+  .code-block {
+    background: var(--bg-0);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    margin-top: 6px;
+  }
+  .code-header {
+    height: 32px;
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--text-2);
+    font-size: 11.5px;
+  }
+  .code-actions {
+    display: flex;
+    gap: 6px;
+  }
+  .code-btn {
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 11px;
+    font-family: var(--font-sans);
+  }
+  .code-lines {
+    padding: 8px 0;
+  }
+  .code-line {
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    padding: 1px 12px 1px 0;
+    line-height: 1.5;
+  }
+  .ln {
+    text-align: right;
+    padding-right: 12px;
+    color: var(--text-3);
+    user-select: none;
+  }
+  .code-line.hdr { color: #60a5fa; background: rgba(96, 165, 250, 0.08); }
+  .code-line.del { color: #fca5a5; background: var(--red-soft); }
+  .code-line.add { color: #86efac; background: var(--green-soft); }
+
+  /* Task 6.18: Markdown Table with Copy CSV */
+  .md-table-wrap {
+    margin-top: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-1);
+  }
+  .md-table-bar {
+    height: 28px;
+    padding: 0 12px;
+    background: var(--bg-0);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+  table.md-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .md-table th, .md-table td {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  .md-table th {
+    background: var(--bg-1);
+    color: var(--text-2);
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .md-table tr:last-child td { border-bottom: none; }
+
+  /* Task 6.15: Interactive Waveform Audio Player (0.5x - 2x) */
+  .audio-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-1);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 10px 14px;
+    width: 520px;
+  }
+  .play-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .wave-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .wave-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-2);
+  }
+  .wave-bars {
+    height: 24px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .wbar {
+    flex: 1;
+    border-radius: 2px;
+    background: var(--bg-4);
+  }
+  .wbar.played {
+    background: var(--accent);
+  }
+  .speed-btn {
+    padding: 4px 8px;
+    border-radius: 5px;
+    background: var(--bg-3);
+    border: 1px solid var(--border-strong);
+    color: var(--text-1);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+
+  /* Task 6.6 & 6.16: Quiz & Anonymous Poll Card */
+  .poll-card {
+    background: var(--bg-1);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 12px 14px;
+    width: 560px;
+  }
+  .poll-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .poll-q { font-weight: 600; font-size: 14px; }
+  .poll-badges { display: flex; gap: 6px; }
+  .poll-opt {
+    position: relative;
+    border: 1px solid var(--border);
+    background: var(--bg-2);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    overflow: hidden;
+  }
+  .poll-opt.correct {
+    border-color: rgba(34, 197, 94, 0.45);
+    background: rgba(34, 197, 94, 0.08);
+  }
+  .poll-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.04);
+    z-index: 0;
+  }
+  .poll-opt.correct .poll-fill {
+    background: rgba(34, 197, 94, 0.14);
+  }
+  .poll-opt-left, .poll-opt-right {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .check-badge {
+    font-size: 11px;
+    color: var(--green);
+    font-weight: 600;
+  }
+  .poll-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  /* Seen By Receipt + Composer */
+  .seen-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--text-3);
+    padding: 0 24px 6px;
+  }
+  .composer-wrap {
+    padding: 0 20px 16px;
+  }
+  .composer-box {
+    height: 44px;
+    background: var(--bg-1);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--text-2);
+    font-size: 13.5px;
+  }
+
+  /* 4. Right Panel: Task 6.9 Media, Files & Links Gallery */
+  .gallery-pane {
+    background: var(--bg-1);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .gallery-header {
+    height: 50px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .gallery-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    padding: 8px 12px;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .gtab {
+    text-align: center;
+    padding: 5px 0;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-2);
+  }
+  .gtab.active {
+    background: var(--bg-3);
+    color: var(--text-1);
+  }
+  .gallery-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .gallery-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-3);
+  }
+  .media-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .media-thumb {
+    height: 88px;
+    border-radius: 6px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+  .thumb-tag {
+    align-self: flex-start;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.55);
+    color: var(--text-2);
+  }
+  .thumb-caption {
+    font-size: 11px;
+    color: var(--text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .file-item {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .file-name { font-size: 12.5px; font-weight: 500; color: var(--text-1); }
+  .file-meta { font-size: 11px; color: var(--text-3); }
+</style>
+</head>
+<body>
+  <!-- Native Window Titlebar -->
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <div class="app-mark">C</div>
+      <span style="color: var(--text-1); font-weight: 600;">Cillhub</span>
+      <span class="pill-badge">v7.8.0</span>
+      <span class="pill-badge rust">Native Rust Core • 64 MB RAM</span>
+    </div>
+    <div>cillhub.cillerian.org — Connected (14 ms RTT)</div>
+    <div class="win-controls">
+      <span>—</span>
+      <span>□</span>
+      <span>✕</span>
+    </div>
+  </div>
+
+  <!-- 4-Column Desktop Workspace -->
+  <div class="workspace">
+    <!-- 1. Guild Rail -->
+    <div class="guild-rail">
+      <div class="guild-icon">DM</div>
+      <div class="rail-sep"></div>
+      <div class="guild-icon active">CH</div>
+      <div class="guild-icon">RS</div>
+      <div class="guild-icon">OS</div>
+      <div class="guild-icon">GL</div>
+    </div>
+
+    <!-- 2. Channel Sidebar -->
+    <div class="sidebar">
+      <div class="guild-header">
+        <span>Cillhub Engineering</span>
+        <span style="color: var(--text-3); font-size: 12px;">▾</span>
+      </div>
+      <div class="channel-scroll">
+        <div class="cat-label">Information</div>
+        <div class="ch-row">
+          <div class="ch-left"><span class="ch-hash">#</span><span>announcements</span></div>
+        </div>
+        <div class="ch-row">
+          <div class="ch-left"><span class="ch-hash">?</span><span>qna-forum</span></div>
+          <span class="pill-badge" style="color: var(--green);">12 Solved</span>
+        </div>
+
+        <div class="cat-label">Development</div>
+        <div class="ch-row active">
+          <div class="ch-left"><span class="ch-hash">#</span><span>core-architecture</span></div>
+        </div>
+        <div class="ch-row">
+          <div class="ch-left"><span class="ch-hash">#</span><span>rust-audio-dsp</span></div>
+          <span class="draft-pill">✎ Draft</span>
+        </div>
+        <div class="ch-row">
+          <div class="ch-left"><span class="ch-hash">#</span><span>release-notes</span></div>
+          <span class="draft-pill">✎ Draft</span>
+        </div>
+
+        <div class="cat-label">Voice Channels</div>
+        <div class="ch-row">
+          <div class="ch-left"><span class="ch-hash">🔊</span><span>Engine Room</span></div>
+          <span class="hifi-tag">Hi-Fi 192k</span>
+        </div>
+        <div class="voice-users">
+          <div class="voice-user">
+            <div class="voice-user-left">
+              <div class="avatar-xs speaking">PO</div>
+              <span style="color: var(--text-1); font-weight: 500;">Pascal</span>
+            </div>
+            <span class="pill-badge" style="font-size: 10px;">GTCRN AI</span>
+          </div>
+          <div class="voice-user">
+            <div class="voice-user-left">
+              <div class="avatar-xs">MK</div>
+              <span>Maren</span>
+            </div>
+            <span class="pill-badge" style="font-size: 10px; color: #93afff;">1080p60 AV1</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="user-dock">
+        <div class="user-dock-left">
+          <div class="avatar-sm">PO<div class="status-dot"></div></div>
+          <div>
+            <div class="user-meta-name">Pascal</div>
+            <div class="user-meta-sub">Studio AI • Gate -38dB</div>
+          </div>
+        </div>
+        <div class="dock-actions">
+          <div class="icon-btn">🎤</div>
+          <div class="icon-btn">🎧</div>
+          <div class="icon-btn">⚙</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Center Chat Viewport -->
+    <div class="chat-pane">
+      <div class="chat-header">
+        <div class="chat-header-left">
+          <span class="ch-hash" style="font-size: 18px;">#</span>
+          <span class="chat-title">core-architecture</span>
+          <span class="chat-topic">Native Rust desktop bridge, 48 kHz audio pipeline & v11 protocol tasks</span>
+        </div>
+        <div class="header-toolbar">
+          <div class="toolbar-btn">🔔 All Messages</div>
+          <div class="toolbar-btn">📌 Pins (4)</div>
+          <div class="toolbar-btn">🧵 Active Threads (3)</div>
+          <div class="toolbar-btn active">🗂 Media & Files</div>
+        </div>
+      </div>
+
+      <div class="messages-area">
+        <!-- Message 1: Collapsible Diff Code Block + Markdown Table -->
+        <div class="msg">
+          <div class="msg-avatar" style="background: #3b82f6;">PO</div>
+          <div>
+            <div class="msg-head">
+              <span class="msg-author">Pascal</span>
+              <span class="role-tag">Maintainer</span>
+              <span class="msg-time">Today at 10:42</span>
+              <span class="edited-btn">(edited • 2 revisions)</span>
+            </div>
+            <div class="msg-text">
+              Switched the desktop audio capture thread to lock-free SPSC ring buffers with the 80 Hz Butterworth high-pass filter before GTCRN inference:
+            </div>
+
+            <!-- Task 6.12: Diff Code Block with Line Numbers & Collapse -->
+            <div class="code-block">
+              <div class="code-header">
+                <span>rust — desktop-rust/src/audio/pipeline.rs</span>
+                <div class="code-actions">
+                  <span class="code-btn">Expand (48 lines)</span>
+                  <span class="code-btn">Copy</span>
+                </div>
+              </div>
+              <div class="code-lines">
+                <div class="code-line hdr"><span class="ln">@@</span><span>-42,7 +42,9 @@ impl AudioPipeline {</span></div>
+                <div class="code-line"><span class="ln">42</span><span>  pub fn process_frame(&amp;mut self, pcm: &amp;mut [f32; 480]) {</span></div>
+                <div class="code-line del"><span class="ln">43</span><span>-     self.denoiser.process(pcm);</span></div>
+                <div class="code-line add"><span class="ln">43</span><span>+     if self.cfg.high_pass_80hz { self.hpf.run(pcm); }</span></div>
+                <div class="code-line add"><span class="ln">44</span><span>+     if self.gate.process_hysteresis(pcm) { self.denoiser.process(pcm); }</span></div>
+                <div class="code-line"><span class="ln">45</span><span>      self.compressor.process_brickwall(pcm);</span></div>
+              </div>
+            </div>
+
+            <!-- Task 6.18: GFM Markdown Table with Copy CSV -->
+            <div class="md-table-wrap">
+              <div class="md-table-bar">
+                <span>Benchmark — 48 kHz Frame Latency (10 ms window)</span>
+                <span class="code-btn">Copy CSV</span>
+              </div>
+              <table class="md-table">
+                <thead>
+                  <tr>
+                    <th>Engine Mode</th>
+                    <th>Backend</th>
+                    <th>Frame Time</th>
+                    <th>CPU Usage</th>
+                    <th>Keyboard Suppression</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Low-CPU</td>
+                    <td>SpeexDSP Spectral</td>
+                    <td>0.18 ms</td>
+                    <td>0.3%</td>
+                    <td>Moderate (-14 dB)</td>
+                  </tr>
+                  <tr>
+                    <td>Enhanced</td>
+                    <td>nnnoiseless (RNNoise SIMD)</td>
+                    <td>0.41 ms</td>
+                    <td>0.6%</td>
+                    <td>Good (-24 dB)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Studio AI</strong></td>
+                    <td><strong>GTCRN (tract-onnx SIMD)</strong></td>
+                    <td><strong>1.12 ms</strong></td>
+                    <td><strong>1.4%</strong></td>
+                    <td><strong>Studio (-38 dB)</strong></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Message 2: Interactive Waveform Audio Attachment -->
+        <div class="msg">
+          <div class="msg-avatar" style="background: #10b981;">MK</div>
+          <div>
+            <div class="msg-head">
+              <span class="msg-author">Maren</span>
+              <span class="role-tag">Audio DSP</span>
+              <span class="msg-time">Today at 10:45</span>
+            </div>
+            <div class="msg-text">Here is the A/B comparison recording with Cherry MX Blue switches 15 cm from the condenser mic:</div>
+            <div class="audio-card">
+              <div class="play-btn">▶</div>
+              <div class="wave-col">
+                <div class="wave-meta">
+                  <span style="color: var(--text-1); font-weight: 500;">gtcrn-ab-comparison-48k.flac</span>
+                  <span>0:28 / 0:44 • 2.4 MB</span>
+                </div>
+                <div class="wave-bars">
+                  <div class="wbar played" style="height: 35%"></div>
+                  <div class="wbar played" style="height: 60%"></div>
+                  <div class="wbar played" style="height: 85%"></div>
+                  <div class="wbar played" style="height: 50%"></div>
+                  <div class="wbar played" style="height: 95%"></div>
+                  <div class="wbar played" style="height: 70%"></div>
+                  <div class="wbar played" style="height: 40%"></div>
+                  <div class="wbar played" style="height: 80%"></div>
+                  <div class="wbar played" style="height: 100%"></div>
+                  <div class="wbar played" style="height: 65%"></div>
+                  <div class="wbar played" style="height: 30%"></div>
+                  <div class="wbar played" style="height: 75%"></div>
+                  <div class="wbar played" style="height: 90%"></div>
+                  <div class="wbar played" style="height: 55%"></div>
+                  <div class="wbar played" style="height: 45%"></div>
+                  <div class="wbar played" style="height: 82%"></div>
+                  <div class="wbar" style="height: 68%"></div>
+                  <div class="wbar" style="height: 92%"></div>
+                  <div class="wbar" style="height: 48%"></div>
+                  <div class="wbar" style="height: 35%"></div>
+                  <div class="wbar" style="height: 76%"></div>
+                  <div class="wbar" style="height: 88%"></div>
+                  <div class="wbar" style="height: 52%"></div>
+                  <div class="wbar" style="height: 38%"></div>
+                  <div class="wbar" style="height: 64%"></div>
+                  <div class="wbar" style="height: 42%"></div>
+                </div>
+              </div>
+              <div class="speed-btn">1.5x</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Message 3: Quiz Poll + Anonymous Mode + CSV Export -->
+        <div class="msg">
+          <div class="msg-avatar" style="background: #8b5cf6;">LK</div>
+          <div>
+            <div class="msg-head">
+              <span class="msg-author">Lukas</span>
+              <span class="msg-time">Today at 10:49</span>
+            </div>
+            <div class="poll-card">
+              <div class="poll-top">
+                <span class="poll-q">Quiz: Which stage runs first in the 48 kHz voice conditioning chain?</span>
+                <div class="poll-badges">
+                  <span class="pill-badge">Quiz Mode</span>
+                  <span class="pill-badge">Anonymous</span>
+                </div>
+              </div>
+              <div class="poll-opt correct">
+                <div class="poll-fill" style="width: 72%;"></div>
+                <div class="poll-opt-left">
+                  <span>80 Hz 2nd-Order Butterworth High-Pass Filter</span>
+                  <span class="check-badge">✓ Correct Answer</span>
+                </div>
+                <div class="poll-opt-right"><strong>72%</strong> (18 votes)</div>
+              </div>
+              <div class="poll-opt">
+                <div class="poll-fill" style="width: 28%;"></div>
+                <div class="poll-opt-left"><span>Broadcast Lookahead Compressor</span></div>
+                <div class="poll-opt-right">28% (7 votes)</div>
+              </div>
+              <div class="poll-foot">
+                <span>25 total votes • Poll finalized</span>
+                <span class="code-btn">Export Results (CSV)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Task 6.4: Seen By Indicator -->
+      <div class="seen-row">
+        <span>Seen by Maren, Lukas</span>
+        <div class="avatar-xs" style="width: 16px; height: 16px; font-size: 8px; background: #10b981;">MK</div>
+        <div class="avatar-xs" style="width: 16px; height: 16px; font-size: 8px; background: #8b5cf6;">LK</div>
+      </div>
+
+      <!-- Composer with !snippet trigger hint -->
+      <div class="composer-wrap">
+        <div class="composer-box">
+          <span>Message #core-architecture — type <strong style="color: var(--text-1);">!faq</strong> or <strong style="color: var(--text-1);">!benchmarks</strong> for server snippets…</span>
+          <span style="color: var(--text-3); font-size: 12px;">GIF • Poll • Snippet • Voice</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Right Panel: Media, Files & Links Drawer -->
+    <div class="gallery-pane">
+      <div class="gallery-header">
+        <span>Channel Media &amp; Files</span>
+        <span style="color: var(--text-3); font-size: 13px;">✕</span>
+      </div>
+      <div class="gallery-tabs">
+        <div class="gtab active">Media (14)</div>
+        <div class="gtab">Files (8)</div>
+        <div class="gtab">Links (19)</div>
+      </div>
+      <div class="gallery-body">
+        <div class="gallery-section-title">November 2026</div>
+        <div class="media-grid">
+          <div class="media-thumb" style="background: linear-gradient(135deg, #1e293b, #0f172a);">
+            <span class="thumb-tag">PNG • 1440p</span>
+            <span class="thumb-caption">dsp-spectrogram-clean.png</span>
+          </div>
+          <div class="media-thumb" style="background: linear-gradient(135deg, #172554, #0f172a);">
+            <span class="thumb-tag">MP4 • 0:18</span>
+            <span class="thumb-caption">av1-hw-encode-test.mp4</span>
+          </div>
+          <div class="media-thumb" style="background: linear-gradient(135deg, #064e3b, #0f172a);">
+            <span class="thumb-tag">PNG • 1080p</span>
+            <span class="thumb-caption">gate-hysteresis-curve.png</span>
+          </div>
+          <div class="media-thumb" style="background: linear-gradient(135deg, #312e81, #0f172a);">
+            <span class="thumb-tag">WEBP • 4K</span>
+            <span class="thumb-caption">tauri-memory-profile.webp</span>
+          </div>
+        </div>
+
+        <div class="gallery-section-title" style="margin-top: 6px;">Recent Attachments</div>
+        <div class="file-list">
+          <div class="file-item">
+            <div>
+              <div class="file-name">gtcrn-ab-comparison-48k.flac</div>
+              <div class="file-meta">2.4 MB • Shared by Maren</div>
+            </div>
+            <span class="code-btn">↓</span>
+          </div>
+          <div class="file-item">
+            <div>
+              <div class="file-name">cillhub-v11-contract.pdf</div>
+              <div class="file-meta">412 KB • Shared by Pascal</div>
+            </div>
+            <span class="code-btn">↓</span>
+          </div>
+          <div class="file-item">
+            <div>
+              <div class="file-name">bench-results-2026-11.csv</div>
+              <div class="file-meta">18 KB • Shared by Lukas</div>
+            </div>
+            <span class="code-btn">↓</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

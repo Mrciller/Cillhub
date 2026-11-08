@@ -1,0 +1,16 @@
+{
+  "manifest_version": 1,
+  "id": "twitch-live",
+  "name": "Twitch Live",
+  "version": "1.0.0",
+  "description": "Announces when a Twitch channel goes live, from Twitch EventSub webhooks.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": ["http.routes", "messages.send", "storage"],
+  "http_hosts": [],
+  "settings": [
+    { "key": "secret", "type": "secret", "label": "EventSub secret", "description": "The secret you gave Twitch when creating the subscription (10 to 100 characters)." },
+    { "key": "channel", "type": "channel", "label": "Announcement channel", "channel_types": [0, 5] },
+    { "key": "message", "type": "text", "label": "Announcement", "description": "{name} is the display name, {login} the login, {url} the stream link.", "max_length": 1000, "multiline": true, "default": "{name} is live: {url}" }
+  ]
+}

@@ -1,0 +1,70 @@
+/* v4 additions to the shell: muted channels, DM rows, rail folders, header extras, quick switcher, shortcuts, group DMs. */
+.row.muted { color: color-mix(in srgb, var(--muted) 78%, var(--sidebar)); } /* dimmed but still 4.5:1 */
+.category.muted h2 { opacity: .55; }
+.dm-heading { display: flex; align-items: center; justify-content: space-between; padding-right: 4px; }
+.dm-row { min-height: 30px; height: 30px; padding: 4px 8px; font-size: 14px; }
+.dm-row .avatar { width: 22px; height: 22px; font-size: 9px; flex: none; }
+.dm-text { display: grid; min-width: 0; flex: 1; line-height: 1.25; }
+.member-text { display: grid; min-width: 0; flex: 1; line-height: 1.25; text-align: left; }
+.member-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.header-status { margin-left: 8px; min-width: 0; max-width: 40%; }
+.header-status .status-line { font-size: 13.5px; }
+.chat-header .icon-btn.active { color: var(--strong); background: var(--selected); }
+.group-name-btn { font: inherit; color: inherit; text-align: left; border-radius: 6px; padding: 2px 6px; }
+.group-name-btn:hover { background: var(--rail); }
+.group-rename .input { height: 30px; padding: 2px 8px; }
+.friend-pick { max-height: 320px; overflow-y: auto; margin: 8px 0; }
+.friend-pick label.row { cursor: pointer; color: var(--text); }
+.friend-pick label.row input { margin-left: auto; width: 18px; height: 18px; accent-color: var(--accent); }
+.friend-pick label.row.on { background: var(--selected); }
+/* Server rail folders and drag targets */
+.rail-entry, .rail-folder { list-style: none; display: flex; flex-direction: column; align-items: center; gap: 6px; width: var(--rail-width, 64px); }
+.rail-entry.drop-before { box-shadow: 0 -3px 0 var(--online); }
+.rail-entry.drop-onto .rail-icon, .rail-item.drop-onto .rail-icon { outline: 3px solid var(--online); outline-offset: 2px; }
+.folder-icon { background: color-mix(in srgb, var(--folder, var(--accent)) 35%, var(--chat)); color: var(--folder, var(--accent)); }
+.rail-folder.open .folder-icon { background: var(--chat); }
+.rail-folder.open { padding-bottom: 6px; border-radius: var(--radius-m); background: color-mix(in srgb, var(--folder, var(--accent)) 12%, transparent); }
+.folder-minis { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 36px; height: 36px; }
+.folder-mini { width: 17px; height: 17px; display: grid; place-items: center; border-radius: 5px; background: var(--chat); color: var(--text); font-size: 6px; overflow: hidden; }
+.folder-mini img { width: 100%; height: 100%; }
+.folder-guilds { display: contents; }
+/* Quick switcher and shortcut sheet */
+.quick-switcher { width: min(580px, calc(100vw / var(--zoom, 1) - 32px)); }
+.qs-input { height: 54px; font-size: 19px; border-radius: var(--radius-m); }
+.qs-list { margin: 12px 0 8px; max-height: 50vh; overflow-y: auto; }
+.qs-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius-s); cursor: pointer; color: var(--muted); transition: background-color .1s, color .1s; }
+.qs-item.active { background: var(--hover); color: var(--strong); }
+.qs-item.unread { color: var(--strong); font-weight: 600; }
+.qs-item .badge { margin-left: auto; }
+.qs-guild { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: var(--chat); font-size: 8px; overflow: hidden; }
+.qs-guild img { width: 100%; height: 100%; }
+.qs-tip { margin-top: 8px; }
+.shortcut-sheet { width: min(640px, calc(100vw / var(--zoom, 1) - 32px)); }
+.shortcuts { display: grid; gap: 4px; margin: 0; }
+.shortcut-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.shortcut-row dd { margin: 0; display: flex; gap: 6px; }
+.shortcut-row kbd.keybind { min-width: 0; padding: 4px 8px; font-size: 13px; }
+/* Blocked messages */
+.msg.blocked { display: flex; align-items: center; gap: 8px; padding-left: 58px; color: var(--muted); font-size: 14px; }
+.msg.blocked .join-arrow { position: absolute; left: 20px; }
+.notif-modal .switch-row { margin-bottom: 12px; }
+
+/* Invite User to Server Modal */
+.invite-user-target { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--rail); border-radius: 8px; margin-bottom: 12px; }
+.invite-user-info { display: flex; flex-direction: column; min-width: 0; }
+.invite-user-name { font-weight: 600; color: var(--header); font-size: 15px; }
+.invite-guilds-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; margin: 12px 0; }
+.invite-guild-item { display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-radius: 6px; background: var(--rail); }
+.invite-guild-item .guild-icon-wrap { width: 36px; height: 36px; border-radius: 18px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--surface); flex-shrink: 0; }
+.invite-guild-item .guild-name { flex: 1; font-weight: 500; font-size: 14px; }
+.sent-btn { background: var(--online) !important; color: #fff !important; border-color: transparent !important; }
+.empty-hint { text-align: center; padding: 24px 12px; color: var(--muted); }
+.pinned-pin { margin-left: 6px; opacity: 0.7; vertical-align: -2px; color: var(--accent); }
+.dm-drag-over { outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: 4px; }
+
+/* Main server column containing RoleSimulatorBanner and channel views */
+.server-main-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
+.server-main-col > :not(.role-simulator-banner) { flex: 1; min-height: 0; height: 100%; }
+@media (max-width: 899px) {
+  .app[data-pane="nav"] .server-main-col { display: none; }
+}

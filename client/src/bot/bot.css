@@ -1,0 +1,24 @@
+/* Cillhub Bot cards and the Integrations section. */
+.bot-card { --kind: var(--accent); max-width: 520px; margin-top: 6px; padding: 12px 14px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); border-top: 3px solid var(--kind); display: grid; gap: 8px; }
+.bot-card-giveaway { --kind: var(--signal); }
+.bot-card-scrim { --kind: var(--danger); }
+.bot-card-lfg { --kind: var(--online); }
+.bot-card-head { display: flex; align-items: center; gap: 10px; }
+.bot-card-icon { font-size: 28px; line-height: 1; }
+.bot-card-titles { flex: 1; min-width: 0; }
+.bot-card-kind { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--kind); }
+.bot-card-title { margin: 0; font-size: 16px; color: var(--header); overflow-wrap: anywhere; }
+.bot-card-when { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.bot-card-when.future { color: var(--header); font-weight: 600; }
+.bot-card-desc { font-size: 14px; }
+.bot-card-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 0; }
+.bot-card-field { padding: 6px 8px; border-radius: 6px; background: var(--chat); font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.bot-card-field.wide { grid-column: 1 / -1; }
+.bot-card-field dt { font-size: 12px; font-weight: 700; color: var(--muted); }
+.bot-card-field dd { margin: 2px 0 0; }
+.bot-card .components { margin: 0; }
+.bot-card-foot { border-top: 1px solid var(--border); padding-top: 6px; }
+.bot-section { display: flex; gap: 16px; align-items: flex-start; padding: 16px; border-radius: 8px; background: var(--card); margin-bottom: 24px; }
+.bot-section .bot-avatar { width: 56px; height: 56px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); font-size: 28px; }
+.bot-section .grow { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.bot-section code { font-size: 13px; }

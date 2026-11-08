@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Word Duel</title>
+  <link rel="stylesheet" href="duel.css">
+  <script src="cillhub-panel.js" defer></script>
+  <script src="duel.js" defer></script>
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-main">
+        <h1 class="app-title">🔤 Word Duel</h1>
+        <div class="user-streak-badge" id="my-streak-badge" title="Your Daily Streak">🔥 0 streak</div>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="Word Duel Navigation">
+        <button type="button" role="tab" class="tab-btn active" id="tab-btn-daily" aria-selected="true" aria-controls="view-daily">Daily Word</button>
+        <button type="button" role="tab" class="tab-btn" id="tab-btn-duel" aria-selected="false" aria-controls="view-duel">Speed Duel (<span id="open-duel-count">0</span>)</button>
+        <button type="button" role="tab" class="tab-btn" id="tab-btn-leaderboard" aria-selected="false" aria-controls="view-leaderboard">Leaderboard</button>
+      </nav>
+    </header>
+
+    <div id="status-bar" role="status" aria-live="polite" class="status-bar hidden"></div>
+
+    <!-- DAILY WORD TAB -->
+    <main id="view-daily" class="tab-view active" role="tabpanel" aria-labelledby="tab-btn-daily">
+      <div class="game-wrapper">
+        <div class="mode-header">
+          <span class="mode-tag">📅 Daily Challenge</span>
+          <span class="date-tag" id="daily-date-label">UTC</span>
+        </div>
+
+        <!-- 6x5 Grid -->
+        <div class="grid-container" id="daily-grid" role="grid" aria-label="Wordle Grid">
+          <!-- 30 tiles generated dynamically -->
+        </div>
+
+        <div id="daily-game-over-banner" class="game-over-banner hidden">
+          <div class="banner-title" id="daily-banner-title">Well Done!</div>
+          <div class="banner-sub" id="daily-banner-sub">Come back tomorrow for the next word.</div>
+        </div>
+
+        <!-- Keyboard -->
+        <div class="keyboard-container" id="daily-keyboard" aria-label="Virtual Keyboard">
+          <!-- QWERTY rows generated dynamically -->
+        </div>
+      </div>
+    </main>
+
+    <!-- SPEED DUEL TAB -->
+    <section id="view-duel" class="tab-view hidden" role="tabpanel" aria-labelledby="tab-btn-duel">
+      <!-- Lobby View when no active duel -->
+      <div id="duel-lobby-view" class="duel-lobby">
+        <div class="card">
+          <h2>⚡ Create Speed Duel</h2>
+          <p class="card-desc">Race your friends in real-time to solve the same 5-letter word!</p>
+          <button type="button" class="btn primary" id="create-duel-btn">Create Duel Lobby</button>
+        </div>
+
+        <div class="card">
+          <h2>Open Duel Lobbies</h2>
+          <ul id="open-duels-list" class="item-list" aria-label="Open Duels"></ul>
+        </div>
+      </div>
+
+      <!-- Live Speed Duel Race View -->
+      <div id="duel-game-view" class="duel-game-layout hidden">
+        <div class="duel-top-bar">
+          <div class="duel-status-info" id="duel-status-info">Waiting for players...</div>
+          <div class="duel-timer" id="duel-timer">⏱️ 0.0s</div>
+          <button type="button" class="btn small primary hidden" id="start-duel-btn">Start Race!</button>
+          <button type="button" class="btn small" id="leave-duel-btn">Leave</button>
+        </div>
+
+        <div class="duel-play-area">
+          <!-- Main Player Board -->
+          <div class="player-duel-column">
+            <div class="player-tag" id="my-duel-tag">You</div>
+            <div class="grid-container" id="duel-grid" role="grid"></div>
+          </div>
+
+          <!-- Opponent Mini-Grids Sidebar -->
+          <div class="opponents-column" id="opponents-column">
+            <div class="opponents-title">Opponents</div>
+            <div class="opponents-list" id="opponents-list"></div>
+          </div>
+        </div>
+
+        <div id="duel-game-over-banner" class="game-over-banner hidden">
+          <div class="banner-title" id="duel-banner-title">Race Complete!</div>
+          <div class="banner-sub" id="duel-banner-sub"></div>
+        </div>
+
+        <!-- Shared keyboard for duel -->
+        <div class="keyboard-container" id="duel-keyboard"></div>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD TAB -->
+    <section id="view-leaderboard" class="tab-view hidden" role="tabpanel" aria-labelledby="tab-btn-leaderboard">
+      <div class="card">
+        <h2>🔥 Daily Streaks Leaderboard</h2>
+        <div class="table-wrapper">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Player</th>
+                <th>Streak</th>
+                <th>Best</th>
+                <th>Total Wins</th>
+              </tr>
+            </thead>
+            <tbody id="streak-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>⚡ Fastest Speed Duelists</h2>
+        <div class="table-wrapper">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Player</th>
+                <th>Best Time</th>
+                <th>Total Wins</th>
+              </tr>
+            </thead>
+            <tbody id="speed-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

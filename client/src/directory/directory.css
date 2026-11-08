@@ -1,0 +1,34 @@
+/* v7 server directory (/directory) and the listing settings */
+.directory { height: 100%; overflow: auto; background: var(--chat); }
+.directory-head { padding: 28px max(24px, calc(50% - 560px)) 18px; background: var(--sidebar); border-bottom: 1px solid var(--border); }
+.directory-head h1 { color: var(--header); font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin: 16px 0 4px; }
+.directory .link-btn { display: inline-grid; place-items: center; text-decoration: none; }
+.directory-filters { display: flex; gap: 8px; margin-top: 16px; }
+.directory-filters input { flex: 1; }
+.directory-filters select { width: 180px; }
+.directory-cats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chip { padding: 6px 13px; border-radius: 999px; background: var(--btn-secondary); color: #fff; font-size: 13.5px; font-weight: 500; transition: background-color .14s, color .14s; }
+.chip:hover { background: var(--btn-secondary-hover); }
+.chip.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.chip:focus-visible, .dir-card button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.directory-main { padding: 20px max(24px, calc(50% - 560px)) 36px; }
+.directory-grid { list-style: none; padding: 0; margin: 12px 0 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.dir-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 0 16px 16px; border-radius: var(--radius-m); border: 1px solid var(--border); background: var(--sidebar); overflow: hidden;
+  transition: transform .16s var(--ease-out), box-shadow .16s var(--ease-out), border-color .16s; }
+.dir-card:hover { transform: translateY(-2px); border-color: var(--btn-secondary-hover); box-shadow: 0 8px 20px rgb(0 0 0 / .24); }
+.dir-banner { height: 96px; margin: 0 -16px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 32%, var(--panel)), color-mix(in srgb, var(--signal) 18%, var(--panel))) center / cover; }
+.dir-icon { width: 56px; height: 56px; margin-top: -32px; border-radius: 16px; border: 4px solid var(--sidebar); background: var(--chat); display: grid; place-items: center;
+  overflow: hidden; color: var(--header); font-weight: 600; }
+.dir-icon img { width: 100%; height: 100%; object-fit: cover; }
+.dir-card h3 { color: var(--header); font-size: 16px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+.dir-desc { color: var(--text); font-size: 14px; margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.dir-node { margin: 0; font-size: 12px; color: var(--interactive); }
+.node-chip { display: inline-block; padding: 1px 6px; border-radius: 5px; background: var(--btn-secondary); color: #fff; font-weight: 600; }
+.dir-node.down .node-chip { background: var(--danger); }
+.dir-tags { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.dir-tags li { padding: 2px 8px; border-radius: 999px; background: var(--chat); border: 1px solid var(--border); font-size: 12px; color: var(--interactive); }
+.dir-tags .dir-cat { color: var(--header); font-weight: 600; }
+.dir-actions { margin-top: auto; padding-top: 8px; display: flex; align-items: center; justify-content: space-between; }
+.listing-form textarea.input { height: auto; resize: vertical; }
+@media (max-width: 600px) { .directory-filters { flex-direction: column; } .directory-filters select { width: 100%; } }
+[data-reduced-motion] .dir-card, [data-reduced-motion] .dir-card:hover { transition: none; transform: none; }

@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "scrim-board",
+  "name": "Scrim Board",
+  "version": "1.0.0",
+  "description": "A channel panel that lists upcoming scrims with Join and Leave buttons, plus a /scrims command.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": ["commands", "storage", "ui"],
+  "http_hosts": [],
+  "commands": [
+    { "name": "scrims", "description": "Show the upcoming scrims of this server", "options": [] }
+  ],
+  "settings": [],
+  "ui": {
+    "panels": [
+      { "id": "board", "slot": "channel_panel", "title": "Scrims", "entry": "ui/board.html", "icon": "📅" }
+    ]
+  }
+}

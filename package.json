@@ -1,0 +1,16 @@
+{
+  "name": "cillcord",
+  "private": true,
+  "scripts": {
+    "e2e": "node scripts/e2e.cjs",
+    "e2e:v2": "node scripts/e2e-v2.cjs",
+    "e2e:v3": "node scripts/e2e-v3.cjs",
+    "e2e:v4": "node scripts/e2e-v4.cjs",
+    "e2e:v5": "node scripts/e2e-v5.cjs",
+    "e2e:v5-voice": "node scripts/e2e-v5-voice.cjs",
+    "e2e:v5-apps": "node scripts/e2e-v5-apps.cjs",
+    "e2e:v6": "node scripts/e2e-v6.cjs",
+    "e2e:v7": "node scripts/e2e-v7.cjs",
+    "e2e:v8": "node scripts/e2e-v8.cjs"
+  }
+}

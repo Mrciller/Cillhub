@@ -1,0 +1,15 @@
+.account-rows { display: grid; gap: 12px; padding: 16px; border-radius: 8px; background: var(--rail); }
+.account-rows > div { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 16px; align-items: center; }
+.account-rows .field-label { margin: 0; grid-column: 1; }
+.account-rows button { grid-row: 1 / 3; grid-column: 2; }
+.twofa-head { margin-top: 20px; }
+.twofa-steps { list-style: decimal; padding-left: 20px; display: grid; gap: 16px; }
+.twofa-qr { display: flex; gap: 16px; align-items: center; margin-top: 8px; }
+.qr { width: 176px; height: 176px; flex: none; border-radius: 4px; background: #fff; }
+.twofa-secret { display: inline-block; padding: 6px 8px; border-radius: 4px; background: var(--rail); font-size: 15px; letter-spacing: .05em; user-select: all; }
+.backup-codes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
+.backup-codes li { padding: 6px 10px; border-radius: 4px; background: var(--rail); font-family: var(--font-mono); }
+.backup-codes li.used { text-decoration: line-through; opacity: .5; }
+.sessions { display: grid; gap: 8px; margin-bottom: 16px; }
+.session { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; background: var(--rail); }
+.session-text { display: grid; flex: 1; }

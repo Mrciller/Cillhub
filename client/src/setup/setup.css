@@ -1,0 +1,15 @@
+/* v7 first-run wizard */
+.setup-card { width: min(640px, 100%); max-height: calc(100% - 32px); overflow: auto; }
+.setup-card h2 { color: var(--header); font-size: 18px; margin: 16px 0 12px; outline: none; }
+.setup-steps { list-style: none; margin: 16px 0 0; padding: 0; display: flex; gap: 4px; counter-reset: step; }
+.setup-steps li { flex: 1; counter-increment: step; height: 6px; border-radius: var(--radius-s); background: var(--input); position: relative; }
+.setup-steps li span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.setup-steps li.done { background: color-mix(in srgb, var(--accent) 55%, var(--input)); }
+.setup-steps li.current { background: var(--accent); }
+.setup-checks { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.setup-checks li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--radius-m); border: 1px solid var(--border); background: var(--card); }
+.setup-check-mark { width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; background: var(--muted); }
+.setup-checks .ok .setup-check-mark { background: var(--online); }
+.setup-checks .fail .setup-check-mark { background: var(--danger); }
+.setup-summary { margin: 0 0 16px; }
+.backup-codes { columns: 2; padding: 0; list-style: none; font-family: var(--mono, monospace); }

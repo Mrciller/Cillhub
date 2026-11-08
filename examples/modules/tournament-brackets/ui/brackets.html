@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tournament Brackets</title>
+  <link rel="stylesheet" href="brackets.css">
+  <script src="cillhub-panel.js" defer></script>
+  <script src="brackets.js" defer></script>
+</head>
+<body>
+  <div class="tournament-layout">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="header-main">
+        <span class="trophy-brand" aria-hidden="true">🏆</span>
+        <div class="title-wrap">
+          <div class="tourney-select-row">
+            <h1 id="tourney-title">Community Tournament</h1>
+            <select id="tourney-select" class="tourney-dropdown" aria-label="Switch Tournament"></select>
+          </div>
+          <p class="subtitle" id="tourney-subtitle">Rocket League 1v1 • 8 Players</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span id="status-badge" class="status-badge in-progress">In Progress</span>
+      </div>
+    </header>
+
+    <!-- Notice Banner -->
+    <div id="notice-box" class="notice-box" role="status" aria-live="polite" hidden></div>
+
+    <!-- Champion Banner (when decided) -->
+    <section id="champion-banner" class="champion-banner" hidden aria-label="Tournament Champion">
+      <div class="trophy-cup" aria-hidden="true">👑</div>
+      <div class="champion-details">
+        <span class="champion-label">Tournament Champion</span>
+        <h2 id="champion-name" class="champion-player">AceStriker</h2>
+      </div>
+      <div class="confetti-icon" aria-hidden="true">🎉</div>
+    </section>
+
+    <!-- Controls Bar -->
+    <div class="controls-bar">
+      <div class="registration-actions">
+        <button id="btn-join" type="button" class="btn primary" hidden>🎮 Join Tournament</button>
+        <button id="btn-leave" type="button" class="btn secondary" hidden>Leave</button>
+        <span id="player-count-pill" class="badge">0/8 Players</span>
+      </div>
+      <div class="organizer-actions" id="organizer-actions">
+        <button id="btn-start" type="button" class="btn success" hidden>⚡ Seed & Start Bracket</button>
+        <button id="btn-open-create" type="button" class="btn secondary" hidden>+ New Tournament</button>
+      </div>
+    </div>
+
+    <!-- Interactive Visual Bracket Container -->
+    <main class="bracket-scroll-container" aria-label="Interactive visual bracket">
+      <div id="bracket-tree" class="bracket-tree">
+        <div class="loading-state">Loading bracket...</div>
+      </div>
+    </main>
+
+    <!-- Score Reporting Modal -->
+    <div id="modal-report" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="modal-report-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="modal-report-title">Report Match Score</h3>
+          <button id="btn-close-report" type="button" class="btn-icon" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="report-match-label" class="match-subtitle">Quarterfinal 1</p>
+          <div class="score-input-grid">
+            <div class="player-score-col">
+              <label id="label-p1" for="input-score1">Player 1</label>
+              <input id="input-score1" type="number" min="0" max="99" value="0">
+            </div>
+            <div class="score-vs-divider">VS</div>
+            <div class="player-score-col">
+              <label id="label-p2" for="input-score2">Player 2</label>
+              <input id="input-score2" type="number" min="0" max="99" value="0">
+            </div>
+          </div>
+          <p class="field-hint">Ties are not allowed. Winner will advance to the next round automatically.</p>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-cancel-report" type="button" class="btn secondary">Cancel</button>
+          <button id="btn-submit-score" type="button" class="btn primary">Confirm Score</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Tournament Modal -->
+    <div id="modal-create" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="modal-create-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="modal-create-title">Create New Tournament</h3>
+          <button id="btn-close-create" type="button" class="btn-icon" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <label for="input-tourney-title">Tournament Title</label>
+          <input id="input-tourney-title" type="text" placeholder="e.g. Summer Smash 1v1 Invitational" maxlength="50">
+
+          <label for="input-tourney-game">Game or Sport</label>
+          <input id="input-tourney-game" type="text" placeholder="e.g. Street Fighter 6" maxlength="50">
+
+          <label for="select-tourney-size">Bracket Size</label>
+          <select id="select-tourney-size">
+            <option value="4">4 Players (Semifinals & Finals)</option>
+            <option value="8" selected>8 Players (Quarterfinals, Semis, Finals)</option>
+            <option value="16">16 Players (Full 4-Round Bracket)</option>
+          </select>
+
+          <label for="select-tourney-format">Format</label>
+          <select id="select-tourney-format">
+            <option value="single_elim">Single Elimination</option>
+            <option value="round_robin">Round Robin</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-cancel-create" type="button" class="btn secondary">Cancel</button>
+          <button id="btn-save-create" type="button" class="btn primary">Create Tournament</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

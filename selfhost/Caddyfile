@@ -1,0 +1,8 @@
+# Cillhub node behind Caddy: automatic HTTPS (Let's Encrypt) for CILLCORD_HOSTNAME.
+{$CILLCORD_HOSTNAME} {
+	# LiveKit signalling (only when the livekit profile runs)
+	handle_path /livekit/* {
+		reverse_proxy livekit:7880
+	}
+	reverse_proxy app:3000
+}

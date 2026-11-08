@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support Tickets</title>
+  <link rel="stylesheet" href="tickets.css">
+  <script src="cillhub-panel.js" defer></script>
+  <script src="tickets.js" defer></script>
+</head>
+<body>
+  <div class="desk-container">
+    <!-- Left Column: Master Tickets List -->
+    <aside class="sidebar-pane">
+      <header class="pane-header">
+        <div class="pane-title">
+          <h1>🎫 Support Desk</h1>
+          <span id="role-badge" class="badge">User</span>
+        </div>
+        <button id="new-ticket-btn" type="button" class="primary">+ New</button>
+      </header>
+
+      <div class="search-box">
+        <input id="search-input" type="text" placeholder="Search tickets..." autocomplete="off">
+      </div>
+
+      <nav class="filter-tabs" aria-label="Ticket status filters">
+        <button id="tab-all" type="button" class="tab-btn active">All</button>
+        <button id="tab-open" type="button" class="tab-btn">Open</button>
+        <button id="tab-claimed" type="button" class="tab-btn">Claimed</button>
+        <button id="tab-closed" type="button" class="tab-btn">Closed</button>
+      </nav>
+
+      <ul id="ticket-list" class="ticket-list" aria-label="Support tickets"></ul>
+    </aside>
+
+    <!-- Right Column: Detail View or New Ticket Form -->
+    <main class="content-pane">
+      <p id="status-bar" role="status" aria-live="polite"></p>
+
+      <!-- Empty State -->
+      <div id="view-empty" class="state-view">
+        <div class="empty-prompt">
+          <div class="empty-icon">🎫</div>
+          <h2>Welcome to Support Tickets</h2>
+          <p>Select a ticket from the left panel to view the discussion, or click "+ New" above to open a ticket with server staff.</p>
+        </div>
+      </div>
+
+      <!-- New Ticket View -->
+      <section id="view-create" class="state-view hidden" aria-labelledby="create-heading">
+        <div class="view-header">
+          <h2 id="create-heading">Create Support Ticket</h2>
+          <button id="cancel-create-btn" type="button" class="text-btn">Cancel</button>
+        </div>
+
+        <div class="form-body">
+          <div class="form-group">
+            <label for="new-category">Category</label>
+            <select id="new-category">
+              <option value="General">General Inquiry</option>
+              <option value="Bug">Bug Report</option>
+              <option value="Moderation">Moderation / Report</option>
+              <option value="Account">Account & Roles</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="new-subject">Subject</label>
+            <input id="new-subject" type="text" maxlength="100" placeholder="Brief summary of your question or issue" autocomplete="off">
+          </div>
+
+          <div class="form-group">
+            <label for="new-message">Details</label>
+            <textarea id="new-message" rows="8" maxlength="2000" placeholder="Please provide clear details, context, and steps so staff can assist you promptly..."></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button id="submit-ticket-btn" type="button" class="primary">Submit Ticket</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Active Ticket Discussion View -->
+      <section id="view-ticket" class="state-view hidden" aria-labelledby="active-ticket-title">
+        <header class="ticket-header">
+          <div class="ticket-info">
+            <div class="info-badges">
+              <span id="detail-id" class="ticket-num">#0</span>
+              <span id="detail-cat" class="cat-badge">General</span>
+              <span id="detail-status" class="status-badge open">Open</span>
+            </div>
+            <h2 id="active-ticket-title" class="ticket-title">Ticket Subject</h2>
+            <div id="detail-meta" class="meta-row">Opened by User · 2 hours ago</div>
+          </div>
+
+          <div id="ticket-actions" class="ticket-actions">
+            <button id="btn-claim" type="button" class="secondary">Claim Ticket</button>
+            <button id="btn-reopen" type="button" class="secondary hidden">Reopen</button>
+            <button id="btn-close" type="button" class="danger">Close Ticket</button>
+          </div>
+        </header>
+
+        <!-- Messages Thread -->
+        <div id="messages-container" class="messages-container" aria-label="Ticket conversation">
+          <div id="messages-list" class="messages-list"></div>
+        </div>
+
+        <!-- Reply Composer -->
+        <footer id="reply-composer" class="reply-composer">
+          <textarea id="reply-input" rows="3" maxlength="2000" placeholder="Write a reply... (Enter to send, Shift+Enter for new line)"></textarea>
+          <button id="send-reply-btn" type="button" class="primary">Send Reply</button>
+        </footer>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

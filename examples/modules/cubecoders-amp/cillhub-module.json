@@ -1,0 +1,141 @@
+{
+  "manifest_version": 1,
+  "id": "cubecoders-amp",
+  "name": "CubeCoders AMP Control Center",
+  "version": "1.0.0",
+  "description": "CubeCoders AMP game server manager: monitor CPU/RAM/TPS, power controls, player lists, RCON console drawer, and webhook event logs.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": [
+    "commands",
+    "storage",
+    "ui",
+    "http.fetch",
+    "http.routes",
+    "messages.send",
+    "schedule"
+  ],
+  "http_hosts": [
+    "amp.cillerian.org",
+    "*.cillerian.org",
+    "amp.example.com"
+  ],
+  "settings": [
+    {
+      "key": "amp_url",
+      "type": "text",
+      "label": "CubeCoders AMP Base URL (https://...)",
+      "placeholder": "https://amp.cillerian.org",
+      "per_server": true
+    },
+    {
+      "key": "amp_username",
+      "type": "text",
+      "label": "AMP API Username",
+      "per_server": true
+    },
+    {
+      "key": "amp_password",
+      "type": "secret",
+      "label": "AMP API Password / Token",
+      "per_server": true
+    },
+    {
+      "key": "webhook_secret",
+      "type": "secret",
+      "label": "AMP Trigger Webhook Secret",
+      "per_server": true
+    },
+    {
+      "key": "operator_role",
+      "type": "role",
+      "label": "Server Operator Role (Start/Stop/Restart/Console)",
+      "per_server": true
+    },
+    {
+      "key": "allow_player_wake",
+      "type": "toggle",
+      "label": "Allow members to Wake sleeping servers",
+      "default": true,
+      "per_server": true
+    },
+    {
+      "key": "alert_channel",
+      "type": "channel",
+      "channel_types": [0],
+      "label": "Server Status & Event Log Channel",
+      "per_server": true
+    }
+  ],
+  "commands": [
+    {
+      "name": "amp",
+      "description": "Manage and query CubeCoders AMP game server instances",
+      "options": [
+        {
+          "name": "status",
+          "description": "View status and metrics of game server instances",
+          "type": 1,
+          "options": []
+        },
+        {
+          "name": "wake",
+          "description": "Wake / start a sleeping or stopped game server",
+          "type": 1,
+          "options": [
+            {
+              "name": "instance",
+              "description": "Instance name or ID",
+              "type": 3,
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "restart",
+          "description": "Restart a game server instance (Operator only)",
+          "type": 1,
+          "options": [
+            {
+              "name": "instance",
+              "description": "Instance name or ID",
+              "type": 3,
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "command",
+          "description": "Execute an RCON console command on an instance (Operator only)",
+          "type": 1,
+          "options": [
+            {
+              "name": "instance",
+              "description": "Instance name or ID",
+              "type": 3,
+              "required": true
+            },
+            {
+              "name": "command",
+              "description": "Console command to run (e.g. say, list, kick)",
+              "type": 3,
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "ui": {
+    "panels": [
+      {
+        "id": "amp-panel",
+        "slot": "guild_sidebar",
+        "title": "Game Servers (AMP)",
+        "entry": "ui/amp.html",
+        "height": 620,
+        "icon": "🖥️"
+      }
+    ]
+  }
+}

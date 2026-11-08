@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leaderboard & XP</title>
+  <link rel="stylesheet" href="leaderboard.css">
+  <script src="cillhub-panel.js" defer></script>
+  <script src="leaderboard.js" defer></script>
+</head>
+<body>
+  <main class="levels-container">
+    <header class="levels-header">
+      <div class="header-title">
+        <h1>⭐ Leaderboard & Levels</h1>
+        <span id="total-badge" class="badge">0 Members</span>
+      </div>
+    </header>
+
+    <p id="status-msg" role="status" aria-live="polite"></p>
+
+    <!-- Personal Rank Card Banner -->
+    <section id="my-rank-card" class="rank-card" aria-label="Your Rank Card">
+      <div class="card-left">
+        <div class="user-avatar-circle" id="my-avatar">⭐</div>
+        <div class="user-meta">
+          <div class="name-row">
+            <h2 id="my-name">Member</h2>
+            <span id="my-rank-pill" class="rank-pill">#0</span>
+          </div>
+          <div class="stats-row">
+            <span id="my-msgs">💬 0 messages</span>
+            <span id="my-voice">🎙️ 0m voice</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-right">
+        <div class="level-badge-wrap">
+          <span class="lvl-title">LEVEL</span>
+          <span id="my-level" class="lvl-num">0</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-labels">
+            <span id="my-xp-nums">0 / 100 XP</span>
+            <span id="my-xp-pct">0%</span>
+          </div>
+          <div class="progress-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <div id="my-progress-fill" class="progress-fill" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Search / Filter -->
+    <div class="toolbar">
+      <input id="search-input" type="text" placeholder="Search leaderboard..." autocomplete="off">
+    </div>
+
+    <!-- Leaderboard Table -->
+    <section class="table-card" aria-label="Server Leaderboard Rankings">
+      <div class="table-header">
+        <span class="col-rank">Rank</span>
+        <span class="col-name">Member</span>
+        <span class="col-lvl">Level</span>
+        <span class="col-xp">XP</span>
+        <span class="col-msgs">Messages</span>
+        <span class="col-voice">Voice</span>
+      </div>
+
+      <ul id="leaderboard-list" class="leaderboard-list"></ul>
+    </section>
+  </main>
+</body>
+</html>

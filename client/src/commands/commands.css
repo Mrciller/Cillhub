@@ -1,0 +1,17 @@
+.command-picker .ac-item { flex-wrap: wrap; }
+.opt-pill { display: inline-block; padding: 0 6px; border-radius: 4px; background: var(--hover); color: var(--interactive); font-size: 12px; line-height: 18px; }
+.opt-pill.req { color: var(--text); }
+button.opt-pill:hover { background: var(--selected); }
+.cmd-app { margin-left: auto; }
+.command-form { display: grid; gap: 8px; padding: 10px 12px; border-radius: 8px; background: var(--input); }
+.cmd-head { display: flex; align-items: center; gap: 8px; }
+.cmd-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 8px; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 14px; flex: none; }
+.cmd-opts { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.cmd-opt { display: grid; gap: 4px; min-width: 160px; flex: 1; position: relative; }
+.cmd-opt .input { background: var(--chat); }
+.opt-label { font-size: 12px; font-weight: 700; color: var(--interactive); }
+.ac-choices { position: absolute; bottom: 100%; left: 0; right: 0; z-index: 5; max-height: 200px; overflow-y: auto; margin-bottom: 4px; padding: 4px; border-radius: 6px; background: var(--menu); box-shadow: 0 8px 16px rgb(0 0 0 / .3); }
+.ac-choices button { width: 100%; padding: 6px 8px; border-radius: 4px; text-align: left; }
+.ac-choices button:hover { background: var(--hover); }
+.cmd-optional { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cmd-actions { display: flex; justify-content: flex-end; }

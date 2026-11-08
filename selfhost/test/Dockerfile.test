@@ -1,0 +1,10 @@
+# Throwaway test image for selfhost/test/run-tests.sh: the server from server/
+# (no client build, no network: node_modules come from the host tree). Never published.
+FROM node:24-bookworm-slim
+WORKDIR /app/server
+COPY package.json ./
+COPY node_modules ./node_modules
+COPY src ./src
+ENV PORT=3000 DATA_DIR=/data NODE_ENV=production
+VOLUME /data
+CMD ["node", "src/index.js"]

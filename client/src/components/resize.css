@@ -1,0 +1,59 @@
+/* Resizable splitters (sidebar, members, side-panels) */
+:root {
+  --sidebar-width: 216px;
+  --members-width: 216px;
+  --side-panel-width: 360px;
+}
+
+body.resizing,
+body.resizing * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  cursor: col-resize !important;
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  z-index: 30;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  background: transparent;
+  outline: none;
+}
+
+.resize-handle-right {
+  right: -5px;
+}
+
+.resize-handle-left {
+  left: -5px;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+  pointer-events: none;
+}
+
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+.resize-handle.active::after {
+  background: var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+@media (max-width: 899px) {
+  .resize-handle {
+    display: none !important;
+  }
+}

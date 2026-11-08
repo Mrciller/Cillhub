@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chess Arena</title>
+  <link rel="stylesheet" href="chess.css">
+  <script src="cillhub-panel.js" defer></script>
+  <script src="chess.js" defer></script>
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-main">
+        <h1 class="app-title">♟️ Chess Arena</h1>
+        <div class="user-elo-badge" id="my-elo-badge" title="Your ELO Rating">1200 ELO</div>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="Chess Arena Navigation">
+        <button type="button" role="tab" class="tab-btn active" id="tab-btn-board" aria-selected="true" aria-controls="view-board">Game</button>
+        <button type="button" role="tab" class="tab-btn" id="tab-btn-matches" aria-selected="false" aria-controls="view-matches">Matches (<span id="match-count">0</span>)</button>
+        <button type="button" role="tab" class="tab-btn" id="tab-btn-leaderboard" aria-selected="false" aria-controls="view-leaderboard">Leaderboard</button>
+      </nav>
+    </header>
+
+    <div id="status-bar" role="status" aria-live="polite" class="status-bar hidden"></div>
+
+    <!-- MAIN GAME TAB -->
+    <main id="view-board" class="tab-view active" role="tabpanel" aria-labelledby="tab-btn-board">
+      <div id="no-game-prompt" class="empty-state hidden">
+        <p class="empty-text">No active game selected.</p>
+        <div class="empty-actions">
+          <button type="button" class="btn primary" id="quick-challenge-btn">Create Open Challenge</button>
+          <button type="button" class="btn" id="browse-matches-btn">Browse Matches</button>
+        </div>
+      </div>
+
+      <div id="game-container" class="game-layout">
+        <!-- Opponent Info Bar -->
+        <div class="player-bar top-player" id="top-player-bar">
+          <div class="player-info">
+            <span class="player-color-indicator" id="top-color-indicator"></span>
+            <span class="player-name" id="top-player-name">Opponent</span>
+          </div>
+          <div class="captured-pieces" id="top-captured" aria-label="Captured pieces"></div>
+        </div>
+
+        <!-- Chessboard Wrapper -->
+        <div class="board-wrapper">
+          <div id="chessboard" class="chessboard" role="grid" aria-label="Chess Board">
+            <!-- 64 squares generated dynamically in chess.js -->
+          </div>
+        </div>
+
+        <!-- Player Info Bar -->
+        <div class="player-bar bottom-player" id="bottom-player-bar">
+          <div class="player-info">
+            <span class="player-color-indicator" id="bottom-color-indicator"></span>
+            <span class="player-name" id="bottom-player-name">You</span>
+          </div>
+          <div class="captured-pieces" id="bottom-captured" aria-label="Captured pieces"></div>
+        </div>
+
+        <!-- Game Status & Action Controls -->
+        <div class="game-actions-bar">
+          <div class="game-turn-text" id="game-turn-indicator">White to move</div>
+          <div class="action-buttons">
+            <button type="button" class="btn small" id="flip-board-btn" title="Flip Board Orientation">Flip</button>
+            <button type="button" class="btn small" id="draw-btn" title="Offer Draw">Draw</button>
+            <button type="button" class="btn small danger" id="resign-btn" title="Resign Game">Resign</button>
+          </div>
+        </div>
+
+        <!-- Draw offer alert box -->
+        <div id="draw-offer-box" class="draw-offer-box hidden">
+          <span>Opponent offered a draw.</span>
+          <button type="button" class="btn small primary" id="accept-draw-btn">Accept</button>
+          <button type="button" class="btn small" id="decline-draw-btn">Decline</button>
+        </div>
+
+        <!-- Move History log -->
+        <div class="history-section">
+          <div class="history-title">Move History</div>
+          <div class="move-log" id="move-log" aria-live="polite"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- MATCHES & CHALLENGES TAB -->
+    <section id="view-matches" class="tab-view hidden" role="tabpanel" aria-labelledby="tab-btn-matches">
+      <div class="card create-challenge-card">
+        <h2>⚔️ Create Open Challenge</h2>
+        <div class="challenge-form">
+          <label for="color-preference">Choose Your Color:</label>
+          <select id="color-preference" class="select-input">
+            <option value="random">Random</option>
+            <option value="w">White (First Move)</option>
+            <option value="b">Black</option>
+          </select>
+          <button type="button" class="btn primary" id="create-challenge-btn">Post Challenge</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Open Challenges</h2>
+        <ul id="challenges-list" class="item-list" aria-label="Open Challenges"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Active Server Games</h2>
+        <ul id="active-games-list" class="item-list" aria-label="Active Games"></ul>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD TAB -->
+    <section id="view-leaderboard" class="tab-view hidden" role="tabpanel" aria-labelledby="tab-btn-leaderboard">
+      <div class="card">
+        <h2>🏆 Server ELO Leaderboard</h2>
+        <div class="table-wrapper">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Player</th>
+                <th>ELO</th>
+                <th>W</th>
+                <th>L</th>
+                <th>D</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROMOTION MODAL -->
+    <div id="promo-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="promo-title">
+      <div class="modal-content">
+        <h3 id="promo-title">Pawn Promotion</h3>
+        <p>Choose piece to promote to:</p>
+        <div class="promo-choices">
+          <button type="button" class="promo-btn" data-piece="Q">♛ Queen</button>
+          <button type="button" class="promo-btn" data-piece="R">♜ Rook</button>
+          <button type="button" class="promo-btn" data-piece="B">♝ Bishop</button>
+          <button type="button" class="promo-btn" data-piece="N">♞ Knight</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

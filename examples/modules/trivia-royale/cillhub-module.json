@@ -1,0 +1,40 @@
+{
+  "manifest_version": 1,
+  "id": "trivia-royale",
+  "name": "Trivia Royale",
+  "version": "1.0.0",
+  "description": "Multiplayer trivia battle royale with categories, speed bonuses, custom questions, and champion role awards.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": ["commands", "storage", "ui", "messages.send", "roles.manage"],
+  "http_hosts": [],
+  "settings": [
+    {
+      "key": "champion_role",
+      "type": "role",
+      "label": "Champion Role",
+      "description": "Optional role awarded to the Trivia Royale match winner.",
+      "required": false,
+      "per_server": true
+    }
+  ],
+  "commands": [
+    {
+      "name": "trivia",
+      "description": "Show Trivia Royale champion, leaderboard, and active games",
+      "options": []
+    }
+  ],
+  "ui": {
+    "panels": [
+      {
+        "id": "trivia",
+        "slot": "channel_panel",
+        "title": "Trivia Royale",
+        "entry": "ui/trivia.html",
+        "height": 500,
+        "icon": "🧠"
+      }
+    ]
+  }
+}

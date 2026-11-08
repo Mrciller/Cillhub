@@ -1,0 +1,42 @@
+# dependencies and build output
+node_modules/
+dist/
+desktop/web/
+desktop/test-shots/
+client/test-shots/
+android/test-shots/
+*.tsbuildinfo
+
+# runtime data and secrets (never commit)
+data/
+# the Android app's data package is code, not runtime data
+!android/app/src/main/java/io/github/mrciller/cillhub/data/
+!android/app/src/test/java/io/github/mrciller/cillhub/data/
+*.sqlite
+*.sqlite-*
+.env
+.env.*
+!client/.env.development
+*.pem
+!selfhost/release-public-key.pem
+*.key
+*.p12
+*.jks
+*.keystore
+google-services.json
+
+# release artifacts
+*.apk
+*.aab
+*.exe
+*.AppImage
+*.deb
+*.blockmap
+*.tar.gz
+cillhub-release-*/
+
+# editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.log

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Download Cillhub</title>
+<style>
+  :root { --bg: #313338; --panel: #2b2d31; --deep: #1e1f22; --text: #dbdee1; --muted: #b5bac1; --head: #f2f3f5; --brand: #5865f2; --brand-hover: #4752c4; --link: #00a8fc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 "gg sans", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+  a { color: var(--link); }
+  a:focus-visible, .btn:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 20px; }
+  header { background: var(--deep); }
+  header .wrap { display: flex; align-items: center; gap: 12px; padding-block: 16px; }
+  header strong { color: var(--head); font-size: 20px; letter-spacing: .01em; }
+  header a { margin-left: auto; }
+  .hero { text-align: center; padding: 56px 0 40px; }
+  .hero svg { width: 96px; height: 96px; }
+  h1 { color: var(--head); font-size: clamp(28px, 5vw, 44px); line-height: 1.15; margin: 18px 0 8px; }
+  h2 { color: var(--head); font-size: 22px; margin: 0 0 12px; }
+  .lead { color: var(--muted); margin: 0 auto 28px; max-width: 34em; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 28px; border-radius: 28px;
+    background: var(--panel); color: var(--head); text-decoration: none; font-weight: 600; border: 2px solid #4e5058; }
+  .btn:hover { border-color: var(--muted); }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-size: 18px; min-height: 56px; }
+  .btn.primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+  .buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .meta { color: var(--muted); font-size: 14px; margin-top: 18px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; padding-bottom: 56px; }
+  section.card { background: var(--panel); border-radius: 8px; padding: 22px 24px; }
+  section.card p, section.card li { color: var(--muted); }
+  ol { padding-left: 1.2em; margin: 0; }
+  li + li { margin-top: 6px; }
+  kbd, b { color: var(--head); }
+  kbd { background: var(--deep); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 14px; }
+  footer { color: var(--muted); font-size: 14px; text-align: center; padding: 24px 0 40px; }
+  .server { padding-bottom: 56px; }
+  .server .card + .card { margin-top: 16px; }
+  pre { background: var(--deep); color: var(--head); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font-size: 14px; margin: 0 0 12px; }
+  code.fp { display: block; color: var(--head); font-size: 13px; word-break: break-all; }
+  dl.modes { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+  dl.modes dt { color: var(--head); font-weight: 600; }
+  dl.modes dd { color: var(--muted); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden="true"><rect x="4" y="4" width="92" height="92" rx="22" fill="#5865f2"/><path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke="#fff" stroke-width="13.5" stroke-linecap="butt"/></svg>
+    <strong>Cillhub</strong>
+    <a href="/">Open in browser</a>
+  </div>
+</header>
+<main>
+  <div class="hero wrap">
+    <svg viewBox="0 0 100 100" role="img" aria-label="Cillhub logo"><rect x="4" y="4" width="92" height="92" rx="22" fill="#5865f2"/><path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke="#fff" stroke-width="13.5"/></svg>
+    <h1>Get Cillhub for your desktop</h1>
+    <p class="lead">Notifications, screen sharing and a tray icon, with the same chat as the website. The app updates itself.</p>
+    <div class="buttons">
+      <a class="btn" id="dl-win" data-os="windows" href="/download/desktop/{{WIN_FILE}}">Download for Windows</a>
+      <a class="btn" id="dl-rust-win-setup" href="/download/desktop/Cillhub-Rust-Setup-2.2.1.exe" download="Cillhub-Rust-Setup-2.2.1.exe" style="border-color: #eb6428; color: #eb6428;">🦀 Native Rust Windows (Setup Installer - 5.3 MB)</a>
+      <a class="btn" id="dl-rust-win-zip" href="/download/desktop/Cillhub-Rust-2.2.1-windows-x64.zip" download="Cillhub-Rust-2.2.1-windows-x64.zip" style="border-color: #eb6428; color: #eb6428;">🦀 Native Rust Windows Portable (.zip - 6.5 MB)</a>
+      <a class="btn" id="dl-appimage" data-os="linux" href="/download/desktop/{{APPIMAGE_FILE}}">Linux AppImage</a>
+      <a class="btn" id="dl-deb" href="/download/desktop/{{DEB_FILE}}">Linux .deb</a>
+      <a class="btn" id="dl-rust-deb" href="/download/desktop/cillhub-desktop-rust_2.2.1_amd64.deb" download="cillhub-desktop-rust_2.2.1_amd64.deb" style="border-color: #eb6428; color: #eb6428;">🦀 Native Rust Linux (.deb - 883 KB)</a>
+      <a class="btn" id="dl-rust-tar" href="/download/desktop/Cillhub-Rust-2.2.1-linux-x64.tar.gz" download="Cillhub-Rust-2.2.1-linux-x64.tar.gz" style="border-color: #eb6428; color: #eb6428;">🦀 Native Rust Linux (.tar.gz - 1.1 MB)</a>
+      <a class="btn" id="dl-android" data-os="android" href="/download/android/Cillhub.apk">Android app (APK)</a>
+    </div>
+    <p class="meta">Version {{VERSION}} · released {{RELEASE_DATE}} · Windows 10/11 64-bit, Linux x64</p>
+  </div>
+  <div class="cards wrap">
+    <section class="card" aria-labelledby="h-win">
+      <h2 id="h-win">Windows</h2>
+      <p>Installer (.exe): click <b>More info</b>, then <b>Run anyway</b> if SmartScreen warns on first launch. For instant zero-install startup and ultra-low audio latency, grab the Native Rust Windows portable binary (<kbd>.exe</kbd> or <kbd>.zip</kbd>).</p>
+    </section>
+    <section class="card" aria-labelledby="h-linux">
+      <h2 id="h-linux">Linux</h2>
+      <p>AppImage: make it executable (<kbd>chmod +x Cillhub-*.AppImage</kbd>) and run it. Debian/Ubuntu: install the .deb with <kbd>sudo apt install ./cillhub_*.deb</kbd>. For ultra-low audio latency and instant startup, try the Native Rust client (<kbd>.deb</kbd> or portable <kbd>.tar.gz</kbd>).</p>
+    </section>
+    <section class="card" aria-labelledby="h-phone">
+      <h2 id="h-phone">On your phone</h2>
+      <ol>
+        <li><b>Android 8 or newer:</b> download the <a href="/download/android/Cillhub.apk">Android app</a> and open it. Android asks once to allow installs from your browser. The app updates itself, delivers messages and calls in the background and works with Android Auto.</li>
+        <li><b>iPhone/iPad (Safari):</b> open <a href="/">this site</a>, tap <b>Share</b>, then <b>Add to Home Screen</b>.</li>
+      </ol>
+    </section>
+  </div>
+  <div class="server wrap">
+    <section class="card" aria-labelledby="h-server">
+      <h2 id="h-server">Run your own server</h2>
+      <p>Host Cillhub for your team on any Linux machine with Docker. The installer downloads the signed server image from here, checks it, asks for your hostname and starts everything. Voice works out of the box with the built-in voice server (one UDP port).</p>
+      <pre><code>curl -fsSLO {{HUB}}/download/server/install.sh
+sh install.sh</code></pre>
+      <p>At the end it prints the address of the setup page and a one-time setup code. On that page you name your server, create the admin account (with two-factor authentication) and choose a mode:</p>
+      <dl class="modes">
+        <dt>Standalone</dt><dd>Fully independent: your own accounts, nothing is shared with this hub. It only checks here for updates, and you can turn that off.</dd>
+        <dt>Connected</dt><dd>Linked to this hub with a link code from its admins: people sign in with their existing Cillhub account, your public servers can appear in the server directory, and they show up next to everyone's other servers.</dd>
+      </dl>
+    </section>
+    <section class="card" aria-labelledby="h-sig">
+      <h2 id="h-sig">Check the signature</h2>
+      <p>Every server release is <b>signed by Pascal Oraze</b>. The installer verifies the signature before it loads anything and prints the key's fingerprint. It must be exactly this one:</p>
+      <code class="fp">b6b5344a3111599a11303ebf2f004f46397a5aa4d8256c3155ab3d3929755d65</code>
+      <p>Ed25519, SHA-256 of the public key. Updates from the admin dashboard are checked against the same key.</p>
+    </section>
+  </div>
+</main>
+<footer>Cillhub · <a href="https://github.com/Mrciller/cillhub">source on GitHub</a> · AGPL-3.0 · © Pascal Oraze</footer>
+<script>
+  // Highlight the download that matches this computer.
+  (function () {
+    var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent;
+    var os = /android/i.test(navigator.userAgent) ? 'android' : /win/i.test(p) ? 'windows' : /linux|x11/i.test(p) ? 'linux' : null;
+    var el = os && document.querySelector('[data-os="' + os + '"]');
+    if (!el) el = document.getElementById('dl-win');
+    el.classList.add('primary');
+    el.parentNode.insertBefore(el, el.parentNode.firstChild);
+  })();
+</script>
+</body>
+</html>

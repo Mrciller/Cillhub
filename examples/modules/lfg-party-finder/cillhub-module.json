@@ -1,0 +1,59 @@
+{
+  "manifest_version": 1,
+  "id": "lfg-party-finder",
+  "name": "LFG Party Finder",
+  "version": "1.0.0",
+  "description": "Create and browse LFG squads, track voice channel presence in real time, and notify members when ready.",
+  "author": "Cillhub examples",
+  "main": "index.js",
+  "permissions": ["commands", "storage", "ui", "voice.read", "messages.send"],
+  "http_hosts": [],
+  "commands": [
+    {
+      "name": "lfg",
+      "description": "Find or create an LFG party or squad",
+      "options": [
+        {
+          "type": 3,
+          "name": "game",
+          "description": "Game or activity name (leave empty to view open squads)",
+          "required": false
+        },
+        {
+          "type": 4,
+          "name": "slots",
+          "description": "Party size (2-16 players, default 5)",
+          "required": false,
+          "min_value": 2,
+          "max_value": 16
+        },
+        {
+          "type": 3,
+          "name": "description",
+          "description": "Party details, notes, or roles needed",
+          "required": false
+        },
+        {
+          "type": 7,
+          "name": "voice_channel",
+          "description": "Voice channel to assemble the party",
+          "required": false,
+          "channel_types": [2]
+        }
+      ]
+    }
+  ],
+  "settings": [],
+  "ui": {
+    "panels": [
+      {
+        "id": "lfg",
+        "slot": "channel_panel",
+        "title": "Party Finder",
+        "entry": "ui/lfg.html",
+        "height": 480,
+        "icon": "🎮"
+      }
+    ]
+  }
+}

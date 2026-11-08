@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Party Finder</title>
+  <link rel="stylesheet" href="lfg.css">
+  <script src="cillhub-panel.js" defer></script>
+  <script src="lfg.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="panel-header">
+      <div class="header-title">
+        <h1>🎮 Party Finder</h1>
+        <span id="active-count" class="badge">0 active</span>
+      </div>
+      <button id="toggle-create-btn" type="button" class="primary">+ Create Squad</button>
+    </header>
+
+    <p id="status" role="status" aria-live="polite"></p>
+
+    <!-- Create Squad Section (Not a <form>: panel sandbox blocks form submit) -->
+    <section id="create-panel" class="card hidden" aria-labelledby="create-title">
+      <h2 id="create-title">Create LFG Squad</h2>
+      
+      <div class="form-row">
+        <label for="game-input">Game / Activity</label>
+        <input id="game-input" type="text" maxlength="60" placeholder="e.g. Valorant, Apex, Raid" autocomplete="off">
+      </div>
+
+      <div class="form-grid">
+        <div class="form-row">
+          <label for="slots-input">Party Size</label>
+          <input id="slots-input" type="number" min="2" max="16" value="5">
+        </div>
+
+        <div class="form-row">
+          <label for="voice-select">Voice Channel</label>
+          <select id="voice-select">
+            <option value="">None / External</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label for="roles-input">Roles Needed</label>
+        <input id="roles-input" type="text" maxlength="100" placeholder="e.g. Tank, Support, Any">
+      </div>
+
+      <div class="form-row">
+        <label for="desc-input">Description / Requirements</label>
+        <input id="desc-input" type="text" maxlength="200" placeholder="e.g. Chill games, Mic required">
+      </div>
+
+      <div class="form-actions">
+        <button id="submit-create-btn" type="button" class="primary">Publish Squad</button>
+        <button id="cancel-create-btn" type="button">Cancel</button>
+      </div>
+    </section>
+
+    <!-- Filter Bar -->
+    <nav class="filter-bar" aria-label="Filter squads">
+      <button id="filter-all" type="button" class="tab-btn active">All</button>
+      <button id="filter-open" type="button" class="tab-btn">Open Only</button>
+      <button id="filter-mine" type="button" class="tab-btn">My Squads</button>
+    </nav>
+
+    <!-- Squads List -->
+    <ul id="squad-list" class="squad-list" aria-label="Available LFG Squads"></ul>
+  </main>
+</body>
+</html>

@@ -1,0 +1,66 @@
+# Cillhub node, written by install.sh. Every setting comes from .env next to this file.
+# Optional services are compose profiles, switched on in .env: COMPOSE_PROFILES=caddy,livekit
+services:
+  app:
+    image: ${CILLCORD_IMAGE}:current
+    pull_policy: never
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CILLVOICE_BIND_IP: 0.0.0.0
+    volumes:
+      - ./data:/data
+    ports:
+      # Only on loopback: Caddy (or your own reverse proxy) is the way in.
+      - "127.0.0.1:${CILLCORD_HTTP_PORT}:3000"
+      # cillvoice media (ICE/DTLS/SRTP); the same number must be reachable from outside.
+      - "${CILLVOICE_UDP_PORT}:${CILLVOICE_UDP_PORT}/udp"
+
+  # Updates on request of the app (see README.md). Has the Docker socket, so it is root-equivalent.
+  updater:
+    image: ${CILLCORD_IMAGE}:current
+    pull_policy: never
+    restart: unless-stopped
+    command: ["node", "/install/updater.mjs"]
+    env_file: .env
+    volumes:
+      - .:/install
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  caddy:
+    profiles: [caddy]
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      CILLCORD_HOSTNAME: ${CILLCORD_HOSTNAME}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  livekit:
+    profiles: [livekit]
+    image: livekit/livekit-server:v1.13.7
+    restart: unless-stopped
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50100
+          use_external_ip: true
+        keys:
+          ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
+
+volumes:
+  caddy_data:
+  caddy_config:

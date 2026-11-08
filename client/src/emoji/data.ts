@@ -1,0 +1,20 @@
+// A curated set of common emoji (no emoji library). "emoji name keywords" per entry.
+const RAW: [string, string][] = [
+  ['People', `😀 grinning smile happy|😃 smiley happy|😄 smile happy|😁 grin|😆 laughing lol|😅 sweat_smile|🤣 rofl rolling laugh|😂 joy tears laugh|🙂 slight_smile|🙃 upside_down|😉 wink|😊 blush|😇 innocent halo|🥰 smiling_hearts love|😍 heart_eyes love|🤩 star_struck|😘 kissing_heart|😋 yum|😛 tongue|😜 wink_tongue crazy|🤪 zany|🤔 thinking hmm|🤨 raised_eyebrow|😐 neutral|😑 expressionless|😶 no_mouth|🙄 eye_roll|😏 smirk|😬 grimace|😌 relieved|😔 pensive|😴 sleeping zzz|😷 mask sick|🤒 thermometer sick|🤯 exploding_head mind_blown|🥳 partying party|😎 sunglasses cool|🤓 nerd|😕 confused|😟 worried|😮 open_mouth wow|😲 astonished|😳 flushed|🥺 pleading|😢 cry sad|😭 sob crying|😱 scream|😤 triumph|😡 rage angry|🤬 cursing|💀 skull dead|💩 poop|🤡 clown|👻 ghost|👽 alien|🤖 robot`],
+  ['Gestures', `👍 thumbsup +1 yes like|👎 thumbsdown -1 no|👌 ok_hand|✌️ v peace victory|🤞 crossed_fingers luck|🤘 metal rock|👋 wave hi bye|👏 clap applause|🙌 raised_hands hooray|🙏 pray please thanks|💪 muscle strong flex|👀 eyes look|🫡 salute|🤝 handshake deal|✋ raised_hand stop|👉 point_right|👈 point_left|👆 point_up|👇 point_down|🫶 heart_hands`],
+  ['Hearts', `❤️ heart love red|🧡 orange_heart|💛 yellow_heart|💚 green_heart|💙 blue_heart|💜 purple_heart|🖤 black_heart|🤍 white_heart|💔 broken_heart|💕 two_hearts|💖 sparkling_heart|💯 100 hundred|💢 anger|💥 boom collision|💫 dizzy|💬 speech|💤 zzz sleep`],
+  ['Nature', `🐶 dog puppy|🐱 cat kitty|🦊 fox|🐻 bear|🐼 panda|🐸 frog|🐵 monkey|🐔 chicken|🐧 penguin|🦄 unicorn|🐝 bee|🦋 butterfly|🐢 turtle|🐍 snake|🐙 octopus|🐬 dolphin|🌸 cherry_blossom flower|🌹 rose|🌻 sunflower|🌲 tree evergreen|🍀 four_leaf_clover luck|🔥 fire lit hot|⭐ star|🌟 star2 glowing|✨ sparkles|⚡ zap lightning|🌈 rainbow|☀️ sunny sun|🌙 moon|❄️ snowflake cold|🌊 wave ocean`],
+  ['Food', `🍎 apple|🍌 banana|🍉 watermelon|🍓 strawberry|🍑 peach|🥑 avocado|🌶️ hot_pepper spicy|🍕 pizza|🍔 hamburger burger|🍟 fries|🌭 hotdog|🌮 taco|🍿 popcorn|🍩 doughnut donut|🍪 cookie|🎂 birthday cake|🍰 cake|🍫 chocolate|☕ coffee|🍵 tea|🍺 beer|🍻 beers cheers|🍷 wine|🥤 cup_with_straw soda`],
+  ['Activities', `⚽ soccer football|🏀 basketball|🏈 american_football|🎾 tennis|🎮 video_game controller gaming|🕹️ joystick|🎯 dart bullseye target|🎲 game_die dice|♟️ chess|🏆 trophy win|🥇 first_place gold|🥈 second_place silver|🥉 third_place bronze|🎉 tada party|🎊 confetti|🎁 gift present|🎈 balloon|🎵 musical_note music|🎧 headphones|🎤 microphone sing|🎬 clapper movie`],
+  ['Objects', `💻 computer laptop|🖥️ desktop|⌨️ keyboard|🖱️ mouse|📱 phone|📷 camera|💡 bulb idea|🔒 lock|🔑 key|🛠️ tools|⚙️ gear settings|📌 pushpin pin|📎 paperclip|📝 memo note|📅 calendar|⏰ alarm clock|⌛ hourglass|💰 moneybag money|💎 gem diamond|🚀 rocket launch|🛡️ shield|⚔️ crossed_swords|🔫 water_pistol|💣 bomb`],
+  ['Symbols', `✅ white_check_mark done yes|☑️ ballot_box_with_check|✔️ heavy_check_mark|❌ x no cross|❎ negative_squared_cross|⚠️ warning|⛔ no_entry|🚫 no_entry_sign|❓ question|❗ exclamation|‼️ bangbang|➕ plus|➖ minus|🆗 ok|🆕 new|🔴 red_circle|🟢 green_circle|🔵 blue_circle|🟡 yellow_circle|⬆️ arrow_up|⬇️ arrow_down|➡️ arrow_right|⬅️ arrow_left|🔁 repeat|1️⃣ one|2️⃣ two|3️⃣ three|🏁 checkered_flag|🇦🇹 flag_at austria|🇩🇪 flag_de germany`],
+]
+
+export type Emoji = { char: string; name: string; keywords: string }
+export const EMOJI: { category: string; list: Emoji[] }[] = RAW.map(([category, s]) => ({
+  category,
+  list: s.split('|').map((e) => {
+    const [char, name, ...kw] = e.split(' ')
+    return { char, name, keywords: [name, ...kw].join(' ') }
+  }),
+}))
