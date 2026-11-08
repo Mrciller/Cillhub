@@ -1,24 +1,88 @@
 # Cillhub
 
-Cillhub is a self-hostable chat for communities and teams: servers with text, voice, stage, forum and announcement channels, voice and video calls with screen sharing, roles and permissions, moderation, threads, polls, events, custom emoji, webhooks and bots. It speaks a v9-style REST/gateway API (`/api/v9`, `/gateway`), so existing tooling and bot libraries written for that API work against it.
+Cillhub is a modern, high-performance, self-hostable community platform designed for real-time text, voice, and video communication. It gives communities, gaming clans, esports organizations, and teams full data sovereignty with zero tracking and seamless cross-platform clients.
 
-Anyone can run a Cillhub server (a **node**) on their own machine. A node runs standalone, or it links to the Cillhub network hub at https://cillhub.cillerian.org, so hub users can sign in with their hub account, find the node's public servers in the directory and get notifications from it.
+Anyone can run a Cillhub server (a **node**) on their own infrastructure in minutes. Nodes can run in complete standalone isolation or link to the central Cillhub Network Hub at https://cillhub.cillerian.org for global directory discovery and single sign-on without ever exposing local server data or passwords.
 
 ![Cillhub in the browser](docs/screenshots/desktop.png)
 
 <img src="docs/screenshots/phone.png" alt="Cillhub on a phone" width="260">
 
-- **Clients**: Web app (React 19 + TypeScript), Native Desktop app (Rust + WebView2/WebKitGTK), Electron desktop app (Windows & Linux), and Native Android app (Kotlin + Jetpack Compose).
-- **Voice & Video**: Voice, video and screen share through [LiveKit](https://livekit.io) or cillvoice, the built-in SFU written in plain Node.js (DTLS, SRTP, simulcast, congestion control; no external WebRTC library).
-- **Extensible Modules**: Instance admins can install sandboxed JavaScript modules (commands, events, settings pages, panels in the app, webhook endpoints), each sandboxed with strictly scoped permissions.
-- **Lightweight Architecture**: Single Node.js process and one SQLite database file per instance; backups are a simple file copy.
-- **Multilingual**: English and German UI.
+---
+
+## 🌟 Key Features
+
+### 💬 Channels & Rich Communication
+* **Text Channels**: Rich Markdown support, code syntax highlighting, inline file uploads, quote replies, spoiler tags, and granular `@mentions`.
+* **Voice & Video Channels**: Low-latency multi-user voice and video channels powered by WebRTC with speaking indicators and individual volume controls.
+* **Screen Sharing**: Crystal-clear 1080p 60 FPS application and screen sharing with system audio capture.
+* **Stage Channels**: Moderated voice stages with designated speakers, a request-to-speak audience queue, and stage moderator controls.
+* **Forum Channels**: Structured thread discussions with customizable tags, search, activity sorting, and pinned posts.
+* **Announcement Channels**: Dedicated broadcast channels to publish news and announcements to all server members.
+* **Discussion Threads**: Keep active sub-topics organized within text channels with automated inactivity archiving.
+* **Direct Messages & Group DMs**: Private 1-on-1 chats, multi-user group conversations, and direct calling.
+
+### ⚡ Interactive Community Tools
+* **Interactive Polls**: Create single-choice or multi-choice polls with duration timers, live vote tallies, and real-time result bars.
+* **Scheduled Events**: Plan tournaments, community game nights, or meetings with calendar RSVPs and automatic start notifications.
+* **Custom Emojis & Stickers**: Upload server-specific static and animated emojis with custom shortcut codes and emoji search.
+* **Message Reactions**: Fast emoji reactions and quick-reaction drawers.
+* **Server Templates**: Export existing server channel and role structures or import ready-to-use community server templates.
+* **Server Onboarding & Welcome Guide**: Greet newcomers with welcome screens, channel recommendations, and customizable rule acceptance gates.
+
+### 🛡️ Moderation & Administration
+* **Granular Role Hierarchy**: Unlimited custom roles with color pickers, hoisted member lists, mention permissions, and permission inheritance.
+* **Channel Permission Overwrites**: Finely tuned channel-level access control, hidden staff channels, and role-based read/write rules.
+* **AutoMod Rule Engine**: Real-time automated message filtering with custom regex patterns, keyword blocklists, mention spam protection, and automated action triggers (block, alert, or timeout).
+* **Audit Logs**: Immutable administration action logs recording role modifications, channel updates, kicks, and bans with actor attribution.
+* **Member Moderation**: One-click member timeout/mute, kick, and ban with configurable message history pruning.
+* **High-Security Authentication**: Scrypt password hashing with 16-byte random salts, TOTP Two-Factor Authentication (2FA), and WebAuthn hardware key support.
+
+### 🖥️ Native Desktop Experience (`desktop-rust`)
+* **Ultra-Lightweight Footprint**: Engineered with Rust and Tauri 2, consuming ~70 MB of RAM (compared to 300+ MB on typical Electron clients).
+* **Audio DSP & Noise Studio**: Built-in RNNoise neural network noise suppression, Acoustic Echo Cancellation (AEC), Auto Gain Control (AGC), and automatic game audio ducking.
+* **Picture-in-Picture (PiP) Overlay**: Resizable, floating voice overlay showing active speakers, webcams, and screen shares on top of full-screen games.
+* **Game Presence Detection**: Real-time game activity detection (including League of Legends LCU client status, Steam games, and active processes).
+* **Native Windows Integration**: Windows Search indexing, App Paths, native Toast Notifications with quick actions, and zero permission prompts (auto-approved media access).
+
+### 📱 Native Android Experience
+* **Pure Jetpack Compose UI**: 100% Kotlin with Material 3 styling and dynamic Material You theme colors.
+* **Native Telecom Calls**: Incoming voice and video calls ring through Android's native call screen just like standard phone calls.
+* **Persistent Background Gateway**: Battery-efficient background service delivering instant push notifications without third-party tracking services.
+* **Interactive Notifications**: Actionable notifications with direct quick-reply support.
+* **In-App Self-Update**: OTA update checks with one-tap installation of signed releases.
+
+### 🧩 Sandboxed Extensible Modules
+* **WebAssembly QuickJS-ng Sandbox**: Custom server modules run in an isolated WebAssembly sandbox with zero host filesystem or raw network socket access.
+* **Rich Interactions**: Register custom slash commands, interactive buttons, modal forms, select menus, and dashboard widgets.
+* **Granular Capability Scopes**: Admins review and approve specific permission scopes (e.g. `messages.send`, `events.guild_member_add`) before modules run.
+* **v9 REST & Gateway API**: Full compatibility with standard bot libraries and automation tooling.
+
+### 🌐 Federated Linked Mode & Sovereignty
+* **Standalone or Connected**: Operate as an isolated private server or link to the central **Cillhub Hub** (`https://cillhub.cillerian.org`) for unified identity and directory discovery.
+* **Single Sign-On (SSO)**: Hub users can log into linked nodes with one click via Ed25519-signed OIDC tokens (zero password sharing).
+* **Federated Cross-Node DMs**: End-to-end encrypted direct messaging routed between users on different nodes.
+* **Single-File Database**: Runs on a single Node.js process and one SQLite database file (`cillcord.sqlite`) — no Redis, no Postgres, and backups are a simple file copy.
+* **Multilingual UI**: Native support for English and German.
 
 ---
 
-## Run your own server (Node)
+## 📚 Documentation & Wiki
 
-You need a Linux machine with Docker (Compose v2), a hostname pointing at it, ports 80/443 and one UDP port for voice.
+For detailed setup guides, tutorials, and architecture deep dives, visit our **[GitHub Wiki](https://github.com/Mrciller/Cillhub/wiki)**:
+* 🚀 **[Self-Hosting Guide](https://github.com/Mrciller/Cillhub/wiki/Self-Hosting-Guide)** — Installing and running your own node with Docker Compose & Caddy.
+* 🎙️ **[Voice & Media Setup](https://github.com/Mrciller/Cillhub/wiki/Voice-&-Media-Setup)** — Configuring the built-in `cillvoice` SFU vs. LiveKit and NAT traversal.
+* 🔗 **[Federation & Linked Mode](https://github.com/Mrciller/Cillhub/wiki/Federation-&-Linked-Mode)** — Linking your node to the hub, identity exchange, and directory listing.
+* 🖥️ **[Desktop App Setup](https://github.com/Mrciller/Cillhub/wiki/Desktop-App)** — Native Rust client features, audio DSP, and gaming presence.
+* 📱 **[Android App Setup](https://github.com/Mrciller/Cillhub/wiki/Android-App)** — Building and configuring the native Android mobile app.
+* 🧩 **[Module Development](https://github.com/Mrciller/Cillhub/wiki/Module-Development)** — Building custom server bots and UI extensions with the Module SDK.
+* 🔧 **[Troubleshooting & FAQ](https://github.com/Mrciller/Cillhub/wiki/Troubleshooting-&-FAQ)** — Common questions, SSL issues, and maintenance.
+
+---
+
+## 🚀 Run your own server (Node)
+
+You need a Linux machine with Docker (Compose v2), a domain pointing at it, ports 80/443 and one UDP port for voice.
 
 ```sh
 curl -fsSLO https://cillhub.cillerian.org/download/server/install.sh
@@ -29,9 +93,9 @@ The installer verifies every download against the Cillhub release key (signed by
 
 ---
 
-## Development Quickstart
+## 💻 Development Quickstart
 
-Requirements: Node.js 24, npm. Optional: a LiveKit server for voice (or use cillvoice), the Android SDK for the Android app, Rust for the native desktop client.
+Requirements: Node.js 24, npm. Optional: a LiveKit server for voice (or use `cillvoice`), Android SDK for the Android app, Rust for the native desktop client.
 
 ```sh
 # server on a fresh temp data dir (voice is off without LiveKit or cillvoice settings)
@@ -46,13 +110,11 @@ cd client && npm run build && cd ../server && PORT=3300 DATA_DIR=$(mktemp -d) ST
 
 ### Voice configuration
 - **Built-in SFU (cillvoice)**: Add `VOICE_BACKEND=cillvoice CILLVOICE_UDP_PORT=50270 CILLVOICE_PUBLIC_IP=127.0.0.1`.
-- **LiveKit**: Add `LIVEKIT_URL=http://127.0.0.1:7880 LIVEKIT_PUBLIC_URL=ws://127.0.0.1:7880 LIVEKIT_API_KEY=… LIVEKIT_API_SECRET=…` (keep the keys in a local `.env`, which git ignores).
-
-The `Dockerfile` builds the client and runs the server serving it (data in `/data`).
+- **LiveKit**: Add `LIVEKIT_URL=http://127.0.0.1:7880 LIVEKIT_PUBLIC_URL=ws://127.0.0.1:7880 LIVEKIT_API_KEY=… LIVEKIT_API_SECRET=…` (keep keys in a local `.env`).
 
 ---
 
-## Configuration Reference
+## ⚙️ Configuration Reference
 
 | Environment Variable | Default | Description |
 |---|---|---|
@@ -72,7 +134,7 @@ The `Dockerfile` builds the client and runs the server serving it (data in `/dat
 
 ---
 
-## Tests
+## 🧪 Tests
 
 ```sh
 # Server tests
@@ -93,7 +155,7 @@ cd android && ./gradlew testDebugUnitTest
 
 ---
 
-## Project Layout
+## 📂 Project Layout
 
 | Path | What |
 |---|---|
@@ -108,7 +170,7 @@ cd android && ./gradlew testDebugUnitTest
 
 ---
 
-## License
+## 📄 License
 
 Copyright (C) 2026 Pascal Oraze
 
