@@ -4,7 +4,6 @@ WORKDIR /app/client
 COPY client/package*.json ./
 RUN npm ci
 COPY client/ ./
-COPY CHANGELOG.md /app/CHANGELOG.md
 RUN npm run build
 
 FROM node:24-alpine
