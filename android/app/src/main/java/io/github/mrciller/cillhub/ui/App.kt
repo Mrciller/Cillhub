@@ -202,7 +202,7 @@ private fun MainShell() {
         val onVoice = dest?.route?.startsWith(VoiceRoute::class.qualifiedName!!) == true
         val bar: @Composable () -> Unit = { if (!onVoice) VoiceBar { shell.openVoice(it) } }
         if (twoPane) Row(Modifier.fillMaxSize()) {
-            NavigationRail(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+            NavigationRail(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                 TABS.forEach { t ->
                     val selected = dest?.hierarchy?.any { it.route == t.route::class.qualifiedName } == true
                     NavigationRailItem(selected, { nav.tab(t.route) }, icon = { TabIcon(t, selected, badges[t.route] ?: 0) }, label = { Text(s(t.label)) })
@@ -215,8 +215,7 @@ private fun MainShell() {
                 androidx.compose.foundation.layout.Column {
                 bar()
                 if (topLevel) {
-                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                         TABS.forEach { t ->
                             val selected = dest?.hierarchy?.any { it.route == t.route::class.qualifiedName } == true
                             NavigationBarItem(selected, { nav.tab(t.route) }, icon = { TabIcon(t, selected, badges[t.route] ?: 0) }, label = { Text(s(t.label)) })

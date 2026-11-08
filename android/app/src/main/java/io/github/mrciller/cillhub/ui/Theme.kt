@@ -39,6 +39,7 @@ internal val Dark = darkColorScheme(
     surfaceContainerLowest = Color(0xFF090C12), surfaceContainerLow = Color(0xFF0B0F18),
     surfaceContainer = Color(0xFF0F141E), surfaceContainerHigh = Color(0xFF1B2333), surfaceContainerHighest = Color(0xFF232E45),
     surfaceBright = Color(0xFF28344E), surfaceDim = Color(0xFF090C12),
+    surfaceTint = Color(0xFF00D2EB),
     outline = Color(0xFF384664), outlineVariant = Color(0xFF253047),
     error = Color(0xFFF43F5E), onError = Color(0xFFFFFFFF), errorContainer = Color(0xFF4C0519), onErrorContainer = Color(0xFFFFE4E6),
     inverseSurface = Color(0xFFF5F8FF), inverseOnSurface = Color(0xFF0F141E), inversePrimary = Color(0xFF0068A8),
@@ -58,33 +59,42 @@ internal val Light = lightColorScheme(
     surfaceContainerLowest = Color(0xFFDFE5EF), surfaceContainerLow = Color(0xFFE5EAF3),
     surfaceContainer = Color(0xFFEEF2F7), surfaceContainerHigh = Color(0xFFE6ECF5), surfaceContainerHighest = Color(0xFFD3DEEF),
     surfaceBright = Color(0xFFFFFFFF), surfaceDim = Color(0xFFDFE5EF),
+    surfaceTint = Color(0xFF0068A8),
     outline = Color(0xFF94A3B8), outlineVariant = Color(0xFFCBD5E4),
     error = Color(0xFFBE123C), onError = Color(0xFFFFFFFF), errorContainer = Color(0xFFFFE4E6), onErrorContainer = Color(0xFF4C0519),
     inverseSurface = Color(0xFF1C2536), inverseOnSurface = Color(0xFFFAFBFD), inversePrimary = Color(0xFF00D2EB),
     scrim = Color(0xFF000000),
 )
 
-val ArgonShapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
+// Material Design 3 Shape Tokens (https://m3.material.io/styles/shape/overview)
+val M3Shapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
     small = RoundedCornerShape(8.dp),
     medium = RoundedCornerShape(12.dp),
     large = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
+val ArgonShapes = M3Shapes
 
-val ArgonTypography = Typography(
-    displaySmall = TextStyle(fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp),
-    headlineSmall = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp),
-    titleLarge = TextStyle(fontSize = 19.sp, lineHeight = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp),
-    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.1).sp),
-    titleSmall = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.2.sp),
-    bodyLarge = TextStyle(fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal),
-    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal),
-    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.Normal),
-    labelLarge = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp),
-    labelMedium = TextStyle(fontSize = 11.5.sp, lineHeight = 15.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.2.sp),
-    labelSmall = TextStyle(fontSize = 10.5.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.3.sp),
+// Material Design 3 Typography Tokens (https://m3.material.io/styles/typography/type-scale-tokens)
+val M3Typography = Typography(
+    displayLarge = TextStyle(fontSize = 57.sp, lineHeight = 64.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.25).sp),
+    displayMedium = TextStyle(fontSize = 45.sp, lineHeight = 52.sp, fontWeight = FontWeight.Normal),
+    displaySmall = TextStyle(fontSize = 36.sp, lineHeight = 44.sp, fontWeight = FontWeight.Normal),
+    headlineLarge = TextStyle(fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.Normal),
+    headlineMedium = TextStyle(fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Normal),
+    headlineSmall = TextStyle(fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold),
+    titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.15.sp),
+    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.5.sp),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.25.sp),
+    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.4.sp),
+    labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
+    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp),
+    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp),
 )
+val ArgonTypography = M3Typography
 
 /** Colours Material has no role for: presence, mention highlight. */
 @Immutable

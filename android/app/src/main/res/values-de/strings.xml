@@ -230,8 +230,8 @@
     <string name="theme_system">Wie das System</string>
     <string name="theme_dark">Dunkel</string>
     <string name="theme_light">Hell</string>
-    <string name="dynamic_color">Farben vom Hintergrundbild</string>
-    <string name="dynamic_color_text">Die Farbpalette deines Telefons statt der von Cillhub verwenden.</string>
+    <string name="dynamic_color">Dynamische Farben (Material 3)</string>
+    <string name="dynamic_color_text">Farben aus dem Hintergrundbild ableiten mit Material You (Android 12+).</string>
     <string name="motion_hint">Animationen folgen der Systemeinstellung „Animationen entfernen“.</string>
     <string name="language_system">Wie das System</string>
     <string name="language_en">English</string>

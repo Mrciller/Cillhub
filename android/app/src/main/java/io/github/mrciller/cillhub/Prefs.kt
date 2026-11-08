@@ -26,9 +26,9 @@ class Prefs(ctx: Context) {
         get() = p.getString("theme", "system") ?: "system"
         set(v) = p.edit().putString("theme", v).apply()
 
-    /** Material You colours from the wallpaper (Android 12+); off by default, the Cillhub palette is the default. */
+    /** Material Design 3 dynamic color extracted from wallpaper (Android 12+ / API 31+); enabled by default on supported devices. */
     var dynamicColor: Boolean
-        get() = p.getBoolean("dynamic_color", false)
+        get() = p.getBoolean("dynamic_color", android.os.Build.VERSION.SDK_INT >= 31)
         set(v) = p.edit().putBoolean("dynamic_color", v).apply()
 
     /** "" = follow the system, else a language tag ("en", "de"); used below Android 13 (13+ keeps it in LocaleManager). */
