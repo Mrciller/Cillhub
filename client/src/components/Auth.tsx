@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, ApiError, ORIGIN } from '../api'
+import { api, ApiError, ORIGIN, getServerTarget, getCustomNodeUrl, setServerTarget } from '../api'
 import { t } from '../i18n'
 import { Link, navigate, nextPath } from '../router'
 import { setToken } from '../store'
 import { Field, FormError } from './ui'
-import { useInstance } from '../admin/instance'
+import { useInstance, reloadInstance } from '../admin/instance'
 import { signInHere } from '../instances/nodes'
 
 type Mfa = { ticket: string; totp?: boolean; backup?: boolean }
@@ -33,6 +33,48 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
   const login = mode === 'login'
   const instance = useInstance()
   const closed = !login && instance?.registration_mode === 'closed'
+  const [serverMode, setServerMode] = useState<'hub' | 'private'>(getServerTarget())
+  const [customNode, setCustomNode] = useState(getCustomNodeUrl())
+  const [nodeConnecting, setNodeConnecting] = useState(false)
+  const [nodeError, setNodeError] = useState<string | null>(null)
+  const [nodeSuccess, setNodeSuccess] = useState<string | null>(null)
+
+  function handleSelectMode(m: 'hub' | 'private') {
+    setServerMode(m)
+    setNodeError(null)
+    setNodeSuccess(null)
+    if (m === 'hub') {
+      setServerTarget('hub')
+      reloadInstance()
+    } else {
+      setServerTarget('private', customNode)
+      if (customNode.trim()) void testAndApplyNode(customNode)
+    }
+  }
+
+  async function testAndApplyNode(rawUrl: string) {
+    let url = rawUrl.trim()
+    if (!url) return
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url
+    url = url.replace(/\/+$/, '')
+    setNodeConnecting(true)
+    setNodeError(null)
+    setNodeSuccess(null)
+    try {
+      const res = await fetch(`${url}/api/v9/instance`, { signal: AbortSignal.timeout(5000) })
+      if (!res.ok) throw new Error('Not answering as Cillhub')
+      const data = await res.json().catch(() => null)
+      setCustomNode(url)
+      setServerTarget('private', url)
+      reloadInstance()
+      setNodeSuccess(t('Connected to {name}', { name: data?.name || url }))
+    } catch {
+      setNodeError(t('Could not connect to node at this address.'))
+    } finally {
+      setNodeConnecting(false)
+    }
+  }
+
   // v7: a node connected to a hub may offer "Sign in with <hub>" (GET /auth/methods)
   const [hub, setHub] = useState<{ url: string; name: string | null; node_id: string } | null>(null)
   useEffect(() => {
@@ -197,6 +239,70 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
           <p className="auth-brand" aria-hidden="true">{instance?.name || 'Cillhub'}</p>
           <h1>{login ? t('Ready up') : t('Join the roster')}</h1>
           <p className="sub">{login ? t('Log in to get back to your team.') : t('Create your account to join your team.')}</p>
+
+          <div className="server-choice">
+            <div className="server-tabs" role="tablist" aria-label={t('Server selection')}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={serverMode === 'hub'}
+                className={`server-tab ${serverMode === 'hub' ? 'active' : ''}`}
+                onClick={() => handleSelectMode('hub')}
+              >
+                <span className="server-tab-icon">🌐</span>
+                <span className="server-tab-title">{t('Main Hub')}</span>
+                <span className="server-tab-badge">{t('Default')}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={serverMode === 'private'}
+                className={`server-tab ${serverMode === 'private' ? 'active' : ''}`}
+                onClick={() => handleSelectMode('private')}
+              >
+                <span className="server-tab-icon">🔒</span>
+                <span className="server-tab-title">{t('Private Node')}</span>
+              </button>
+            </div>
+            {serverMode === 'private' && (
+              <div className="private-node-box">
+                <div className="private-node-row">
+                  <input
+                    type="url"
+                    className="private-node-input"
+                    placeholder="https://chat.example.org"
+                    value={customNode}
+                    onChange={(e) => {
+                      setCustomNode(e.target.value)
+                      setNodeError(null)
+                      setNodeSuccess(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void testAndApplyNode(customNode)
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="secondary private-node-btn"
+                    disabled={nodeConnecting || !customNode.trim()}
+                    onClick={() => void testAndApplyNode(customNode)}
+                  >
+                    {nodeConnecting ? t('Connecting…') : t('Connect')}
+                  </button>
+                </div>
+                {nodeError && <p className="server-node-error">{nodeError}</p>}
+                {nodeSuccess && <p className="server-node-success">{nodeSuccess}</p>}
+              </div>
+            )}
+            {serverMode === 'hub' && (
+              <p className="server-hub-hint">
+                {t('Connected to official Cillhub Network Hub ({host})', { host: 'cillhub.cillerian.org' })}
+              </p>
+            )}
+          </div>
           {login && instance?.motd && <p className="auth-motd" role="note" aria-label={t('Message of the day')}>{instance.motd}</p>}
           {closed && <p className="auth-motd" role="note">{t('Registration is closed on this instance. Ask its admin for an account.')}</p>}
           {!login && <Field label={t('Email')} name="email" type="email" autoComplete="email" required error={fieldError('email')} />}

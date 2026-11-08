@@ -148,6 +148,99 @@ a { color: var(--focus); text-underline-offset: 2px; }
 .auth-card h1 { color: var(--header); font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 6px; }
 .auth-card .sub { color: var(--muted); margin-bottom: 24px; }
 .auth-card .switch { margin-top: 10px; font-size: 14px; color: var(--muted); }
+
+/* Server selector in Auth card */
+.server-choice {
+  margin-bottom: 20px;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m, 8px);
+  padding: 10px;
+}
+.server-tabs {
+  display: flex;
+  gap: 8px;
+}
+.server-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s, 6px);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.server-tab:hover {
+  background: color-mix(in srgb, var(--border) 40%, transparent);
+  color: var(--text);
+}
+.server-tab.active {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--header);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.server-tab-icon {
+  font-size: 14px;
+}
+.server-tab-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 2px 5px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.server-hub-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+.private-node-box {
+  margin-top: 10px;
+}
+.private-node-row {
+  display: flex;
+  gap: 8px;
+}
+.private-node-input {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s, 6px);
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+.private-node-input:focus {
+  border-color: var(--accent);
+}
+.private-node-btn {
+  padding: 7px 14px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.server-node-error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--danger, #ff4c4c);
+}
+.server-node-success {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #3ba55d;
+}
 .invite { text-align: center; }
 .invite .sub { margin: 16px 0 4px; }
 .invite .hint { margin-bottom: 24px; }

@@ -23,6 +23,12 @@ export function useInstance() {
   return useSyncExternalStore(subscribe, () => info)
 }
 
+export function reloadInstance() {
+  loading = false
+  info = null
+  getInstance().then(set, () => set(FALLBACK)).finally(() => (loading = false))
+}
+
 /** Gateway dispatches (store.apply forwards them). */
 export function instanceEvent(t: string, d: unknown) {
   const base = info ?? FALLBACK

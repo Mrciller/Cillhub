@@ -1,13 +1,54 @@
 import { t } from './i18n'
 import { inbound, instanceById, outbound, outboundPath, route, tokenOf } from './instances/registry'
 
+export const DEFAULT_HUB_URL = 'https://cillhub.cillerian.org'
+export const SERVER_TARGET_KEY = 'cillhub_server_target'
+export const CUSTOM_NODE_KEY = 'cillhub_custom_node_url'
+
+export function getServerTarget(): 'hub' | 'private' {
+  try {
+    return (localStorage.getItem(SERVER_TARGET_KEY) as 'hub' | 'private') || 'hub'
+  } catch {
+    return 'hub'
+  }
+}
+
+export function getCustomNodeUrl(): string {
+  try {
+    return localStorage.getItem(CUSTOM_NODE_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function getActiveServerUrl(): string {
+  const target = getServerTarget()
+  if (target === 'private') {
+    const custom = getCustomNodeUrl().trim().replace(/\/+$/, '')
+    if (custom) return custom
+  }
+  if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE
+  if (typeof window !== 'undefined' && window.location?.origin && /^https?:\/\//.test(window.location.origin)) {
+    return window.location.origin
+  }
+  return DEFAULT_HUB_URL
+}
+
+export function setServerTarget(target: 'hub' | 'private', customUrl?: string) {
+  try {
+    localStorage.setItem(SERVER_TARGET_KEY, target)
+    if (customUrl !== undefined) {
+      localStorage.setItem(CUSTOM_NODE_KEY, customUrl.trim().replace(/\/+$/, ''))
+    }
+  } catch {}
+}
+
 export const ORIGIN = import.meta.env.VITE_API_BASE ?? ''
 /** The hub's public web address, for links people share or open elsewhere (the desktop app runs on app://cillhub). */
-export const WEB_ORIGIN = ORIGIN || location.origin
-const BASE = ORIGIN + '/api/v9'
+export const WEB_ORIGIN = ORIGIN || (typeof window !== 'undefined' && window.location?.origin && /^https?:\/\//.test(window.location.origin) ? window.location.origin : DEFAULT_HUB_URL)
 
 /** Root-relative CDN paths (avatars, icons, attachments) resolved against the API origin, or the node's origin for node ids (v7). */
-export const cdn = (path: string) => (/^https?:\/\//.test(path) || path.startsWith('data:') ? path : (instanceById(route(path))?.url ?? ORIGIN) + path)
+export const cdn = (path: string) => (/^https?:\/\//.test(path) || path.startsWith('data:') ? path : (instanceById(route(path))?.url ?? getActiveServerUrl() ?? ORIGIN) + path)
 
 type FieldErrors = Record<string, { _errors?: { code: string; message: string }[] }>
 
@@ -51,7 +92,9 @@ const auth = (node?: string): Record<string, string> => {
 function target(path: string, body: unknown, instance?: string) {
   const node = instance ?? route(path, body)
   const info = instanceById(node)
-  return info ? { node: info.id, url: info.url + '/api/v9' + outboundPath(info.id, path), body: outbound(info.id, body) } : { node: undefined, url: BASE + path, body }
+  const activeOrigin = getActiveServerUrl()
+  const base = (activeOrigin || ORIGIN).replace(/\/+$/, '') + '/api/v9'
+  return info ? { node: info.id, url: info.url + '/api/v9' + outboundPath(info.id, path), body: outbound(info.id, body) } : { node: undefined, url: base + path, body }
 }
 
 /** `reason` goes into the X-Audit-Log-Reason header (URL-encoded). `instance` sends the call to a linked node (v7). */
