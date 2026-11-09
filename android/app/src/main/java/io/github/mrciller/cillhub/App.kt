@@ -14,7 +14,11 @@ import io.github.mrciller.cillhub.data.Session
 class App : Application(), SingletonImageLoader.Factory {
     // images (avatars, attachments, embeds) share the app's OkHttp client
     override fun newImageLoader(context: PlatformContext): ImageLoader =
-        ImageLoader.Builder(context).components { add(OkHttpNetworkFetcherFactory(callFactory = { Api.http })) }.build()
+        ImageLoader.Builder(context).components {
+            add(OkHttpNetworkFetcherFactory(callFactory = { Api.http }))
+            // the platform decoder animates GIF and WebP from Android 9; the bundled one covers 8.x
+            add(if (android.os.Build.VERSION.SDK_INT >= 28) coil3.gif.AnimatedImageDecoder.Factory() else coil3.gif.GifDecoder.Factory())
+        }.build()
 
     override fun onCreate() {
         super.onCreate()

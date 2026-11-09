@@ -26,8 +26,8 @@ android {
         applicationId = "io.github.mrciller.cillhub"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "3.2.0"
+        versionCode = 7
+        versionName = "3.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "HAS_FIREBASE", hasFirebase.toString())
     }
@@ -115,6 +115,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
+    implementation("io.coil-kt.coil3:coil-gif:3.6.3") // animated GIFs (picker, favourites, chat, animated emoji)
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("androidx.webkit:webkit:1.18.0")
