@@ -681,7 +681,7 @@ async function main() {
       await until('the custom reaction image for Alice', () => react.locator('img').evaluate((i) => i.complete && i.naturalWidth === 64), 8000)
     })
 
-    await step('11b. sticker: Alice uploads one and sends it; Bob sees it; the GIF tab is hidden (no GIPHY key)', async () => {
+    await step('11b. sticker: Alice uploads one and sends it; Bob sees it; the GIF tab is there (GIFs are on by default, with or without a GIPHY key)', async () => {
       await openServerSettings(alice, 'Stickers')
       const form = alice.getByRole('form', { name: 'Upload a sticker' })
       // A too-big still image is scaled down in the browser; the related emoji comes from the picker.
@@ -703,8 +703,7 @@ async function main() {
       await alice.getByRole('button', { name: 'Open GIF and sticker picker' }).click()
       const picker = modal(alice, 'Expression picker')
       await picker.getByRole('tab', { name: 'Stickers' }).waitFor()
-      await sleep(500)
-      check((await picker.getByRole('tab', { name: 'GIFs' }).count()) === 0, 'the GIF tab is shown without a GIPHY key')
+      await picker.getByRole('tab', { name: 'GIFs' }).waitFor()
       await picker.getByRole('button', { name: 'Send sticker clutch' }).click()
       const st = log(bob, '#general').getByRole('img', { name: 'Sticker: clutch' }).last()
       await until('the sticker to load for Bob', () => st.evaluate((i) => i.complete && i.naturalWidth === 320), 8000)
