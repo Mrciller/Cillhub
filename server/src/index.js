@@ -353,7 +353,7 @@ const server = createServer(async (req, res) => {
     const known = req.method === 'GET' && url.pathname.startsWith('/.well-known/') && wellKnown(req, url.pathname.replace(/\/$/, ''));
     if (known) return reply(res, 200, known);
     if ((req.method === 'GET' || req.method === 'HEAD') && isCdnPath(url.pathname)) return await serveCdn(req, res, url.pathname);
-    if ((req.method === 'GET' || req.method === 'HEAD') && isProxyPath(url.pathname)) return await serveExternal(req, res, url.pathname);
+    if ((req.method === 'GET' || req.method === 'HEAD') && isProxyPath(url.pathname)) return await serveExternal(req, res, url.pathname, clientIp(req), headers);
     if ((req.method === 'GET' || req.method === 'HEAD') && isEphemeralPath(url.pathname)) return serveEphemeral(req, res, url.pathname);
     if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname.startsWith('/download/desktop/') || url.pathname.startsWith('/download/android/') || url.pathname.startsWith('/download/server/'))) {
       const local = [

@@ -3,6 +3,7 @@ import { P, has, channelPerms, viewersOf } from './permissions.js';
 import * as livekit from './livekit.js';
 import * as cillvoice from './media/index.js';
 import { sendToUsers, sendToSession } from './gateway.js';
+import { limit } from './ratelimit.js';
 import { setting } from './instance.js';
 import { settingsOf } from './userdata.js';
 import { blockedEither } from './routes/relationships.js';
@@ -184,6 +185,8 @@ function privateCall(session, d, cur) {
   const backend = backendFor(ch, userId);
   if (!BACKENDS[backend].endpoint) return sendToSession(session, 'VOICE_SERVER_UPDATE', { guild_id: null, channel_id: ch.id, token: null, endpoint: null });
   const same = cur?.channel_id === ch.id;
+  // joining an empty private channel starts a call (a call message for everyone): over the budget the join is ignored
+  if (!same && !statesIn(ch.id).length) try { limit('CALL', 'start', {}, userId, {}); } catch { return; }
   if (cur && !same) leave(userId, cur.session !== session);
   const v = {
     guild_id: null, channel_id: ch.id, user_id: userId, session, ...flags, backend, joined_at: same ? cur.joined_at : Date.now(), suppress: false, request_to_speak_timestamp: null,

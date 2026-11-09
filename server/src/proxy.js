@@ -7,6 +7,7 @@ import { HttpError } from './errors.js';
 import { sniff, sendRanged } from './files.js';
 import { safeFetch } from './ssrf.js';
 import { addJob } from './timers.js';
+import { limit } from './ratelimit.js';
 
 const IMAGES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const MAX_IMAGE = 8 * 1024 * 1024;
@@ -53,12 +54,13 @@ async function fetchImage(url) {
 }
 
 // GET /external/<base64url(url)>.<hmac>: raster images only, typed by their bytes, cached on disk for 7 days
-export async function serveExternal(req, res, pathname) {
+export async function serveExternal(req, res, pathname, ip, headers = {}) {
   const url = verify(pathname.slice('/external/'.length));
   if (!url) throw notFound();
   const file = join(CACHE, createHash('sha256').update(url).digest('hex'));
   let bytes = await cached(file);
   if (!bytes) {
+    limit('GET', '/external', {}, ip, headers);
     bytes = await fetchImage(url);
     if (!bytes) throw notFound();
     await writeFile(file, bytes);

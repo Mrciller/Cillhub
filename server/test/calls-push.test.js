@@ -169,4 +169,8 @@ test('rate limits: v9 rate limit headers on every response, 429 with retry_after
   // other channels and other users have their own buckets
   const other = await fetch(`${srv.base}/channels/${g.general.id}/messages`, { method: 'POST', headers: { Authorization: bob.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ content: 'fine' }) });
   assert.equal(other.status, 201);
+  // rings: 10 a minute per user, across channels
+  const dm = (await srv.api('POST', '/users/@me/channels', bob.token, { recipient_id: carol.id })).body;
+  for (let i = 0; i < 10; i++) assert.equal((await srv.api('POST', `/channels/${dm.id}/call/ring`, bob.token, {})).status, 204);
+  assert.equal((await srv.api('POST', `/channels/${dm.id}/call/ring`, bob.token, {})).status, 429);
 });

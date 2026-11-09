@@ -12,6 +12,8 @@ const RULES = [
   ['NODE', '*', 300, 60_000], // v7: signed calls per linked node (identity node:<id>), on top of the per-IP limit
   ['GW', 'presence', 5, 20_000], // gateway op 3 per user (it fans out to everyone who shares a guild)
   ['GW', 'members', 3, 10_000], // gateway op 8 (loads the guild's whole member list), per user and guild
+  ['CALL', '*', 10, 60_000], // per user: DM/group call starts (op 4 into an empty call) and rings (each posts a message or a push)
+  ['GET', '/external', 60, 60_000], // per IP: media proxy cache misses (each one an outbound fetch and a disk write)
   ['*', '*', 50, 1000],
 ];
 const buckets = new Map(); // bucket key -> { count, reset (unix ms) }

@@ -8,6 +8,7 @@ import { disconnectChannel, disconnectFromChannel } from '../voice.js';
 import { ring, stopRinging, activeCall } from '../calls.js';
 import { blockedEither } from './relationships.js';
 import { schedule } from '../timers.js';
+import { limit } from '../ratelimit.js';
 
 const MAX_RECIPIENTS = 10; // including the owner (docs)
 const getChannel = id => get('SELECT * FROM channels WHERE id = ?', id);
@@ -122,8 +123,9 @@ export default [
     const ch = loadPrivate(params.id, user);
     return { ringable: channelUserIds(ch).some(id => id !== user.id && !blockedEither(user.id, id)) };
   }, { userOnly: true }],
-  ['POST', '/channels/:id/call/ring', ({ params, body, user }) => {
+  ['POST', '/channels/:id/call/ring', ({ params, body, user, headers }) => {
     const ch = loadPrivate(params.id, user);
+    limit('CALL', 'ring', {}, user.id, headers); // per user across channels: every ring may push to every recipient
     ring(ch, user, recipientsField(body, 'recipients'));
   }, { userOnly: true }],
   ['POST', '/channels/:id/call/stop-ringing', ({ params, body, user }) => {
