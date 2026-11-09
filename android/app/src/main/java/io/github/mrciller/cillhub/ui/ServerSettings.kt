@@ -6,7 +6,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -162,7 +165,7 @@ fun ServerSettingsScreen(guildId: String) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Column { Text(current?.let { s(it.label) } ?: s(R.string.server_settings)); Text(g.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
+                title = { Column { Text((current?.let { s(it.label) } ?: s(R.string.server_settings)).uppercase()); Text(g.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
                 navigationIcon = { IconButton({ if (role != null) role = null else if (page != null) page = null else nav.back() }) { Ic(R.drawable.ms_arrow_back, s(R.string.back)) } },
             )
         },
@@ -174,10 +177,19 @@ fun ServerSettingsScreen(guildId: String) {
         val act: (suspend () -> Unit) -> Unit = { f -> scope.launch { try { f() } catch (e: Exception) { snack.showSnackbar(errorText(ctx, e)) } } }
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (current) {
-                null -> LazyColumn {
-                    items(allowed) { p ->
-                        ListItem(headlineContent = { Text(s(p.label)) }, leadingContent = { Ic(p.icon, null) }, trailingContent = { Ic(R.drawable.ms_chevron_right, null) },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent), modifier = Modifier.clickable { page = p.name })
+                null -> LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    itemsIndexed(allowed) { i, p ->
+                        // one bevelled tile per page, the icon on its own accent plate
+                        Surface(onClick = { page = p.name }, shape = Hud, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().reveal(i)) {
+                            ListItem(
+                                headlineContent = { Text(s(p.label), style = MaterialTheme.typography.titleMedium) },
+                                leadingContent = {
+                                    Box(Modifier.size(40.dp).clip(Hud).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Ic(p.icon, null, Modifier.size(22.dp), MaterialTheme.colorScheme.primary) }
+                                },
+                                trailingContent = { Ic(R.drawable.ms_chevron_right, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                        }
                     }
                 }
                 Page.OVERVIEW -> Overview(g, act)
@@ -207,15 +219,15 @@ private fun Overview(g: Guild, act: (suspend () -> Unit) -> Unit) {
     }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Picture(guildIconUrl(g), g.name, g.id, 72.dp, RoundedCornerShape(20.dp))
-            FilledTonalButton({ pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text(s(R.string.change_icon)) }
+            Picture(guildIconUrl(g), g.name, g.id, 72.dp, Hud)
+            FilledTonalButton({ pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, shape = MaterialTheme.shapes.small) { Text(s(R.string.change_icon)) }
             if (g.icon != null) TextButton({ act { Session.rest.request("PATCH", "/guilds/${g.id}", buildJsonObject { put("icon", JsonNull) }) } }) { Text(s(R.string.remove)) }
         }
         OutlinedTextField(name, { name = it.take(100) }, label = { Text(s(R.string.server_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(description, { description = it.take(300) }, label = { Text(s(R.string.server_description)) }, minLines = 2, modifier = Modifier.fillMaxWidth())
         Button({
             act { Session.rest.request("PATCH", "/guilds/${g.id}", buildJsonObject { put("name", name.trim()); if (description.isBlank()) put("description", JsonNull) else put("description", description.trim()) }) }
-        }, enabled = name.isNotBlank() && (name != g.name || description != (g.description ?: ""))) { Text(s(R.string.save)) }
+        }, enabled = name.isNotBlank() && (name != g.name || description != (g.description ?: "")), shape = Hud) { Text(s(R.string.save)) }
     }
 }
 
@@ -273,7 +285,7 @@ private fun Roles(state: State, g: Guild, act: (suspend () -> Unit) -> Unit, edi
                     val r = json.parseToJsonElement(Session.rest.request("POST", "/guilds/${g.id}/roles", buildJsonObject { put("name", "new role") })).jsonObject
                     (r["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.let(edit)
                 }
-            }, Modifier.padding(16.dp)) { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.create_role), Modifier.padding(start = 8.dp)) }
+            }, Modifier.padding(16.dp), shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.create_role), Modifier.padding(start = 8.dp)) }
         }
         items(drag.items, key = { it.id }) { r -> row(r, drag.rowModifier(r.id), drag.handle(r.id) { drop() }) }
         roles.firstOrNull { it.id == g.id }?.let { e -> item(key = e.id) { row(e, Modifier, null) } }
@@ -324,8 +336,8 @@ private fun RoleEditor(state: State, g: Guild, r: Role, act: (suspend () -> Unit
                         })
                         done()
                     }
-                }, enabled = everyone || name.isNotBlank()) { Text(s(R.string.save)) }
-                if (!everyone) OutlinedButton({ confirmDelete = true }) { Text(s(R.string.delete_role), color = MaterialTheme.colorScheme.error) }
+                }, enabled = everyone || name.isNotBlank(), shape = Hud) { Text(s(R.string.save)) }
+                if (!everyone) OutlinedButton({ confirmDelete = true }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete_role), color = MaterialTheme.colorScheme.error) }
             }
         }
         for ((group, bits) in PERM_GROUPS) {
@@ -373,7 +385,7 @@ private fun Members(state: State, g: Guild) {
     }.sortedBy { Sel.memberName(state, g.id, it.user!!.id).lowercase() }
     Column {
         OutlinedTextField(q, { q = it }, placeholder = { Text(s(R.string.search_members)) }, leadingIcon = { Ic(R.drawable.ms_search, null) }, singleLine = true,
-            shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+            shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(g.roles.filter { it.id != g.id }.sortedByDescending { it.position }, key = { it.id }) { r ->
                 FilterChip(role == r.id, { role = if (role == r.id) null else r.id }, label = { Text(r.name) }, leadingIcon = { RoleDot(r.color, 10.dp) })
@@ -413,7 +425,7 @@ private fun Channels(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) 
     }
     val siblings = groups.flatMap { grp -> listOfNotNull(grp.category).map { it.id to categories } + grp.channels.map { it.id to grp.channels } }.toMap()
     LazyColumn(state = lazy, contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { FilledTonalButton({ creating = true }, Modifier.padding(16.dp)) { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.create_channel), Modifier.padding(start = 8.dp)) } }
+        item { FilledTonalButton({ creating = true }, Modifier.padding(16.dp), shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.create_channel), Modifier.padding(start = 8.dp)) } }
         items(drag.items, key = { it.id }) { c ->
             val sib = siblings[c.id].orEmpty()
             val i = sib.indexOf(c)
@@ -588,7 +600,7 @@ private fun Emojis(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) {
     }
     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
-            FilledTonalButton({ pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, Modifier.padding(16.dp)) {
+            FilledTonalButton({ pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, Modifier.padding(16.dp), shape = MaterialTheme.shapes.small) {
                 Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.upload_emoji), Modifier.padding(start = 8.dp))
             }
             Text(s(R.string.emoji_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
@@ -659,7 +671,7 @@ private fun Invites(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) {
     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             FilledTonalButton({ target?.let { c -> act { Session.rest.request("POST", "/channels/${c.id}/invites", buildJsonObject { put("max_age", 86400) }); reload++ } } },
-                Modifier.padding(16.dp), enabled = target != null) { Text(s(R.string.create_invite)) }
+                Modifier.padding(16.dp), enabled = target != null, shape = MaterialTheme.shapes.small) { Text(s(R.string.create_invite)) }
         }
         if (list == null) item { Loading() }
         else if (list.isEmpty()) item { Text(s(R.string.no_invites), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }

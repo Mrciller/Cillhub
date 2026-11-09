@@ -89,7 +89,7 @@ fun SearchScreen(channelId: String) {
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             OutlinedTextField(q, { q = it.take(1024) }, placeholder = { Text(s(R.string.search_messages)) }, leadingIcon = { Ic(R.drawable.ms_search, null) }, singleLine = true,
-                shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).focusRequester(focus))
+                shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).focusRequester(focus))
             val list = results
             when {
                 error != null && list.isNullOrEmpty() -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
@@ -102,7 +102,7 @@ fun SearchScreen(channelId: String) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
                     }
                     items(list, key = { it.id }) { m ->
-                        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                             Column {
                                 MessageItem(state, m, true, ch.guildId, onLongPress = {}, onReply = {}, onReact = {}, onAddReaction = {}, onJump = {}, canReply = false)
                                 Row(Modifier.fillMaxWidth().padding(end = 8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {

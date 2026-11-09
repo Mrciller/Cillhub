@@ -67,7 +67,7 @@ fun InboxScreen() {
     val unread = Sel.unreadChannels(state)
     Scaffold(topBar = {
         Column {
-            TopAppBar(title = { Text(s(R.string.tab_inbox), fontWeight = FontWeight.Bold) }, actions = {
+            TopAppBar(title = { Text(s(R.string.tab_inbox).uppercase()) }, actions = {
                 if (tab == 1 && unread.isNotEmpty()) TextButton({ scope.launch { runCatching { Session.ackBulk(unread) }.onFailure { error = errorText(ctx, it) } } }) { Text(s(R.string.mark_all_read)) }
             })
             PrimaryTabRow(tab) {
@@ -117,7 +117,7 @@ fun InboxScreen() {
                         else ListItem(
                             headlineContent = { Text("#" + (c.name ?: ""), fontWeight = FontWeight.SemiBold) },
                             supportingContent = { Text(c.guildId?.let { state.guilds[it]?.name } ?: "") },
-                            leadingContent = { c.guildId?.let { state.guilds[it] }?.let { g -> Picture(guildIconUrl(g), g.name, g.id, 40.dp, androidx.compose.foundation.shape.RoundedCornerShape(12.dp)) } },
+                            leadingContent = { c.guildId?.let { state.guilds[it] }?.let { g -> Picture(guildIconUrl(g), g.name, g.id, 40.dp, MaterialTheme.shapes.medium) } },
                             trailingContent = { CountBadge(Sel.mentions(state, c.id)) },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             modifier = Modifier.clickable { nav.openChannel(c.id) },
@@ -148,7 +148,7 @@ fun InboxScreen() {
                             supportingContent = { Text(sub, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             leadingContent = {
                                 Box(
-                                    Modifier.size(40.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    Modifier.size(40.dp).clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceContainerHigh),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Ic(if (t.solvedMessageId != null) R.drawable.ms_check else R.drawable.ms_forum, null, tint = if (t.solvedMessageId != null) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary)

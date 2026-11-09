@@ -5,31 +5,53 @@ import android.content.Intent
 import android.net.Uri
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -90,12 +112,21 @@ fun Avatar(user: User?, size: Dp, presence: String? = null, modifier: Modifier =
     }
 }
 
-/** A red count pill (mentions), or nothing. */
+/** A red count tag (mentions), or nothing. */
 @Composable
 fun CountBadge(count: Int, modifier: Modifier = Modifier) {
     if (count <= 0) return
-    Box(modifier.sizeIn(minWidth = 20.dp, minHeight = 20.dp).clip(RoundedCornerShape(10.dp)).background(LocalExtra.current.mention).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
+    Box(modifier.sizeIn(minWidth = 20.dp, minHeight = 20.dp).clip(MaterialTheme.shapes.extraSmall).background(LocalExtra.current.mention).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
         Text(if (count > 99) "99+" else count.toString(), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** A section header in the HUD style: condensed uppercase label with a hairline rule running out to the end. */
+@Composable
+fun SectionHeader(text: String, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    Row(modifier.fillMaxWidth().semantics { heading() }, verticalAlignment = Alignment.CenterVertically) {
+        Text(text.uppercase(), style = MaterialTheme.typography.labelMedium, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Box(Modifier.weight(1f).padding(start = 10.dp).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
     }
 }
 
@@ -103,14 +134,52 @@ fun CountBadge(count: Int, modifier: Modifier = Modifier) {
 fun EmptyState(@DrawableRes icon: Int, title: String, text: String? = null, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
         Box(
-            Modifier.size(72.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(20.dp)),
+            Modifier.size(72.dp).clip(Hud).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, Hud),
             contentAlignment = Alignment.Center,
         ) {
             Ic(icon, null, Modifier.size(34.dp), MaterialTheme.colorScheme.primary)
         }
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp), textAlign = TextAlign.Center)
+        Text(title.uppercase(), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 16.dp), textAlign = TextAlign.Center)
         if (text != null) Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp), textAlign = TextAlign.Center)
+    }
+}
+
+// Motion. Every helper is a no-op when the system's "Remove animations" is on.
+
+/** Fades and slides a list row in the first time it is shown, staggered by [index] (list item reveal). */
+@Composable
+fun Modifier.reveal(index: Int): Modifier {
+    if (LocalReduceMotion.current) return this
+    val shown = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay((index.coerceAtMost(12) * 28).toLong())
+        shown.animateTo(1f, tween(240, easing = FastOutSlowInEasing))
+    }
+    return graphicsLayer { alpha = shown.value; translationY = (1f - shown.value) * 12.dp.toPx() }
+}
+
+/** Shrinks the element a little while it is pressed (press feedback for icons that have no ripple of their own). */
+@Composable
+fun Modifier.pressScale(interaction: MutableInteractionSource): Modifier {
+    if (LocalReduceMotion.current) return this
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.92f else 1f, tween(120), label = "press")
+    return graphicsLayer { scaleX = scale; scaleY = scale }
+}
+
+/** A ring in [color] around a round element while [on]: pulsing, or a plain ring with animations off (live / speaking). */
+@Composable
+fun Modifier.speakingRing(on: Boolean, color: Color, width: Dp = 3.dp): Modifier {
+    if (!on) return this
+    val reduce = LocalReduceMotion.current
+    val pulse = if (reduce) 0f else rememberInfiniteTransition(label = "speaking").animateFloat(
+        0f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "pulse",
+    ).value
+    return drawBehind {
+        val w = width.toPx()
+        val r = size.minDimension / 2 + w / 2 + pulse * w
+        drawCircle(color, r, alpha = 1f - pulse * 0.5f, style = Stroke(w))
     }
 }
 

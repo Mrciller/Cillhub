@@ -23,9 +23,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.border
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -122,7 +124,7 @@ private fun ServerRail(state: State, selected: String?, select: (String) -> Unit
         horizontalAlignment = Alignment.CenterHorizontally,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
     ) {
-        items(state.guilds.values.toList(), key = { it.id }) { g ->
+        itemsIndexed(state.guilds.values.toList(), key = { _, it -> it.id }) { index, g ->
             val badge = Sel.guildBadge(state, g.id)
             val isSel = g.id == selected
             val desc = buildString {
@@ -130,14 +132,18 @@ private fun ServerRail(state: State, selected: String?, select: (String) -> Unit
                 if (badge.mentions > 0) append(", ").append(ctx.resources.getQuantityString(R.plurals.mentions, badge.mentions, badge.mentions))
                 else if (badge.unread) append(", ").append(ctx.getString(R.string.unread))
             }
-            Box(Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
-                // selection / unread pill on the left edge (Argon cyan-teal when selected)
+            val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            Box(Modifier.fillMaxWidth().height(60.dp).reveal(index), contentAlignment = Alignment.Center) {
+                // selection / unread mark on the left edge (accent when selected)
                 if (isSel || badge.unread) Box(Modifier.align(Alignment.CenterStart).width(4.dp).height(if (isSel) 36.dp else 10.dp)
-                    .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)).background(if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface))
-                val shape = RoundedCornerShape(if (isSel) 15.dp else 20.dp)
+                    .background(if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface))
+                // the selected server carries the HUD bevel, the others a lighter cut
+                val shape = if (isSel) Hud else CutCornerShape(8.dp)
                 Box(
-                    Modifier.size(50.dp).clip(shape)
+                    Modifier.size(50.dp).pressScale(interaction).clip(shape)
+                        .then(if (isSel) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
                         .combinedClickable(
+                            interactionSource = interaction, indication = androidx.compose.material3.ripple(),
                             role = Role.Tab, onClickLabel = g.name, onClick = { select(g.id) },
                             onLongClickLabel = ctx.getString(R.string.server_settings),
                             onLongClick = if (canOpenServerSettings(state, g.id)) { { nav.openServerSettings(g.id) } } else null,
@@ -153,7 +159,7 @@ private fun ServerRail(state: State, selected: String?, select: (String) -> Unit
         item {
             Box(Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
                 Surface(
-                    onClick = add, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    onClick = add, shape = CutCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.size(50.dp),
                 ) {
@@ -183,7 +189,7 @@ private fun ChannelList(state: State, g: Guild, selected: String?) {
         TopAppBar(
             title = {
                 val admin = canOpenServerSettings(state, g.id)
-                Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold,
+                Text(g.name.uppercase(), maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = if (admin) Modifier.clickable(onClickLabel = s(R.string.server_settings)) { nav.openServerSettings(g.id) } else Modifier)
             },
             actions = {
@@ -207,14 +213,14 @@ private fun ChannelList(state: State, g: Guild, selected: String?) {
                     ) {
                         Ic(R.drawable.ms_expand_more, null, Modifier.size(18.dp).rotate(if (closed) -90f else 0f), MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(4.dp))
-                        Text((cat.name ?: "").uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                        SectionHeader(cat.name ?: "")
                     }
                 }
                 // a collapsed category still shows its unread or open channels
                 val shown = if (closed) grp.channels.filter { it.id == selected || Sel.isUnread(state, it) || Sel.mentions(state, it.id) > 0 } else grp.channels
-                items(shown, key = { it.id }) { c ->
+                itemsIndexed(shown, key = { _, it -> it.id }) { index, c ->
                     val canManage = Perm.has(Sel.perms(state, g.id, c), Perm.MANAGE_CHANNELS)
-                    Column {
+                    Column(Modifier.animateItem().reveal(index)) {
                         ChannelRow(
                             state,
                             c,
@@ -252,9 +258,12 @@ private fun ChannelRow(
         muted -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    val accent = MaterialTheme.colorScheme.primary
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp).clip(RoundedCornerShape(12.dp))
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp).clip(Hud)
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
+            // the open channel: bevelled row with an accent edge
+            .drawBehind { if (selected) drawRect(accent, size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick).heightIn(min = 48.dp).padding(horizontal = 12.dp)
             .semantics(mergeDescendants = true) {
                 this.selected = selected
@@ -317,7 +326,7 @@ private fun CloneChannelDialog(channel: Channel, close: () -> Unit) {
                     }
                 },
                 enabled = !busy && name.isNotBlank(),
-            ) { Text(s(R.string.clone)) }
+             shape = Hud) { Text(s(R.string.clone)) }
         },
         dismissButton = { TextButton(onClick = close) { Text(s(R.string.cancel)) } },
     )

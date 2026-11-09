@@ -102,14 +102,14 @@ fun ChannelInfoScreen(channelId: String) {
         )
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
-                    Ic(channelIcon(ch), null, Modifier.size(26.dp))
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(52.dp).clip(Hud).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+                    Ic(channelIcon(ch), null, Modifier.size(28.dp), MaterialTheme.colorScheme.primary)
                 }
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(14.dp))
                 Column {
-                    Text(ch.name ?: "", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
-                    Text(s(channelTypeLabel(ch)).replaceFirstChar { it.titlecase() }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(ch.name ?: "", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+                    Text(s(channelTypeLabel(ch)).uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             PrimaryScrollableTabRow(tab, edgePadding = 8.dp) {
@@ -197,7 +197,7 @@ private fun ChannelMembers(state: State, gid: String, ch: Channel) {
     val canAccess = !ch.isThread && Perm.has(Sel.perms(state, gid, ch), Perm.MANAGE_ROLES)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         if (canAccess) item(key = "access") {
-            Surface(onClick = { nav.openChannelAccess(ch.id) }, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+            Surface(onClick = { nav.openChannelAccess(ch.id) }, shape = Hud, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.heightIn(min = 56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Ic(R.drawable.ms_settings, null)
                     Text(s(R.string.manage_channel_access), Modifier.weight(1f).padding(start = 16.dp), style = MaterialTheme.typography.titleSmall)
@@ -208,12 +208,12 @@ private fun ChannelMembers(state: State, gid: String, ch: Channel) {
         for (grp in groups) {
             val label = grp.role?.name ?: ctx.getString(when (grp.key) { "offline" -> R.string.offline; "bots" -> R.string.bots; else -> R.string.online })
             item(key = "h" + grp.key) {
-                Text(ctx.getString(R.string.group_count, label, grp.members.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 4.dp, top = 18.dp, bottom = 6.dp).semantics { heading() })
+                SectionHeader(ctx.getString(R.string.group_count, label, grp.members.size), Modifier.padding(start = 4.dp, end = 4.dp, top = 18.dp, bottom = 6.dp),
+                    color = grp.role?.color?.takeIf { it != 0 }?.let { Color(0xFF000000 or it.toLong()) } ?: MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item(key = "g" + grp.key) {
-                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                    Column { grp.members.forEach { m -> MemberRow(state, gid, m) { m.user?.let { nav.openProfile(it.id, gid) } } } }
+                Surface(shape = Hud, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.animateItem()) {
+                    Column { grp.members.forEachIndexed { i, m -> Box(Modifier.reveal(i)) { MemberRow(state, gid, m) { m.user?.let { nav.openProfile(it.id, gid) } } } } }
                 }
             }
         }
@@ -278,7 +278,7 @@ fun ChannelAccessScreen(channelId: String) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Column { Text(s(R.string.manage_channel_access)); Text("#" + (ch.name ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
+                title = { Column { Text(s(R.string.manage_channel_access).uppercase(), maxLines = 1, overflow = TextOverflow.Ellipsis); Text("#" + (ch.name ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
                 navigationIcon = { IconButton(nav::back) { Ic(R.drawable.ms_arrow_back, s(R.string.back)) } },
                 actions = { IconButton({ adding = true }) { Ic(R.drawable.ms_add, s(R.string.add_role_or_member)) } },
             )
@@ -370,7 +370,7 @@ private fun OverwriteEditor(ch: Channel, o: Overwrite, name: String, grantable: 
                                 put("type", o.type); put("allow", allow.toString()); put("deny", deny.toString())
                             })
                         }
-                    }) { Text(s(R.string.save)) }
+                    }, shape = MaterialTheme.shapes.small) { Text(s(R.string.save)) }
                     if (existing) TextButton({ save(others) { Session.rest.request("DELETE", "/channels/${ch.id}/permissions/${o.id}") } }) {
                         Text(s(R.string.remove_overwrite), color = MaterialTheme.colorScheme.error)
                     }

@@ -493,7 +493,7 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
                     }
                 }
                 androidx.compose.animation.AnimatedVisibility(!atBottom && !purgeMode, Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
-                    SmallFloatingActionButton({ scope.launch { listState.animateScrollToItem(0) } }) { Ic(R.drawable.ms_expand_more, s(R.string.jump_to_present)) }
+                    SmallFloatingActionButton({ scope.launch { listState.animateScrollToItem(0) } }, shape = Hud) { Ic(R.drawable.ms_expand_more, s(R.string.jump_to_present)) }
                 }
             }
         }
@@ -601,9 +601,9 @@ private fun ChatTopBar(
             }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = titleClick) {
                 if (other != null) { Avatar(other, 32.dp, Sel.presence(state, other.id)); Spacer(Modifier.width(10.dp)) }
-                else if (!isPrivate(ch)) { Ic(channelIcon(ch), null, Modifier.size(20.dp), MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(6.dp)) }
+                else if (!isPrivate(ch)) { Ic(channelIcon(ch), null, Modifier.size(22.dp), MaterialTheme.colorScheme.primary); Spacer(Modifier.width(6.dp)) }
                 Column(Modifier.weight(1f, fill = false)) {
-                    Text(Sel.channelName(state, ch), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+                    Text(Sel.channelName(state, ch), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
                     val sub = when {
                         other != null -> ctx.getString(presenceLabel(Sel.presence(state, other.id)))
                         ch.type == 3 -> ctx.resources.getQuantityString(R.plurals.members_count, ch.recipients.size + 1, ch.recipients.size + 1)
@@ -634,7 +634,7 @@ private fun DaySeparator(day: LocalDate) {
         HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerLow,
-            shape = RoundedCornerShape(999.dp),
+            shape = MaterialTheme.shapes.small,
             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.padding(horizontal = 10.dp),
         ) {
@@ -648,20 +648,20 @@ private fun DaySeparator(day: LocalDate) {
 private fun ChannelStart(state: State, ch: Channel) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(16.dp),
+        shape = Hud,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth().padding(16.dp),
     ) {
         Column(Modifier.padding(20.dp)) {
             val name = Sel.channelName(state, ch)
             Box(
-                Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer),
+                Modifier.size(44.dp).clip(Hud).background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center,
             ) {
                 Ic(if (isPrivate(ch)) R.drawable.ms_chat else channelIcon(ch), null, Modifier.size(22.dp), MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.size(12.dp))
-            Text(if (isPrivate(ch)) name else s(R.string.welcome_channel, name), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text((if (isPrivate(ch)) name else s(R.string.welcome_channel, name)).uppercase(), style = MaterialTheme.typography.headlineSmall)
             Text(if (isPrivate(ch)) s(R.string.dm_start, name) else s(R.string.channel_start, name), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         }
     }
@@ -719,7 +719,7 @@ private fun Composer(
                     InputChip(
                         selected = false, onClick = { vm.files.remove(f) },
                         label = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(120.dp)) },
-                        avatar = { if (f.isImage) AsyncImage(f.uri, null, Modifier.size(24.dp).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop) else Ic(R.drawable.ms_description, null, Modifier.size(20.dp)) },
+                        avatar = { if (f.isImage) AsyncImage(f.uri, null, Modifier.size(24.dp).clip(MaterialTheme.shapes.extraSmall), contentScale = ContentScale.Crop) else Ic(R.drawable.ms_description, null, Modifier.size(20.dp)) },
                         trailingIcon = { Ic(R.drawable.ms_close, s(R.string.remove_file, f.name), Modifier.size(18.dp)) },
                     )
                 }
@@ -761,7 +761,7 @@ private fun Composer(
                     enabled = canSend,
                     placeholder = { Text(if (canSend) s(R.string.message_to, (if (isPrivate(ch)) "@" else "#") + Sel.channelName(state, ch)) else s(R.string.no_send_permission), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp, max = 160.dp),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = MaterialTheme.shapes.medium,
                     colors = TextFieldDefaults.colors(focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent, disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                         focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -795,7 +795,7 @@ private fun ThreadNotifDialog(channelId: String, currentFlags: Int, close: () ->
                                 close()
                             }
                         },
-                        shape = RoundedCornerShape(8.dp),
+                        shape = MaterialTheme.shapes.small,
                         color = if (currentFlags == flag) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -936,7 +936,7 @@ fun CreatePollDialog(channelId: String, close: () -> Unit) {
                     }
                 },
                 enabled = !busy && question.isNotBlank() && answers.count { it.isNotBlank() } >= 2,
-            ) {
+             shape = Hud) {
                 Text(s(R.string.create))
             }
         },
@@ -1015,7 +1015,7 @@ fun MediaList(channelId: String, tab: String, modifier: Modifier = Modifier) {
                                 model = url,
                                 contentDescription = a.filename,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.aspectRatio(1f).clip(RoundedCornerShape(8.dp)).clickable { nav.openImage(url, a.filename) },
+                                modifier = Modifier.aspectRatio(1f).clip(MaterialTheme.shapes.small).clickable { nav.openImage(url, a.filename) },
                             )
                         }
                     }
@@ -1024,7 +1024,7 @@ fun MediaList(channelId: String, tab: String, modifier: Modifier = Modifier) {
                     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(items, key = { it.id }) { a ->
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = MaterialTheme.shapes.medium,
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 onClick = { download(ctx, io.github.mrciller.cillhub.Config.cdn(a.url), a.filename) },
                                 modifier = Modifier.fillMaxWidth(),
@@ -1046,7 +1046,7 @@ fun MediaList(channelId: String, tab: String, modifier: Modifier = Modifier) {
                     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(links) { link ->
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = MaterialTheme.shapes.medium,
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 onClick = { openUrl(ctx, link) },
                                 modifier = Modifier.fillMaxWidth(),

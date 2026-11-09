@@ -150,6 +150,7 @@ fun ForumScreen(channelId: String, showBack: Boolean = true) {
             if (canPost) {
                 FloatingActionButton(
                     onClick = { newPostOpen = true },
+                    shape = Hud,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 ) {
@@ -167,7 +168,7 @@ fun ForumScreen(channelId: String, showBack: Boolean = true) {
                     onValueChange = { search = it },
                     placeholder = { Text(s(R.string.forum_search_hint), style = MaterialTheme.typography.bodyMedium) },
                     singleLine = true,
-                    shape = RoundedCornerShape(20.dp),
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     trailingIcon = {
                         if (search.isNotEmpty()) {
@@ -255,7 +256,7 @@ private fun ForumPostCard(post: Channel, forum: Channel, state: io.github.mrcill
     Surface(
         onClick = onClick,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.medium,
         border = androidx.compose.foundation.BorderStroke(1.dp, if (isSolved) Color(0xFF2DC770).copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -270,7 +271,7 @@ private fun ForumPostCard(post: Channel, forum: Channel, state: io.github.mrcill
                     if (isPinned) {
                         Surface(
                             color = MaterialTheme.colorScheme.secondaryContainer,
-                            shape = RoundedCornerShape(4.dp),
+                            shape = MaterialTheme.shapes.extraSmall,
                         ) {
                             Row(Modifier.padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Ic(R.drawable.ms_push_pin, s(R.string.forum_pinned), Modifier.size(12.dp), MaterialTheme.colorScheme.primary)
@@ -282,7 +283,7 @@ private fun ForumPostCard(post: Channel, forum: Channel, state: io.github.mrcill
                     if (isSolved) {
                         Surface(
                             color = Color(0xFF2DC770).copy(alpha = 0.18f),
-                            shape = RoundedCornerShape(4.dp),
+                            shape = MaterialTheme.shapes.extraSmall,
                         ) {
                             Text(
                                 "✓ " + s(R.string.forum_solved),
@@ -296,7 +297,7 @@ private fun ForumPostCard(post: Channel, forum: Channel, state: io.github.mrcill
                     appliedTags.forEach { tag ->
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shape = RoundedCornerShape(4.dp),
+                            shape = MaterialTheme.shapes.extraSmall,
                         ) {
                             Text(
                                 tag.name,
@@ -424,7 +425,7 @@ private fun NewPostDialog(forum: Channel, onDismiss: () -> Unit, onCreated: (Cha
                     }
                 },
                 enabled = canSubmit,
-            ) {
+             shape = Hud) {
                 Text(s(R.string.forum_post))
             }
         },

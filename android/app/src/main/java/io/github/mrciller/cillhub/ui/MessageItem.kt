@@ -218,7 +218,7 @@ fun MessageItem(
                 if (state.channels[m.channelId]?.solvedMessageId == m.id) {
                     Surface(
                         color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(6.dp),
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier.padding(bottom = 4.dp),
                     ) {
                         Row(
@@ -277,7 +277,7 @@ private fun LaunchedEffectSwipe(state: androidx.compose.material3.SwipeToDismiss
 /** The APP tag of bots and webhooks, and the server tag a user chose to show. */
 @Composable
 fun UserTags(u: User?, app: Boolean = u?.bot == true) {
-    @Composable fun chip(text: String, bg: Color, fg: Color) = Surface(color = bg, shape = RoundedCornerShape(4.dp), modifier = Modifier.padding(start = 6.dp)) {
+    @Composable fun chip(text: String, bg: Color, fg: Color) = Surface(color = bg, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.padding(start = 6.dp)) {
         Text(text, color = fg, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(horizontal = 4.dp))
     }
     if (app) chip(s(R.string.app_tag), MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary)
@@ -324,7 +324,7 @@ private fun AttachmentView(a: Attachment) {
         val ratio = if ((a.width ?: 0) > 0 && (a.height ?: 0) > 0) a.width!!.toFloat() / a.height!! else 4f / 3
         Box(
             Modifier.padding(top = 4.dp).widthIn(max = 320.dp).heightIn(max = 320.dp).aspectRatio(ratio.coerceIn(0.4f, 3f), matchHeightConstraintsFirst = ratio < 1f)
-                .clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                .clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceContainerHighest)
                 .clickable(onClickLabel = s(if (reveal) R.string.view_image else R.string.reveal_spoiler)) { if (reveal) nav.openImage(url, a.filename) else reveal = true },
         ) {
             if (reveal) AsyncImage(url, a.description ?: a.filename, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
@@ -332,7 +332,7 @@ private fun AttachmentView(a: Attachment) {
         }
     } else Surface(
         onClick = { download(ctx, url, a.filename) },
-        color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.padding(top = 4.dp).widthIn(max = 360.dp).fillMaxWidth(),
     ) {
@@ -373,11 +373,11 @@ private fun EmbedView(e: Embed, state: State, guildId: String?) {
     val ctx = LocalContext.current
     if (e.type == "image" && e.thumbnail?.url != null && e.title == null) { // a bare image link
         val u = proxied(e.thumbnail) ?: return
-        AsyncImage(u, null, Modifier.padding(top = 4.dp).widthIn(max = 320.dp).heightIn(max = 320.dp).clip(RoundedCornerShape(12.dp)).clickable { nav.openImage(u, "image") })
+        AsyncImage(u, null, Modifier.padding(top = 4.dp).widthIn(max = 320.dp).heightIn(max = 320.dp).clip(MaterialTheme.shapes.medium).clickable { nav.openImage(u, "image") })
         return
     }
     val bar = e.color?.let { Color(0xFF000000 or it.toLong()) } ?: MaterialTheme.colorScheme.outline
-    Row(Modifier.padding(top = 4.dp).widthIn(max = 420.dp).height(IntrinsicSize.Min).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+    Row(Modifier.padding(top = 4.dp).widthIn(max = 420.dp).height(IntrinsicSize.Min).clip(MaterialTheme.shapes.small).background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Box(Modifier.width(4.dp).fillMaxHeight().background(bar))
         Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             e.provider?.name?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -391,12 +391,12 @@ private fun EmbedView(e: Embed, state: State, guildId: String?) {
             }
             val img = e.image ?: e.thumbnail?.takeIf { e.type == "video" || e.type == "article" && e.image == null }
             proxied(img)?.let { full ->
-                AsyncImage(full, null, Modifier.fillMaxWidth().heightIn(max = 240.dp).clip(RoundedCornerShape(8.dp)).clickable { nav.openImage(full, "image") }, contentScale = ContentScale.Fit)
+                AsyncImage(full, null, Modifier.fillMaxWidth().heightIn(max = 240.dp).clip(MaterialTheme.shapes.small).clickable { nav.openImage(full, "image") }, contentScale = ContentScale.Fit)
             }
             e.footer?.text?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         if (e.image == null && e.type != "video" && e.type != "article") proxied(e.thumbnail)?.let { u ->
-            AsyncImage(u, null, Modifier.padding(12.dp).size(72.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+            AsyncImage(u, null, Modifier.padding(12.dp).size(72.dp).clip(MaterialTheme.shapes.small), contentScale = ContentScale.Crop)
         }
     }
 }
@@ -419,12 +419,12 @@ private fun Reactions(list: List<Reaction>, onReact: (EmojiRef) -> Unit, onAdd: 
                 enabled = r.me || canToggleOthers,
                 label = { Text(r.count.toString(), fontWeight = FontWeight.SemiBold) },
                 leadingIcon = { EmojiGlyph(r.emoji, 18.dp) },
-                shape = RoundedCornerShape(999.dp),
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = desc },
                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primaryContainer, selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer),
             )
         }
-        if (canAdd) FilterChip(false, onAdd, shape = RoundedCornerShape(999.dp), label = { Ic(R.drawable.ms_add_reaction, s(R.string.add_reaction), Modifier.size(18.dp)) })
+        if (canAdd) FilterChip(false, onAdd, shape = MaterialTheme.shapes.small, label = { Ic(R.drawable.ms_add_reaction, s(R.string.add_reaction), Modifier.size(18.dp)) })
     }
 }
 
@@ -576,7 +576,7 @@ fun AudioPlayerView(url: String, durationSecs: Float? = null, filename: String? 
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.padding(top = 4.dp).widthIn(max = 360.dp).fillMaxWidth(),
     ) {
@@ -679,7 +679,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.padding(top = 4.dp).widthIn(max = 440.dp).fillMaxWidth(),
     ) {
@@ -691,17 +691,17 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (poll.isQuiz == true) {
-                    Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = RoundedCornerShape(6.dp)) {
+                    Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = MaterialTheme.shapes.small) {
                         Text(s(R.string.poll_quiz), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                     }
                 }
                 if (poll.anonymous == true) {
-                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(6.dp)) {
+                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.small) {
                         Text(s(R.string.poll_anonymous), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                     }
                 }
                 if (!poll.allowedRoleIds.isNullOrEmpty()) {
-                    Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = RoundedCornerShape(6.dp)) {
+                    Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.small) {
                         Text(s(R.string.poll_role_restricted), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                     }
                 }
@@ -743,7 +743,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                                 }
                             }
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        shape = MaterialTheme.shapes.medium,
                         border = androidx.compose.foundation.BorderStroke(if (voted || (showQuizCorrect && isCorrect)) 2.dp else 1.dp, borderColor),
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
                         modifier = Modifier.fillMaxWidth(),
@@ -891,7 +891,7 @@ fun EditHistorySheet(channelId: String, messageId: String, onClose: () -> Unit) 
                         itemsIndexed(list) { index, edit ->
                             val prevContent = if (index + 1 < list.size) list[index + 1].content else ""
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = MaterialTheme.shapes.medium,
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {

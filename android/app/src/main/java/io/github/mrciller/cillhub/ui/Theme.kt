@@ -3,7 +3,7 @@ package io.github.mrciller.cillhub.ui
 import android.animation.ValueAnimator
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -19,6 +19,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.DeviceFontFamilyName
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,35 +69,40 @@ internal val Light = lightColorScheme(
     scrim = Color(0xFF000000),
 )
 
-// Material Design 3 Shape Tokens (https://m3.material.io/styles/shape/overview)
-val M3Shapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(12.dp),
-    large = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+// HUD shape language: cut corners instead of rounded ones (the web client's `corner-shape: bevel`)
+val ArgonShapes = Shapes(
+    extraSmall = CutCornerShape(3.dp),
+    small = CutCornerShape(6.dp),
+    medium = CutCornerShape(10.dp),
+    large = CutCornerShape(14.dp),
+    extraLarge = CutCornerShape(18.dp),
 )
-val ArgonShapes = M3Shapes
+/** The signature bevel: one cut on the leading top and trailing bottom corner (server icons, the selected row, primary buttons). */
+val Hud = CutCornerShape(topStart = 12.dp, bottomEnd = 12.dp)
 
-// Material Design 3 Typography Tokens (https://m3.material.io/styles/typography/type-scale-tokens)
-val M3Typography = Typography(
-    displayLarge = TextStyle(fontSize = 57.sp, lineHeight = 64.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.25).sp),
-    displayMedium = TextStyle(fontSize = 45.sp, lineHeight = 52.sp, fontWeight = FontWeight.Normal),
-    displaySmall = TextStyle(fontSize = 36.sp, lineHeight = 44.sp, fontWeight = FontWeight.Normal),
-    headlineLarge = TextStyle(fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.Normal),
-    headlineMedium = TextStyle(fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Normal),
-    headlineSmall = TextStyle(fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold),
-    titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.15.sp),
-    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
+/** The display face: the system's condensed sans (Roboto Condensed on stock Android), bold, for headers and labels. */
+val Condensed = FontFamily(Font(DeviceFontFamilyName("sans-serif-condensed"), FontWeight.Bold))
+
+// Material Design 3 Typography Tokens (https://m3.material.io/styles/typography/type-scale-tokens); headlines and
+// titleLarge in the condensed display face, body in the default sans
+val ArgonTypography = Typography(
+    displayLarge = TextStyle(fontFamily = Condensed, fontSize = 57.sp, lineHeight = 60.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.sp),
+    displayMedium = TextStyle(fontFamily = Condensed, fontSize = 45.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold),
+    displaySmall = TextStyle(fontFamily = Condensed, fontSize = 36.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
+    headlineLarge = TextStyle(fontFamily = Condensed, fontSize = 32.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold),
+    headlineMedium = TextStyle(fontFamily = Condensed, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold),
+    headlineSmall = TextStyle(fontFamily = Condensed, fontSize = 24.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
+    titleLarge = TextStyle(fontFamily = Condensed, fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp),
+    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.15.sp),
+    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp),
     bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.5.sp),
     bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.25.sp),
     bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.4.sp),
-    labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
-    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp),
+    labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp),
+    // section headers (categories, member groups): condensed, wide tracking, meant to be uppercased by the caller
+    labelMedium = TextStyle(fontFamily = Condensed, fontSize = 13.sp, lineHeight = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp),
     labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp),
 )
-val ArgonTypography = M3Typography
 
 /** Colours Material has no role for: presence, mention highlight. */
 @Immutable

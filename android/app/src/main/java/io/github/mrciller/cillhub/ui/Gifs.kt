@@ -91,7 +91,7 @@ fun GifPicker(close: () -> Unit, send: (String) -> Unit) {
                 Tab(tab == 1, { tab = 1 }, text = { Text(s(R.string.gif_favorites)) })
             }
             if (tab == 0) OutlinedTextField(query, { query = it }, placeholder = { Text(s(R.string.gif_search)) }, singleLine = true,
-                leadingIcon = { Ic(R.drawable.ms_search, null) }, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                leadingIcon = { Ic(R.drawable.ms_search, null) }, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
             val list = if (tab == 1) state.favoriteGifs else results
             when {
                 tab == 0 && error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
@@ -101,7 +101,7 @@ fun GifPicker(close: () -> Unit, send: (String) -> Unit) {
                     items(list, key = { it.url }) { g ->
                         val fav = state.favoriteGifs.any { it.url == g.url }
                         Box(Modifier.fillMaxWidth().aspectRatio(if (g.width > 0 && g.height > 0) (g.width.toFloat() / g.height).coerceIn(0.5f, 2.5f) else 1f)
-                            .clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceContainerHighest)
                             .clickable(onClickLabel = s(R.string.gif_send)) { send(g.url); close() }) {
                             AsyncImage(Config.cdn(g.src), s(R.string.gif), Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                             IconButton({ scope.launch { runCatching { Session.toggleFavoriteGif(g) } } }, Modifier.align(Alignment.TopEnd)) {

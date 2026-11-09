@@ -259,7 +259,7 @@ fun VoiceScreen(channelId: String, start: Boolean = false) {
                 val msg = lastToastMessage!!
                 val authorName = Sel.memberName(state, ch?.guildId, msg.author.id)
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
                     color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
                     shadowElevation = 6.dp,
                     modifier = Modifier
@@ -283,15 +283,15 @@ fun VoiceScreen(channelId: String, start: Boolean = false) {
         }
         when {
             ringing -> Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                Button({ Calls.decline(ctx, channelId); nav.back() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text(s(R.string.decline)) }
-                Button({ withMic { Calls.answer(ctx, channelId, openApp = false) } }, colors = ButtonDefaults.buttonColors(containerColor = LocalExtra.current.online)) { Text(s(R.string.answer)) }
+                Button({ Calls.decline(ctx, channelId); nav.back() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), shape = Hud) { Text(s(R.string.decline)) }
+                Button({ withMic { Calls.answer(ctx, channelId, openApp = false) } }, colors = ButtonDefaults.buttonColors(containerColor = LocalExtra.current.online), shape = Hud) { Text(s(R.string.answer)) }
             }
             here -> Controls(v, ch,
                 onCamera = { if (granted(ctx, Manifest.permission.CAMERA)) Voice.toggleCamera() else camAsk.launch(Manifest.permission.CAMERA) },
                 onScreen = { if (v.stream) Voice.stopScreen() else share = true })
             ch != null -> Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), contentAlignment = Alignment.Center) {
                 val canJoin = Sel.canJoinVoice(state, ch)
-                Button({ join(ring = isPrivate(ch)) }, enabled = canJoin, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                Button({ join(ring = isPrivate(ch)) }, enabled = canJoin, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = Hud) {
                     Text(s(when { isPrivate(ch) -> if (state.calls.containsKey(ch.id)) R.string.voice_join_call else R.string.start_call; ch.type == 13 -> R.string.voice_listen; else -> R.string.voice_join }))
                 }
             }
@@ -339,7 +339,7 @@ private fun ParticipantGrid(state: State, ch: Channel?, people: List<VoiceState>
     LazyVerticalGrid(GridCells.Adaptive(150.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items(screens, key = { it.key }, span = { GridItemSpan(maxLineSpan) }) { t ->
             val name = Sel.memberName(state, ch?.guildId, t.userId)
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp)).background(Color.Black)
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(MaterialTheme.shapes.large).background(Color.Black)
                 .then(if (t.local) Modifier else Modifier.clickable(onClickLabel = s(R.string.voice_full_screen)) { onOpen(t.key) })
                 .semantics(mergeDescendants = true) { contentDescription = name }) {
                 // our own share would show this screen inside itself: a note instead
@@ -366,9 +366,9 @@ private fun ParticipantGrid(state: State, ch: Channel?, people: List<VoiceState>
                 ctx.getString(R.string.voice_live).takeIf { p.selfStream }, v?.effects?.get(p.userId),
             ).joinToString(", ")
             Box(
-                Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(16.dp))
+                Modifier.fillMaxWidth().aspectRatio(1f).clip(MaterialTheme.shapes.large)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .border(if (speaking) 3.dp else 0.dp, if (speaking) LocalExtra.current.online else Color.Transparent, RoundedCornerShape(16.dp))
+                    .border(if (speaking) 3.dp else 0.dp, if (speaking) LocalExtra.current.online else Color.Transparent, MaterialTheme.shapes.large)
                     .combinedClickable(
                         onClickLabel = if (cam != null) s(R.string.voice_full_screen) else null,
                         onLongClickLabel = if (p.userId != me) s(R.string.voice_user_volume) else null,
@@ -378,7 +378,7 @@ private fun ParticipantGrid(state: State, ch: Channel?, people: List<VoiceState>
                 contentAlignment = Alignment.Center,
             ) {
                 if (cam != null) VideoView(cam, mirror = cam.local && (v?.frontCamera ?: true), fit = false, modifier = Modifier.fillMaxSize())
-                else Avatar(state.users[p.userId], 72.dp, modifier = if (speaking) Modifier.border(3.dp, LocalExtra.current.online, CircleShape) else Modifier)
+                else Avatar(state.users[p.userId], 72.dp, modifier = Modifier.speakingRing(speaking, LocalExtra.current.online))
                 Row(Modifier.align(Alignment.BottomStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Label(name)
                     if (p.mute || p.selfMute || p.deaf || p.selfDeaf) {
@@ -388,7 +388,7 @@ private fun ParticipantGrid(state: State, ch: Channel?, people: List<VoiceState>
                     }
                 }
                 v?.effects?.get(p.userId)?.let { Text(it, Modifier.align(Alignment.TopEnd).padding(8.dp), style = MaterialTheme.typography.headlineSmall) }
-                if (p.selfStream) Text(s(R.string.voice_live).uppercase(), Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.error).padding(horizontal = 6.dp, vertical = 2.dp),
+                if (p.selfStream) Text(s(R.string.voice_live).uppercase(), Modifier.align(Alignment.TopStart).padding(8.dp).clip(MaterialTheme.shapes.small).background(MaterialTheme.colorScheme.error).padding(horizontal = 6.dp, vertical = 2.dp),
                     color = MaterialTheme.colorScheme.onError, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             }
         }
@@ -397,7 +397,7 @@ private fun ParticipantGrid(state: State, ch: Channel?, people: List<VoiceState>
 
 @Composable
 private fun Label(text: String, modifier: Modifier = Modifier) =
-    Text(text, modifier.padding(6.dp).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 6.dp, vertical = 2.dp),
+    Text(text, modifier.padding(6.dp).clip(MaterialTheme.shapes.small).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 6.dp, vertical = 2.dp),
         color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
 
 @Composable
@@ -409,7 +409,7 @@ private fun Controls(v: VoiceUi, ch: Channel?, onCamera: () -> Unit, onScreen: (
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).navigationBarsPadding().padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (ptt) {
             val talk = s(R.string.voice_push_to_talk_hold)
-            Box(Modifier.padding(bottom = 12.dp).size(width = 220.dp, height = 56.dp).clip(RoundedCornerShape(28.dp))
+            Box(Modifier.padding(bottom = 12.dp).size(width = 220.dp, height = 56.dp).clip(Hud)
                 .background(if (v.talking) LocalExtra.current.online else MaterialTheme.colorScheme.secondaryContainer)
                 .pointerInput(Unit) { detectTapGestures(onPress = { Voice.setTalking(true); tryAwaitRelease(); Voice.setTalking(false) }) }
                 .semantics { contentDescription = talk; stateDescription = if (v.talking) ctx.getString(R.string.voice_talking) else "" },
@@ -579,7 +579,7 @@ fun VoiceChannelUsers(state: State, c: Channel) {
         modifier = Modifier.padding(start = 50.dp, end = 16.dp, bottom = 2.dp))
     for (p in people) Row(Modifier.padding(start = 46.dp, end = 16.dp).height(32.dp), verticalAlignment = Alignment.CenterVertically) {
         val talking = p.userId in speaking
-        Avatar(state.users[p.userId], 22.dp, modifier = if (talking) Modifier.border(2.dp, LocalExtra.current.online, CircleShape) else Modifier)
+        Avatar(state.users[p.userId], 22.dp, modifier = Modifier.speakingRing(talking, LocalExtra.current.online, 2.dp))
         Text(Sel.memberName(state, c.guildId, p.userId), Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (p.selfStream) Text(s(R.string.voice_live).uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)

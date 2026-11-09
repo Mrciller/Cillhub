@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -92,7 +92,7 @@ fun MessagesScreen(detail: String?) {
         Box((if (nav.twoPane) Modifier.width(360.dp) else Modifier.weight(1f)).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerLow)) {
             Column(Modifier.fillMaxSize()) {
                 TopAppBar(
-                    title = { Text(s(R.string.tab_messages), fontWeight = FontWeight.Bold) },
+                    title = { Text(s(R.string.tab_messages).uppercase()) },
                     actions = {
                         IconButton({ adding = true }) { Ic(R.drawable.ms_person_add, s(R.string.add_friend)) }
                     },
@@ -106,17 +106,17 @@ fun MessagesScreen(detail: String?) {
                             onValueChange = { query = it },
                             placeholder = { Text(s(R.string.search_conversations)) },
                             singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = MaterialTheme.shapes.small,
                             trailingIcon = if (query.isNotEmpty()) { { IconButton({ query = "" }) { Ic(R.drawable.ms_close, s(R.string.close)) } } } else null,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                         )
                     }
                     item(key = "friends") {
                         Surface(
-                            shape = RoundedCornerShape(18.dp),
+                            shape = Hud,
                             color = MaterialTheme.colorScheme.surfaceContainer,
                             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(RoundedCornerShape(18.dp)).clickable(onClick = nav::openFriends),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(MaterialTheme.shapes.large).clickable(onClick = nav::openFriends),
                         ) {
                             ListItem(
                                 headlineContent = { Text(s(R.string.friends), fontWeight = FontWeight.SemiBold) },
@@ -139,24 +139,20 @@ fun MessagesScreen(detail: String?) {
                         }
                     }
                     if (allDms.isNotEmpty()) item(key = "hdr") {
-                        Text(
-                            s(R.string.direct_messages_header).uppercase(),
-                            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 4.dp).semantics { heading() },
-                        )
+                        SectionHeader(s(R.string.direct_messages_header), Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 4.dp))
                     }
                     if (allDms.isEmpty()) item {
                         Column(Modifier.fillMaxWidth().heightIn(min = 320.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             EmptyState(R.drawable.ms_chat, s(R.string.no_dms_title), s(R.string.no_dms_text), Modifier.heightIn(min = 240.dp, max = 300.dp))
-                            Button(nav::openFriends) { Ic(R.drawable.ms_group, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.friends)) }
+                            Button(nav::openFriends, shape = Hud) { Ic(R.drawable.ms_group, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.friends)) }
                         }
                     }
-                    items(dms, key = { it.id }) { c -> DmRow(state, c, c.id == detail) { nav.openChannel(c.id) } }
+                    itemsIndexed(dms, key = { _, it -> it.id }) { i, c -> Box(Modifier.animateItem().reveal(i)) { DmRow(state, c, c.id == detail) { nav.openChannel(c.id) } } }
                 }
             }
             FloatingActionButton(
                 onClick = { if (friends.isEmpty()) adding = true else grouping = true },
+                shape = Hud,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
@@ -254,7 +250,7 @@ fun DmRow(state: State, c: Channel, selected: Boolean, onClick: () -> Unit) {
         },
         trailingContent = if (preview == null && (mentions > 0 || unread)) { { if (mentions > 0) CountBadge(mentions) else Box(Modifier.size(10.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)) } } else null,
         colors = ListItemDefaults.colors(containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent),
-        modifier = Modifier.padding(horizontal = 8.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).semantics(mergeDescendants = true) {
+        modifier = Modifier.padding(horizontal = 8.dp).clip(Hud).clickable(onClick = onClick).semantics(mergeDescendants = true) {
             this.selected = selected
             stateDescription = listOfNotNull(
                 status?.let { ctx.getString(presenceLabel(it)) },

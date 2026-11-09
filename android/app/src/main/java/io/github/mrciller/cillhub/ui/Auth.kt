@@ -1,7 +1,10 @@
 package io.github.mrciller.cillhub.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -87,7 +90,12 @@ fun AuthFlow() {
         ) {
             Column(Modifier.widthIn(max = 440.dp).fillMaxWidth()) {
                 Spacer(Modifier.height(32.dp))
-                Text("Cillhub", style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Black, letterSpacing = 1.sp), color = MaterialTheme.colorScheme.primary)
+                // the wordmark: condensed caps with the accent edge, like a team banner
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(6.dp).height(40.dp).background(MaterialTheme.colorScheme.primary))
+                    Spacer(Modifier.width(12.dp))
+                    Text("CILLHUB", style = MaterialTheme.typography.displaySmall.copy(letterSpacing = 3.sp), color = MaterialTheme.colorScheme.onSurface)
+                }
                 Spacer(Modifier.height(8.dp))
                 ServerChip(info?.name) { pickServer = true }
                 info?.motd?.takeIf { it.isNotBlank() }?.let {
@@ -138,7 +146,7 @@ private fun ErrorLine(text: String?) {
 
 @Composable
 private fun Submit(label: String, busy: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    Button(onClick, enabled = enabled && !busy, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+    Button(onClick, enabled = enabled && !busy, modifier = Modifier.fillMaxWidth().height(52.dp), shape = Hud) {
         if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) else Text(label)
     }
 }
@@ -160,7 +168,7 @@ private fun LoginForm(toRegister: () -> Unit, done: (LoginAnswer, String) -> Uni
             busy = false
         }
     }
-    Text(s(R.string.login_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+    Text(s(R.string.login_title).uppercase(), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
     Text(s(R.string.login_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 20.dp))
     Field(login, { login = it }, s(R.string.email_or_username), ContentType.Username + ContentType.EmailAddress, KeyboardType.Email)
     Field(password, { password = it }, s(R.string.password), ContentType.Password, password = true, ime = ImeAction.Go, onDone = { submit() })

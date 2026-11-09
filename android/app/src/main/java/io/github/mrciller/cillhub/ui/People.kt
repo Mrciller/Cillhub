@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -148,7 +149,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
     ModalBottomSheet(close) {
         Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 24.dp)) {
             val accent = profile?.userProfile?.accentColor?.let { Color(0xFF000000 or it.toLong()) } ?: MaterialTheme.colorScheme.primaryContainer
-            Box(Modifier.fillMaxWidth().height(84.dp).padding(horizontal = 16.dp).clip(RoundedCornerShape(16.dp)).background(accent)) {
+            Box(Modifier.fillMaxWidth().height(84.dp).padding(horizontal = 16.dp).clip(MaterialTheme.shapes.large).background(accent)) {
                 profile?.userProfile?.banner?.let { AsyncImage(Config.cdn("/banners/$userId/$it.png?size=600"), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
             }
             Box(Modifier.padding(start = 28.dp).offset(y = (-36).dp)) {
@@ -164,27 +165,27 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                     FlowRow(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button({
                             scope.launch { try { val c = Session.openDm(userId); close(); nav.openChannel(c.id) } catch (e: Exception) { error = errorText(ctx, e) } }
-                        }) { Ic(R.drawable.ms_chat, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.message)) }
+                        }, shape = Hud) { Ic(R.drawable.ms_chat, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.message)) }
                         FilledTonalButton({
                             scope.launch { try { val c = Session.openDm(userId); close(); nav.openVoice(c.id, start = !state.calls.containsKey(c.id)) } catch (e: Exception) { error = errorText(ctx, e) } }
-                        }) { Ic(R.drawable.ms_call, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(s(R.string.call)) }
+                        }, shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_call, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(s(R.string.call)) }
                         when (rel) {
-                            null -> if (user?.bot != true) FilledTonalButton({ scope.launch { try { Session.addFriend(user?.username ?: return@launch) } catch (e: Exception) { error = errorText(ctx, e) } } }) {
+                            null -> if (user?.bot != true) FilledTonalButton({ scope.launch { try { Session.addFriend(user?.username ?: return@launch) } catch (e: Exception) { error = errorText(ctx, e) } } }, shape = MaterialTheme.shapes.small) {
                                 Ic(R.drawable.ms_person_add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(s(R.string.add_friend))
                             }
                             3 -> {
-                                FilledTonalButton({ scope.launch { runCatching { Session.acceptFriend(userId) } } }) {
+                                FilledTonalButton({ scope.launch { runCatching { Session.acceptFriend(userId) } } }, shape = MaterialTheme.shapes.small) {
                                     Ic(R.drawable.ms_check, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(s(R.string.accept))
                                 }
-                                OutlinedButton({ scope.launch { runCatching { Session.removeRelationship(userId) } } }) { Text(s(R.string.decline)) }
+                                OutlinedButton({ scope.launch { runCatching { Session.removeRelationship(userId) } } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.decline)) }
                             }
-                            4 -> OutlinedButton({ scope.launch { runCatching { Session.removeRelationship(userId) } } }) {
+                            4 -> OutlinedButton({ scope.launch { runCatching { Session.removeRelationship(userId) } } }, shape = MaterialTheme.shapes.small) {
                                 Ic(R.drawable.ms_close, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(s(R.string.cancel_request))
                             }
-                            1 -> OutlinedButton({ confirmRemove = true }) {
+                            1 -> OutlinedButton({ confirmRemove = true }, shape = MaterialTheme.shapes.small) {
                                 Ic(R.drawable.ms_person_remove, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(s(R.string.remove_friend))
                             }
-                            2 -> FilledTonalButton({ scope.launch { runCatching { Session.removeRelationship(userId) } } }) {
+                            2 -> FilledTonalButton({ scope.launch { runCatching { Session.removeRelationship(userId) } } }, shape = MaterialTheme.shapes.small) {
                                 Text(s(R.string.unblock))
                             }
                             else -> {}
@@ -223,7 +224,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                                 },
                                 label = { Text(r.name) }, leadingIcon = { RoleDot(r.color, 10.dp) },
                                 trailingIcon = { Ic(R.drawable.ms_close, s(R.string.remove_role, r.name), Modifier.size(18.dp)) },
-                            ) else Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+                            ) else Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
                                 Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     RoleDot(r.color, 10.dp)
                                     Spacer(Modifier.width(6.dp))
@@ -246,10 +247,10 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                         Text(s(R.string.moderation), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
                         if (Perm.timedOut(target)) Text(s(R.string.timed_out), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (canNick) OutlinedButton({ dialog = "nick" }) { Text(s(R.string.nickname)) }
-                            if (canTimeout) OutlinedButton({ dialog = "timeout" }) { Text(s(R.string.timeout)) }
-                            if (canKick) OutlinedButton({ dialog = "kick" }) { Text(s(R.string.kick), color = MaterialTheme.colorScheme.error) }
-                            if (canBan) OutlinedButton({ dialog = "ban" }) { Text(s(R.string.ban), color = MaterialTheme.colorScheme.error) }
+                            if (canNick) OutlinedButton({ dialog = "nick" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.nickname)) }
+                            if (canTimeout) OutlinedButton({ dialog = "timeout" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.timeout)) }
+                            if (canKick) OutlinedButton({ dialog = "kick" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.kick), color = MaterialTheme.colorScheme.error) }
+                            if (canBan) OutlinedButton({ dialog = "ban" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.ban), color = MaterialTheme.colorScheme.error) }
                         }
                     }
                     val path = "/guilds/${g.id}/members/$userId"
@@ -375,15 +376,15 @@ fun MembersScreen(guildId: String) {
     val (online, offline) = members.partition { Sel.presence(state, it.user?.id ?: "") != "offline" }
     val byName = compareBy<Member> { Sel.memberName(state, guildId, it.user?.id ?: "").lowercase() }
     Scaffold(topBar = {
-        TopAppBar(title = { Text(s(R.string.members)) }, navigationIcon = { IconButton(nav::back) { Ic(R.drawable.ms_arrow_back, s(R.string.back)) } })
+        TopAppBar(title = { Text(s(R.string.members).uppercase()) }, navigationIcon = { IconButton(nav::back) { Ic(R.drawable.ms_arrow_back, s(R.string.back)) } })
     }) { pad ->
         PullToRefreshBox(refreshing, { load() }, Modifier.padding(pad).fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize()) {
                 error?.let { item { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) } }
                 for ((label, list) in listOf(R.string.online_count to online.sortedWith(byName), R.string.offline_count to offline.sortedWith(byName))) {
                     if (list.isEmpty()) continue
-                    item(key = "h$label") { Text(ctx.getString(label, list.size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp).semantics { heading() }) }
-                    items(list, key = { it.user?.id ?: "" }) { m -> MemberRow(state, guildId, m) { m.user?.let { nav.openProfile(it.id, guildId) } } }
+                    item(key = "h$label") { SectionHeader(ctx.getString(label, list.size), Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)) }
+                    itemsIndexed(list, key = { _, it -> it.user?.id ?: "" }) { i, m -> Box(Modifier.animateItem().reveal(i)) { MemberRow(state, guildId, m) { m.user?.let { nav.openProfile(it.id, guildId) } } } }
                 }
             }
         }
@@ -509,7 +510,7 @@ fun FriendsScreen() {
                         onValueChange = { query = it },
                         placeholder = { Text(s(R.string.search_friends)) },
                         singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = MaterialTheme.shapes.large,
                         trailingIcon = if (query.isNotEmpty()) {
                             { IconButton({ query = "" }) { Ic(R.drawable.ms_close, s(R.string.close)) } }
                         } else null,
@@ -678,10 +679,10 @@ private fun FriendCard(
         else -> custom ?: s(presenceLabel(status))
     }
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { nav.openProfile(u.id, null) },
+        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable { nav.openProfile(u.id, null) },
     ) {
         ListItem(
             headlineContent = {
@@ -748,7 +749,7 @@ private fun FriendCard(
                             OutlinedButton(
                                 onClick = { act { Session.removeRelationship(r.id) } },
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            ) {
+                             shape = MaterialTheme.shapes.small) {
                                 Text(s(R.string.cancel), style = MaterialTheme.typography.labelMedium)
                             }
                         }
@@ -756,7 +757,7 @@ private fun FriendCard(
                             FilledTonalButton(
                                 onClick = { act { Session.removeRelationship(r.id) } },
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            ) {
+                             shape = MaterialTheme.shapes.small) {
                                 Text(s(R.string.unblock), style = MaterialTheme.typography.labelMedium)
                             }
                         }
@@ -791,7 +792,7 @@ fun AddFriendDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
             Button(
                 onClick = { onSubmit(name.trim()) },
                 enabled = name.isNotBlank(),
-            ) { Text(s(R.string.send_request)) }
+             shape = Hud) { Text(s(R.string.send_request)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(s(R.string.cancel)) }
@@ -819,7 +820,7 @@ fun NewGroupDmDialog(
                         val u = state.users[r.id] ?: r.user ?: User(r.id)
                         Row(
                             Modifier.fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(MaterialTheme.shapes.medium)
                                 .clickable { if (r.id in picked) picked.remove(r.id) else if (picked.size < 9) picked.add(r.id) }
                                 .padding(vertical = 6.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -843,7 +844,7 @@ fun NewGroupDmDialog(
             Button(
                 onClick = { onCreate(picked.toList()) },
                 enabled = picked.isNotEmpty(),
-            ) { Text(s(R.string.create)) }
+             shape = Hud) { Text(s(R.string.create)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(s(R.string.cancel)) }

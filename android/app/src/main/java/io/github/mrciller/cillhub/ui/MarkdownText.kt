@@ -165,7 +165,7 @@ fun MarkdownText(
                 is Md.CodeBlock -> CodeBlockView(b, base)
                 is Md.TableBlock -> TableBlockView(b, base)
                 is Md.Quote -> Row(Modifier.height(IntrinsicSize.Min).padding(vertical = 2.dp)) {
-                    Box(Modifier.width(4.dp).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(cs.outline))
+                    Box(Modifier.width(4.dp).fillMaxHeight().clip(MaterialTheme.shapes.extraSmall).background(cs.outline))
                     Column(Modifier.padding(start = 10.dp)) { blocks(b.blocks, false) }
                 }
                 is Md.ListBlock -> listBlockImpl(b, 0)
@@ -190,7 +190,7 @@ private fun CodeBlockView(b: Md.CodeBlock, base: TextStyle) {
     val displayLines = if (isLong && !expanded) lines.take(25) else lines
 
     Column(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(10.dp))
+        Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(MaterialTheme.shapes.medium)
             .background(cs.surfaceContainerLow),
     ) {
         Row(
@@ -206,7 +206,7 @@ private fun CodeBlockView(b: Md.CodeBlock, base: TextStyle) {
             if (isLong) {
                 Surface(
                     onClick = { expanded = !expanded },
-                    shape = RoundedCornerShape(6.dp),
+                    shape = MaterialTheme.shapes.small,
                     color = cs.surfaceContainerHighest,
                     modifier = Modifier.padding(end = 6.dp),
                 ) {
@@ -226,7 +226,7 @@ private fun CodeBlockView(b: Md.CodeBlock, base: TextStyle) {
                         copied.value = false
                     }
                 },
-                shape = RoundedCornerShape(6.dp),
+                shape = MaterialTheme.shapes.small,
                 color = cs.surfaceContainerHighest,
             ) {
                 Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -293,8 +293,8 @@ private fun TableBlockView(b: Md.TableBlock, base: TextStyle) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val copied = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Column(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(8.dp))
-            .border(1.dp, cs.outlineVariant, RoundedCornerShape(8.dp))
+        Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(MaterialTheme.shapes.small)
+            .border(1.dp, cs.outlineVariant, MaterialTheme.shapes.small)
             .background(cs.surfaceContainerLow)
     ) {
         Row(
@@ -312,7 +312,7 @@ private fun TableBlockView(b: Md.TableBlock, base: TextStyle) {
                         copied.value = false
                     }
                 },
-                shape = RoundedCornerShape(6.dp),
+                shape = MaterialTheme.shapes.small,
                 color = cs.surfaceContainerHighest,
             ) {
                 Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {

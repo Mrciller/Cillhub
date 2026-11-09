@@ -3,8 +3,11 @@ package io.github.mrciller.cillhub.ui
 import android.app.Activity
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -204,8 +207,11 @@ private fun MainShell() {
         val host: @Composable (Modifier) -> Unit = { mod ->
             NavHost(
                 nav, startDestination = ServersRoute, modifier = mod,
-                enterTransition = { if (reduce) EnterTransition.None else fadeIn() },
-                exitTransition = { if (reduce) ExitTransition.None else fadeOut() },
+                // forward: the new screen slides in from the end over a fading one; back: the reverse
+                enterTransition = { if (reduce) EnterTransition.None else slideInHorizontally(tween(260)) { it / 6 } + fadeIn(tween(200)) },
+                exitTransition = { if (reduce) ExitTransition.None else fadeOut(tween(160)) },
+                popEnterTransition = { if (reduce) EnterTransition.None else fadeIn(tween(200)) },
+                popExitTransition = { if (reduce) ExitTransition.None else slideOutHorizontally(tween(220)) { it / 6 } + fadeOut(tween(160)) },
             ) {
                 composable<ServersRoute> {
                     ServersScreen(guildId, { guildId = it }, if (twoPane) serverChannel else null)

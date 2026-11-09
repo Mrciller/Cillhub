@@ -91,30 +91,31 @@ fun YouScreen() {
     val me = state.me
     var statusSheet by rememberSaveable { mutableStateOf(false) }
     var logout by rememberSaveable { mutableStateOf(false) }
-    Scaffold(topBar = { TopAppBar(title = { Text(s(R.string.tab_you), fontWeight = FontWeight.Bold) }) }) { pad ->
+    Scaffold(topBar = { TopAppBar(title = { Text(s(R.string.tab_you).uppercase()) }) }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState())) {
+            // the player card: bevelled, with an accent edge
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainer,
-                shape = MaterialTheme.shapes.extraLarge,
+                shape = Hud,
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.padding(16.dp).fillMaxWidth(),
             ) {
-                Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.background(MaterialTheme.colorScheme.primary).padding(start = 4.dp).background(MaterialTheme.colorScheme.surfaceContainer).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                     Avatar(me, 64.dp, Sel.presence(state, me?.id ?: ""))
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(me?.displayName ?: "", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(me?.displayName ?: "", style = MaterialTheme.typography.headlineSmall)
                         Text(me?.username ?: "", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
             Row(Modifier.padding(horizontal = 16.dp)) {
-                OutlinedButton({ statusSheet = true }, Modifier.weight(1f)) {
+                OutlinedButton({ statusSheet = true }, Modifier.weight(1f), shape = MaterialTheme.shapes.small) {
                     androidx.compose.foundation.layout.Box(Modifier.padding(end = 8.dp)) { StatusDot(state.myStatus) }
                     Text(s(presenceLabel(state.myStatus)))
                 }
                 Spacer(Modifier.width(8.dp))
-                OutlinedButton({ me?.let { nav.openProfile(it.id, null) } }, Modifier.weight(1f)) { Text(s(R.string.view_profile)) }
+                OutlinedButton({ me?.let { nav.openProfile(it.id, null) } }, Modifier.weight(1f), shape = MaterialTheme.shapes.small) { Text(s(R.string.view_profile)) }
             }
             Spacer(Modifier.padding(8.dp))
             SettingRow(R.drawable.ms_account_circle, R.string.settings_account) { nav.openSettings("account") }
@@ -170,7 +171,7 @@ private fun SettingRow(icon: Int, @StringRes label: Int, color: Color = Material
 fun SettingsScreen(page: String) {
     val nav = LocalNav.current
     val title = when (page) { "account" -> R.string.settings_account; "notifications" -> R.string.settings_notifications; "voice" -> R.string.settings_voice; "appearance" -> R.string.settings_appearance; "language" -> R.string.settings_language; else -> R.string.settings_about }
-    Scaffold(topBar = { TopAppBar(title = { Text(s(title)) }, navigationIcon = { IconButton(nav::back) { Ic(R.drawable.ms_arrow_back, s(R.string.back)) } }) }) { pad ->
+    Scaffold(topBar = { TopAppBar(title = { Text(s(title).uppercase()) }, navigationIcon = { IconButton(nav::back) { Ic(R.drawable.ms_arrow_back, s(R.string.back)) } }) }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState())) {
             when (page) {
                 "account" -> AccountSettings()
@@ -185,8 +186,7 @@ fun SettingsScreen(page: String) {
 }
 
 @Composable
-private fun Section(@StringRes title: Int) = Text(s(title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp).semantics { heading() })
+private fun Section(@StringRes title: Int) = SectionHeader(s(title), Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp), color = MaterialTheme.colorScheme.primary)
 
 @Composable
 private fun AccountSettings() {
@@ -200,7 +200,7 @@ private fun AccountSettings() {
     Section(R.string.profile_section)
     OutlinedTextField(name, { name = it.take(32) }, label = { Text(s(R.string.display_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
     Button({ scope.launch { msg = try { Session.patchMe(buildJsonObject { put("global_name", name.trim().ifEmpty { null }) }); ctx.getString(R.string.saved) } catch (e: Exception) { errorText(ctx, e) } } },
-        Modifier.padding(16.dp), enabled = name.trim() != (me?.globalName ?: "")) { Text(s(R.string.save)) }
+        Modifier.padding(16.dp), enabled = name.trim() != (me?.globalName ?: ""), shape = Hud) { Text(s(R.string.save)) }
     msg?.let { Text(it, modifier = Modifier.padding(horizontal = 16.dp)) }
     Section(R.string.account_section)
     ListItem(headlineContent = { Text(s(R.string.username)) }, supportingContent = { Text(me?.username ?: "") }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
