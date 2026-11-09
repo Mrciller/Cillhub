@@ -113,6 +113,8 @@ import io.github.mrciller.cillhub.data.isPrivate
 import io.github.mrciller.cillhub.data.isThread
 import io.github.mrciller.cillhub.data.json
 import kotlinx.coroutines.channels.Channel as Events
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -308,28 +310,29 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collect { last -> if (last >= list.size - 5) vm.older() }
     }
     // a search result to show: older pages until it is loaded, then scroll there and tint it a moment
-    val jump by pendingJump.collectAsStateWithLifecycle()
     var highlight by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(jump, messages != null) {
-        val (cid, mid) = jump ?: return@LaunchedEffect
-        if (cid != channelId || messages == null) return@LaunchedEffect
-        pendingJump.value = null
-        fun loaded() = Session.store.value.messages[channelId].orEmpty()
-        snapshotFlow { vm.loading }.first { !it }
-        vm.loading = true
-        try {
-            // shortcut: at most 40 pages (2000 messages) back; an around= window would need a list with gaps
-            var pages = 0
-            while (loaded().none { it.id == mid } && Session.store.value.hasMore[channelId] == true && pages++ < 40)
-                Session.loadMessages(channelId, loaded().firstOrNull { !it.pending && !it.failed }?.id ?: break)
-        } catch (e: Exception) { vm.events.trySend(e); return@LaunchedEffect } finally { vm.loading = false }
-        val idx = items(loaded()).asReversed().indexOfFirst { it is MsgItem && it.m.id == mid }
-        if (idx < 0) { snack.showSnackbar(ctx.getString(R.string.message_too_old)); return@LaunchedEffect }
-        snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > idx }
-        listState.scrollToItem(idx)
-        highlight = mid
-        kotlinx.coroutines.delay(2500)
-        highlight = null
+    LaunchedEffect(channelId) {
+        // collected, not a keyed effect: clearing the request must not cancel the jump it started
+        pendingJump.filterNotNull().filter { it.first == channelId }.collect { (_, mid) ->
+            pendingJump.value = null
+            Session.store.state.first { it.messages[channelId] != null }
+            fun loaded() = Session.store.value.messages[channelId].orEmpty()
+            snapshotFlow { vm.loading }.first { !it }
+            vm.loading = true
+            try {
+                // shortcut: at most 40 pages (2000 messages) back; an around= window would need a list with gaps
+                var pages = 0
+                while (loaded().none { it.id == mid } && Session.store.value.hasMore[channelId] == true && pages++ < 40)
+                    Session.loadMessages(channelId, loaded().firstOrNull { !it.pending && !it.failed }?.id ?: break)
+            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; vm.events.trySend(e); return@collect } finally { vm.loading = false }
+            val idx = items(loaded()).asReversed().indexOfFirst { it is MsgItem && it.m.id == mid }
+            if (idx < 0) { snack.showSnackbar(ctx.getString(R.string.message_too_old)); return@collect }
+            snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > idx }
+            listState.scrollToItem(idx)
+            highlight = mid
+            kotlinx.coroutines.delay(2500)
+            highlight = null
+        }
     }
     // new message of our own: jump down
     val newest = messages?.lastOrNull()
