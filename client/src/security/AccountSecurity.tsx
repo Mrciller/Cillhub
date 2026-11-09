@@ -12,7 +12,7 @@ import './security.css'
 const QrCode = lazy(() => import('./QrCode').then((m) => ({ default: m.QrCode })))
 const form = (e: FormEvent<HTMLFormElement>) => (e.preventDefault(), Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>)
 
-/** Edit dialogs for username / email / password; all need the current password. */
+/** Edit dialogs for username / email / password; all need the current password, email and password also the 2FA code when it is on. */
 function EditAccount({ what, onClose }: { what: 'username' | 'email' | 'password'; onClose: () => void }) {
   const me = useStore((s) => s.me)!
   const [error, setError] = useState('')
@@ -21,7 +21,8 @@ function EditAccount({ what, onClose }: { what: 'username' | 'email' | 'password
     const f = form(e)
     if (what === 'password' && f.new_password !== f.confirm) return setError(t('Passwords do not match.'))
     setBusy(true)
-    const body = what === 'password' ? { password: f.password, new_password: f.new_password } : { [what]: f.value, password: f.password }
+    const code = f.code ? { code: f.code.replace(/[\s-]/g, '') } : {}
+    const body = what === 'password' ? { password: f.password, new_password: f.new_password, ...code } : { [what]: f.value, password: f.password, ...code }
     patchMe(body).then(onClose, (err: Error) => (setError(err.message), setBusy(false)))
   }
   const title = { username: t('Change your username'), email: t('Change your email address'), password: t('Update your password') }[what]
@@ -38,6 +39,7 @@ function EditAccount({ what, onClose }: { what: 'username' | 'email' | 'password
             <p className="hint small">{t('Changing your password logs you out everywhere else.')}</p>
           </>
         )}
+        {what !== 'username' && me.mfa_enabled && <Field label={t('Authentication or backup code')} name="code" required autoComplete="one-time-code" maxLength={11} />}
         <FormError error={error} />
         <div className="modal-actions">
           <button type="button" className="secondary" onClick={onClose}>{t('Cancel')}</button>
@@ -123,13 +125,14 @@ function BackupCodesModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('')
   const load = (e: FormEvent<HTMLFormElement>) => {
     const f = form(e)
-    backupCodes(f.password, true).then(setCodes, (err: Error) => setError(err.message))
+    backupCodes(f.password, true, f.code.replace(/[\s-]/g, '')).then(setCodes, (err: Error) => setError(err.message))
   }
   return (
     <Modal title={t('Backup Codes')} onClose={onClose}>
       {codes ? <><Codes codes={codes} /><div className="modal-actions"><button className="primary" onClick={onClose}>{t('Done')}</button></div></> : (
         <form onSubmit={load}>
           <Field label={t('Password')} name="password" type="password" required autoComplete="current-password" autoFocus />
+          <Field label={t('Authentication or backup code')} name="code" required autoComplete="one-time-code" maxLength={11} />
           {/* The server keeps only hashes of the codes, so they can only be shown when new ones are generated. */}
           <p className="hint small">{t('Backup codes cannot be shown again. This generates 10 new codes; the old ones stop working.')}</p>
           <FormError error={error} />

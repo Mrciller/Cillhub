@@ -92,6 +92,13 @@ test('enable TOTP, log in with the ticket flow, backup code, disable needs a cod
   assert.ok(viaBackup.body.token);
   const second = (await api('POST', '/auth/login', null, { login: 'mfa', password: 'hunter2hunter2' })).body;
   assert.equal((await api('POST', '/auth/mfa/totp', null, { ticket: second.ticket, code: backup })).body.code, 60008, 'backup code used up');
+  // step-up: email, password and new backup codes need the 2FA code on top of the password
+  const pw = { password: 'hunter2hunter2' };
+  assert.equal((await api('PATCH', '/users/@me', u.token, { ...pw, email: 'mfa2@example.com' })).body.code, 60003);
+  assert.equal((await api('PATCH', '/users/@me', u.token, { ...pw, new_password: 'newpassword1' })).body.code, 60003);
+  assert.equal((await api('POST', '/users/@me/mfa/codes-verification', u.token, { ...pw, regenerate: true })).body.code, 60003);
+  assert.equal((await api('PATCH', '/users/@me', u.token, { ...pw, email: 'mfa2@example.com', code: on.body.backup_codes[2].code })).body.email, 'mfa2@example.com');
+  assert.equal((await api('PATCH', '/users/@me', u.token, { global_name: 'no code needed' })).status, 200);
   // disabling needs a code: 401 60003 with a ticket, or the code in the body
   const off = await api('POST', '/users/@me/mfa/totp/disable', u.token, {});
   assert.deepEqual([off.status, off.body.code, typeof off.body.mfa.ticket], [401, 60003, 'string']);
@@ -116,7 +123,7 @@ test('password change needs the old password and revokes every other token and s
   assert.equal((await api('GET', '/users/@me', other)).status, 401);
   assert.equal((await api('GET', '/users/@me', u.token)).status, 200);
   assert.equal((await api('POST', '/auth/login', null, { login: 'pw2', password: 'newpassword1' })).status, 200);
-  const taken = await api('PATCH', '/users/@me', u.token, { password: 'newpassword1', email: 'mfa@example.com' });
+  const taken = await api('PATCH', '/users/@me', u.token, { password: 'newpassword1', email: 'mfa2@example.com' });
   assert.equal(taken.body.errors.email._errors[0].code, 'EMAIL_ALREADY_REGISTERED');
 });
 

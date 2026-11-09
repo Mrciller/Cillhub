@@ -3,6 +3,7 @@ import { str, int, invalid, notFound } from '../errors.js';
 import { sendToUsers, closeTokenSessions } from '../gateway.js';
 import { saveImage, removeImage } from '../files.js';
 import { hashPassword, confirmPassword, tokenHash } from '../auth.js';
+import { requireMfa } from '../mfa.js';
 import { customizationPatch } from './customization.js';
 import { pushUserUpdate, publicUrl } from '../federation.js';
 
@@ -22,6 +23,7 @@ async function patchMe(ctx) {
   if (sensitive.length) {
     if (user.bot && sensitive.some(k => k !== 'username')) throw invalid(sensitive[0], 'BOT_FIELD', 'Bots cannot change this.');
     if (!user.bot && !(await confirmPassword(body.password, user, ctx.headers))) throw passwordMismatch();
+    if (body.email !== undefined || body.new_password !== undefined) requireMfa(ctx); // step-up: a stolen session must not take over the account
   }
   if (body.username !== undefined) {
     next.username = str(body, 'username', 2, 32);

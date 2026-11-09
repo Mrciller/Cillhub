@@ -56,6 +56,7 @@ function disableTotp(ctx) {
 async function backupCodes(ctx) {
   if (!ctx.user.mfa_secret) throw new HttpError(400, 60002, 'Two factor is not enabled');
   await passwordOk(ctx);
+  requireMfa(ctx);
   if (ctx.body.regenerate !== true) throw invalid('regenerate', 'BASE_TYPE_BAD_VALUE', 'Backup codes are stored hashed; regenerate to get new ones.');
   const codes = Array.from({ length: 10 }, newBackupCode);
   setBackupCodes(ctx.user.id, codes);

@@ -670,8 +670,8 @@ export const disableTotp = (code: string) =>
     const me = getState().me
     if (me) apply('USER_UPDATE', { ...me, mfa_enabled: false })
   })
-export const backupCodes = (password: string, regenerate: boolean) =>
-  api<{ backup_codes: BackupCode[] }>('/users/@me/mfa/codes-verification', { method: 'POST', body: { password, regenerate } }).then((r) => r.backup_codes ?? [])
+export const backupCodes = (password: string, regenerate: boolean, code?: string) =>
+  api<{ backup_codes: BackupCode[] }>('/users/@me/mfa/codes-verification', { method: 'POST', body: { password, regenerate, ...(code && { code }) } }).then((r) => r.backup_codes ?? [])
 export const authSessions = () => api<{ user_sessions: AuthSession[] }>('/auth/sessions').then((r) => r.user_sessions ?? [])
 export const logoutSessions = (hashes: string[]) => api('/auth/sessions/logout', { method: 'POST', body: { session_id_hashes: hashes } })
 export const deleteAccount = (password: string, code?: string) => api('/users/@me/delete', { method: 'POST', body: { password, ...(code && { code }) } })
