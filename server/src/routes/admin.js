@@ -14,7 +14,7 @@ import {
 import { HttpError, str, int, bool, intParam, idParam, invalid, notFound, missingAccess } from '../errors.js';
 import { P, has, guildPerms, viewersOf } from '../permissions.js';
 import { sessionIdHash } from '../auth.js';
-import { sendToUsers, sendToAllUsers, closeTokenSessions, refreshPresence, isOnline } from '../gateway.js';
+import { sendToUsers, sendToAllUsers, visibility, syncVisibility, closeTokenSessions, refreshPresence, isOnline } from '../gateway.js';
 import { requireMfa } from '../mfa.js';
 import { audit, A } from '../audit.js';
 import { recheck, configuredBackends, defaultBackend, voiceStateCount } from '../voice.js';
@@ -216,10 +216,12 @@ function transferGuild(ctx) {
   const target = get('SELECT u.* FROM members m JOIN users u ON u.id = m.user_id WHERE m.guild_id = ? AND m.user_id = ?', g.id, to);
   if (!target || target.bot) throw invalid('owner_id', 'BASE_TYPE_INVALID', 'The new owner must be a member of this server and not a bot.');
   requireMfa(ctx);
+  const seen = visibility(g.id, [g.owner_id, target.id]);
   run('UPDATE guilds SET owner_id = ? WHERE id = ?', target.id, g.id);
   const out = guildObj(loadGuildRow(g.id));
   audit({ user: ctx.user, req: ctx.req }, g.id, A.GUILD_UPDATE, g.id, { changes: [{ key: 'owner_id', old_value: g.owner_id, new_value: target.id }] });
   sendToUsers(memberIds(g.id), 'GUILD_UPDATE', out);
+  syncVisibility(g.id, seen);
   recheck(g.id);
   ctx.audit = { action: 'guild.transfer', details: { from: g.owner_id, to: target.id } };
   return guildStats(loadGuildRow(g.id));

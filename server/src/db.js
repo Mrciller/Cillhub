@@ -121,7 +121,8 @@ export function guildIdentity(g) {
 
 export const guildChannels = guildId => all('SELECT * FROM channels WHERE guild_id = ? AND type NOT IN (10, 11, 12) ORDER BY position', guildId);
 
-export function guildObj(g, withChannels = false) {
+// channels: the rows to list (visibleChannels for a member), or none
+export function guildObj(g, channels) {
   const member_count = get('SELECT COUNT(*) AS n FROM members WHERE guild_id = ?', g.id).n;
   const guild = {
     id: g.id, name: g.name, icon: g.icon, owner_id: g.owner_id, member_count, system_channel_id: g.system_channel_id, roles: rolesOf(g.id),
@@ -133,7 +134,7 @@ export function guildObj(g, withChannels = false) {
     emojis: all('SELECT * FROM emojis WHERE guild_id = ? ORDER BY rowid', g.id).map(e => emojiObj(e)),
     stickers: all('SELECT * FROM stickers WHERE guild_id = ? ORDER BY rowid', g.id).map(s => stickerObj(s)),
   };
-  if (withChannels) guild.channels = guildChannels(g.id).map(c => channelObj(c));
+  if (channels) guild.channels = channels.map(c => channelObj(c));
   return guild;
 }
 

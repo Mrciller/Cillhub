@@ -12,6 +12,7 @@ import { callsOf, callConnect } from './calls.js';
 import { signal as cillvoiceSignal, endpoint as cillvoiceEndpoint } from './media/index.js';
 import { publicInstance } from './instance.js';
 import { limit } from './ratelimit.js';
+import { visibleChannels, viewersOf } from './permissions.js';
 
 const HEARTBEAT = 41250;
 const RESUME_WINDOW = 2 * 60 * 1000; // dispatches kept for RESUME, and how long a dropped session waits for it
@@ -142,7 +143,32 @@ export function closeTokenSessions(hash) {
 
 // per-user guild parts registered by the feature modules (threads, stage instances, events, soundboard)
 export const guildParts = [];
-export const guildFull = (g, userId) => Object.assign({ ...guildObj(g, true), voice_states: voiceStates(g.id) }, ...guildParts.map(f => f(g, userId)));
+// channels and voice states only of channels the user may view
+export function guildFull(g, userId) {
+  const channels = visibleChannels(g.id, userId);
+  const ids = new Set(channels.map(c => c.id));
+  return Object.assign({ ...guildObj(g, channels), voice_states: voiceStates(g.id).filter(v => ids.has(v.channel_id)) }, ...guildParts.map(f => f(g, userId)));
+}
+
+// a guild channel event goes to its viewers; with `before` (its viewers before a permission change) gainers get CHANNEL_CREATE, losers CHANNEL_DELETE
+export function channelEvent(ch, t, before) {
+  const now = viewersOf(ch);
+  const out = channelObj(ch);
+  if (!before) return sendToUsers(now, t, out);
+  sendToUsers(now.filter(id => before.includes(id)), t, out);
+  sendToUsers(now.filter(id => !before.includes(id)), 'CHANNEL_CREATE', out);
+  sendToUsers(before.filter(id => !now.includes(id)), 'CHANNEL_DELETE', out);
+}
+
+// for role, member and owner changes: snapshot each user's visible channels first, then syncVisibility sends the difference
+export const visibility = (guildId, userIds) => new Map(userIds.map(id => [id, new Map(visibleChannels(guildId, id).map(c => [c.id, c]))]));
+export function syncVisibility(guildId, before) {
+  for (const [id, saw] of before) {
+    const now = visibleChannels(guildId, id);
+    for (const c of now) if (!saw.delete(c.id)) sendToUsers([id], 'CHANNEL_CREATE', channelObj(c));
+    for (const c of saw.values()) sendToUsers([id], 'CHANNEL_DELETE', channelObj(c));
+  }
+}
 
 // a bot's GUILD_CREATE: without GUILD_PRESENCES only itself and members in voice (docs)
 export function botGuildCreate(g, s) {

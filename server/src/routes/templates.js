@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { snowflake } from '../snowflake.js';
 import { DATA_DIR, get, all, run, tx, json, userById, userObj, guildObj, guildChannels } from '../db.js';
 import { HttpError, str, int, invalid, notFound } from '../errors.js';
-import { P, parseBits, DEFAULT_PERMISSIONS } from '../permissions.js';
+import { P, parseBits, DEFAULT_PERMISSIONS, visibleChannels } from '../permissions.js';
 import { sendToUsers } from '../gateway.js';
 import { sniff, dataUri, saveAsset, saveImage } from '../files.js';
 import { forumFields } from './forums.js';
@@ -135,7 +135,7 @@ export async function createFromSnapshot(s, name, owner, icon) {
   const g = get('SELECT * FROM guilds WHERE id = ?', id);
   sendToUsers([owner.id], 'GUILD_CREATE', guildCreate(g, owner.id));
   guildCreatedHooks.forEach(f => f(g));
-  return guildObj(g, true);
+  return guildObj(g, visibleChannels(g.id, owner.id));
 }
 
 // --- templates -----------------------------------------------------------------------------------------------------

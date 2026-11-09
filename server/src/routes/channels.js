@@ -2,7 +2,7 @@ import { snowflake } from '../snowflake.js';
 import { get, all, run, tx, isMember, isFriend, memberIds, userById, channelObj, dmsOf, channelUserIds } from '../db.js';
 import { HttpError, str, int, bool, list, invalid, snowflakeField, notFound, missingAccess, missingPermissions } from '../errors.js';
 import { P, need, has, parseBits, guildPerms, channelPerms, viewersOf, requireAbove, requireRoleBelow, isThread } from '../permissions.js';
-import { sendToUsers } from '../gateway.js';
+import { sendToUsers, channelEvent } from '../gateway.js';
 import { disconnectChannel, recheck } from '../voice.js';
 import { removeChannelFiles } from '../files.js';
 import { audit, A, diff } from '../audit.js';
@@ -154,7 +154,7 @@ function createChannel(ctx) {
   });
   const row = getChannel(id);
   const out = channelObj(row);
-  sendToUsers(memberIds(g.id), 'CHANNEL_CREATE', out);
+  channelEvent(row, 'CHANNEL_CREATE');
   audit(ctx, g.id, A.CHANNEL_CREATE, id, { changes: diff({}, out, AUDITED.filter(k => out[k] !== undefined)) });
   ctx.status = 201;
   return out;
@@ -184,7 +184,7 @@ function cloneChannel(ctx) {
   });
   const row = getChannel(id);
   const out = channelObj(row);
-  sendToUsers(memberIds(ch.guild_id), 'CHANNEL_CREATE', out);
+  channelEvent(row, 'CHANNEL_CREATE');
   audit(ctx, ch.guild_id, A.CHANNEL_CREATE, id, { changes: diff({}, out, AUDITED.filter(k => out[k] !== undefined)) });
   ctx.status = 201;
   return out;
@@ -199,8 +199,7 @@ function reorder({ params, body, user }) {
   });
   const changed = changes.filter(c => c.position !== c.ch.position || c.parentId !== c.ch.parent_id);
   tx(() => changed.forEach(c => run('UPDATE channels SET position = ?, parent_id = ? WHERE id = ?', c.position, c.parentId, c.ch.id)));
-  const ids = memberIds(g.id);
-  for (const c of changed) sendToUsers(ids, 'CHANNEL_UPDATE', channelObj(getChannel(c.ch.id)));
+  for (const c of changed) channelEvent(getChannel(c.ch.id), 'CHANNEL_UPDATE');
 }
 
 function patchChannel(ctx) {
@@ -234,13 +233,15 @@ function patchChannel(ctx) {
     checkOverwrites(ch.guild_id, user, ch.perms, overwritesOf(ch.id), overwrites);
   }
   const prev = overwritesOf(ch.id);
+  const viewers = overwrites && viewersOf(ch);
   tx(() => {
     for (const [k, v] of Object.entries(next)) run(`UPDATE channels SET ${k} = ? WHERE id = ?`, v, ch.id); // keys are fixed above
     if (overwrites) writeOverwrites(ch.id, overwrites);
   });
   if (next.message_ttl !== undefined) schedule();
-  const out = channelObj(getChannel(ch.id));
-  sendToUsers(memberIds(ch.guild_id), 'CHANNEL_UPDATE', out);
+  const row = getChannel(ch.id);
+  const out = channelObj(row);
+  channelEvent(row, 'CHANNEL_UPDATE', viewers || undefined);
   audit(ctx, ch.guild_id, A.CHANNEL_UPDATE, ch.id, { changes: diff(channelObj(ch), out, AUDITED) });
   if (overwrites) {
     auditOverwrites(ctx, ch, prev, overwrites);
@@ -275,8 +276,9 @@ function setPermission(ctx, remove) {
   const next = prev.filter(o => o.id !== params.target_id);
   if (!remove) next.push(parseOverwrite(body, ch.guild_id, params.target_id));
   checkOverwrites(ch.guild_id, user, ch.perms, prev, next);
+  const viewers = viewersOf(ch);
   writeOverwrites(ch.id, next);
-  sendToUsers(memberIds(ch.guild_id), 'CHANNEL_UPDATE', channelObj(getChannel(ch.id)));
+  channelEvent(getChannel(ch.id), 'CHANNEL_UPDATE', viewers);
   auditOverwrites(ctx, ch, prev, next);
   recheck(ch.guild_id);
   threadListSync(ch.guild_id, memberIds(ch.guild_id), [ch.id]);
@@ -298,6 +300,7 @@ function deleteChannel(ctx) {
   // threads go with their parent; a category's channels stay, without a parent
   const threads = all('SELECT id FROM channels WHERE parent_id = ? AND type IN (10, 11, 12)', ch.id);
   const children = all('SELECT id FROM channels WHERE parent_id = ? AND type NOT IN (10, 11, 12)', ch.id);
+  const viewers = viewersOf(ch);
   tx(() => {
     run('DELETE FROM channels WHERE parent_id = ? AND type IN (10, 11, 12)', ch.id);
     run('UPDATE channels SET parent_id = NULL WHERE parent_id = ?', ch.id);
@@ -307,10 +310,9 @@ function deleteChannel(ctx) {
   removeChannelFiles(ch.id);
   threads.forEach(x => removeChannelFiles(x.id));
   audit(ctx, ch.guild_id, A.CHANNEL_DELETE, ch.id, { changes: diff(channelObj(ch), {}, ['name', 'type']) });
-  const ids = memberIds(ch.guild_id);
-  for (const c of children) sendToUsers(ids, 'CHANNEL_UPDATE', channelObj(getChannel(c.id)));
+  for (const c of children) channelEvent(getChannel(c.id), 'CHANNEL_UPDATE');
   const out = channelObj(ch);
-  sendToUsers(ids, 'CHANNEL_DELETE', out);
+  sendToUsers(viewers, 'CHANNEL_DELETE', out);
   return out;
 }
 

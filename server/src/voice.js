@@ -1,5 +1,5 @@
 import { get, run, isMember, memberIds, memberRow, memberObj, userById, channelUserIds } from './db.js';
-import { P, has, channelPerms } from './permissions.js';
+import { P, has, channelPerms, viewersOf } from './permissions.js';
 import * as livekit from './livekit.js';
 import * as cillvoice from './media/index.js';
 import { sendToUsers, sendToSession } from './gateway.js';
@@ -81,7 +81,15 @@ function sendServerUpdate(v) {
 }
 
 const audience = v => (v.guild_id ? memberIds(v.guild_id) : channelUserIds({ id: v.channel_id }));
-const broadcast = (v, channelId) => sendToUsers(audience(v), 'VOICE_STATE_UPDATE', stateObj(v, channelId));
+// members who cannot view the channel only learn that the user is not in a channel they can see
+function broadcast(v, channelId = v.channel_id) {
+  const out = stateObj(v, channelId);
+  const ch = v.guild_id && channelId && channelOf(v);
+  if (!ch) return sendToUsers(audience(v), 'VOICE_STATE_UPDATE', out);
+  const viewers = new Set(viewersOf(ch));
+  sendToUsers([...viewers], 'VOICE_STATE_UPDATE', out);
+  sendToUsers(audience(v).filter(id => !viewers.has(id)), 'VOICE_STATE_UPDATE', { ...out, channel_id: null });
+}
 // called with the new state whenever someone enters a channel (DM calls start and update from here)
 export const joinHooks = [];
 

@@ -1,7 +1,7 @@
 import { get, all, run, tx, json, memberIds, memberRow, memberObj, userById } from '../db.js';
 import { HttpError, str, bool, list, invalid, notFound, missingPermissions } from '../errors.js';
 import { P, need, has, channelPerms, guildPerms, requireAbove, requireAssignable } from '../permissions.js';
-import { sendToUsers } from '../gateway.js';
+import { sendToUsers, visibility, syncVisibility } from '../gateway.js';
 import { inVoice, voiceState, disconnect, move, recheck } from '../voice.js';
 import { audit, A, diff } from '../audit.js';
 import { moderateProfile } from '../automod.js';
@@ -124,7 +124,9 @@ function patchMember(ctx) {
   }
   const oldRoles = changes.roles && all('SELECT role_id FROM member_roles WHERE guild_id = ? AND user_id = ?', g.id, target.id).map(r => r.role_id);
   const from = voiceState(g.id, target.id)?.channel_id;
+  const seen = changes.roles && visibility(g.id, [target.id]);
   const out = Object.keys(changes).length ? update(g, target, changes) : memberObj(target);
+  if (seen) syncVisibility(g.id, seen);
   if (body.channel_id === null) disconnect(g.id, target.id);
   else if (dest) move(target.id, dest);
   if (changes.roles || 'mute' in changes || 'deaf' in changes || 'communication_disabled_until' in changes) recheck(g.id, target.id);

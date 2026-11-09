@@ -133,9 +133,11 @@ test('private channel via overwrite: no VIEW_CHANNEL means 403 and no MESSAGE_CR
   assert.equal(r.status, 201);
   assert.equal(r.body.name, 'staff-room');
   s.staff = r.body;
-  // carol still receives the channel (with its overwrites), the reference behaviour
-  const created = await carol.gw.event('CHANNEL_CREATE', d => d.id === s.staff.id);
-  assert.equal(created.permission_overwrites.length, 2);
+  // carol never hears of it: no event, not in the channel list
+  assert.equal((await bob.gw.event('CHANNEL_CREATE', d => d.id === s.staff.id)).permission_overwrites.length, 2);
+  assert.ok(await carol.gw.none(f => f.t?.startsWith('CHANNEL_') && f.d.id === s.staff.id));
+  assert.ok(!(await api('GET', guildPath('/channels'), carol.token)).body.some(c => c.id === s.staff.id));
+  assert.ok((await api('GET', guildPath('/channels'), bob.token)).body.some(c => c.id === s.staff.id));
   const history = await api('GET', `/channels/${s.staff.id}/messages`, carol.token);
   assert.equal(history.status, 403);
   assert.equal((await api('POST', `/channels/${s.staff.id}/messages`, carol.token, { content: 'hi' })).status, 403);
@@ -144,13 +146,19 @@ test('private channel via overwrite: no VIEW_CHANNEL means 403 and no MESSAGE_CR
   assert.ok(await carol.gw.none(f => f.t === 'MESSAGE_CREATE' && f.d.id === sent.body.id));
   // a member overwrite opens it for carol alone
   assert.equal((await api('PUT', `/channels/${s.staff.id}/permissions/${carol.id}`, alice.token, { type: 1, allow: String(VIEW), deny: '0' })).status, 204);
-  assert.equal((await carol.gw.event('CHANNEL_UPDATE', d => d.id === s.staff.id)).permission_overwrites.length, 3);
+  assert.equal((await carol.gw.event('CHANNEL_CREATE', d => d.id === s.staff.id)).permission_overwrites.length, 3);
   assert.equal((await api('GET', `/channels/${s.staff.id}/messages`, carol.token)).status, 200);
   // bob (Mod, has MANAGE_ROLES) cannot grant bits he lacks, nor touch the owner
   assert.equal((await api('PUT', `/channels/${s.staff.id}/permissions/${carol.id}`, bob.token, { type: 1, allow: String(ADMIN), deny: '0' })).status, 403);
   assert.equal((await api('PUT', `/channels/${s.staff.id}/permissions/${alice.id}`, bob.token, { type: 1, allow: '0', deny: String(VIEW) })).status, 403);
   assert.equal((await api('DELETE', `/channels/${s.staff.id}/permissions/${carol.id}`, alice.token)).status, 204);
+  await carol.gw.event('CHANNEL_DELETE', d => d.id === s.staff.id);
   assert.equal((await api('GET', `/channels/${s.staff.id}/messages`, carol.token)).status, 403);
+  // a role that grants view: CHANNEL_CREATE on getting it, CHANNEL_DELETE on losing it
+  assert.equal((await api('PUT', guildPath(`/members/${carol.id}/roles/${s.mod.id}`), alice.token)).status, 204);
+  await carol.gw.event('CHANNEL_CREATE', d => d.id === s.staff.id);
+  assert.equal((await api('DELETE', guildPath(`/members/${carol.id}/roles/${s.mod.id}`), alice.token)).status, 204);
+  await carol.gw.event('CHANNEL_DELETE', d => d.id === s.staff.id);
 });
 
 test('categories: children copy overwrites; deleting a category orphans its children', async () => {

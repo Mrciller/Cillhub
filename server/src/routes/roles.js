@@ -1,9 +1,9 @@
 import { snowflake } from '../snowflake.js';
-import { get, all, run, tx, memberIds, roleObj, rolesOf, channelObj } from '../db.js';
+import { get, all, run, tx, memberIds, roleObj, rolesOf } from '../db.js';
 import { HttpError, str, int, bool, list, invalid, snowflakeField, notFound } from '../errors.js';
 import { dataUri, saveImage, removeImage } from '../files.js';
 import { P, need, parseBits, requireRoleBelow } from '../permissions.js';
-import { sendToUsers } from '../gateway.js';
+import { sendToUsers, channelEvent, visibility, syncVisibility } from '../gateway.js';
 import { recheck } from '../voice.js';
 import { audit, A, diff } from '../audit.js';
 import { loadGuild } from './guilds.js';
@@ -13,6 +13,9 @@ const AUDITED = ['name', 'color', 'hoist', 'mentionable', 'permissions', 'colors
 // the holographic style: sending tertiary_color forces these three values (permissions.mdx, Role Colors Object)
 const HOLOGRAPHIC = { color: 11127295, secondary_color: 16759788, tertiary_color: 16761760 };
 const EMOJI = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)[\p{Emoji}\p{Emoji_Modifier}\p{Emoji_Component}\u200D\uFE0F]*$/u;
+
+// members whose permissions a role decides (@everyone: all)
+const holdersOf = (guildId, roleId) => (roleId === guildId ? memberIds(guildId) : all('SELECT user_id FROM member_roles WHERE guild_id = ? AND role_id = ?', guildId, roleId).map(r => r.user_id));
 
 function loadRole(guildId, roleId) {
   const r = get('SELECT * FROM roles WHERE id = ? AND guild_id = ?', roleId, guildId);
@@ -92,12 +95,14 @@ async function updateRole(ctx) {
   const r = loadRole(g.id, params.role_id);
   requireRoleBelow(g.id, user.id, r.position);
   const f = await fields(body, g, r);
+  const seen = f.permissions !== undefined && visibility(g.id, holdersOf(g.id, r.id));
   for (const [k, v] of Object.entries(f)) run(`UPDATE roles SET ${k} = ? WHERE id = ?`, v, r.id); // keys come from fields(), not the client
   if ('icon' in f && f.icon !== r.icon) removeImage('role-icons', r.id, r.icon);
   const role = roleObj(loadRole(g.id, r.id));
   roleEvent(g.id, 'GUILD_ROLE_UPDATE', { role });
   audit(ctx, g.id, A.ROLE_UPDATE, r.id, { changes: diff(roleObj(r), role, AUDITED) });
   if (f.permissions !== undefined) {
+    syncVisibility(g.id, seen);
     recheck(g.id);
     threadListSync(g.id, memberIds(g.id));
   }
@@ -132,6 +137,7 @@ function deleteRole(ctx) {
   if (r.id === g.id || r.managed) throw new HttpError(400, 50028, 'Invalid Role');
   requireRoleBelow(g.id, user.id, r.position);
   const channels = all('SELECT channel_id FROM overwrites WHERE target_id = ?', r.id);
+  const seen = visibility(g.id, holdersOf(g.id, r.id));
   const before = positions(g.id);
   tx(() => {
     run('DELETE FROM overwrites WHERE target_id = ?', r.id);
@@ -142,8 +148,8 @@ function deleteRole(ctx) {
   roleEvent(g.id, 'GUILD_ROLE_DELETE', { role_id: r.id });
   audit(ctx, g.id, A.ROLE_DELETE, r.id, { changes: diff(roleObj(r), {}, AUDITED) });
   announceMoves(g.id, before);
-  const ids = memberIds(g.id);
-  for (const c of channels) sendToUsers(ids, 'CHANNEL_UPDATE', channelObj(get('SELECT * FROM channels WHERE id = ?', c.channel_id)));
+  for (const c of channels) channelEvent(get('SELECT * FROM channels WHERE id = ?', c.channel_id), 'CHANNEL_UPDATE');
+  syncVisibility(g.id, seen);
   recheck(g.id);
 }
 

@@ -5,7 +5,7 @@
 import { snowflake } from '../snowflake.js';
 import { get, all, run, json, guildObj, isMember } from '../db.js';
 import { HttpError, invalid, intParam, notFound } from '../errors.js';
-import { P } from '../permissions.js';
+import { P, visibleChannels } from '../permissions.js';
 import { isOnline } from '../gateway.js';
 import { proxyUrl } from '../proxy.js';
 import { isHub, fedState, heartbeat } from '../federation.js';
@@ -94,7 +94,7 @@ function joinListed({ params, user }) {
   const d = g && listing(g.id);
   if (!d || d.hidden) throw notFound(10004, 'Guild');
   addToGuild(g, user);
-  return guildObj(g, true);
+  return guildObj(g, visibleChannels(g.id, user.id));
 }
 
 // --- browsing (hub users) -------------------------------------------------------------------------------------------------

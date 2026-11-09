@@ -2,11 +2,11 @@ import { configuredBackends } from '../voice.js';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { snowflake } from '../snowflake.js';
-import { DATA_DIR, get, all, run, tx, json, isMember, memberIds, membersOf, userById, userObj, guildObj } from '../db.js';
+import { DATA_DIR, get, all, run, tx, json, isMember, memberIds, membersOf, userById, userObj, guildObj, channelObj } from '../db.js';
 import { HttpError, str, int, bool, intParam, invalid, notFound, missingAccess, missingPermissions } from '../errors.js';
-import { P, need, guildPerms, requireAssignable, DEFAULT_PERMISSIONS } from '../permissions.js';
+import { P, need, guildPerms, requireAssignable, DEFAULT_PERMISSIONS, visibleChannels } from '../permissions.js';
 import { audit, A, diff } from '../audit.js';
-import { sendToUsers, presences, guildFull } from '../gateway.js';
+import { sendToUsers, presences, guildFull, visibility, syncVisibility } from '../gateway.js';
 import { disconnect } from '../voice.js';
 import { saveImage, removeImage, removeChannelFiles, removeAsset } from '../files.js';
 import { requireMfa } from '../mfa.js';
@@ -71,7 +71,7 @@ async function createGuild(ctx) {
   sendToUsers([ctx.user.id], 'GUILD_CREATE', guildCreate(g, ctx.user.id));
   guildCreatedHooks.forEach(f => f(g));
   ctx.status = 201;
-  return guildObj(get('SELECT * FROM guilds WHERE id = ?', id), true);
+  return guildObj(get('SELECT * FROM guilds WHERE id = ?', id), visibleChannels(id, ctx.user.id));
 }
 
 const AFK_TIMEOUTS = [60, 300, 900, 1800, 3600];
@@ -137,6 +137,7 @@ async function patchGuild(ctx) {
     requireMfa(ctx);
     next.owner_id = target.id;
   }
+  const seen = next.owner_id && visibility(g.id, [g.owner_id, next.owner_id]);
   for (const [k, v] of Object.entries(next)) run(`UPDATE guilds SET ${k} = ? WHERE id = ?`, v, g.id); // keys are fixed above
   if ('icon' in next && next.icon !== g.icon) removeImage('icons', g.id, g.icon);
   if ('banner' in next && next.banner !== g.banner) removeImage('banners', g.id, g.banner);
@@ -144,6 +145,7 @@ async function patchGuild(ctx) {
   const out = guildObj(get('SELECT * FROM guilds WHERE id = ?', g.id));
   audit(ctx, g.id, A.GUILD_UPDATE, g.id, { changes: diff(guildObj(g), out, AUDITED) });
   sendToUsers(memberIds(g.id), 'GUILD_UPDATE', out);
+  if (seen) syncVisibility(g.id, seen);
   return out;
 }
 
@@ -265,10 +267,10 @@ function patchVanityUrl({ params, body, user }) {
 
 export default [
   ['POST', '/guilds', createGuild, { maxBody: 32 * 1024 * 1024 }], // imports carry emoji as data URIs (up to 200, typically far below 256 KiB each)
-  ['GET', '/guilds/:id', ({ params, user }) => guildObj(loadGuild(params.id, user), true)],
+  ['GET', '/guilds/:id', ({ params, user }) => guildObj(loadGuild(params.id, user), visibleChannels(params.id, user.id))],
   ['PATCH', '/guilds/:id', patchGuild, { maxBody: 12 * 1024 * 1024 }],
   ['DELETE', '/guilds/:id', deleteGuild],
-  ['GET', '/guilds/:id/channels', ({ params, user }) => guildObj(loadGuild(params.id, user), true).channels],
+  ['GET', '/guilds/:id/channels', ({ params, user }) => visibleChannels(loadGuild(params.id, user).id, user.id).map(c => channelObj(c))],
   ['GET', '/guilds/:id/members', ({ params, query, user }) => membersOf(loadGuild(params.id, user).id, intParam(query, 'limit', 1000, 1, 1000))],
   ['GET', '/guilds/:id/anti-raid', getAntiRaid],
   ['PUT', '/guilds/:id/anti-raid', putAntiRaid],

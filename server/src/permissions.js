@@ -1,4 +1,4 @@
-import { get, all, memberIds } from './db.js';
+import { get, all, memberIds, guildChannels } from './db.js';
 import { invalid, missingPermissions, notFound } from './errors.js';
 
 const bit = n => 1n << BigInt(n);
@@ -70,9 +70,8 @@ export function guildPerms(guildId, userId) {
 }
 
 // base permissions with the channel's overwrites applied (the documented algorithm)
-function overwritten(ch, b, userId) {
+function overwritten(ch, b, userId, overwrites = all('SELECT * FROM overwrites WHERE channel_id = ?', ch.id)) {
   let perms = b.perms;
-  const overwrites = all('SELECT * FROM overwrites WHERE channel_id = ?', ch.id);
   const apply = matching => {
     let allow = 0n, deny = 0n;
     for (const o of matching) { allow |= BigInt(o.allow); deny |= BigInt(o.deny); }
@@ -112,6 +111,16 @@ export function channelPerms(ch, userId) {
 export const viewersOf = ch => ch.guild_id
   ? memberIds(ch.guild_id).filter(id => has(channelPerms(ch, id), P.VIEW_CHANNEL))
   : all('SELECT user_id FROM dm_recipients WHERE channel_id = ?', ch.id).map(r => r.user_id);
+
+// the guild's channels (no threads) a member may VIEW; one query for all overwrites, for GUILD_CREATE and visibility diffs
+export function visibleChannels(guildId, userId) {
+  const b = base(guildId, userId);
+  if (!b) return [];
+  const chans = guildChannels(guildId);
+  if (b.admin) return chans;
+  const byChannel = Map.groupBy(all('SELECT o.* FROM overwrites o JOIN channels c ON c.id = o.channel_id WHERE c.guild_id = ?', guildId), o => o.channel_id);
+  return chans.filter(c => has(overwritten(c, b, userId, byChannel.get(c.id) ?? []), P.VIEW_CHANNEL));
+}
 
 // guild members holding a guild-level permission
 export const holders = (guildId, perm) => memberIds(guildId).filter(id => has(guildPerms(guildId, id), perm));

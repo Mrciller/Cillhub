@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto';
 import { snowflake } from '../snowflake.js';
 import { get, all, run, tx, json, isMember, memberIds, memberRow, memberObj, userById, userObj, guildObj, featuresOf } from '../db.js';
 import { HttpError, int, notFound, missingPermissions } from '../errors.js';
-import { P, need, has, guildPerms } from '../permissions.js';
+import { P, need, has, guildPerms, visibleChannels } from '../permissions.js';
 import { sendToUsers, statusOf } from '../gateway.js';
 import { loadChannel } from './channels.js';
 import { audit, A } from '../audit.js';
@@ -80,7 +80,7 @@ function revoke(ctx) {
 function join({ params, user }) {
   const inv = findInvite(params.code);
   const g = get('SELECT * FROM guilds WHERE id = ?', inv.guild_id);
-  if (isMember(g.id, user.id)) return guildObj(g, true);
+  if (isMember(g.id, user.id)) return guildObj(g, visibleChannels(g.id, user.id));
   return addToGuild(g, user, inv);
 }
 
@@ -142,7 +142,7 @@ export function addToGuild(g, user, inv = null) {
   const status = statusOf(user.id);
   if (status !== 'offline') sendToUsers(ids, 'PRESENCE_UPDATE', { user: { id: user.id }, status, guild_id: g.id });
   if (sys) broadcastMessage(sys, 'MESSAGE_CREATE', getMessage(messageId));
-  return guildObj(g, true);
+  return guildObj(g, visibleChannels(g.id, user.id));
 }
 
 export default [

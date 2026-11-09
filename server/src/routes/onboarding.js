@@ -2,7 +2,7 @@ import { snowflake } from '../snowflake.js';
 import { get, run, tx, json, memberIds, memberRow, memberObj } from '../db.js';
 import { HttpError } from '../errors.js';
 import { P, need, requireAssignable } from '../permissions.js';
-import { sendToUsers } from '../gateway.js';
+import { sendToUsers, visibility, syncVisibility } from '../gateway.js';
 import { loadGuild } from './guilds.js';
 
 function getOnboarding(ctx) {
@@ -80,6 +80,7 @@ function respondOnboarding(ctx) {
     }
   }
 
+  const seen = visibility(g.id, [ctx.user.id]);
   tx(() => {
     for (const roleId of rolesToAssign) {
       run('INSERT OR IGNORE INTO member_roles (guild_id, user_id, role_id) VALUES (?, ?, ?)', g.id, ctx.user.id, roleId);
@@ -88,6 +89,7 @@ function respondOnboarding(ctx) {
 
   const member = memberObj(memberRow(g.id, ctx.user.id));
   sendToUsers(memberIds(g.id), 'GUILD_MEMBER_UPDATE', member);
+  syncVisibility(g.id, seen);
   return { success: true, assigned_roles: [...rolesToAssign] };
 }
 
