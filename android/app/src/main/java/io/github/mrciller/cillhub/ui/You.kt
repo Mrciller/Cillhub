@@ -78,7 +78,7 @@ import kotlinx.serialization.json.put
 /** Theme and colour choices, read by MainActivity's theme (local to this device). */
 object AppearancePrefs {
     val theme = MutableStateFlow("system")
-    val dynamic = MutableStateFlow(android.os.Build.VERSION.SDK_INT >= 31)
+    val dynamic = MutableStateFlow(false)
     fun load(p: Prefs) { theme.value = p.theme; dynamic.value = p.dynamicColor }
 }
 

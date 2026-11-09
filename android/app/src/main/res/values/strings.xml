@@ -236,8 +236,8 @@
     <string name="theme_system">Follow the system</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_light">Light</string>
-    <string name="dynamic_color">Dynamic color (Material 3)</string>
-    <string name="dynamic_color_text">Extract colors from your wallpaper using Material You (Android 12+).</string>
+    <string name="dynamic_color">Wallpaper colors</string>
+    <string name="dynamic_color_text">Use the colors of your wallpaper instead of the Cillhub palette (Android 12 and newer).</string>
     <string name="motion_hint">Animations follow the system setting "Remove animations".</string>
     <string name="language_system">Follow the system</string>
     <string name="language_en">English</string>
