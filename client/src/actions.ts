@@ -536,11 +536,20 @@ export async function gifs(q?: string): Promise<Gif[] | null> {
   }
 }
 
-/** Stars or un-stars a GIF (newest first, unique by url, at most 250), saved like any setting and synced by USER_SETTINGS_UPDATE. */
-export function toggleFavoriteGif(g: FavoriteGif) {
+/** Stars or un-stars a GIF (newest first, unique by url, at most 250): one item added or removed on the server, so devices
+ * do not overwrite each other's list; synced by USER_SETTINGS_UPDATE. */
+export async function toggleFavoriteGif(g: FavoriteGif) {
   const list = getState().settings.favorite_gifs ?? []
-  const rest = list.filter((x) => x.url !== g.url)
-  return patchSettings({ favorite_gifs: rest.length < list.length ? rest : [g, ...list].slice(0, 250) })
+  const on = list.some((x) => x.url === g.url)
+  mergeSettings({ favorite_gifs: on ? list.filter((x) => x.url !== g.url) : [g, ...list].slice(0, 250) })
+  try {
+    const r = await (on
+      ? api<UserSettings>(`/users/@me/settings/favorite-gifs${qs({ url: g.url })}`, { method: 'DELETE' })
+      : api<UserSettings>('/users/@me/settings/favorite-gifs', { method: 'PUT', body: g }))
+    if (r && typeof r === 'object') mergeSettings(r)
+  } catch (e) {
+    if (e instanceof ApiError && e.status) toastError(e)
+  }
 }
 
 export const getWelcomeScreen = (guildId: string) => api<WelcomeScreen>(`/guilds/${guildId}/welcome-screen`)

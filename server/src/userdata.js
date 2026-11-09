@@ -134,6 +134,18 @@ function favoriteGifs(v, f) {
   }).filter(g => !seen.has(g.url) && seen.add(g.url));
 }
 
+// one favourite added (moved to the front if already there; the oldest drop past 250) or removed by url, so devices
+// changing favourites at the same time do not overwrite each other's whole list
+export function favoriteGifsChange(userId, add, removeUrl) {
+  const list = settingsOf(userId).favorite_gifs;
+  if (add !== undefined) {
+    const [g] = favoriteGifs([add], 'gif');
+    return [g, ...list.filter(x => x.url !== g.url)].slice(0, 250);
+  }
+  if (typeof removeUrl !== 'string' || !removeUrl) fail('url', 'Give the url of the favourite to remove.');
+  return list.filter(x => x.url !== removeUrl);
+}
+
 // the allow-list: the documented user settings names where they exist, Cillhub's own keys for the rest
 const SETTINGS = {
   privacy: [privacySettings, { dm_read_receipts: true }],

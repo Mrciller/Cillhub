@@ -41,3 +41,31 @@ test('favorite_gifs: validated, deduplicated by url, stored and synced', async (
     await srv.stop();
   }
 });
+
+test('favorite-gifs: PUT adds one (newest first, deduplicated), DELETE ?url= removes one, both synced', async () => {
+  const srv = await startServer({ env: { GIPHY_API_KEY: '', TENOR_API_KEY: '' } });
+  try {
+    const bob = await srv.register('bob');
+    const gif = n => ({ url: `https://example.com/${n}.gif`, src: `https://example.com/${n}.gif`, width: 10, height: 10, format: 'gif' });
+    const put = g => srv.api('PUT', '/users/@me/settings/favorite-gifs', bob.token, g);
+    const del = url => srv.api('DELETE', `/users/@me/settings/favorite-gifs${url === undefined ? '' : `?url=${encodeURIComponent(url)}`}`, bob.token);
+    await srv.api('PATCH', '/users/@me/settings', bob.token, { favorite_gifs: [gif(1)] });
+    const gw = await srv.gateway(bob.token);
+    const r = await put({ ...gif(2), extra: 1 });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.favorite_gifs, [gif(2), gif(1)]);
+    assert.deepEqual((await gw.event('USER_SETTINGS_UPDATE')).favorite_gifs, [gif(2), gif(1)]);
+    assert.deepEqual((await put({ ...gif(1), width: 20 })).body.favorite_gifs, [{ ...gif(1), width: 20 }, gif(2)], 'again: moved to the front');
+    assert.equal((await put({ ...gif(3), url: 'http://example.com/3.gif' })).status, 400);
+    assert.equal((await put(null)).status, 400);
+    assert.equal((await del()).status, 400);
+    assert.deepEqual((await del(gif(1).url)).body.favorite_gifs, [gif(2)]);
+    assert.deepEqual((await del('https://example.com/unknown.gif')).body.favorite_gifs, [gif(2)], 'unknown url: nothing changes');
+    // the list stays at 250: the oldest drops
+    await srv.api('PATCH', '/users/@me/settings', bob.token, { favorite_gifs: Array.from({ length: 250 }, (_, i) => gif(100 + i)) });
+    const full = (await put(gif(9))).body.favorite_gifs;
+    assert.deepEqual([full.length, full[0].url, full.at(-1).url], [250, gif(9).url, gif(348).url]);
+  } finally {
+    await srv.stop();
+  }
+});
