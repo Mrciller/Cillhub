@@ -372,7 +372,11 @@ async function main() {
       await codeIn(dana, 'Update to 7.0.1?', await freshCode(danaSecret), 'Update Now')
       await dana.getByText('Updating… · 7.0.1 · backing up the database').waitFor()
       check(updaterCalls.some((c) => c.method === 'POST' && c.url === '/update' && c.body === '{"version":"7.0.1"}' && c.auth === 'Bearer e2e-updater-secret'), 'the server asked the updater with the shared secret')
-      // the hub admin asks the node to update (signed request); the node passes it to its updater
+      // the hub admin asks the node to update (signed request); the node passes it to its updater.
+      // remote requests are opt-in and need automatic updates on; the heartbeat tells the hub
+      await ok(api(dana, 'PATCH', '/admin/updates', { remote_update: true, auto_update: 'all' }))
+      await ok(api(dana, 'POST', '/admin/federation/heartbeat'))
+      await alice.reload() // the Nodes list was loaded before that heartbeat
       await alice.getByRole('button', { name: NODE_NAME, exact: true }).click()
       const drawer = alice.getByRole('dialog', { name: `Node ${NODE_NAME}` })
       await drawer.getByText('Allowed').waitFor()

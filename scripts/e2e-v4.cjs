@@ -625,6 +625,7 @@ async function main() {
       await carol.getByRole('button', { name: 'View Backup Codes' }).click()
       const dialog = modal(carol, 'Backup Codes')
       await dialog.getByLabel('Password').fill(PASSWORD)
+      await dialog.getByLabel('Authentication or backup code').fill(backup[3]) // step-up: 2FA accounts confirm with a code
       await dialog.getByRole('button', { name: 'Generate New Codes' }).click()
       const codes = dialog.getByRole('list', { name: 'Backup codes' }).getByRole('listitem')
       await codes.first().waitFor()
