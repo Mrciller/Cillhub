@@ -77,6 +77,7 @@ function checkCeremony(cred, type, challengeOk, rpId, authData) {
   if (origin !== rpId) throw new HttpError(400, 0, 'WebAuthn origin mismatch.');
   if (authData.length < 37 || !authData.subarray(0, 32).equals(createHash('sha256').update(rpId).digest())) throw new HttpError(400, 0, 'WebAuthn rpId mismatch.');
   if (!(authData[32] & 0x01)) throw new HttpError(400, 0, 'WebAuthn user presence required.');
+  if (!(authData[32] & 0x04)) throw new HttpError(400, 0, 'WebAuthn user verification required.'); // a passkey skips password and 2FA, so possession alone is not enough
   return clientData;
 }
 

@@ -24,7 +24,7 @@ function authenticator(type) {
     : new Map([[1, 1], [3, -8], [-1, 6], [-2, b(j.x)]]);
   const id = randomBytes(16);
   let count = 0;
-  const authData = (rpId, extra = Buffer.alloc(0), flags = 0x01) => {
+  const authData = (rpId, extra = Buffer.alloc(0), flags = 0x05) => { // UP + UV
     const c = Buffer.alloc(4); c.writeUInt32BE(count++);
     return Buffer.concat([createHash('sha256').update(rpId).digest(), Buffer.from([flags]), c, extra]);
   };
@@ -33,11 +33,11 @@ function authenticator(type) {
     id: id.toString('base64url'),
     register(opts) {
       const len = Buffer.from([0, id.length]);
-      const ad = authData(opts.rp.id, Buffer.concat([Buffer.alloc(16), len, id, cbor(cose)]), 0x41);
+      const ad = authData(opts.rp.id, Buffer.concat([Buffer.alloc(16), len, id, cbor(cose)]), 0x45);
       return { id: id.toString('base64url'), response: { clientDataJSON: clientData('webauthn.create', opts.challenge, opts.rp.id), attestationObject: cbor(new Map([['fmt', 'none'], ['attStmt', new Map()], ['authData', ad]])).toString('base64url') } };
     },
-    sign(opts, key = privateKey) {
-      const ad = authData(opts.rpId);
+    sign(opts, key = privateKey, flags) {
+      const ad = authData(opts.rpId, undefined, flags);
       const cd = clientData('webauthn.get', opts.challenge, opts.rpId);
       const sig = sign(type === 'ed25519' ? null : 'sha256', Buffer.concat([ad, createHash('sha256').update(b(cd)).digest()]), key);
       return { id: id.toString('base64url'), response: { clientDataJSON: cd, authenticatorData: ad.toString('base64url'), signature: sig.toString('base64url') } };
@@ -73,6 +73,7 @@ test('WebAuthn / Passkey: real signatures log in, forged assertions do not', asy
       assert.equal((await login(noSig)).status, 400);
       const other = type === 'rsa' ? generateKeyPairSync('rsa', { modulusLength: 2048 }) : type === 'ec' ? generateKeyPairSync('ec', { namedCurve: 'P-256' }) : generateKeyPairSync('ed25519');
       assert.equal((await login(auth.sign(await opts(), other.privateKey))).status, 401);
+      assert.equal((await login(auth.sign(await opts(), undefined, 0x01))).body.message, 'WebAuthn user verification required.');
       const o = await opts();
       const ok = await login(auth.sign(o));
       assert.equal(ok.status, 200, JSON.stringify(ok.body));

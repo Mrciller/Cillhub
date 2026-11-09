@@ -131,7 +131,7 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
         publicKey: {
           challenge: challengeBytes,
           rpId: opts.rpId || window.location.hostname,
-          userVerification: 'preferred',
+          userVerification: 'required',
         },
       })) as PublicKeyCredential | null
       if (!cred) { setBusy(false); return }
