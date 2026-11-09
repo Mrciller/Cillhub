@@ -4,6 +4,26 @@
    "title": "Web app and server",
    "releases": [
     {
+     "version": "7.8.0",
+     "date": "2026-11-09",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "GIF favourites are added and removed one at a time, so two devices no longer overwrite each other's list."
+       ]
+      },
+      {
+       "title": "Fixed",
+       "items": [
+        "Messages, reactions and typing in servers with thousands of members no longer slow the server down.",
+        "Private Node on the login page: voice, links, webhooks, update checks and node sign-in now use the chosen server; an address without https:// works, and the page shows the address you are really connected to.",
+        "A disabled module's commands disappear from the command list right away."
+       ]
+      }
+     ]
+    },
+    {
      "version": "7.7.0",
      "date": "2026-11-06",
      "groups": [
@@ -644,6 +664,26 @@
   {
    "title": "Web-App und Server",
    "releases": [
+    {
+     "version": "7.8.0",
+     "date": "2026-11-09",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "GIF-Favoriten werden einzeln hinzugefügt und entfernt, zwei Geräte überschreiben sich die Liste nicht mehr."
+       ]
+      },
+      {
+       "title": "Behoben",
+       "items": [
+        "Nachrichten, Reaktionen und Tippanzeigen in Servern mit Tausenden Mitgliedern bremsen den Server nicht mehr.",
+        "Privater Node auf der Anmeldeseite: Sprache, Links, Webhooks, Update-Prüfung und Node-Anmeldung nutzen jetzt den gewählten Server; eine Adresse ohne https:// funktioniert, und die Seite zeigt die Adresse, mit der du wirklich verbunden bist.",
+        "Befehle eines deaktivierten Moduls verschwinden sofort aus der Befehlsliste."
+       ]
+      }
+     ]
+    },
     {
      "version": "7.7.0",
      "date": "2026-11-06",
