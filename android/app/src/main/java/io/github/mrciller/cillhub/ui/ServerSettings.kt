@@ -72,16 +72,19 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.mrciller.cillhub.Config
 import io.github.mrciller.cillhub.R
+import io.github.mrciller.cillhub.data.AuditEntry
 import io.github.mrciller.cillhub.data.AuditLog
 import io.github.mrciller.cillhub.data.Ban
 import io.github.mrciller.cillhub.data.Channel
 import io.github.mrciller.cillhub.data.Guild
+import io.github.mrciller.cillhub.data.GuildEmoji
 import io.github.mrciller.cillhub.data.Invite
 import io.github.mrciller.cillhub.data.Perm
 import io.github.mrciller.cillhub.data.Role
 import io.github.mrciller.cillhub.data.Sel
 import io.github.mrciller.cillhub.data.Session
 import io.github.mrciller.cillhub.data.State
+import io.github.mrciller.cillhub.data.User
 import io.github.mrciller.cillhub.data.json
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonNull
@@ -127,6 +130,7 @@ private enum class Page(val label: Int, val icon: Int, val need: Long) {
     ROLES(R.string.roles, R.drawable.ms_group, Perm.MANAGE_ROLES),
     MEMBERS(R.string.members, R.drawable.ms_person_add, Perm.MANAGE_ROLES or Perm.KICK_MEMBERS or Perm.BAN_MEMBERS or Perm.MODERATE_MEMBERS or Perm.MANAGE_NICKNAMES),
     CHANNELS(R.string.ss_channels, R.drawable.ms_tag, Perm.MANAGE_CHANNELS),
+    EMOJI(R.string.ss_emoji, R.drawable.ms_add_reaction, Perm.MANAGE_GUILD_EXPRESSIONS or Perm.CREATE_GUILD_EXPRESSIONS),
     INVITES(R.string.ss_invites, R.drawable.ms_alternate_email, Perm.MANAGE_GUILD),
     BANS(R.string.ss_bans, R.drawable.ms_gavel, Perm.BAN_MEMBERS),
     AUDIT(R.string.ss_audit_log, R.drawable.ms_history, Perm.VIEW_AUDIT_LOG),
@@ -179,6 +183,7 @@ fun ServerSettingsScreen(guildId: String) {
                 Page.ROLES -> role?.let { id -> g.roles.firstOrNull { it.id == id }?.let { RoleEditor(state, g, it, act) { role = null } } } ?: Roles(state, g, act) { role = it }
                 Page.MEMBERS -> Members(state, g)
                 Page.CHANNELS -> Channels(state, g, act)
+                Page.EMOJI -> Emojis(state, g, act)
                 Page.INVITES -> Invites(state, g, act)
                 Page.BANS -> Bans(g, act)
                 Page.AUDIT -> Audit(state, g)
@@ -517,6 +522,97 @@ private fun <T> loaded(key: Any, reload: Int, act: (suspend () -> Unit) -> Unit,
     return v
 }
 
+/** An emoji name the server takes (2-32 of A-Z, a-z, 0-9, _), made from a file name. */
+fun emojiName(file: String): String =
+    file.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9_]+"), "_").trim('_').take(32).let { if (it.length < 2) "emoji" else it }
+
+val EMOJI_NAME = Regex("^[A-Za-z0-9_]{2,32}$")
+private const val EMOJI_MAX_BYTES = 256 * 1024
+
+/** Server emoji: upload (PNG, JPEG, GIF, WebP up to 256 KB), rename, delete; CREATE_GUILD_EXPRESSIONS covers your own, MANAGE_GUILD_EXPRESSIONS all. */
+@Composable
+private fun Emojis(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) {
+    val ctx = LocalContext.current
+    val perms = Sel.perms(state, g.id)
+    val me = state.me?.id
+    var reload by remember { mutableIntStateOf(0) }
+    val list = loaded(g.id, reload, act) { Session.rest.get<List<GuildEmoji>>("/guilds/${g.id}/emojis") }
+    var naming by remember { mutableStateOf<Pair<String, String?>?>(null) } // name, emoji id (null: the picked upload)
+    var picked by remember { mutableStateOf<Pair<String, ByteArray>?>(null) } // data type, bytes
+    var deleting by remember { mutableStateOf<GuildEmoji?>(null) }
+    fun canEdit(e: GuildEmoji) = Perm.has(perms, Perm.MANAGE_GUILD_EXPRESSIONS) || (e.user?.id == me && Perm.has(perms, Perm.CREATE_GUILD_EXPRESSIONS))
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) act {
+            val mime = ctx.contentResolver.getType(uri) ?: "image/png"
+            val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@act
+            check(bytes.size <= EMOJI_MAX_BYTES) { ctx.getString(R.string.emoji_too_big) }
+            val file = ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            picked = mime to bytes
+            naming = emojiName(file ?: "emoji") to null
+        }
+    }
+    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+        item {
+            FilledTonalButton({ pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, Modifier.padding(16.dp)) {
+                Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.upload_emoji), Modifier.padding(start = 8.dp))
+            }
+            Text(s(R.string.emoji_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+        }
+        if (list == null) item { Loading() }
+        else if (list.isEmpty()) item { Text(s(R.string.no_emoji), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+        items(list.orEmpty(), key = { it.id }) { e ->
+            val ok = canEdit(e)
+            ListItem(
+                headlineContent = { Text(":${e.name}:") },
+                supportingContent = e.user?.let { u -> { Text(s(R.string.emoji_added_by, u.displayName)) } },
+                leadingContent = { coil3.compose.AsyncImage(Config.cdn("/emojis/${e.id}.${if (e.animated) "gif" else "png"}"), ":${e.name}:", Modifier.size(36.dp)) },
+                trailingContent = if (ok) { {
+                    Row {
+                        IconButton({ naming = e.name to e.id }) { Ic(R.drawable.ms_edit, s(R.string.rename_emoji)) }
+                        IconButton({ deleting = e }) { Ic(R.drawable.ms_delete, s(R.string.delete_emoji)) }
+                    }
+                } } else null,
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+        }
+    }
+    naming?.let { (start, id) ->
+        var name by remember(start, id) { mutableStateOf(start) }
+        val close = { naming = null; picked = null }
+        AlertDialog(
+            onDismissRequest = close,
+            title = { Text(s(if (id == null) R.string.upload_emoji else R.string.rename_emoji)) },
+            text = {
+                OutlinedTextField(name, { name = it.take(32) }, label = { Text(s(R.string.emoji_name)) }, singleLine = true, isError = !EMOJI_NAME.matches(name),
+                    supportingText = { Text(s(R.string.emoji_name_rule)) }, modifier = Modifier.fillMaxWidth())
+            },
+            confirmButton = {
+                TextButton({
+                    val file = picked
+                    close()
+                    act {
+                        if (id == null && file != null) Session.rest.request("POST", "/guilds/${g.id}/emojis", buildJsonObject {
+                            put("name", name); put("image", "data:${file.first};base64," + Base64.encodeToString(file.second, Base64.NO_WRAP))
+                        })
+                        else if (id != null) Session.rest.request("PATCH", "/guilds/${g.id}/emojis/$id", buildJsonObject { put("name", name) })
+                        reload++
+                    }
+                }, enabled = EMOJI_NAME.matches(name)) { Text(s(if (id == null) R.string.upload else R.string.save)) }
+            },
+            dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+        )
+    }
+    deleting?.let { e ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text(s(R.string.delete_emoji)) },
+            text = { Text(s(R.string.delete_emoji_confirm, e.name)) },
+            confirmButton = { TextButton({ deleting = null; act { Session.rest.request("DELETE", "/guilds/${g.id}/emojis/${e.id}"); reload++ } }) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton({ deleting = null }) { Text(s(R.string.cancel)) } },
+        )
+    }
+}
+
 @Composable
 private fun Invites(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) {
     val ctx = LocalContext.current
@@ -581,32 +677,83 @@ private val AUDIT_ACTIONS = mapOf(
     22 to R.string.audit_ban, 23 to R.string.audit_unban, 24 to R.string.audit_member_update, 25 to R.string.audit_member_roles, 26 to R.string.audit_member_move,
     27 to R.string.audit_member_disconnect, 30 to R.string.audit_role_create, 31 to R.string.audit_role_update, 32 to R.string.audit_role_delete,
     40 to R.string.audit_invite_create, 42 to R.string.audit_invite_delete, 72 to R.string.audit_message_delete, 73 to R.string.audit_message_bulk_delete,
+    60 to R.string.audit_emoji_create, 61 to R.string.audit_emoji_update, 62 to R.string.audit_emoji_delete,
     74 to R.string.audit_message_pin, 75 to R.string.audit_message_unpin, 110 to R.string.audit_thread_create, 111 to R.string.audit_thread_update, 112 to R.string.audit_thread_delete,
 )
 
 @Composable
 private fun Audit(state: State, g: Guild) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var type by rememberSaveable { mutableStateOf<Int?>(null) }
+    var actor by rememberSaveable { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    var loadedLog by remember { mutableStateOf<AuditLog?>(null) }
-    val log = loadedLog
-    LaunchedEffect(g.id) { try { loadedLog = Session.rest.get<AuditLog>("/guilds/${g.id}/audit-logs?limit=100") } catch (e: Exception) { error = errorText(ctx, e) } }
-    fun name(id: String?) = id?.let { i -> log?.users?.firstOrNull { it.id == i }?.displayName ?: state.users[i]?.displayName ?: g.roles.firstOrNull { it.id == i }?.name ?: state.channels[i]?.name?.let { "#$it" } }
-    when {
-        error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
-        log == null -> Loading()
-        log.auditLogEntries.isEmpty() -> EmptyState(R.drawable.ms_history, s(R.string.no_audit_entries))
-        else -> LazyColumn {
-            items(log.auditLogEntries, key = { it.id }) { e ->
-                val action = AUDIT_ACTIONS[e.actionType]?.let { ctx.getString(it) } ?: ctx.getString(R.string.audit_other, e.actionType)
-                val time = java.time.Instant.ofEpochMilli((e.id.toLongOrNull() ?: 0L).shr(22) + 1420070400000L).toString()
-                ListItem(
-                    headlineContent = { Text(listOfNotNull(name(e.userId), action, name(e.targetId)).joinToString(" · ")) },
-                    supportingContent = { Text(listOfNotNull(messageTime(ctx, time), e.reason).joinToString(" · ")) },
-                    leadingContent = { Avatar(log.users.firstOrNull { it.id == e.userId } ?: e.userId?.let { state.users[it] }, 36.dp) },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                )
+    var entries by remember { mutableStateOf<List<AuditEntry>?>(null) }
+    var users by remember { mutableStateOf<Map<String, User>>(emptyMap()) }
+    var more by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    // one page of 50 (newest first) for the chosen filters; before = the oldest entry shown
+    fun load(before: String?) = scope.launch {
+        if (busy) return@launch
+        busy = true; error = null
+        try {
+            val log = Session.rest.get<AuditLog>("/guilds/${g.id}/audit-logs?limit=$AUDIT_PAGE" + (type?.let { "&action_type=$it" } ?: "") +
+                (actor?.let { "&user_id=$it" } ?: "") + (before?.let { "&before=$it" } ?: ""))
+            users = users + log.users.associateBy { it.id }
+            entries = (if (before == null) emptyList() else entries.orEmpty()) + log.auditLogEntries
+            more = log.auditLogEntries.size == AUDIT_PAGE
+        } catch (e: Exception) { error = errorText(ctx, e) }
+        busy = false
+    }
+    LaunchedEffect(g.id, type, actor) { entries = null; load(null) }
+    fun name(id: String?) = id?.let { i -> users[i]?.displayName ?: state.users[i]?.displayName ?: g.roles.firstOrNull { it.id == i }?.name ?: state.channels[i]?.name?.let { "#$it" } }
+    fun label(t: Int) = AUDIT_ACTIONS[t]?.let { ctx.getString(it) } ?: ctx.getString(R.string.audit_other, t)
+    val list = entries
+    Column {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterMenu(type?.let(::label) ?: s(R.string.audit_all_actions), type != null,
+                listOf(null to s(R.string.audit_all_actions)) + AUDIT_ACTIONS.keys.sorted().map { it to label(it) }) { type = it }
+            // who acted: everyone the log has named so far, plus the members who may change things
+            val staff = remember(state.members[g.id], g) { state.members[g.id].orEmpty().filter { (id, m) -> Perm.base(g, id, m) and AUDITED_PERMS != 0L }.keys }
+            val actors = (users.keys + staff + listOfNotNull(actor)).distinct().sortedBy { name(it)?.lowercase() }
+            FilterMenu(actor?.let(::name) ?: s(R.string.audit_all_users), actor != null, listOf(null to s(R.string.audit_all_users)) + actors.map { it to (name(it) ?: it) }) { actor = it }
+        }
+        when {
+            error != null && list.isNullOrEmpty() -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
+            list == null -> Loading()
+            list.isEmpty() -> EmptyState(R.drawable.ms_history, s(R.string.no_audit_entries))
+            else -> LazyColumn {
+                items(list, key = { it.id }) { e ->
+                    val time = java.time.Instant.ofEpochMilli((e.id.toLongOrNull() ?: 0L).shr(22) + 1420070400000L).toString()
+                    ListItem(
+                        headlineContent = { Text(listOfNotNull(name(e.userId), label(e.actionType), name(e.targetId)).joinToString(" · ")) },
+                        supportingContent = { Text(listOfNotNull(messageTime(ctx, time), e.reason).joinToString(" · ")) },
+                        leadingContent = { Avatar(e.userId?.let { users[it] ?: state.users[it] }, 36.dp) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+                if (more) item(key = "more") {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        if (busy) androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp))
+                        else TextButton({ load(list.last().id) }) { Text(s(R.string.load_more)) }
+                    }
+                }
             }
+        }
+    }
+}
+
+private const val AUDIT_PAGE = 50
+private val AUDITED_PERMS = with(Perm) { ADMINISTRATOR or MANAGE_GUILD or MANAGE_ROLES or MANAGE_CHANNELS or KICK_MEMBERS or BAN_MEMBERS or MODERATE_MEMBERS or MANAGE_MESSAGES or MANAGE_GUILD_EXPRESSIONS }
+
+/** A filter chip that opens a menu of [options]; picking one calls [pick]. */
+@Composable
+private fun <T> FilterMenu(label: String, active: Boolean, options: List<Pair<T, String>>, pick: (T) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        FilterChip(active, { open = true }, label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }, trailingIcon = { Ic(R.drawable.ms_expand_more, null, Modifier.size(18.dp)) })
+        androidx.compose.material3.DropdownMenu(open, { open = false }, Modifier.heightIn(max = 400.dp)) {
+            for ((v, text) in options) DropdownMenuItem({ Text(text) }, { open = false; pick(v) })
         }
     }
 }

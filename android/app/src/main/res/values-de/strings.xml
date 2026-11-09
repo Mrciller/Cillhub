@@ -644,4 +644,25 @@
         <item quantity="one">%1$d Nachricht</item>
         <item quantity="other">%1$d Nachrichten</item>
     </plurals>
+    <string name="ban_reason">Grund (optional)</string>
+    <string name="ban_delete_messages">Letzte Nachrichten der Person löschen</string>
+    <string name="ban_delete_none">Nichts löschen</string>
+    <string name="audit_all_actions">Alle Aktionen</string>
+    <string name="audit_all_users">Alle Personen</string>
+    <string name="load_more">Mehr laden</string>
+    <string name="audit_emoji_create">hat ein Emoji hinzugefügt</string>
+    <string name="audit_emoji_update">hat ein Emoji umbenannt</string>
+    <string name="audit_emoji_delete">hat ein Emoji gelöscht</string>
+    <string name="ss_emoji">Emojis</string>
+    <string name="upload_emoji">Emoji hochladen</string>
+    <string name="upload">Hochladen</string>
+    <string name="emoji_hint">PNG, JPEG, WebP oder GIF (animiert), höchstens 256 KB.</string>
+    <string name="no_emoji">Noch keine Emojis</string>
+    <string name="emoji_added_by">Hinzugefügt von %1$s</string>
+    <string name="rename_emoji">Emoji umbenennen</string>
+    <string name="delete_emoji">Emoji löschen</string>
+    <string name="delete_emoji_confirm">:%1$s: löschen? Nachrichten, die es verwenden, zeigen dann nur den Namen.</string>
+    <string name="emoji_name">Name</string>
+    <string name="emoji_name_rule">2–32 Buchstaben, Ziffern oder _</string>
+    <string name="emoji_too_big">Das Bild ist größer als 256 KB.</string>
 </resources>

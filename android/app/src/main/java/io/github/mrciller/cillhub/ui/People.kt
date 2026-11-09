@@ -32,6 +32,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.IconButton
@@ -301,15 +302,30 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                         "kick", "ban" -> {
                             val ban = dialog == "ban"
                             val name = Sel.memberName(state, g.id, userId)
+                            var reason by remember { mutableStateOf("") }
+                            var wipe by remember { mutableStateOf(0L) }
                             AlertDialog(
                                 onDismissRequest = { dialog = null },
                                 title = { Text(s(if (ban) R.string.ban else R.string.kick)) },
-                                text = { Text(s(if (ban) R.string.ban_confirm else R.string.kick_confirm, name)) },
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(s(if (ban) R.string.ban_confirm else R.string.kick_confirm, name))
+                                        if (ban) {
+                                            OutlinedTextField(reason, { reason = it.take(512) }, label = { Text(s(R.string.ban_reason)) }, modifier = Modifier.fillMaxWidth())
+                                            Text(s(R.string.ban_delete_messages), style = MaterialTheme.typography.labelLarge)
+                                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                for ((secs, label) in BAN_WIPE) FilterChip(wipe == secs, { wipe = secs }, label = { Text(s(label)) })
+                                            }
+                                        }
+                                    }
+                                },
                                 confirmButton = {
                                     TextButton({
                                         dialog = null
                                         act {
-                                            if (ban) Session.rest.request("PUT", "/guilds/${g.id}/bans/$userId", buildJsonObject { put("delete_message_seconds", 0) })
+                                            if (ban) Session.rest.request("PUT", "/guilds/${g.id}/bans/$userId", buildJsonObject {
+                                                put("delete_message_seconds", wipe); if (reason.isNotBlank()) put("reason", reason.trim())
+                                            })
                                             else Session.rest.request("DELETE", path)
                                             close()
                                         }
@@ -340,6 +356,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
     }
 }
 
+private val BAN_WIPE = listOf(0L to R.string.ban_delete_none, 3600L to R.string.timeout_1h, 86400L to R.string.timeout_1d, 604800L to R.string.timeout_1w)
 private val TIMEOUTS = listOf(60L to R.string.timeout_60s, 300L to R.string.timeout_5m, 600L to R.string.timeout_10m, 3600L to R.string.timeout_1h, 86400L to R.string.timeout_1d, 604800L to R.string.timeout_1w)
 
 /** A server's members, online first (pull to refresh). */
