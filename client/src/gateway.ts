@@ -1,4 +1,6 @@
-import { api } from './api'
+import { api, ApiError } from './api'
+import { toast } from './components/dialogs'
+import { t } from './i18n'
 import { apply, getState, setState, setToken } from './store'
 import { notifyEvent } from './notifications/notify'
 import { voiceEvent } from './voice/engine'
@@ -150,7 +152,10 @@ export function sendOp(op: number, d: unknown) {
 
 export function logout() {
   voiceEvent('LOGOUT', null)
-  api('/auth/logout', { method: 'POST' }).catch(() => {})
+  // the token is read before setToken(null) below; offline, this device still forgets it, but the server keeps it valid
+  api('/auth/logout', { method: 'POST' }).catch((e) => {
+    if (e instanceof ApiError && e.status === 0) toast(t('Logged out on this device. The server could not be reached, so the session stays active there until it expires; end it under Sessions on another device.'))
+  })
   disconnect()
   forgetInstances() // node tokens belong to this hub account
   setToken(null)

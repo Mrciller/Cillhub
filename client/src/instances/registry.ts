@@ -69,6 +69,12 @@ export const nodeOf = (id: string | null | undefined) => (id ? origins.get(id) :
 const SNOWFLAKE = /^\d+$/
 // Root-relative URLs in node payloads point at the node: made absolute on the way in (attachments, embeds, voice endpoint).
 const URL_KEYS = new Set(['url', 'proxy_url', 'icon_url', 'proxy_icon_url', 'avatar_url', 'sound_url', 'endpoint'])
+// Media the client loads by itself (attachments, entrance sounds, webhook avatars) must come from the node's own origin.
+const MEDIA_KEYS = new Set(['avatar_url', 'sound_url'])
+const onNode = (n: Live, a: unknown) => {
+  const u = (a as { url?: unknown } | null)?.url
+  return typeof u !== 'string' || u.startsWith(n.url + '/') || (u.startsWith('/') && !u.startsWith('//'))
+}
 const swapMentions = (s: string, from: string, to: string) => (from && s.includes(from) ? s.replaceAll(`<@${from}>`, `<@${to}>`).replaceAll(`<@!${from}>`, `<@${to}>`) : s)
 
 /** A node payload as the hub-centred store expects it: our node ids aliased, its ids recorded, its root-relative URLs made absolute. */
@@ -81,7 +87,7 @@ export function inbound<T>(id: string, data: T): T {
       if (n.sessionId && x === n.sessionId) return hub.sessionId || x
       if (URL_KEYS.has(key) && x.startsWith('/') && !x.startsWith('//')) return n.url + x
       // A node's media proxy is its own: any other host would load (and see our IP) from wherever the node points.
-      if (key.startsWith('proxy_') && !x.startsWith(n.url + '/')) return undefined
+      if ((key.startsWith('proxy_') || MEDIA_KEYS.has(key)) && !x.startsWith(n.url + '/')) return undefined
       return n.meId && hub.meId ? swapMentions(x, n.meId, hub.meId) : x
     }
     if (Array.isArray(x)) return x.map((v) => walk(v, key))
@@ -92,7 +98,7 @@ export function inbound<T>(id: string, data: T): T {
       // First writer wins, and never our hub user or an id the hub already showed us (else a node could take over hub DMs and servers).
       if ((k === 'id' || k.endsWith('_id')) && !k.startsWith('hub_') && typeof v === 'string' && SNOWFLAKE.test(v) && v !== n.meId
         && v !== hub.meId && !origins.has(v) && !hubHas(v)) origins.set(v, id)
-      out[k] = walk(v, k)
+      out[k] = walk(k === 'attachments' && Array.isArray(v) ? v.filter((a) => onNode(n, a)) : v, k)
     }
     return out
   }
@@ -118,7 +124,9 @@ export const outboundPath = (id: string, path: string) => {
 /** Which node a REST path or CDN path belongs to: the first node-owned snowflake in the path, else `guild_id`/`channel_id` in the query or body. */
 export function route(path: string, body?: unknown): string | undefined {
   const [p, q] = path.split('?')
-  for (const seg of p.split('/')) {
+  // A node may name any user id (also hub users we have not seen yet), so /users/... goes to a node only through the
+  // node guild or channel given as context below, never by the user id in the path.
+  if (!p.startsWith('/users/')) for (const seg of p.split('/')) {
     const s = seg.replace(/\.\w+$/, '')
     const n = origins.get(s)
     if (n) return n
@@ -140,6 +148,9 @@ if (import.meta.env.DEV) {
   const d = inbound('__t', { id: '77', author: { id: '9' }, content: 'hi <@9>', session_id: 'ns', attachments: [{ url: '/attachments/77/1/a.png' }] })
   console.assert(d.author.id === '1' && d.content === 'hi <@1>' && d.attachments[0].url === 'https://n.example/attachments/77/1/a.png', 'inbound aliasing')
   console.assert(route('/channels/77/messages') === '__t' && route('/channels/78/messages') === undefined && route('/users/1/profile?guild_id=77') === '__t', 'routing')
+  console.assert(route('/users/9/profile') === undefined && route('/users/@me/relationships/77') === undefined, 'user routes stay on the hub')
+  const m = inbound('__t', { attachments: [{ url: 'https://evil.example/a.png' }, { url: 'https://n.example/attachments/1/2/b.png' }], sound_url: 'https://evil.example/s.ogg' })
+  console.assert(m.attachments.length === 1 && m.attachments[0].url.startsWith('https://n.example/') && m.sound_url === undefined, 'node media from the node only')
   console.assert(outbound('__t', { content: '<@1>', user_id: '1' }).user_id === '9' && outboundPath('__t', '/guilds/77/members/1') === '/guilds/77/members/9', 'outbound aliasing')
   origins.delete('77')
   delete live.__t

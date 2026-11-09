@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { Auth } from './components/Auth'
+import { DialogHost } from './components/dialogs'
 import { useLocale } from './i18n'
 import { InstanceBanner } from './admin/InstanceBanner'
 import { InvitePage } from './components/InvitePage'
@@ -44,7 +45,7 @@ function Page() {
   // Template links open "Add a server" with the code (templates/Templates.tsx); after login when needed.
   if (section === 'template' && a) return sessionStorage.setItem('template-code', decodeURIComponent(a)), <Redirect to="/channels/@me" />
   if (section === 'download') return <Suspense fallback={null}><DownloadPage /></Suspense>
-  if (!token) return section === 'login' || section === 'register' ? <Auth key={section} mode={section} /> : <Redirect to={`/login${section === 'oauth2' || section === 'developers' || section === 'directory' ? `?next=${encodeURIComponent(location.pathname + location.search)}` : ''}`} />
+  if (!token) return section === 'login' || section === 'register' ? <><Auth key={section} mode={section} /><DialogHost /></> : <Redirect to={`/login${section === 'oauth2' || section === 'developers' || section === 'directory' ? `?next=${encodeURIComponent(location.pathname + location.search)}` : ''}`} />
   if (section === 'developers' && a === 'applications') return <Suspense fallback={null}><DeveloperPortal appId={b} tab={path.split('/')[4]} /></Suspense>
   if (section === 'admin') return <Suspense fallback={null}><AdminPage page={a} /></Suspense>
   if (section === 'directory') return <Suspense fallback={null}><Directory /></Suspense>
