@@ -168,7 +168,7 @@ private fun LoginForm(toRegister: () -> Unit, done: (LoginAnswer, String) -> Uni
             busy = false
         }
     }
-    Text(s(R.string.login_title).uppercase(), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+    Text(s(R.string.login_title), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
     Text(s(R.string.login_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 20.dp))
     Field(login, { login = it }, s(R.string.email_or_username), ContentType.Username + ContentType.EmailAddress, KeyboardType.Email)
     Field(password, { password = it }, s(R.string.password), ContentType.Password, password = true, ime = ImeAction.Go, onDone = { submit() })
