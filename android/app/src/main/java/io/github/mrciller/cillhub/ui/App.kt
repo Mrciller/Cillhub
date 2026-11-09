@@ -67,6 +67,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class ChannelInfoRoute(val channelId: String)
 @Serializable data class ChannelAccessRoute(val channelId: String)
 @Serializable data class ServerSettingsRoute(val guildId: String)
+@Serializable data class SearchRoute(val channelId: String)
 
 /** What screens may ask of the app shell. */
 interface Nav {
@@ -83,6 +84,9 @@ interface Nav {
     fun openChannelInfo(channelId: String)
     fun openChannelAccess(channelId: String)
     fun openServerSettings(guildId: String)
+    fun openSearch(channelId: String)
+    /** The chat of [channelId], scrolled to [messageId] (loaded on the way if needed). */
+    fun openMessage(channelId: String, messageId: String)
     fun back()
 }
 
@@ -90,6 +94,9 @@ val LocalNav = staticCompositionLocalOf<Nav> { error("no Nav") }
 
 /** Deep links from notifications and shortcuts: a channel id, "voice:<channel id>" or "settings:<page>". */
 val pendingOpen = MutableStateFlow<String?>(null)
+
+/** channel id to message id: the chat of that channel scrolls to the message once (ChatScreen consumes it). */
+val pendingJump = MutableStateFlow<Pair<String, String>?>(null)
 
 /** The activity is in picture-in-picture: only the call's video shows. */
 val inPip = MutableStateFlow(false)
@@ -154,6 +161,12 @@ private fun MainShell() {
             override fun openChannelInfo(channelId: String) = nav.navigate(ChannelInfoRoute(channelId)) { launchSingleTop = true }
             override fun openChannelAccess(channelId: String) = nav.navigate(ChannelAccessRoute(channelId)) { launchSingleTop = true }
             override fun openServerSettings(guildId: String) = nav.navigate(ServerSettingsRoute(guildId)) { launchSingleTop = true }
+            override fun openSearch(channelId: String) = nav.navigate(SearchRoute(channelId)) { launchSingleTop = true }
+            override fun openMessage(channelId: String, messageId: String) {
+                pendingJump.value = channelId to messageId
+                // back to that chat if it is under the search screen, else open it
+                if (!nav.popBackStack(ChatRoute(channelId), inclusive = false)) openChannel(channelId)
+            }
             override fun back() { nav.popBackStack() }
         }
     }
@@ -207,6 +220,7 @@ private fun MainShell() {
                 composable<SettingsRoute> { SettingsScreen(it.toRoute<SettingsRoute>().page) }
                 composable<ChannelInfoRoute> { ChannelInfoScreen(it.toRoute<ChannelInfoRoute>().channelId) }
                 composable<ChannelAccessRoute> { ChannelAccessScreen(it.toRoute<ChannelAccessRoute>().channelId) }
+                composable<SearchRoute> { SearchScreen(it.toRoute<SearchRoute>().channelId) }
                 composable<ServerSettingsRoute> { ServerSettingsScreen(it.toRoute<ServerSettingsRoute>().guildId) }
                 composable<VoiceRoute> { it.toRoute<VoiceRoute>().let { r -> VoiceScreen(r.channelId, r.start) } }
             }

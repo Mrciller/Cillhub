@@ -368,6 +368,8 @@ data class Gif(val id: String = "", val title: String = "", val url: String, val
 // server administration (GET /guilds/:id/invites, /bans, /audit-logs)
 @Serializable data class Invite(val code: String, val channel: Channel? = null, val inviter: User? = null, val uses: Int = 0, val maxUses: Int = 0, val expiresAt: String? = null)
 @Serializable data class Ban(val user: User, val reason: String? = null)
+/** GET …/messages/search: each hit is a one-message list. */
+@Serializable data class SearchResults(val totalResults: Int = 0, val messages: List<List<Message>> = emptyList())
 /** A server emoji; [user] (who added it) only for members with an expressions permission. */
 @Serializable data class GuildEmoji(val id: String, val name: String = "", val animated: Boolean = false, val user: User? = null)
 @Serializable data class AuditEntry(val id: String, val userId: String? = null, val targetId: String? = null, val actionType: Int = 0, val reason: String? = null)

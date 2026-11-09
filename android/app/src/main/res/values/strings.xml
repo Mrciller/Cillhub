@@ -671,4 +671,24 @@
     <string name="emoji_name">Name</string>
     <string name="emoji_name_rule">2–32 letters, digits or _</string>
     <string name="emoji_too_big">The image is larger than 256 KB.</string>
+    <string name="search_messages">Search messages</string>
+    <string name="search_in">Search %1$s</string>
+    <string name="search_hint">Type words from the message you are looking for.</string>
+    <string name="search_none">No messages found</string>
+    <string name="message_too_old">That message is too far back to open here.</string>
+    <string name="channel_notifications">Notifications</string>
+    <string name="notif_default">Server default</string>
+    <string name="notif_none">Nothing</string>
+    <string name="mute_channel">Mute channel</string>
+    <string name="channel_muted">Muted</string>
+    <string name="unmute_channel">Unmute</string>
+    <string name="muted_until">Until %1$s</string>
+    <string name="mute_15m">For 15 minutes</string>
+    <string name="mute_8h">For 8 hours</string>
+    <string name="mute_forever">Until I turn it back on</string>
+    <string name="drag_to_reorder">Drag to reorder</string>
+    <plurals name="search_results">
+        <item quantity="one">%1$d result</item>
+        <item quantity="other">%1$d results</item>
+    </plurals>
 </resources>

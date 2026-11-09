@@ -2,6 +2,9 @@ package io.github.mrciller.cillhub.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -85,12 +88,17 @@ fun ChannelInfoScreen(channelId: String) {
     if (ch == null || gid == null) { Loading(); return }
     var tab by rememberSaveable { mutableStateOf(0) }
     var editing by remember { mutableStateOf(false) }
+    var notify by remember { mutableStateOf(false) }
     val perms = Sel.perms(state, gid, ch)
     Scaffold(topBar = {
         TopAppBar(
             title = {},
             navigationIcon = { IconButton(nav::back) { Ic(R.drawable.ms_arrow_back, s(R.string.back)) } },
-            actions = { if (Perm.has(perms, Perm.MANAGE_CHANNELS)) IconButton({ editing = true }) { Ic(R.drawable.ms_settings, s(R.string.edit_channel)) } },
+            actions = {
+                IconButton({ nav.openSearch(ch.id) }) { Ic(R.drawable.ms_search, s(R.string.search_messages)) }
+                IconButton({ notify = true }) { Ic(R.drawable.ms_notifications, s(R.string.channel_notifications)) }
+                if (Perm.has(perms, Perm.MANAGE_CHANNELS)) IconButton({ editing = true }) { Ic(R.drawable.ms_settings, s(R.string.edit_channel)) }
+            },
         )
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
@@ -118,6 +126,60 @@ fun ChannelInfoScreen(channelId: String) {
         }
     }
     if (editing) ChannelEditDialog(ch) { editing = false }
+    if (notify) ChannelNotifySheet(state, gid, ch) { notify = false }
+}
+
+private val MUTE_FOR = listOf(900L to R.string.mute_15m, 3600L to R.string.timeout_1h, 28800L to R.string.mute_8h, 86400L to R.string.timeout_1d, 0L to R.string.mute_forever)
+
+/** This channel's override in the user guild settings: notify level (all / mentions / nothing / server default) and mute for a while. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChannelNotifySheet(state: State, gid: String, ch: Channel, close: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var error by remember { mutableStateOf<String?>(null) }
+    val o = state.guildSettings[gid]?.channelOverrides?.firstOrNull { it.channelId == ch.id }
+    val muted = Sel.isChannelMuted(state, ch.copy(parentId = null)) // only this channel's own mute can be lifted here
+    fun patch(f: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) = scope.launch {
+        try {
+            Session.rest.request("PATCH", "/users/@me/guilds/$gid/settings", buildJsonObject { put("channel_overrides", buildJsonObject { put(ch.id, buildJsonObject(f)) }) })
+            close()
+        } catch (e: Exception) { error = errorText(ctx, e) }
+    }
+    ModalBottomSheet(close) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+            Text(s(R.string.channel_notifications), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp).semantics { heading() })
+            Text("#" + (ch.name ?: ""), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+            val level = o?.messageNotifications ?: 3
+            for ((v, label) in listOf(3 to R.string.notif_default, 0 to R.string.notif_all_messages, 1 to R.string.notif_only_mentions, 2 to R.string.notif_none)) {
+                ListItem(
+                    headlineContent = { Text(s(label)) },
+                    leadingContent = { androidx.compose.material3.RadioButton(level == v, null) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.selectable(level == v, role = androidx.compose.ui.semantics.Role.RadioButton) { patch { put("message_notifications", v) } },
+                )
+            }
+            Text(s(if (muted) R.string.channel_muted else R.string.mute_channel), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp).semantics { heading() })
+            if (muted) {
+                o?.muteConfig?.endTime?.let { Text(s(R.string.muted_until, messageTime(ctx, it)), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp)) }
+                ListItem(headlineContent = { Text(s(R.string.unmute_channel), color = MaterialTheme.colorScheme.primary) }, leadingContent = { Ic(R.drawable.ms_notifications, null) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable { patch { put("muted", false); put("mute_config", kotlinx.serialization.json.JsonNull) } })
+            } else for ((secs, label) in MUTE_FOR) {
+                ListItem(headlineContent = { Text(s(label)) }, colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable {
+                        patch {
+                            put("muted", true)
+                            put("mute_config", if (secs == 0L) kotlinx.serialization.json.JsonNull else buildJsonObject {
+                                put("end_time", java.time.Instant.now().plusSeconds(secs).toString()); put("selected_time_window", secs)
+                            })
+                        }
+                    })
+            }
+        }
+    }
 }
 
 fun channelTypeLabel(c: Channel) = when (c.type) {

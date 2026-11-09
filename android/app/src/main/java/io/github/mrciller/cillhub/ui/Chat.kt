@@ -113,6 +113,7 @@ import io.github.mrciller.cillhub.data.isPrivate
 import io.github.mrciller.cillhub.data.isThread
 import io.github.mrciller.cillhub.data.json
 import kotlinx.coroutines.channels.Channel as Events
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonObject
@@ -306,6 +307,30 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
     LaunchedEffect(listState, list.size) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collect { last -> if (last >= list.size - 5) vm.older() }
     }
+    // a search result to show: older pages until it is loaded, then scroll there and tint it a moment
+    val jump by pendingJump.collectAsStateWithLifecycle()
+    var highlight by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(jump, messages != null) {
+        val (cid, mid) = jump ?: return@LaunchedEffect
+        if (cid != channelId || messages == null) return@LaunchedEffect
+        pendingJump.value = null
+        fun loaded() = Session.store.value.messages[channelId].orEmpty()
+        snapshotFlow { vm.loading }.first { !it }
+        vm.loading = true
+        try {
+            // shortcut: at most 40 pages (2000 messages) back; an around= window would need a list with gaps
+            var pages = 0
+            while (loaded().none { it.id == mid } && Session.store.value.hasMore[channelId] == true && pages++ < 40)
+                Session.loadMessages(channelId, loaded().firstOrNull { !it.pending && !it.failed }?.id ?: break)
+        } catch (e: Exception) { vm.events.trySend(e); return@LaunchedEffect } finally { vm.loading = false }
+        val idx = items(loaded()).asReversed().indexOfFirst { it is MsgItem && it.m.id == mid }
+        if (idx < 0) { snack.showSnackbar(ctx.getString(R.string.message_too_old)); return@LaunchedEffect }
+        snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > idx }
+        listState.scrollToItem(idx)
+        highlight = mid
+        kotlinx.coroutines.delay(2500)
+        highlight = null
+    }
     // new message of our own: jump down
     val newest = messages?.lastOrNull()
     LaunchedEffect(newest?.id) { if (newest?.author?.id == state.me?.id && newest != null) listState.animateScrollToItem(0) }
@@ -390,7 +415,7 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
                             when (item) {
                                 is DayItem -> DaySeparator(item.day)
                                 is MsgItem -> {
-                                    Column {
+                                    Column(if (item.m.id == highlight) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)) else Modifier) {
                                         if (purgeMode) {
                                             Row(
                                                 Modifier.fillMaxWidth().clickable {
@@ -589,6 +614,7 @@ private fun ChatTopBar(
         actions = {
             if (isPrivate(ch)) IconButton({ nav.openVoice(ch.id, start = !state.calls.containsKey(ch.id)) }) { Ic(R.drawable.ms_call, s(if (state.calls.containsKey(ch.id)) R.string.voice_join_call else R.string.start_call)) }
             if (isThread) IconButton(onOpenThreadNotif) { Ic(R.drawable.ms_notifications, s(R.string.thread_notifications)) }
+            IconButton({ nav.openSearch(ch.id) }) { Ic(R.drawable.ms_search, s(R.string.search_messages)) }
             IconButton(onOpenMediaGallery) { Ic(R.drawable.ms_perm_media, s(R.string.media_files_links)) }
             if (canPurge) IconButton(onTogglePurge) { Ic(R.drawable.ms_delete, s(R.string.purge_messages)) }
             if (ch.guildId != null && showBack) IconButton({ nav.openMembers(ch.guildId) }) { Ic(R.drawable.ms_group, s(R.string.members)) }
