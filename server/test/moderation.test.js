@@ -97,6 +97,15 @@ test('AutoMod: keyword wildcards and allow list block; alert, timeout and exempt
   for (const ok of ['concatenate', 'a category', 'dogma', 'bad words']) assert.equal((await send(bob, ok)).status, 201, ok);
   for (const no of ['hotdog', 'a bad word!', 'CAT']) assert.equal((await send(bob, no)).status, 400, no);
   assert.equal((await send(alice, 'the owner may say cat')).status, 201);
+  // M6: from a channel the alert channel's readers cannot all see, the alert leaves the content out
+  const VIEW = String(1n << 10n);
+  const secret = (await api('POST', `/guilds/${g.guild.id}/channels`, alice.token, {
+    name: 'secret', permission_overwrites: [{ id: g.guild.id, type: 0, allow: '0', deny: VIEW }, { id: bob.id, type: 1, allow: VIEW, deny: '0' }],
+  })).body;
+  assert.equal((await send(bob, 'secret cat plans', secret.id)).status, 400);
+  const hidden = (await carol.gw.event('MESSAGE_CREATE', d => d.channel_id === alerts.id && d.embeds[0].fields.some(f => f.value === secret.id))).embeds[0];
+  assert.equal(hidden.description, null);
+  assert.ok(!JSON.stringify(hidden).includes('plans'));
   // exempt roles skip the rule; edits are checked too
   await api('PATCH', `/guilds/${g.guild.id}/auto-moderation/rules/${rule.body.id}`, carol.token, { exempt_roles: [s.mod.id] });
   assert.equal((await send(carol, 'cats')).status, 201);

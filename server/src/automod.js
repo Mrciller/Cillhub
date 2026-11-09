@@ -1,7 +1,7 @@
 import vm from 'node:vm';
 import { get, all, run, json, memberIds, memberRow, memberObj } from './db.js';
 import { HttpError } from './errors.js';
-import { P, holders, guildPerms, isThread } from './permissions.js';
+import { P, holders, guildPerms, isThread, viewersOf } from './permissions.js';
 import { sendToUsers } from './gateway.js';
 import { audit, A } from './audit.js';
 import { insertMessage, broadcastMessage, getChannel } from './message.js';
@@ -136,12 +136,15 @@ function alert(hit, a, { guildId, ch, userId, content, messageId, blocked }) {
   const target = getChannel(a.metadata?.channel_id);
   if (!target || target.guild_id !== guildId) return undefined;
   const field = (name, value) => value != null && { name, value: String(value), inline: false };
+  // M6: the content only goes where nobody reads it who could not read the source channel
+  const source = ch && new Set(viewersOf(ch));
+  const hide = source && !viewersOf(target).every(id => source.has(id));
   const embed = {
-    type: 'auto_moderation_message', description: content,
+    type: 'auto_moderation_message', description: hide ? null : content,
     fields: [
       field('rule_name', hit.rule.name), field('decision_id', hit.rule.id), field('decision_outcome', blocked ? 'blocked' : 'flagged'),
       field('channel_id', ch?.id), field('flagged_message_id', messageId), field('keyword', hit.keyword),
-      field('keyword_matched_content', hit.matched),
+      field('keyword_matched_content', hide ? null : hit.matched),
       field('timeout_duration', hit.rule.actions.find(x => x.type === 3)?.metadata?.duration_seconds),
     ].filter(Boolean),
   };
