@@ -15,7 +15,7 @@ import {
 } from '../federation.js';
 import { verifyJwt, ReplayCache, randomCode, pkceChallenge } from '../fedcrypto.js';
 import {
-  hasUpdater, AUTO_MODES, autoCheck, autoUpdate, remoteUpdate, callUpdater, checkNow,
+  hasUpdater, AUTO_MODES, autoCheck, autoUpdate, remoteUpdate, autoAllowed, callUpdater, checkNow,
 } from '../updates.js';
 import { hubAdminView, clean } from './hub.js';
 
@@ -243,10 +243,16 @@ async function hubEvents(ctx) {
   if (b.node_id !== fedState().node_id) throw new HttpError(401, 0, 'Federation signature refused: event is for another node');
   // the hub admin asks for an update now: only to the release the signed feed offers, and only while the admin here allows it
   if (b.type === 'update_request') {
-    if (!remoteUpdate()) throw new HttpError(403, 0, 'Remote update requests are turned off on this node.');
+    const { mode } = autoUpdate();
+    if (!remoteUpdate() || mode === 'off') throw new HttpError(403, 0, 'Remote update requests are turned off on this node (they need automatic updates on).');
+    const c = await checkNow();
+    if (!c.update_available || !c.can_update || !autoAllowed(mode, c.current_version, c.latest)) {
+      throw new HttpError(409, 0, `Not updating: ${c.latest?.version ?? 'no release'} is not an update this node's automatic update mode (${mode}) allows.`);
+    }
     adminAudit({ action: 'update.remote_request', ip: ctx.ip });
     ctx.status = 202;
-    return callUpdater('POST', '/update', {});
+    // auto: true makes the updater refuse a version that failed or was rolled back here before
+    return callUpdater('POST', '/update', { version: c.latest.version, auto: true });
   }
   // a suspension, ban or unlink ends the sessions of hub accounts here (federation.js setFedState)
   if (b.type === 'status' && ['active', 'suspended', 'banned', 'unlinked'].includes(b.status)) {

@@ -17,8 +17,10 @@ export const autoCheck = () => setting('update_check') ?? process.env.CILLCORD_U
 const envMode = AUTO_MODES.includes(process.env.CILLCORD_AUTO_UPDATE) ? process.env.CILLCORD_AUTO_UPDATE : 'off';
 const envHour = /^([01]?\d|2[0-3])$/.test(process.env.CILLCORD_AUTO_UPDATE_HOUR ?? '') ? Number(process.env.CILLCORD_AUTO_UPDATE_HOUR) : 4;
 export const autoUpdate = () => ({ mode: setting('auto_update') ?? envMode, hour: setting('auto_update_hour') ?? envHour });
-// may the hub ask this node to update now (signed request, routes/node.js)? The node admin can turn it off.
-export const remoteUpdate = () => setting('remote_update') ?? true;
+// may the hub ask this node to update now (signed request, routes/node.js)? Off unless the node admin turns it on, and even
+// then only while automatic updates are on and only to a release the auto-update mode allows (a hub takeover must not
+// be able to push updates to nodes whose operator did not opt in)
+export const remoteUpdate = () => setting('remote_update') ?? false;
 
 export async function callUpdater(method, path, body, timeout = 30_000) {
   if (!UPDATER_URL) throw new HttpError(400, 0, 'No updater is configured on this host (CILLCORD_UPDATER_URL).');
@@ -89,7 +91,7 @@ export function startUpdates() {
 export async function updateReport() {
   const { mode, hour } = autoUpdate();
   const out = {
-    updater: hasUpdater, auto_update: mode, auto_update_hour: hour, remote_update: remoteUpdate(),
+    updater: hasUpdater, auto_update: mode, auto_update_hour: hour, remote_update: remoteUpdate() && mode !== 'off',
     latest_version: setting('update_last_check')?.latest?.version ?? null, last_result: null, last_auto: setting('update_last_auto'),
   };
   if (!hasUpdater) return out;

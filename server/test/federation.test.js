@@ -86,7 +86,8 @@ before(async () => {
       nodeUpdaterCalls.push({ method: req.method, url: req.url, body: body && JSON.parse(body) });
       const status = { state: 'done', action: 'update', target_version: '7.0.1', rolled_back: false, error: null, finished_at: '2026-11-05T04:03:00.000Z', current_version: '7.0.1' };
       res.writeHead(req.method === 'POST' ? 202 : 200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(req.method === 'POST' ? { ...status, state: 'updating' } : status));
+      const check = { current_version: '7.0.0', latest: { version: '7.0.1', notes: 'fixes' }, update_available: true, can_update: true };
+      res.end(JSON.stringify(req.method === 'POST' ? { ...status, state: 'updating' } : req.url === '/check' ? check : status));
     });
   }, 3407);
   node = await startServer({ env: {
@@ -282,9 +283,10 @@ test('the hub role needs the network key: another key or env alone starts a node
   }
 });
 
-test('update reports reach the hub with the heartbeat; the hub admin can ask a node to update unless the node turned it off', async () => {
+test('update reports reach the hub with the heartbeat; the hub admin can ask a node to update only when the node opted in', async () => {
   const u = (await node.api('GET', '/admin/updates', nodeAdmin.token)).body;
-  assert.deepEqual([u.auto_update, u.auto_update_hour, u.remote_update, u.updater, u.reachable], ['patch', 3, true, true, true]);
+  assert.deepEqual([u.auto_update, u.auto_update_hour, u.remote_update, u.updater, u.reachable], ['patch', 3, false, true, true]);
+  assert.equal((await node.api('PATCH', '/admin/updates', nodeAdmin.token, { remote_update: true })).body.remote_update, true);
   assert.equal((await node.api('PATCH', '/admin/updates', nodeAdmin.token, { auto_update: 'nightly' })).status, 400);
   assert.equal((await node.api('PATCH', '/admin/updates', nodeAdmin.token, { auto_update_hour: 2.5 })).status, 400);
   assert.equal((await node.api('PATCH', '/admin/updates', nodeAdmin.token, { remote_update: 'yes' })).status, 400);
@@ -300,7 +302,14 @@ test('update reports reach the hub with the heartbeat; the hub admin can ask a n
   const before = nodeUpdaterCalls.length;
   const yes = (await ask(hubBackup.shift())).body;
   assert.deepEqual([yes.result.status, yes.result.accepted, yes.node.node_id], [202, true, nodeId]);
-  assert.deepEqual(nodeUpdaterCalls.slice(before).filter(c => c.method === 'POST').map(c => [c.url, c.body]), [['/update', {}]]);
+  assert.deepEqual(nodeUpdaterCalls.slice(before).filter(c => c.method === 'POST').map(c => [c.url, c.body]), [['/update', { version: '7.0.1', auto: true }]]);
+  // automatic updates off on the node: the hub cannot push an update even with remote requests allowed
+  await node.api('PATCH', '/admin/updates', nodeAdmin.token, { auto_update: 'off' });
+  const off = (await ask(hubBackup.shift())).body.result;
+  assert.deepEqual([off.status, off.accepted], [403, false]);
+  await node.api('POST', '/admin/federation/heartbeat', nodeAdmin.token);
+  assert.equal((await hub.api('GET', `/admin/federation/nodes/${nodeId}`, hubAdmin.token)).body.update.remote_update, false, 'reported as not allowed');
+  await node.api('PATCH', '/admin/updates', nodeAdmin.token, { auto_update: 'all' });
   assert.equal((await node.api('PATCH', '/admin/updates', nodeAdmin.token, { remote_update: false })).body.remote_update, false);
   const no = (await ask(hubBackup.shift())).body.result;
   assert.deepEqual([no.status, no.accepted], [403, false]);
@@ -309,7 +318,7 @@ test('update reports reach the hub with the heartbeat; the hub admin can ask a n
   await node.api('POST', '/admin/federation/heartbeat', nodeAdmin.token);
   assert.equal((await hub.api('GET', `/admin/federation/nodes/${nodeId}`, hubAdmin.token)).body.update.remote_update, false);
   const audit = (await hub.api('GET', `/admin/federation/nodes/${nodeId}`, hubAdmin.token)).body.audit_log;
-  assert.equal(audit.filter(e => e.action === 'node.update_request').length, 2);
+  assert.equal(audit.filter(e => e.action === 'node.update_request').length, 3);
 });
 
 test('sign in on the node with a hub account: consent, PKCE, audience-bound ID token, linked account, profile updates', async () => {
@@ -541,7 +550,7 @@ test('hub release channel and node update API without an updater', async () => {
   assert.deepEqual([latest.version, latest.notes, latest.download_base], ['7.0.0', 'Hub network', `${HUB}/download/server/`]);
   assert.equal((await node.api('GET', '/server/releases/latest')).status, 404, 'nodes have no release channel');
   assert.deepEqual((await hub.api('GET', '/admin/updates', hubAdmin.token)).body, {
-    updater: false, current_version: 'dev', auto_check: true, last_check: null, auto_update: 'off', auto_update_hour: 4, remote_update: true, last_auto: null,
+    updater: false, current_version: 'dev', auto_check: true, last_check: null, auto_update: 'off', auto_update_hour: 4, remote_update: false, last_auto: null,
   });
   assert.equal((await hub.api('POST', '/admin/updates/check', hubAdmin.token)).status, 400);
 });
