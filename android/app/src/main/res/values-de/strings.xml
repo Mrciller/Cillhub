@@ -685,4 +685,6 @@
         <item quantity="one">%1$d Ergebnis</item>
         <item quantity="other">%1$d Ergebnisse</item>
     </plurals>
+    <string name="mute_1h">Für 1 Stunde</string>
+    <string name="mute_1d">Für 1 Tag</string>
 </resources>

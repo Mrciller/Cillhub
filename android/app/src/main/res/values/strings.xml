@@ -691,4 +691,6 @@
         <item quantity="one">%1$d result</item>
         <item quantity="other">%1$d results</item>
     </plurals>
+    <string name="mute_1h">For 1 hour</string>
+    <string name="mute_1d">For 1 day</string>
 </resources>

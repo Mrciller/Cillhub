@@ -129,7 +129,7 @@ fun ChannelInfoScreen(channelId: String) {
     if (notify) ChannelNotifySheet(state, gid, ch) { notify = false }
 }
 
-private val MUTE_FOR = listOf(900L to R.string.mute_15m, 3600L to R.string.timeout_1h, 28800L to R.string.mute_8h, 86400L to R.string.timeout_1d, 0L to R.string.mute_forever)
+private val MUTE_FOR = listOf(900L to R.string.mute_15m, 3600L to R.string.mute_1h, 28800L to R.string.mute_8h, 86400L to R.string.mute_1d, 0L to R.string.mute_forever)
 
 /** This channel's override in the user guild settings: notify level (all / mentions / nothing / server default) and mute for a while. */
 @OptIn(ExperimentalMaterial3Api::class)
