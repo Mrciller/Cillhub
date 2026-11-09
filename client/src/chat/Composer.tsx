@@ -140,7 +140,7 @@ export function Composer({ channel, label, perms, files, setFiles, addFiles }: P
   const index = useIndex(channel, slash)
   const query = slash ? text.slice(1).toLowerCase() : ''
   const commands = slash && index && has(perms, P.USE_APPLICATION_COMMANDS) ? flatten(index, channel, perms).filter((e) => e.path.join(' ').startsWith(query) || (query.length > 1 && e.path.join(' ').includes(query))).slice(0, 12) : []
-  const pickCommand = (e: Entry) => (setCommand(e), setText(''), setAc(null))
+  const pickCommand = (e: Entry) => (setCommand(e), onTextChange(''), setAc(null))
   const items = ac && !commands.length ? suggest(getState(), channel, perms, ac.trigger, ac.query) : []
   const active = items[Math.min(sel, items.length - 1)]
   const tooBig = files.some((f) => f.file.size > MAX_SIZE)

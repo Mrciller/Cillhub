@@ -715,6 +715,7 @@ export const authorizeNode = (query: string, authorize: boolean) => api<{ locati
 
 // ---------- v4: application commands and interactions ----------
 const indexes = new Map<string, Promise<CommandIndex>>()
+addEventListener('cillcord:command-index', (e) => indexes.delete(`g${(e as CustomEvent<string>).detail}`))
 /** Commands available in a guild (or a DM), per user docs' application command index; cached for a minute. */
 export function commandIndex(scope: { guildId?: string; channelId: string }) {
   const key = scope.guildId ? `g${scope.guildId}` : `c${scope.channelId}`

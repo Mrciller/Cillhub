@@ -666,6 +666,9 @@ export function apply(t: string, d: any) {
       if (t === 'INTERACTION_SUCCESS') return setState({ interactions: omit(s.interactions, p.nonce) })
       return setState({ interactions: { ...s.interactions, [p.nonce]: { ...p, id: d.id, state: t === 'INTERACTION_FAILURE' ? 'failed' : 'sent' } } })
     }
+    case 'GUILD_APPLICATION_COMMAND_INDEX_UPDATE':
+      // commands of an app changed (a module was disabled, a bot registered some): actions.ts drops its cached index
+      return void dispatchEvent(new CustomEvent('cillcord:command-index', { detail: d.guild_id }))
     case 'APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE':
       return setState({ autocomplete: { nonce: d.nonce, choices: d.choices ?? [] } })
     case 'INTERACTION_MODAL_CREATE':
