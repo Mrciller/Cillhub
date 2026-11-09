@@ -1,7 +1,7 @@
+import { DEFAULT_HUB_URL } from './hub'
 import { t } from './i18n'
 import { inbound, instanceById, outbound, outboundPath, route, tokenOf } from './instances/registry'
 
-export const DEFAULT_HUB_URL = 'https://cillhub.cillerian.org'
 export const SERVER_TARGET_KEY = 'cillhub_server_target'
 export const CUSTOM_NODE_KEY = 'cillhub_custom_node_url'
 
@@ -21,34 +21,47 @@ export function getCustomNodeUrl(): string {
   }
 }
 
-export function getActiveServerUrl(): string {
-  const target = getServerTarget()
-  if (target === 'private') {
-    const custom = getCustomNodeUrl().trim().replace(/\/+$/, '')
-    if (custom) return custom
-  }
-  if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE
-  if (typeof window !== 'undefined' && window.location?.origin && /^https?:\/\//.test(window.location.origin)) {
-    return window.location.origin
-  }
-  return DEFAULT_HUB_URL
-}
-
-export function setServerTarget(target: 'hub' | 'private', customUrl?: string) {
+/** A typed server address as an origin: https:// added when missing, http only for localhost; null when unusable. */
+export function normalizeServerUrl(raw: string): string | null {
+  const v = raw.trim()
+  if (!v) return null
   try {
-    localStorage.setItem(SERVER_TARGET_KEY, target)
-    if (customUrl !== undefined) {
-      localStorage.setItem(CUSTOM_NODE_KEY, customUrl.trim().replace(/\/+$/, ''))
-    }
-  } catch {}
+    const u = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(v) ? v : `https://${v}`)
+    const local = u.hostname === 'localhost' || u.hostname.endsWith('.localhost') || u.hostname === '127.0.0.1' || u.hostname === '[::1]'
+    return u.protocol === 'https:' || (u.protocol === 'http:' && local) ? u.origin : null
+  } catch {
+    return null
+  }
+}
+if (import.meta.env.DEV) {
+  console.assert(normalizeServerUrl('chat.example.org/') === 'https://chat.example.org' && normalizeServerUrl('http://chat.example.org') === null
+    && normalizeServerUrl('http://localhost:3000/x') === 'http://localhost:3000' && normalizeServerUrl('ftp://a.b') === null && normalizeServerUrl(' ') === null, 'normalizeServerUrl')
 }
 
 export const ORIGIN = import.meta.env.VITE_API_BASE ?? ''
-/** The hub's public web address, for links people share or open elsewhere (the desktop app runs on app://cillhub). */
-export const WEB_ORIGIN = ORIGIN || (typeof window !== 'undefined' && window.location?.origin && /^https?:\/\//.test(window.location.origin) ? window.location.origin : DEFAULT_HUB_URL)
+
+/** The server this client talks to (the login page's Main Hub / Private Node choice): REST, media, voice, and every link people share. */
+export function apiOrigin(): string {
+  const custom = getServerTarget() === 'private' && normalizeServerUrl(getCustomNodeUrl())
+  if (custom) return custom
+  if (ORIGIN) return ORIGIN.replace(/\/+$/, '')
+  if (typeof window !== 'undefined' && /^https?:\/\//.test(window.location?.origin ?? '')) return window.location.origin
+  return DEFAULT_HUB_URL
+}
+
+/** Saves the choice; a private address is stored normalised (false when it is not usable, nothing is saved then). */
+export function setServerTarget(target: 'hub' | 'private', customUrl?: string): boolean {
+  const url = customUrl === undefined ? undefined : normalizeServerUrl(customUrl)
+  if (url === null) return false
+  try {
+    localStorage.setItem(SERVER_TARGET_KEY, target)
+    if (url !== undefined) localStorage.setItem(CUSTOM_NODE_KEY, url)
+  } catch {}
+  return true
+}
 
 /** Root-relative CDN paths (avatars, icons, attachments) resolved against the API origin, or the node's origin for node ids (v7). */
-export const cdn = (path: string) => (/^https?:\/\//.test(path) || path.startsWith('data:') ? path : (instanceById(route(path))?.url ?? getActiveServerUrl() ?? ORIGIN) + path)
+export const cdn = (path: string) => (/^https?:\/\//.test(path) || path.startsWith('data:') ? path : (instanceById(route(path))?.url ?? apiOrigin()) + path)
 
 type FieldErrors = Record<string, { _errors?: { code: string; message: string }[] }>
 
@@ -92,8 +105,7 @@ const auth = (node?: string): Record<string, string> => {
 function target(path: string, body: unknown, instance?: string) {
   const node = instance ?? route(path, body)
   const info = instanceById(node)
-  const activeOrigin = getActiveServerUrl()
-  const base = (activeOrigin || ORIGIN).replace(/\/+$/, '') + '/api/v9'
+  const base = apiOrigin() + '/api/v9'
   return info ? { node: info.id, url: info.url + '/api/v9' + outboundPath(info.id, path), body: outbound(info.id, body) } : { node: undefined, url: base + path, body }
 }
 

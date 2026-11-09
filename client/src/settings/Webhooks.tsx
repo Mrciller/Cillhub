@@ -2,14 +2,14 @@
 import { t } from '../i18n'
 import { useEffect, useState } from 'react'
 import { createWebhook, deleteWebhook, guildWebhooks, updateWebhook } from '../actions'
-import { cdn, dataUri, WEB_ORIGIN } from '../api'
+import { cdn, dataUri, apiOrigin } from '../api'
 import { ask } from '../components/dialogs'
 import { cls, FormError, Icon, ICONS } from '../components/ui'
 import type { Guild, Webhook } from '../types'
 import { useGuildChannels } from './ServerSettings'
 
 /** The execute URL: the server's `url`, or the API path built from id and token. */
-export const webhookUrl = (w: Webhook) => w.url ?? `${WEB_ORIGIN}/api/v9/webhooks/${w.id}/${w.token}`
+export const webhookUrl = (w: Webhook) => w.url ?? `${apiOrigin()}/api/v9/webhooks/${w.id}/${w.token}`
 const avatar = (w: Webhook) => (w.avatar ? cdn(`/avatars/${w.id}/${w.avatar}`) : null)
 
 export function WebhooksPage({ guild }: { guild: Guild }) {

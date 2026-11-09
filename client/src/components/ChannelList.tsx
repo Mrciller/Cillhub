@@ -1,6 +1,6 @@
 // Channel sidebar: categories (collapsible), text and voice channels, unread state, drag-and-drop reordering.
 import { useState, type DragEvent } from 'react'
-import { WEB_ORIGIN } from '../api'
+import { apiOrigin } from '../api'
 import { ackMessage, cloneChannel, patchMember } from '../actions'
 import { moveChannel } from '../channelOrder'
 import { has, P } from '../permissions'
@@ -174,7 +174,7 @@ function ChannelMenu({ c, at, onClose }: { c: Channel; at: Parameters<typeof Pop
       {c.type !== 4 && <MenuItem disabled={!isUnread(s, c)} onSelect={() => c.last_message_id && ackMessage(c.id, c.last_message_id)}>{t('Mark As Read')}</MenuItem>}
       {canEdit(s, c) && <MenuItem onSelect={() => setState({ modal: { kind: 'channel', channelId: c.id } })}>{c.type === 4 ? t('Edit Category') : t('Edit Channel')}</MenuItem>}
       {c.type !== 4 && canEdit(s, c) && <MenuItem onSelect={() => cloneChannel(c.id).then((newCh) => newCh && navigate(`/channels/${c.guild_id}/${newCh.id}`)).catch(toastError)}>{t('Clone Channel')}</MenuItem>}
-      {c.type !== 4 && <MenuItem onSelect={() => navigator.clipboard.writeText(`${WEB_ORIGIN}/channels/${c.guild_id}/${c.id}`)}>{t('Copy Channel Link')}</MenuItem>}
+      {c.type !== 4 && <MenuItem onSelect={() => navigator.clipboard.writeText(`${apiOrigin()}/channels/${c.guild_id}/${c.id}`)}>{t('Copy Channel Link')}</MenuItem>}
       {VOICE_TYPES.has(c.type) && <VoiceStatusItems c={c} />}
       <ChannelNotifyItems c={c} />
       {s.settings.developer_mode && <><MenuSep /><MenuItem onSelect={() => void navigator.clipboard.writeText(c.id)}>{t('Copy Channel ID')}</MenuItem></>}

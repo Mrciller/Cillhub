@@ -1,6 +1,6 @@
 // Thread side panel: header actions (members, join/leave, archive, lock, tags, pin) and the thread's chat.
 import { t } from '../i18n'
-import { WEB_ORIGIN } from '../api'
+import { apiOrigin } from '../api'
 import { useEffect, useRef, useState } from 'react'
 import { deleteChannel, joinThread, leaveThread } from '../actions'
 import { ChatBody } from '../chat/Chat'
@@ -93,7 +93,7 @@ export function ThreadPanel({ channelId }: { channelId: string }) {
           )}
           {manage && <MenuItem onSelect={() => run(patchThread(th, { locked: !meta?.locked }))}>{meta?.locked ? (post ? t('Unlock Post') : t('Unlock Thread')) : post ? t('Lock Post') : t('Lock Thread')}</MenuItem>}
           <MenuItem onSelect={() => (close(), navigate(`/channels/${guild.id}/${th.id}`))}>{t('Open in Full View')}</MenuItem>
-          <MenuItem onSelect={() => void navigator.clipboard.writeText(`${WEB_ORIGIN}/channels/${guild.id}/${th.id}`)}>{t('Copy Link')}</MenuItem>
+          <MenuItem onSelect={() => void navigator.clipboard.writeText(`${apiOrigin()}/channels/${guild.id}/${th.id}`)}>{t('Copy Link')}</MenuItem>
           {manage && (
             <>
               <MenuSep />

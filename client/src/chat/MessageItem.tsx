@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { MessageAccessory } from '../modules/ModulePanel'
-import { WEB_ORIGIN } from '../api'
+import { apiOrigin } from '../api'
 import { clock } from '../appearance/format'
 import { contextCommands, runContextCommand } from '../commands/commands'
 import { MessageComponents } from '../components-ui/MessageComponents'
@@ -495,7 +495,7 @@ function Item({ m, head, perms, ctx }: ItemProps) {
             <MenuItem onSelect={() => void ask({ title: t('End Poll Now?'), body: <p>{t('This will end the poll for everyone.')}</p>, confirm: t('End Now'), danger: true }).then((ok) => void (ok && endPoll(m).catch(toastError)))}>{t('End Poll Now')}</MenuItem>
           )}
           <MenuItem onSelect={() => navigator.clipboard.writeText(m.content)}>{t('Copy Text')}</MenuItem>
-          <MenuItem onSelect={() => navigator.clipboard.writeText(`${WEB_ORIGIN}/channels/${m.guild_id ?? '@me'}/${m.channel_id}/${m.id}`)}>{t('Copy Message Link')}</MenuItem>
+          <MenuItem onSelect={() => navigator.clipboard.writeText(`${apiOrigin()}/channels/${m.guild_id ?? '@me'}/${m.channel_id}/${m.id}`)}>{t('Copy Message Link')}</MenuItem>
           {dev && <MenuItem onSelect={() => navigator.clipboard.writeText(m.id)}>{t('Copy Message ID')}</MenuItem>}
           <AppsSection channelId={m.channel_id} type={3} targetId={m.id} />
           {channel?.guild_id && has(perms, P.MANAGE_MESSAGES) && !purgeMode && (

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createInvite, openDm, sendMessage } from '../actions'
-import { WEB_ORIGIN } from '../api'
+import { apiOrigin } from '../api'
 import { t } from '../i18n'
 import { has, P } from '../permissions'
 import { permsOf } from '../selectors'
@@ -37,7 +37,7 @@ export function InviteUserModal({ userId, onClose }: { userId: string; onClose: 
       )
       if (!ch) throw new Error(t('No channel in {server} where you can create invites.', { server: g.name }))
       const inv = await createInvite(ch.id)
-      const url = `${WEB_ORIGIN}/invite/${inv.code}`
+      const url = `${apiOrigin()}/invite/${inv.code}`
       await navigator.clipboard.writeText(url).catch(() => {})
       const dm = await openDm(userId)
       await sendMessage(dm, url)

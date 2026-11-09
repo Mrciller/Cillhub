@@ -2,7 +2,7 @@
 // into the one store (aliased in registry.ts), sign-in to a node through the hub identity flow, "Disconnect from instance",
 // and the hub's view of node status (suspended / banned / unlinked nodes are cut off, offline ones keep retrying).
 import { enterGuild } from '../actions'
-import { api, ApiError, qs, WEB_ORIGIN } from '../api'
+import { api, ApiError, qs, apiOrigin } from '../api'
 import { soundEvent } from '../custom/sounds'
 import { createGateway, type Gateway } from '../gateway'
 import { t } from '../i18n'
@@ -147,7 +147,7 @@ export async function joinOnNode(node: InstanceInfo, then: Then) {
   }
   const state = crypto.randomUUID()
   // The hub's web address: nodes send tokens back only there (the desktop app opens that callback page in itself).
-  const url = `${node.url}/api/v9/federation/hub-login${qs({ return_to: `${WEB_ORIGIN}/instances/callback`, state })}`
+  const url = `${node.url}/api/v9/federation/hub-login${qs({ return_to: `${apiOrigin()}/instances/callback`, state })}`
   const popup = window.open(url, 'cillcord-signin', 'popup,width=520,height=720')
   localStorage.setItem(PENDING, JSON.stringify({ state, node, then, at: Date.now(), popup: !!popup } satisfies Pending))
   if (!popup) return void location.assign(url) // popups blocked (or the desktop app): redirect, the callback page finishes
@@ -171,7 +171,7 @@ export async function joinOnNode(node: InstanceInfo, then: Then) {
 export function signInHere(hub: InstanceInfo) {
   const state = crypto.randomUUID()
   localStorage.setItem(PENDING, JSON.stringify({ state, node: hub, then: {}, at: Date.now(), popup: false, self: true } satisfies Pending))
-  location.assign(`/api/v9/federation/hub-login${qs({ return_to: `${location.origin}/instances/callback`, state })}`)
+  location.assign(`${apiOrigin()}/api/v9/federation/hub-login${qs({ return_to: `${apiOrigin()}/instances/callback`, state })}`)
 }
 
 /** Called by the callback page: in a popup it hands the fragment to the window that opened it, else it finishes here. */
@@ -232,7 +232,7 @@ export function forgetInstances() {
 export async function nodeForInvite(link: string): Promise<{ node: InstanceInfo; code: string } | null> {
   let url: URL
   try { url = new URL(link) } catch { return null }
-  if (url.origin === WEB_ORIGIN) return null
+  if (url.origin === apiOrigin()) return null
   const code = url.pathname.split('/').filter(Boolean).pop()
   if (!code || !/^\/invite\//.test(url.pathname)) throw new Error(t('That is not an invite link.'))
   const records = await listNodes().catch((e: ApiError) => { throw e.status === 404 ? new Error(t('This hub does not list other instances.')) : e })

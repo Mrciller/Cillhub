@@ -2,7 +2,7 @@
 // livekit-client is imported lazily so it only loads once someone joins voice. When VOICE_SERVER_UPDATE names the
 // endpoint "cillvoice", Cillhub's own media server is used instead: every action below then goes to ./cillvoice.
 import type { LocalAudioTrack, LocalTrack, LocalTrackPublication, LocalVideoTrack, Participant, RemoteParticipant, Room, Track } from 'livekit-client'
-import { api, cdn, ORIGIN } from '../api'
+import { api, apiOrigin, cdn } from '../api'
 import { sendOp } from '../gateway'
 import { P, has } from '../permissions'
 import { canJoinVoice, permsOf } from '../selectors'
@@ -96,7 +96,7 @@ function teardown() {
 function wsUrl(endpoint: string) {
   if (/^wss?:\/\//.test(endpoint)) return endpoint
   if (/^https?:\/\//.test(endpoint)) return endpoint.replace(/^http/, 'ws')
-  const base = new URL(ORIGIN || location.origin)
+  const base = new URL(apiOrigin())
   const scheme = base.protocol === 'https:' ? 'wss://' : 'ws://'
   return endpoint.startsWith('/') ? scheme + base.host + endpoint : scheme + endpoint
 }

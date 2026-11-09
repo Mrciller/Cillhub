@@ -1,7 +1,7 @@
 // German UI strings for v7 (self-hosting and the hub network): setup wizard, other instances, server directory, admin pages.
 export const v7: Record<string, string> = {
   'Main Hub': 'Haupt-Hub', 'Private Node': 'Privater Node', Default: 'Standard', 'Server selection': 'Serverauswahl',
-  'Connected to official Cillhub Network Hub ({host})': 'Verbunden mit dem offiziellen Cillhub Network Hub ({host})',
+  'Use an https:// address (http only for localhost).': 'Verwende eine https://-Adresse (http nur für localhost).',
   'Could not connect to node at this address.': 'Konnte keine Verbindung zum Node unter dieser Adresse herstellen.',
   'Connected to {name}': 'Verbunden mit {name}',
   // Setup wizard

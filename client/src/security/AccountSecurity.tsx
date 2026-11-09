@@ -1,7 +1,7 @@
 // My Account → security: username, email and password changes, two-factor authentication, account deletion (CONTRACT-v4 section 5).
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import { backupCodes, deleteAccount, deletePasskey, disableTotp, enableTotp, exportMyData, listPasskeys, patchMe, patchSettings, type BackupCode } from '../actions'
-import { api, ORIGIN } from '../api'
+import { api, apiOrigin } from '../api'
 import { Field, FormError, Modal } from '../components/ui'
 import { logout } from '../gateway'
 import { t } from '../i18n'
@@ -182,7 +182,7 @@ function PasskeyManager({ mfa }: { mfa: boolean }) {
     }
     const isSecureContext = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname.endsWith('.localhost')
     if (!isSecureContext) {
-      const hub = (ORIGIN || window.location.origin || 'https://cillhub.cillerian.org').replace(/\/+$/, '')
+      const hub = apiOrigin()
       setError(t('Passkeys require a secure HTTPS connection. In the desktop app, please add and manage your passkeys in your browser at {url}.', { url: hub }))
       return
     }

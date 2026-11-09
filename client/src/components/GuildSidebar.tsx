@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ModuleSidebarEntries } from '../modules/ModulePanel'
-import { WEB_ORIGIN } from '../api'
+import { apiOrigin } from '../api'
 import { createChannel, createInvite, leaveGuild, patchGuildSettings } from '../actions'
 import { t } from '../i18n'
 import { EventsEntry } from '../events/Events'
@@ -76,7 +76,7 @@ function InviteModal({ channelId, onClose }: { channelId: string; onClose: () =>
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => {
-    createInvite(channelId).then((i) => setLink(`${WEB_ORIGIN}/invite/${i.code}`), (e: Error) => setError(e.message))
+    createInvite(channelId).then((i) => setLink(`${apiOrigin()}/invite/${i.code}`), (e: Error) => setError(e.message))
   }, [channelId])
   return (
     <Modal title={t('Invite friends')} onClose={onClose}>

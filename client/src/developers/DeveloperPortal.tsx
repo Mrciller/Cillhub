@@ -1,7 +1,7 @@
 // Developer Portal at /developers/applications: create apps, bot token (reveal once / reset), privileged intents, OAuth2 URL generator.
 import { useEffect, useState, type FormEvent } from 'react'
 import { createApp, deleteApp, listApps, resetBotToken, updateApp } from '../actions'
-import { cdn, dataUri, WEB_ORIGIN } from '../api'
+import { cdn, dataUri, apiOrigin } from '../api'
 import { ask, DialogHost, toastError } from '../components/dialogs'
 import { cls, Field, FormError, Icon, ICONS, Modal } from '../components/ui'
 import { t } from '../i18n'
@@ -116,7 +116,7 @@ function Bot({ app, onChange }: { app: Application; onChange: (a: Application) =
 function OAuth2({ app }: { app: Application }) {
   const [scopes, setScopes] = useState<string[]>(['bot', 'applications.commands'])
   const [perms, setPerms] = useState(0n)
-  const url = `${WEB_ORIGIN}/oauth2/authorize?client_id=${app.id}&scope=${encodeURIComponent(scopes.join(' '))}${scopes.includes('bot') ? `&permissions=${perms}` : ''}`
+  const url = `${apiOrigin()}/oauth2/authorize?client_id=${app.id}&scope=${encodeURIComponent(scopes.join(' '))}${scopes.includes('bot') ? `&permissions=${perms}` : ''}`
   const [copied, setCopied] = useState(false)
   return (
     <>

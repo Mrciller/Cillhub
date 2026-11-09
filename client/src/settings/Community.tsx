@@ -1,6 +1,6 @@
 // Server Settings > Welcome Screen and Vanity URL.
 import { t } from '../i18n'
-import { WEB_ORIGIN } from '../api'
+import { apiOrigin } from '../api'
 import { useEffect, useState } from 'react'
 import { getVanity, getWelcomeScreen, saveVanity, saveWelcomeScreen } from '../actions'
 import { Icon, ICONS, FormError } from '../components/ui'
@@ -75,7 +75,7 @@ export function VanityPage({ guild }: { guild: Guild }) {
   }, [guild.id])
   const value = code.trim().toLowerCase()
   const valid = !value || CODE.test(value)
-  const link = current?.code ? `${WEB_ORIGIN}/invite/${current.code}` : ''
+  const link = current?.code ? `${apiOrigin()}/invite/${current.code}` : ''
   const save = () => {
     setError('')
     saveVanity(guild.id, value || null).then(setCurrent, (e: Error) => setError(e.message))
@@ -87,7 +87,7 @@ export function VanityPage({ guild }: { guild: Guild }) {
       <div className="field">
         <label htmlFor="vanity-code">{t('Invite Code')}{!valid && <span className="field-error"> - {t('3 to 32 lowercase letters, numbers or dashes')}</span>}</label>
         <div className="vanity-row">
-          <span className="hint">{WEB_ORIGIN}/invite/</span>
+          <span className="hint">{apiOrigin()}/invite/</span>
           <input id="vanity-code" className="input" maxLength={32} value={code} aria-invalid={!valid || undefined} onChange={(e) => setCode(e.target.value)} placeholder="nightfall" />
         </div>
       </div>

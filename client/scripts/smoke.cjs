@@ -279,6 +279,35 @@ async function main() {
     await page.screenshot({ path: path.join(root, 'smoke.png') })
     console.log('ok 1 - login renders; register -> shell, gateway connecting')
 
+    // 1b. Main Hub / Private Node: the hub tab names the real address; a bare saved address gets https://, http is refused.
+    {
+      const pctx = await browser.newContext()
+      const pp = await pctx.newPage()
+      pp.on('pageerror', (e) => errors.push(e.message))
+      const hits = []
+      await pp.route('**/api/v9/**', (r) => (hits.push(r.request().url()), r.request().url().startsWith('https://chat.example.org/') ? r.fulfill({ json: { name: 'Node X' }, headers: { 'access-control-allow-origin': '*' } }) : r.abort()))
+      await pp.goto(`${ORIGIN}/login`)
+      await pp.getByText(`Connected to localhost:${PORT}`).waitFor()
+      await pp.getByRole('tab', { name: /Private Node/ }).click()
+      const input = pp.locator('.private-node-input')
+      await input.fill('http://chat.example.org')
+      await input.press('Enter')
+      await pp.getByText('Use an https:// address').waitFor()
+      await input.fill('chat.example.org/')
+      await input.press('Enter')
+      await pp.getByText('Connected to Node X').waitFor()
+      assert.equal(await pp.evaluate(() => localStorage.getItem('cillhub_custom_node_url')), 'https://chat.example.org')
+      // a bare address saved by 7.7 still reaches the node after a reload
+      await pp.evaluate(() => localStorage.setItem('cillhub_custom_node_url', 'chat.example.org'))
+      hits.length = 0
+      await pp.reload()
+      await pp.getByRole('heading', { name: 'Ready up' }).waitFor()
+      await pp.waitForTimeout(300)
+      assert.ok(hits.length && hits.every((u) => u.startsWith('https://chat.example.org/api/v9/')), `calls go to the node: ${hits.join(' ')}`)
+      await pctx.close()
+      console.log('ok 1b - server picker: real hub address, https:// added, http refused, saved bare address works')
+    }
+
     // 2. Fake gateway: READY, history, optimistic send de-duplicated against our own MESSAGE_CREATE echo, typing.
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
     await ctx.addInitScript(() => localStorage.setItem('token', 'smoke-token'))

@@ -1,6 +1,6 @@
 // Server templates and backups (CONTRACT-v5 section 7): Server Settings → Server Template, and "Add a server" → from template / from file.
 import { useEffect, useState, type FormEvent } from 'react'
-import { WEB_ORIGIN } from '../api'
+import { apiOrigin } from '../api'
 import { createFromTemplate, createTemplate, deleteTemplate, exportGuild, getExternalTemplate, getTemplate, guildTemplates, importGuild, syncTemplate } from '../actions'
 import { dateTime } from '../appearance/format'
 import { ask, toast, toastError } from '../components/dialogs'
@@ -11,11 +11,11 @@ import { parseSnapshot } from './snapshot'
 import { STARTERS, buildSnapshot } from './starters'
 import './templates.css'
 
-export const templateLink = (code: string) => `${WEB_ORIGIN}/template/${code}`
+export const templateLink = (code: string) => `${apiOrigin()}/template/${code}`
 /** A bare code or a template link (…/template/<code>). */
 const codeOf = (v: string) => v.trim().split(/[/?#]/).filter(Boolean).pop() ?? ''
 // a link on another host is a template link of the other chat app (fetched through the server); a code or our own link is ours
-const isExternal = (v: string) => { try { return new URL(v.trim()).host !== new URL(WEB_ORIGIN).host } catch { return false } }
+const isExternal = (v: string) => { try { return new URL(v.trim()).host !== new URL(apiOrigin()).host } catch { return false } }
 
 function download(name: string, data: unknown) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))

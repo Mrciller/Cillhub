@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, ApiError, ORIGIN, getServerTarget, getCustomNodeUrl, setServerTarget } from '../api'
+import { api, ApiError, apiOrigin, getServerTarget, getCustomNodeUrl, normalizeServerUrl, setServerTarget } from '../api'
 import { t } from '../i18n'
 import { Link, navigate, nextPath } from '../router'
 import { setToken } from '../store'
@@ -47,16 +47,14 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
       setServerTarget('hub')
       reloadInstance()
     } else {
-      setServerTarget('private', customNode)
       if (customNode.trim()) void testAndApplyNode(customNode)
     }
   }
 
   async function testAndApplyNode(rawUrl: string) {
-    let url = rawUrl.trim()
-    if (!url) return
-    if (!/^https?:\/\//i.test(url)) url = 'https://' + url
-    url = url.replace(/\/+$/, '')
+    if (!rawUrl.trim()) return
+    const url = normalizeServerUrl(rawUrl)
+    if (!url) return setNodeError(t('Use an https:// address (http only for localhost).'))
     setNodeConnecting(true)
     setNodeError(null)
     setNodeSuccess(null)
@@ -108,7 +106,7 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
     }
     const isSecureContext = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname.endsWith('.localhost')
     if (!isSecureContext) {
-      const hub = (ORIGIN || window.location.origin || 'https://cillhub.cillerian.org').replace(/\/+$/, '')
+      const hub = apiOrigin()
       const isDesktop = window.location.protocol === 'app:' || !!(window as any).cillcordDesktop
       if (isDesktop) {
         window.open(`${hub}/login`, '_blank')
@@ -299,7 +297,7 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
             )}
             {serverMode === 'hub' && (
               <p className="server-hub-hint">
-                {t('Connected to official Cillhub Network Hub ({host})', { host: 'cillhub.cillerian.org' })}
+                {t('Connected to {hub}', { hub: new URL(apiOrigin()).host })}
               </p>
             )}
           </div>

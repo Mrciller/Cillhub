@@ -2,7 +2,7 @@
 // for a new service worker. Never reloads by itself during a call; see UpdateBanner for the prompt.
 // In the desktop app (1.2.0+) this client is bundled: the banner shows when the app has an update or the hub runs a newer
 // server line than this bundle was built for, and installs the app update instead of reloading.
-import { ORIGIN } from './api'
+import { apiOrigin } from './api'
 import { getState, setState } from './store'
 
 export type AppUpdateStatus = { state: 'idle' | 'checking' | 'downloading' | 'none' | 'ready' | 'error'; version?: string; percent?: number }
@@ -28,7 +28,7 @@ if (import.meta.env.DEV) {
 
 async function checkServer() {
   try {
-    const info = await (await fetch(`${ORIGIN}/.well-known/cillhub`, { cache: 'no-store' })).json()
+    const info = await (await fetch(`${apiOrigin()}/.well-known/cillhub`, { cache: 'no-store' })).json()
     if (serverAhead(info?.version, BUILT_FOR)) markReady()
   } catch {
     // Offline: try again later.
