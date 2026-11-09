@@ -123,6 +123,15 @@ class StoreTest {
         assertTrue(s.messages["100"]!!.isEmpty())
     }
 
+    @Test fun memberChunksMergeIntoTheList() {
+        s = Reducer.apply(s, "GUILD_MEMBERS_CHUNK", o("""{"guild_id":"10","chunk_index":0,"chunk_count":1,
+            "members":[{"user":{"id":"3","username":"kim"},"roles":["11"],"joined_at":"x"}],"presences":[{"user":{"id":"3"},"status":"dnd"}]}"""))
+        assertEquals(setOf("1", "2", "3"), s.members["10"]!!.keys)
+        assertEquals(listOf("11"), s.members["10"]!!["3"]!!.roles)
+        assertEquals("dnd", s.presences["3"])
+        assertEquals("kim", s.users["3"]!!.username)
+    }
+
     @Test fun membershipAndRelationships() {
         s = Reducer.apply(s, "GUILD_MEMBER_REMOVE", o("""{"guild_id":"10","user":{"id":"1"}}"""))
         assertNull("we were removed: the guild goes", s.guilds["10"])

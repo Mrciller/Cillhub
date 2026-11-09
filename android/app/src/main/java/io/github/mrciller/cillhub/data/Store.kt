@@ -157,6 +157,14 @@ object Reducer {
             val merged = if (old != null && t == "GUILD_MEMBER_UPDATE") m.copy(joinedAt = m.joinedAt.ifEmpty { old.joinedAt }) else m
             s.copy(users = s.users + (u.id to u), members = withMembers(s, gid, listOf(merged)))
         }
+        // op 8's answer (Session.loadMembers asks for it when REST stopped at its 1000-member page)
+        "GUILD_MEMBERS_CHUNK" -> {
+            val gid = d.str("guild_id") ?: return s
+            val list = d["members"]?.let { json.decodeFromJsonElement<List<Member>>(it) }.orEmpty()
+            val pres = d["presences"]?.let { json.decodeFromJsonElement<List<Presence>>(it) }.orEmpty()
+            s.copy(users = s.users + list.mapNotNull { it.user }.associateBy { it.id }, members = withMembers(s, gid, list),
+                presences = s.presences + pres.associate { it.user.id to it.status })
+        }
         "GUILD_MEMBER_REMOVE" -> {
             val gid = d.str("guild_id") ?: ""
             val uid = d["user"]?.jsonObject?.str("id") ?: ""

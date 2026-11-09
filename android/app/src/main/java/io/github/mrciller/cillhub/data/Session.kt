@@ -290,6 +290,8 @@ object Session {
                 users = s.users + list.mapNotNull { it.user }.associateBy { it.id },
             )
         }
+        // REST pages stop at 1000; the gateway sends the whole list in GUILD_MEMBERS_CHUNKs (the store merges them)
+        if (list.size >= 1000) op(8, org.json.JSONObject().put("guild_id", guildId).put("query", "").put("limit", 0).put("presences", true))
     }
 
     suspend fun profile(userId: String, guildId: String?): Profile =
