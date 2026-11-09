@@ -378,4 +378,5 @@ startModules();
 startTimers();
 startHeartbeat();
 startUpdates();
+server.headersTimeout = 20_000; // slow header senders
 server.listen(PORT, () => console.log(`Cillhub listening on http://localhost:${server.address().port}`));

@@ -214,12 +214,12 @@ function exportGuild(ctx) {
 
 // --- templates from the other chat app (owner's request): its public template API has the same snapshot shape ---------
 // ids, permission bits and fields match; only the differences below are adapted, everything else goes through createFromSnapshot.
-// its name stays out of the public source (owner rule): the domain label is base64 here
-const EXTERNAL_API = `https://${Buffer.from('ZGlzY29yZA==', 'base64')}.com/api/v9/guilds/templates/`;
+// the operator sets the other app's template API base (…/guilds/templates/) in TEMPLATE_IMPORT_API; unset = off
+const EXTERNAL_API = process.env.TEMPLATE_IMPORT_API;
 const CHANNEL_TYPE = t => (CREATABLE.includes(t) ? t : t === 16 ? 15 : 0); // media channel -> forum, unknown -> text
 async function externalTemplate(ctx) {
   const { code } = ctx.params;
-  if (!/^[A-Za-z0-9_-]{2,64}$/.test(code)) throw notFound(10057, 'Guild Template');
+  if (!EXTERNAL_API || !/^[A-Za-z0-9_-]{2,64}$/.test(code)) throw notFound(10057, 'Guild Template');
   const res = await safeFetch(EXTERNAL_API + code, { maxBytes: 2 * 1024 * 1024, truncate: false, timeout: 8000, maxRedirects: 0 }).catch(() => null);
   if (!res || res.status === 404) throw notFound(10057, 'Guild Template');
   let t;

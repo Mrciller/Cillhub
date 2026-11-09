@@ -58,10 +58,12 @@ const LOGIN_WINDOW = 15 * 60 * 1000;
 const failures = new Map(); // key -> timestamps
 const recent = key => (failures.get(key) ?? []).filter(t => Date.now() - t < LOGIN_WINDOW);
 
+// acct: keys count every failure on one account from anywhere; higher so one stranger can't lock it for everyone
+const maxOf = key => (key.startsWith('acct:') ? 100 : LOGIN_MAX);
 export function checkLogin(keys, headers = {}) {
   for (const key of keys) {
     const list = recent(key);
-    if (list.length >= LOGIN_MAX) throw rateLimitError((list[0] + LOGIN_WINDOW - Date.now()) / 1000, headers);
+    if (list.length >= maxOf(key)) throw rateLimitError((list[0] + LOGIN_WINDOW - Date.now()) / 1000, headers);
   }
 }
 export function loginFailed(keys) {

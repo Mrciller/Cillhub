@@ -57,7 +57,9 @@ async function login(ctx) {
   const { body } = ctx;
   const login = str(body, 'login', 1, 254);
   const password = str(body, 'password', 1, 72, false);
-  const keys = [`login:${login.toLowerCase()}:${ctx.ip}`, `ip:${ctx.ip}`];
+  // IPv6: one /64 is one attacker
+  const ip = ctx.ip.includes(':') && !ctx.ip.startsWith('::ffff:') ? ctx.ip.split(':').slice(0, 4).join(':') : ctx.ip;
+  const keys = [`login:${login.toLowerCase()}:${ip}`, `ip:${ip}`, `acct:${login.toLowerCase()}`];
   checkLogin(keys, ctx.headers);
   const user = get(`SELECT * FROM users WHERE ${login.includes('@') ? 'email' : 'username'} = ?`, login);
   if (!(await checkPassword(password, user))) {
