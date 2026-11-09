@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -224,12 +225,48 @@ private fun Roles(state: State, g: Guild, act: (suspend () -> Unit) -> Unit, edi
     val my = Sel.myMember(state, g.id)
     val roles = g.roles.sortedByDescending { it.position }
     val movable = roles.filter { it.id != g.id }
+    val lazy = rememberLazyListState()
+    var failed by remember { mutableIntStateOf(0) }
+    val drag = remember(movable, failed) { DragList(movable, { it.id }, lazy) }
+    fun can(r: Role) = Perm.canManageRole(g, me, my, r)
     fun swap(a: Role, b: Role) = act {
         Session.rest.request("PATCH", "/guilds/${g.id}/roles", buildJsonArray {
             add(buildJsonObject { put("id", a.id); put("position", b.position) }); add(buildJsonObject { put("id", b.id); put("position", a.position) })
         })
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+    fun drop() {
+        val order = drag.items.toList()
+        if (order.map { it.id } == movable.map { it.id }) return
+        // roles at or above the user's own stay where they are: the server would refuse the whole move
+        if (!rolesStayPut(movable, order, ::can)) { failed++; return }
+        act {
+            try {
+                Session.rest.request("PATCH", "/guilds/${g.id}/roles", buildJsonArray { rolePositions(order).forEach { (id, pos) -> add(buildJsonObject { put("id", id); put("position", pos) }) } })
+            } catch (e: Exception) { failed++; throw e }
+        }
+    }
+    @Composable fun row(r: Role, modifier: Modifier, handle: Modifier?) {
+        val ok = can(r)
+        val i = movable.indexOf(r)
+        val up = movable.getOrNull(i - 1)?.takeIf { i > 0 && ok && can(it) }
+        val down = movable.getOrNull(i + 1)?.takeIf { i >= 0 && ok }
+        val count = state.members[g.id].orEmpty().values.count { r.id in it.roles }
+        ListItem(
+            headlineContent = { Text(if (r.id == g.id) "@everyone" else r.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            supportingContent = if (r.id != g.id) { { Text(LocalContext.current.resources.getQuantityString(R.plurals.members_count, count, count)) } } else null,
+            leadingContent = { RoleDot(r.color, 16.dp) },
+            trailingContent = if (r.id != g.id && ok) { {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton({ up?.let { swap(r, it) } }, enabled = up != null) { Ic(R.drawable.ms_arrow_upward, s(R.string.move_up)) }
+                    IconButton({ down?.let { swap(r, it) } }, enabled = down != null) { Ic(R.drawable.ms_arrow_downward, s(R.string.move_down)) }
+                    if (handle != null) Box(handle.size(48.dp), contentAlignment = Alignment.Center) { Ic(R.drawable.ms_drag_indicator, s(R.string.drag_to_reorder)) }
+                }
+            } } else null,
+            colors = ListItemDefaults.colors(containerColor = if (drag.dragging == r.id) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent),
+            modifier = modifier.clickable(enabled = ok) { edit(r.id) },
+        )
+    }
+    LazyColumn(state = lazy, contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             FilledTonalButton({
                 act {
@@ -238,26 +275,8 @@ private fun Roles(state: State, g: Guild, act: (suspend () -> Unit) -> Unit, edi
                 }
             }, Modifier.padding(16.dp)) { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.create_role), Modifier.padding(start = 8.dp)) }
         }
-        items(roles, key = { it.id }) { r ->
-            val can = Perm.canManageRole(g, me, my, r)
-            val i = movable.indexOf(r)
-            val up = movable.getOrNull(i - 1)?.takeIf { i > 0 && can && Perm.canManageRole(g, me, my, it) }
-            val down = movable.getOrNull(i + 1)?.takeIf { i >= 0 && can }
-            val count = state.members[g.id].orEmpty().values.count { r.id in it.roles }
-            ListItem(
-                headlineContent = { Text(if (r.id == g.id) "@everyone" else r.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                supportingContent = if (r.id != g.id) { { Text(LocalContext.current.resources.getQuantityString(R.plurals.members_count, count, count)) } } else null,
-                leadingContent = { RoleDot(r.color, 16.dp) },
-                trailingContent = if (r.id != g.id && can) { {
-                    Row {
-                        IconButton({ up?.let { swap(r, it) } }, enabled = up != null) { Ic(R.drawable.ms_arrow_upward, s(R.string.move_up)) }
-                        IconButton({ down?.let { swap(r, it) } }, enabled = down != null) { Ic(R.drawable.ms_arrow_downward, s(R.string.move_down)) }
-                    }
-                } } else null,
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                modifier = Modifier.clickable(enabled = can) { edit(r.id) },
-            )
-        }
+        items(drag.items, key = { it.id }) { r -> row(r, drag.rowModifier(r.id), drag.handle(r.id) { drop() }) }
+        roles.firstOrNull { it.id == g.id }?.let { e -> item(key = e.id) { row(e, Modifier, null) } }
     }
 }
 
@@ -372,33 +391,49 @@ private fun Channels(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) 
     val categories = groups.mapNotNull { it.category }
     var edit by remember { mutableStateOf<Channel?>(null) }
     var creating by remember { mutableStateOf(false) }
+    val lazy = rememberLazyListState()
+    var failed by remember { mutableIntStateOf(0) }
+    val flat = groups.flatMap { listOfNotNull(it.category) + it.channels }
+    // keyed on what the list shows: a new last message in some channel must not cancel a drag
+    val drag = remember(flat.map { listOf(it.id, it.position, it.parentId, it.name, it.type) }, failed) { DragList(flat, { it.id }, lazy) }
+    fun patch(moves: List<Channel>) = act {
+        if (moves.isEmpty()) return@act
+        try {
+            Session.rest.request("PATCH", "/guilds/${g.id}/channels", buildJsonArray {
+                moves.forEach { x -> add(buildJsonObject { put("id", x.id); put("position", x.position); if (x.type != 4) put("parent_id", x.parentId) }) }
+            })
+        } catch (e: Exception) { failed++; throw e }
+    }
     // moves one step among its siblings and renumbers them, so equal positions sort out too
-    fun move(list: List<Channel>, c: Channel, by: Int) = act {
+    fun move(list: List<Channel>, c: Channel, by: Int) {
         val l = list.toMutableList(); val i = l.indexOf(c); val j = i + by
-        if (j !in l.indices) return@act
+        if (j !in l.indices) return
         l.removeAt(i); l.add(j, c)
-        Session.rest.request("PATCH", "/guilds/${g.id}/channels", buildJsonArray { l.forEachIndexed { k, x -> add(buildJsonObject { put("id", x.id); put("position", k) }) } })
+        patch(l.mapIndexedNotNull { k, x -> x.takeIf { it.position != k }?.copy(position = k) })
     }
-    @Composable fun row(c: Channel, siblings: List<Channel>, indent: Boolean) {
-        val i = siblings.indexOf(c)
-        ListItem(
-            headlineContent = { Text(if (c.type == 4) (c.name ?: "").uppercase() else c.name ?: "", fontWeight = if (c.type == 4) FontWeight.Bold else null, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            leadingContent = if (c.type == 4) null else { { Ic(channelIcon(c), null) } },
-            trailingContent = {
-                Row {
-                    IconButton({ move(siblings, c, -1) }, enabled = i > 0) { Ic(R.drawable.ms_arrow_upward, s(R.string.move_up)) }
-                    IconButton({ move(siblings, c, 1) }, enabled = i < siblings.size - 1) { Ic(R.drawable.ms_arrow_downward, s(R.string.move_down)) }
-                }
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            modifier = Modifier.clickable { edit = c }.padding(start = if (indent) 16.dp else 0.dp),
-        )
-    }
-    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+    val siblings = groups.flatMap { grp -> listOfNotNull(grp.category).map { it.id to categories } + grp.channels.map { it.id to grp.channels } }.toMap()
+    LazyColumn(state = lazy, contentPadding = PaddingValues(bottom = 24.dp)) {
         item { FilledTonalButton({ creating = true }, Modifier.padding(16.dp)) { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.create_channel), Modifier.padding(start = 8.dp)) } }
-        for (grp in groups) {
-            grp.category?.let { cat -> item(key = cat.id) { row(cat, categories, false) } }
-            items(grp.channels, key = { it.id }) { c -> row(c, grp.channels, grp.category != null) }
+        items(drag.items, key = { it.id }) { c ->
+            val sib = siblings[c.id].orEmpty()
+            val i = sib.indexOf(c)
+            // indented: below a category in the list as dragged
+            val indent = c.type != 4 && drag.items.take(drag.items.indexOf(c)).any { it.type == 4 }
+            ListItem(
+                headlineContent = { Text(if (c.type == 4) (c.name ?: "").uppercase() else c.name ?: "", fontWeight = if (c.type == 4) FontWeight.Bold else null, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                leadingContent = if (c.type == 4) null else { { Ic(channelIcon(c), null) } },
+                trailingContent = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton({ move(sib, c, -1) }, enabled = i > 0) { Ic(R.drawable.ms_arrow_upward, s(R.string.move_up)) }
+                        IconButton({ move(sib, c, 1) }, enabled = i in 0 until sib.size - 1) { Ic(R.drawable.ms_arrow_downward, s(R.string.move_down)) }
+                        Box(drag.handle(c.id) { moved -> if (drag.items.map { it.id } != flat.map { it.id }) patch(channelMoves(drag.items.toList(), moved)) }.size(48.dp), contentAlignment = Alignment.Center) {
+                            Ic(R.drawable.ms_drag_indicator, s(R.string.drag_to_reorder))
+                        }
+                    }
+                },
+                colors = ListItemDefaults.colors(containerColor = if (drag.dragging == c.id) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent),
+                modifier = drag.rowModifier(c.id).clickable { edit = c }.padding(start = if (indent) 16.dp else 0.dp),
+            )
         }
     }
     edit?.let { c -> ChannelEditDialog(c) { edit = null } }
