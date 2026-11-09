@@ -218,6 +218,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     ipcMain.handle('game-activity:current', (e) => (fromPage(e) ? sharedActivity() : null));
     ipcMain.handle('league:lobby', (e) => (fromPage(e) ? league.getLobby() : null));
+    ipcMain.handle('league-lobby:current', (e) => (fromPage(e) ? league.getLobby() : null));
     ipcMain.handle('league:send-invite', async (e, target) => {
       if (!fromPage(e)) return false;
       try {
