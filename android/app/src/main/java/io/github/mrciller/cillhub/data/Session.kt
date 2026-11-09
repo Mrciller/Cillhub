@@ -498,16 +498,15 @@ object Session {
     suspend fun gifs(query: String): List<Gif> =
         rest.get(if (query.isBlank()) "/gifs/trending?limit=30" else "/gifs/search?limit=30&q=" + URLEncoder.encode(query.trim(), "UTF-8"))
 
-    /** Adds (newest first) or removes a favourite; optimistic, the settings echo confirms it, a failure puts the old list back. */
+    /** Adds (newest first) or removes one favourite; optimistic, the settings echo confirms it, a failure puts the old list back. */
     suspend fun toggleFavoriteGif(g: FavoriteGif) {
         val before = store.value.favoriteGifs
-        val next = if (before.any { it.url == g.url }) before.filter { it.url != g.url } else (listOf(g) + before).take(250)
-        store.update { it.copy(favoriteGifs = next) }
+        val remove = before.any { it.url == g.url }
+        store.update { it.copy(favoriteGifs = if (remove) before.filter { f -> f.url != g.url } else (listOf(g) + before).take(250)) }
         try {
-            rest.request("PATCH", "/users/@me/settings", buildJsonObject {
-                // every field explicitly: the shared json config leaves defaults out
-                putJsonArray("favorite_gifs") { next.forEach { f -> add(buildJsonObject { put("url", f.url); put("src", f.src); put("width", f.width); put("height", f.height); put("format", f.format) }) } }
-            })
+            if (remove) rest.request("DELETE", "/users/@me/settings/favorite-gifs?url=" + URLEncoder.encode(g.url, "UTF-8"))
+            // every field explicitly: the shared json config leaves defaults out
+            else rest.request("PUT", "/users/@me/settings/favorite-gifs", buildJsonObject { put("url", g.url); put("src", g.src); put("width", g.width); put("height", g.height); put("format", g.format) })
         } catch (e: ApiError) {
             store.update { it.copy(favoriteGifs = before) }
             throw e
