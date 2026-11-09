@@ -18,6 +18,7 @@ import { pipeline } from 'node:stream/promises';
 import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 
+process.umask(0o077); // backups hold the database and the node's keys: owner only
 const env = process.env;
 const ROOT = env.CILLCORD_INSTALL_DIR || '/install';
 const SECRET = env.CILLCORD_UPDATER_SECRET || '';
@@ -137,11 +138,16 @@ async function load(file) {
 }
 
 // ---- swapping the app container
+// data/ belongs to the app: never write through a link it may have planted (rm and rename act on the link itself)
 function restoreDb(snapshot) {
-  fs.copyFileSync(snapshot, DB + '.restore');
+  fs.rmSync(DB + '.restore', { force: true });
+  fs.copyFileSync(snapshot, DB + '.restore', fs.constants.COPYFILE_EXCL);
+  const { uid, gid } = fs.statSync(path.dirname(DB));
+  fs.chownSync(DB + '.restore', uid, gid); // the app runs as the owner of data/, not as root
   for (const f of [DB + '-wal', DB + '-shm']) fs.rmSync(f, { force: true });
   fs.renameSync(DB + '.restore', DB);
 }
+const isLink = (f) => fs.lstatSync(f, { throwIfNoEntry: false })?.isSymbolicLink();
 // The new container is the old one's config with the new image; values that came from the old image are dropped.
 function spec(old, oldImage, newImageId) {
   const img = oldImage.Config || {};
@@ -200,6 +206,7 @@ async function swap(target, label, restoreFrom) {
   let snapped = false, renamed = false, created = null;
   try {
     step('database snapshot');
+    if (isLink(DB)) throw new Error('data/cillcord.sqlite is a symbolic link; refusing to open it');
     if (fs.existsSync(DB)) {
       const db = new DatabaseSync(DB);
       try { db.exec(`VACUUM INTO '${snapshot}'`); } finally { db.close(); }

@@ -247,7 +247,7 @@ async function main() {
     })
 
     await step("3e. Alice turns on the camera; Bob's grid plays her video (videoWidth > 0); off, on and off again", async () => {
-      await alice.getByRole('main').getByRole('button', { name: 'Camera' }).click()
+      await alice.getByRole('main').getByRole('button', { name: 'Camera', exact: true }).click()
       const tile = bob.getByRole('list', { name: 'Participants' }).getByRole('listitem').filter({ hasText: NAME.alice })
       await until("a playing <video> in Alice's tile for Bob", () => tile.locator('video').evaluate((v) => v.videoWidth > 0 && !v.paused), 15000)
       if (SHOTS) {
@@ -255,12 +255,12 @@ async function main() {
         await sleep(500)
         await bob.screenshot({ path: path.join(SHOTS, 'v2-voice.png') })
       }
-      await alice.getByRole('main').getByRole('button', { name: 'Camera' }).click()
+      await alice.getByRole('main').getByRole('button', { name: 'Camera', exact: true }).click()
       await until("Alice's video to leave Bob's grid", async () => (await tile.locator('video').count()) === 0, 10000)
       // on again (cillvoice adds a fresh transceiver; see client/README.md) and off again
-      await alice.getByRole('main').getByRole('button', { name: 'Camera' }).click()
+      await alice.getByRole('main').getByRole('button', { name: 'Camera', exact: true }).click()
       await until("Alice's video back in Bob's grid", () => tile.locator('video').evaluate((v) => v.videoWidth > 0 && !v.paused), 15000)
-      await alice.getByRole('main').getByRole('button', { name: 'Camera' }).click()
+      await alice.getByRole('main').getByRole('button', { name: 'Camera', exact: true }).click()
       await until("Alice's video to leave Bob's grid again", async () => (await tile.locator('video').count()) === 0, 10000)
     })
 

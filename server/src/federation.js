@@ -1,6 +1,6 @@
 // v7 hub network: instance role, this instance's Ed25519 key, URL rules, signed hub<->node calls, the node's link state,
 // heartbeats and the node -> hub push relay. Routes live in routes/hub.js (hub role) and routes/node.js (node role).
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createPrivateKey } from 'node:crypto';
 import { join } from 'node:path';
 import { isIP } from 'node:net';
@@ -31,11 +31,9 @@ export const PUBLIC_KEY = publicKeyText(KEY);
 
 // The network's key (public half, base64url of the raw Ed25519 key). Nodes trust only answers, events and ID tokens signed
 // with it, whatever URL they talk to.
+// (tests swap this literal for a test key with server/test/hub-key.mjs; there is no runtime switch)
 export const NETWORK_KEY = 'JAYJ_2dva0628IX7JwGX8EKeJpvbaybIXDHbpxcd0OM';
-// tests only: a source checkout (server/test present; release images are built without it) run with NODE_ENV=test may
-// pin a test key instead, so two local instances can play both sides
-const TEST_KEY = process.env.NODE_ENV === 'test' && existsSync(new URL('../test/helpers.js', import.meta.url)) ? process.env.CILLCORD_TEST_HUB_KEY : undefined;
-export const TRUSTED_KEY = publicKeyFrom(TEST_KEY) ? TEST_KEY : NETWORK_KEY;
+export const TRUSTED_KEY = NETWORK_KEY;
 export const TRUSTED = publicKeyFrom(TRUSTED_KEY);
 const wantsHub = process.env.CILLCORD_ROLE === 'hub';
 if (wantsHub && PUBLIC_KEY !== TRUSTED_KEY) {

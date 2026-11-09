@@ -2,7 +2,7 @@ import { get, all, run, audienceOf, userById, userObj, guildObj, guildsOf } from
 import { str, int, invalid, notFound } from '../errors.js';
 import { sendToUsers, closeTokenSessions } from '../gateway.js';
 import { saveImage, removeImage } from '../files.js';
-import { hashPassword, checkPassword, tokenHash } from '../auth.js';
+import { hashPassword, confirmPassword, tokenHash } from '../auth.js';
 import { customizationPatch } from './customization.js';
 import { pushUserUpdate, publicUrl } from '../federation.js';
 
@@ -21,7 +21,7 @@ async function patchMe(ctx) {
   const sensitive = ['username', 'email', 'new_password'].filter(k => body[k] !== undefined);
   if (sensitive.length) {
     if (user.bot && sensitive.some(k => k !== 'username')) throw invalid(sensitive[0], 'BOT_FIELD', 'Bots cannot change this.');
-    if (!user.bot && !(await checkPassword(body.password, user))) throw passwordMismatch();
+    if (!user.bot && !(await confirmPassword(body.password, user, ctx.headers))) throw passwordMismatch();
   }
   if (body.username !== undefined) {
     next.username = str(body, 'username', 2, 32);
@@ -44,6 +44,7 @@ async function patchMe(ctx) {
   if ('avatar' in next && next.avatar !== user.avatar) removeImage('avatars', user.id, user.avatar);
   if ('banner' in next && next.banner !== user.banner) removeImage('banners', user.id, user.banner);
   if (next.password_hash) {
+    run('DELETE FROM webauthn_credentials WHERE user_id = ?', user.id); // a passkey added with a stolen token must not outlive the reset
     const keep = tokenHash(ctx.token);
     for (const { token_hash: t } of all('SELECT token_hash FROM tokens WHERE user_id = ? AND token_hash != ?', user.id, keep)) {
       run('DELETE FROM tokens WHERE token_hash = ?', t);

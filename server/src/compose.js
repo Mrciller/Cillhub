@@ -185,6 +185,7 @@ export async function prepare(who, body, files) {
       if (content || files.length || d.poll || d.stickerItems.length) throw invalid('message_reference', 'FORWARD_INVALID', 'A forward carries nothing else.');
       d.forward = await forwardOf(ref, userId);
     } else {
+      if (!has(perms, P.READ_MESSAGE_HISTORY)) throw new HttpError(403, 160002, 'Cannot reply without permission to read message history');
       d.referenceId = snowflakeField(ref, 'message_id');
       if (!get('SELECT 1 FROM messages WHERE id = ? AND channel_id = ?', d.referenceId, ch.id)) {
         throw invalid('message_reference', 'MESSAGE_REFERENCE_UNKNOWN_MESSAGE', 'Unknown message in this channel.');

@@ -132,8 +132,17 @@ test('AutoMod regex guard: nested quantifiers and backreferences refused; runawa
   const t = Date.now();
   assert.equal((await send(bob, `${'a'.repeat(40)}!`)).status, 201);
   assert.ok(Date.now() - t < 2000);
-  assert.equal((await send(bob, 'code B42x')).status, 400);
+  assert.equal((await send(bob, 'code B42x')).status, 400, 'the other pattern still runs');
   await api('DELETE', `/guilds/${g.guild.id}/auto-moderation/rules/${r.body.id}`, carol.token);
+  // chained quantifiers backtrack polynomially (audit H4): one budget per message, not per pattern
+  const slow = [];
+  for (let i = 0; i < 4; i++) slow.push((await mk(Array.from({ length: 10 }, (_, j) => `a*a*a*a*a*a*b${i}${j}`))).body.id);
+  for (let i = 0; i < 2; i++) {
+    const t0 = Date.now();
+    assert.equal((await send(bob, 'a'.repeat(2000))).status, 201);
+    assert.ok(Date.now() - t0 < 1000, `message ${i} took ${Date.now() - t0} ms`);
+  }
+  for (const id of slow) await api('DELETE', `/guilds/${g.guild.id}/auto-moderation/rules/${id}`, carol.token);
 });
 
 test('AutoMod MEMBER_PROFILE: nicknames members set themselves are checked', async () => {

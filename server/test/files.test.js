@@ -170,6 +170,15 @@ test('streamed uploads: files arrive byte-exact across chunk edges; temp files a
   assert.deepEqual(await tmpFiles(), []);
 });
 
+test('multipart part names count against the field limit, and the number of parts is capped (audit M10)', async () => {
+  // refused mid-stream: the 413 may lose the race with the reset of the unread rest
+  const names = await rawUpload(`/channels/${g.general.id}/messages`, Array.from({ length: 150 }, (_, i) => [`${'n'.repeat(8000)}${i}`, Buffer.alloc(0)])).catch(e => ({ status: e.code }));
+  assert.ok([413, 'ECONNRESET', 'EPIPE'].includes(names.status), names.status);
+  const many = await rawUpload(`/channels/${g.general.id}/messages`, Array.from({ length: 201 }, (_, i) => [`f${i}`, Buffer.from('x')])).catch(e => ({ status: e.code }));
+  assert.ok(['ECONNRESET', 'EPIPE'].includes(many.status) || many.body?.message === 'At most 200 form parts.', JSON.stringify(many));
+  assert.deepEqual(await tmpFiles(), []);
+});
+
 test('streamed uploads: a file over 25 MiB stops being written at the limit mid-stream and answers 413; a sticker over 512 KiB 400', async () => {
   const big = randomBytes(26 * MiB);
   const stored = () => readdir(join(srv.dataDir, 'attachments', g.general.id));

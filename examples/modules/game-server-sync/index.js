@@ -267,8 +267,11 @@ cillhub.on('HTTP_REQUEST', async (req) => {
 
     const settings = (await cillhub.settings.get(targetGuild.id)) || {};
 
-    // Validate secret if configured
-    if (settings.rcon_password && secret && secret !== settings.rcon_password) {
+    // The webhook needs its own secret (never the RCON password); without one the bridge is closed
+    if (!settings.webhook_secret) {
+      return { status: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Webhook secret not configured' }) };
+    }
+    if (typeof secret !== 'string' || !cillhub.crypto.equal(secret, settings.webhook_secret)) {
       return { status: 401, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Invalid secret' }) };
     }
 

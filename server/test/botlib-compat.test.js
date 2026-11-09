@@ -1,5 +1,5 @@
 // Acceptance: an unmodified bot built on a real bot library (v14) against Cillhub. Needs the library installed outside the repo:
-//   D=$(mktemp -d) && (cd $D && npm i discord.js@14) && NODE_PATH=$D/node_modules node --test test/botlib-compat.test.js
+//   D=$(mktemp -d) && (cd $D && npm i <the v14 bot library>) && BOTLIB=$D/node_modules/<its package> node --test test/botlib-compat.test.js
 // Without it the test is skipped.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,9 +7,9 @@ import { createRequire } from 'node:module';
 import { startServer } from './helpers.js';
 
 const require = createRequire(import.meta.url);
-let djs = null;
-try { djs = require('discord.js'); } catch { /* not installed */ }
-const skip = djs ? false : 'bot library not resolvable; npm i discord.js@14 in a temp dir and set NODE_PATH (see server/README.md)';
+let botlib = null;
+try { botlib = process.env.BOTLIB && require(process.env.BOTLIB); } catch { /* not installed */ }
+const skip = botlib ? false : 'bot library not installed; set BOTLIB to its package directory (see the comment above)';
 
 const once = (emitter, event, pred = () => true, ms = 10_000) => new Promise((resolve, reject) => {
   const timer = setTimeout(() => { emitter.off(event, on); reject(new Error(`timed out waiting for ${event}`)); }, ms);
@@ -18,7 +18,7 @@ const once = (emitter, event, pred = () => true, ms = 10_000) => new Promise((re
 });
 
 test('bot library v14: login, OAuth2 install, /ping with a button, component update, MESSAGE_CONTENT', { skip, timeout: 60_000 }, async () => {
-  const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, Events } = djs;
+  const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, Events } = botlib;
   const srv = await startServer();
   const clients = [];
   try {
@@ -108,7 +108,7 @@ test('bot library v14: login, OAuth2 install, /ping with a button, component upd
 });
 
 test('bot library v14: ATTACHMENT option read with getAttachment, files in reply, followUp and editReply', { skip, timeout: 60_000 }, async () => {
-  const { Client, GatewayIntentBits, Events, AttachmentBuilder, MessageFlags } = djs;
+  const { Client, GatewayIntentBits, Events, AttachmentBuilder, MessageFlags } = botlib;
   const srv = await startServer();
   let client;
   try {

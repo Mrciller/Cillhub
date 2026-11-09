@@ -17,6 +17,7 @@ export function kdf(masterKey, masterSalt, label, len) {
 }
 
 const WINDOW = 1024; // replay window in packets; video retransmissions can arrive a few hundred packets late
+const MAX_STREAMS = 64; // per context; a call has a handful (audio, simulcast layers, RTX, screen)
 
 /** Remembers the highest index seen and which recent ones arrived. */
 class Replay {
@@ -24,6 +25,9 @@ class Replay {
   ok(index) { return index > this.highest || (index > this.highest - WINDOW && this.slots[index % WINDOW] !== index); }
   add(index) { this.slots[index % WINDOW] = index; if (index > this.highest) this.highest = index; }
 }
+
+// stand-in for an SSRC without state while its first packet is checked
+const UNSEEN = Object.freeze({ roc: 0, seq: -1, replay: new Replay(), rtcpReplay: new Replay() });
 
 export class SrtpContext {
   /** One direction of one DTLS association: `profile` id, master key and salt from the DTLS exporter. */
@@ -47,7 +51,10 @@ export class SrtpContext {
 
   stream(ssrc) {
     let s = this.streams.get(ssrc);
-    if (!s) this.streams.set(ssrc, (s = { roc: 0, seq: -1, replay: new Replay(), rtcpIndex: 0, rtcpReplay: new Replay() }));
+    if (!s) {
+      if (this.streams.size >= MAX_STREAMS) this.streams.delete(this.streams.keys().next().value); // the oldest
+      this.streams.set(ssrc, (s = { roc: 0, seq: -1, replay: new Replay(), rtcpIndex: 0, rtcpReplay: new Replay() }));
+    }
     return s;
   }
 
@@ -118,7 +125,7 @@ export class SrtpContext {
     const hl = rtpHeaderLength(pkt);
     if (hl < 0 || pkt.length < hl + tagLen) return null;
     const ssrc = pkt.readUInt32BE(8), seq = pkt.readUInt16BE(2);
-    const s = this.stream(ssrc);
+    let s = this.streams.get(ssrc) ?? UNSEEN; // state is only kept once a packet authenticates
     // RFC 3711 appendix A: guess the rollover counter from the highest sequence number seen
     let v = s.roc;
     if (s.seq >= 0) {
@@ -146,6 +153,7 @@ export class SrtpContext {
         payload = createCipheriv('aes-128-ctr', this.rtpKey, SrtpContext.cmIv(this.rtpSalt, ssrc, index, this.iv16)).update(body.subarray(hl));
       }
     } catch { return null; }
+    if (s === UNSEEN) s = this.stream(ssrc);
     s.replay.add(index);
     if (s.seq < 0 || index > s.roc * 65536 + s.seq) { s.roc = v; s.seq = seq; }
     const out = Buffer.allocUnsafe(hl + payload.length);
@@ -180,7 +188,7 @@ export class SrtpContext {
     const trailerAt = this.gcm ? pkt.length - 4 : pkt.length - 14;
     const trailer = pkt.subarray(trailerAt, trailerAt + 4);
     const e = trailer[0] & 0x80, index = trailer.readUInt32BE(0) & 0x7fffffff;
-    const s = this.stream(ssrc);
+    let s = this.streams.get(ssrc) ?? UNSEEN;
     if (!s.rtcpReplay.ok(index)) return null;
     const head = pkt.subarray(0, 8);
     let body;
@@ -207,6 +215,7 @@ export class SrtpContext {
         body = e ? createCipheriv('aes-128-ctr', this.rtcpKey, SrtpContext.cmIv(this.rtcpSalt, ssrc, index)).update(enc) : enc;
       }
     } catch { return null; }
+    if (s === UNSEEN) s = this.stream(ssrc);
     s.rtcpReplay.add(index);
     return Buffer.concat([head, body]);
   }

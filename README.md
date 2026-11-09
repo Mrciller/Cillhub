@@ -61,7 +61,6 @@ Anyone can run a Cillhub server (a **node**) on their own infrastructure in minu
 ### 🌐 Federated Linked Mode & Sovereignty
 * **Standalone or Connected**: Operate as an isolated private server or link to the central **Cillhub Hub** (`https://cillhub.cillerian.org`) for unified identity and directory discovery.
 * **Single Sign-On (SSO)**: Hub users can log into linked nodes with one click via Ed25519-signed OIDC tokens (zero password sharing).
-* **Federated Cross-Node DMs**: End-to-end encrypted direct messaging routed between users on different nodes.
 * **Single-File Database**: Runs on a single Node.js process and one SQLite database file (`cillcord.sqlite`) — no Redis, no Postgres, and backups are a simple file copy.
 * **Multilingual UI**: Native support for English and German.
 

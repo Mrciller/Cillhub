@@ -114,6 +114,26 @@ function privacySettings(v, f) {
   return out;
 }
 
+// favourite GIFs, newest first: url = the link that is sent (unique key, https); src = what is shown, https or our own
+// root-relative media path (GIF search answers /external/<token>, attachments /attachments/...); width/height 0 = unknown
+const MEDIA_PATH = /^\/(external|attachments)\/[^\s?#\\]+$/;
+const isHttps = v => { try { return new URL(v).protocol === 'https:'; } catch { return false; } };
+const link = local => (v, f) => (typeof v === 'string' && v.length <= 2048 && ((/^https:\/\/\S+$/.test(v) && isHttps(v)) || (local && MEDIA_PATH.test(v)))
+  ? v : fail(f, local ? 'Must be an https URL or a /external/ or /attachments/ path of at most 2048 characters.' : 'Must be an https URL of at most 2048 characters.'));
+function favoriteGifs(v, f) {
+  if (!Array.isArray(v) || v.length > 250) fail(f, 'Must be a list of at most 250 GIFs.');
+  const seen = new Set();
+  return v.map((g, i) => {
+    const at = `${f}.${i}`;
+    if (typeof g !== 'object' || g === null || Array.isArray(g)) fail(at, 'Must be {url, src, width, height, format}.');
+    return {
+      url: link(false)(g.url, `${at}.url`), src: link(true)(g.src, `${at}.src`),
+      width: intIn(0, 10000)(g.width, `${at}.width`), height: intIn(0, 10000)(g.height, `${at}.height`),
+      format: oneOf('gif', 'mp4', 'webm', 'image')(g.format, `${at}.format`),
+    };
+  }).filter(g => !seen.has(g.url) && seen.add(g.url));
+}
+
 // the allow-list: the documented user settings names where they exist, Cillhub's own keys for the rest
 const SETTINGS = {
   privacy: [privacySettings, { dm_read_receipts: true }],
@@ -143,6 +163,7 @@ const SETTINGS = {
   inline_attachment_media: [boolean, true],
   render_reactions: [boolean, true],
   gif_auto_play: [boolean, true],
+  favorite_gifs: [favoriteGifs, []],
   animate_emoji: [(v, f) => (typeof v === 'boolean' ? v : oneOf('always', 'hover', 'never')(v, f)), true],
   animate_stickers: [oneOf(0, 1, 2, 'always', 'hover', 'never'), 0],
   convert_emoticons: [boolean, true],

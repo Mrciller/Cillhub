@@ -197,6 +197,10 @@ class ChatViewModel(val channelId: String) : ViewModel() {
     }
 
     fun delete(m: Message) = viewModelScope.launch { try { Session.delete(m) } catch (e: Exception) { events.trySend(e) } }
+
+    fun favorite(g: io.github.mrciller.cillhub.data.FavoriteGif) = viewModelScope.launch { try { Session.toggleFavoriteGif(g) } catch (e: Exception) { events.trySend(e) } }
+
+    fun sendGif(ch: Channel, url: String) = viewModelScope.launch { try { Session.send(ch, url, replyTo.also { replyTo = null }) } catch (e: Exception) { events.trySend(e) } }
 }
 
 private sealed interface Item { val key: String }
@@ -288,6 +292,8 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
 
     LaunchedEffect(ch.guildId) {
         if (ch.guildId != null) runCatching { Session.loadSnippets(ch.guildId) }
+        // role colours and tags need the members
+        if (ch.guildId != null && ch.guildId !in Session.store.value.membersLoaded) runCatching { Session.loadMembers(ch.guildId) }
     }
 
     // read: the newest message is visible while the app is in front
@@ -560,10 +566,15 @@ private fun ChatTopBar(
     TopAppBar(
         navigationIcon = { if (showBack) IconButton(nav::back) { Ic(R.drawable.ms_arrow_back, s(R.string.back)) } },
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = if (other != null) Modifier.clickable(onClickLabel = s(R.string.view_profile)) { nav.openProfile(other.id, null) } else Modifier) {
+            val titleClick = when {
+                other != null -> Modifier.clickable(onClickLabel = s(R.string.view_profile)) { nav.openProfile(other.id, null) }
+                ch.guildId != null -> Modifier.clickable(onClickLabel = s(R.string.channel_info)) { nav.openChannelInfo(ch.id) }
+                else -> Modifier
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = titleClick) {
                 if (other != null) { Avatar(other, 32.dp, Sel.presence(state, other.id)); Spacer(Modifier.width(10.dp)) }
                 else if (!isPrivate(ch)) { Ic(channelIcon(ch), null, Modifier.size(20.dp), MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(6.dp)) }
-                Column {
+                Column(Modifier.weight(1f, fill = false)) {
                     Text(Sel.channelName(state, ch), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                     val sub = when {
                         other != null -> ctx.getString(presenceLabel(Sel.presence(state, other.id)))
@@ -572,6 +583,7 @@ private fun ChatTopBar(
                     }
                     if (!sub.isNullOrBlank()) Text(sub, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                if (ch.guildId != null) Ic(R.drawable.ms_chevron_right, null, Modifier.size(20.dp), MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         actions = {
@@ -639,6 +651,8 @@ private fun Composer(
     val ctx = LocalContext.current
     val typing = Sel.typing(state, ch.id)
     var menu by remember { mutableStateOf(false) }
+    var gifs by remember { mutableStateOf(false) }
+    if (gifs) GifPicker({ gifs = false }) { vm.sendGif(ch, it) }
     fun add(uris: List<Uri>) {
         for (u in uris.take(10 - vm.files.size)) {
             var name = "file"; var size = 0L
@@ -723,6 +737,7 @@ private fun Composer(
                         focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 )
+                if (canSend && vm.editing == null && vm.text.isBlank()) IconButton({ gifs = true }) { Ic(R.drawable.ms_gif, s(R.string.gif_open)) }
                 val ready = canSend && (vm.text.isNotBlank() || vm.files.isNotEmpty())
                 IconButton(send, enabled = ready) { Ic(if (vm.editing != null) R.drawable.ms_check else R.drawable.ms_send, s(if (vm.editing != null) R.string.save else R.string.send), tint = if (ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
             }
@@ -906,6 +921,28 @@ fun CreatePollDialog(channelId: String, close: () -> Unit) {
 @Composable
 fun MediaGallerySheet(channelId: String, onClose: () -> Unit) {
     var tab by rememberSaveable { mutableStateOf("media") } // "media", "files", "links"
+    ModalBottomSheet(onDismissRequest = onClose) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            Text(s(R.string.media_files_links), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+
+            androidx.compose.material3.PrimaryTabRow(
+                selectedTabIndex = when (tab) { "files" -> 1; "links" -> 2; else -> 0 },
+                containerColor = Color.Transparent,
+            ) {
+                androidx.compose.material3.Tab(selected = tab == "media", onClick = { tab = "media" }, text = { Text(s(R.string.tab_media)) })
+                androidx.compose.material3.Tab(selected = tab == "files", onClick = { tab = "files" }, text = { Text(s(R.string.tab_files)) })
+                androidx.compose.material3.Tab(selected = tab == "links", onClick = { tab = "links" }, text = { Text(s(R.string.tab_links)) })
+            }
+
+            Spacer(Modifier.height(12.dp))
+            MediaList(channelId, tab, Modifier.fillMaxWidth().heightIn(max = 420.dp))
+        }
+    }
+}
+
+/** A channel's media grid, files or links (GET /channels/:id/media?tab=). */
+@Composable
+fun MediaList(channelId: String, tab: String, modifier: Modifier = Modifier) {
     var items by remember { mutableStateOf<List<Attachment>>(emptyList()) }
     var links by remember { mutableStateOf<List<String>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -928,21 +965,7 @@ fun MediaGallerySheet(channelId: String, onClose: () -> Unit) {
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onClose) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-            Text(s(R.string.media_files_links), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
-
-            androidx.compose.material3.PrimaryTabRow(
-                selectedTabIndex = when (tab) { "files" -> 1; "links" -> 2; else -> 0 },
-                containerColor = Color.Transparent,
-            ) {
-                androidx.compose.material3.Tab(selected = tab == "media", onClick = { tab = "media" }, text = { Text(s(R.string.tab_media)) })
-                androidx.compose.material3.Tab(selected = tab == "files", onClick = { tab = "files" }, text = { Text(s(R.string.tab_files)) })
-                androidx.compose.material3.Tab(selected = tab == "links", onClick = { tab = "links" }, text = { Text(s(R.string.tab_links)) })
-            }
-
-            Spacer(Modifier.height(12.dp))
-
+    Box(modifier) {
             when {
                 loading -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
@@ -954,7 +977,7 @@ fun MediaGallerySheet(channelId: String, onClose: () -> Unit) {
                         columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                        modifier = Modifier.fillMaxSize(),
                     ) {
                         items(items.size, key = { items[it].id }) { idx ->
                             val a = items[idx]
@@ -969,7 +992,7 @@ fun MediaGallerySheet(channelId: String, onClose: () -> Unit) {
                     }
                 }
                 tab == "files" -> {
-                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(items, key = { it.id }) { a ->
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
@@ -991,7 +1014,7 @@ fun MediaGallerySheet(channelId: String, onClose: () -> Unit) {
                     }
                 }
                 tab == "links" -> {
-                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(links) { link ->
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
@@ -1009,6 +1032,5 @@ fun MediaGallerySheet(channelId: String, onClose: () -> Unit) {
                     }
                 }
             }
-        }
     }
 }

@@ -24,7 +24,7 @@ export function tx(fn) {
 
 // step i brings the database to user_version i + 1. v1 never set user_version, so a v1 database
 // reads 0 and replays 001, which only creates what is missing.
-const MIGRATIONS = ['001-v1.sql', '002-v2.sql', '003-v3.sql', '004-v4.sql', '005-v5.sql', '006-v6.sql', '007-v7.sql', '008-brand.sql', '009-guild-voice.sql', '010-modules.sql', '011-v9.sql', '012-v9-phase4.sql', '013-v10.sql', '014-v11.sql', '015-v12.sql', '016-v13.sql'];
+const MIGRATIONS = ['001-v1.sql', '002-v2.sql', '003-v3.sql', '004-v4.sql', '005-v5.sql', '006-v6.sql', '007-v7.sql', '008-brand.sql', '009-guild-voice.sql', '010-modules.sql', '011-v9.sql', '012-v9-phase4.sql', '013-v10.sql', '014-v11.sql', '015-v12.sql', '016-v13.sql', '017-role-scope.sql'];
 for (let v = get('PRAGMA user_version').user_version; v < MIGRATIONS.length; v++) {
   const sql = readFileSync(new URL(`./migrations/${MIGRATIONS[v]}`, import.meta.url), 'utf8');
   tx(() => db.exec(`${sql}; PRAGMA user_version = ${v + 1};`));

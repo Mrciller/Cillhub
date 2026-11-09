@@ -131,3 +131,22 @@ test('the media proxy answers Range requests', async () => {
   assert.equal(none.status, 416);
   assert.equal(none.headers.get('content-range'), `bytes */${IMG.length}`);
 });
+
+test('media proxy cache: old images go, then the oldest until it fits (audit M9)', async () => {
+  const { tempDir } = await import('./helpers.js');
+  const { mkdir, writeFile, utimes } = await import('node:fs/promises');
+  const dir = await tempDir();
+  const env = process.env.DATA_DIR;
+  process.env.DATA_DIR = dir;
+  const { pruneProxyCache } = await import("../src/proxy.js");
+  process.env.DATA_DIR = env;
+  await mkdir(`${dir}/external`, { recursive: true });
+  const now = Date.now();
+  for (const [name, ageDays] of [['a', 8], ['b', 3], ['c', 2], ['d', 1]]) {
+    await writeFile(`${dir}/external/${name}`, Buffer.alloc(100));
+    await utimes(`${dir}/external/${name}`, (now - ageDays * 86400_000) / 1000, (now - ageDays * 86400_000) / 1000);
+  }
+  assert.equal(pruneProxyCache(now, 250), 200); // a is too old, b is the oldest left
+  const { readdirSync } = await import('node:fs');
+  assert.deepEqual(readdirSync(`${dir}/external`).sort(), ['c', 'd']);
+});

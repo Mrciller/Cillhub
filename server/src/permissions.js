@@ -1,5 +1,5 @@
 import { get, all, memberIds } from './db.js';
-import { invalid, missingPermissions } from './errors.js';
+import { invalid, missingPermissions, notFound } from './errors.js';
 
 const bit = n => 1n << BigInt(n);
 export const P = {
@@ -52,7 +52,7 @@ function base(guildId, userId) {
   const g = get(`SELECT g.owner_id, m.pending, m.communication_disabled_until FROM guilds g
                  JOIN members m ON m.guild_id = g.id AND m.user_id = ? WHERE g.id = ?`, userId, guildId);
   if (!g) return null;
-  const roles = all('SELECT r.id, r.permissions FROM member_roles mr JOIN roles r ON r.id = mr.role_id WHERE mr.guild_id = ? AND mr.user_id = ?', guildId, userId);
+  const roles = all('SELECT r.id, r.permissions FROM member_roles mr JOIN roles r ON r.id = mr.role_id AND r.guild_id = mr.guild_id WHERE mr.guild_id = ? AND mr.user_id = ?', guildId, userId);
   if (g.owner_id === userId) return { perms: ALL, admin: true, roles };
   let perms = BigInt(get('SELECT permissions FROM roles WHERE id = ?', guildId).permissions);
   for (const r of roles) perms |= BigInt(r.permissions);
@@ -120,7 +120,7 @@ export const ownerOf = guildId => get('SELECT owner_id FROM guilds WHERE id = ?'
 
 export function rank(guildId, userId) {
   if (ownerOf(guildId) === userId) return Infinity;
-  return get('SELECT MAX(r.position) AS p FROM member_roles mr JOIN roles r ON r.id = mr.role_id WHERE mr.guild_id = ? AND mr.user_id = ?', guildId, userId).p ?? 0;
+  return get('SELECT MAX(r.position) AS p FROM member_roles mr JOIN roles r ON r.id = mr.role_id AND r.guild_id = mr.guild_id WHERE mr.guild_id = ? AND mr.user_id = ?', guildId, userId).p ?? 0;
 }
 
 // kick, ban, nickname and voice moderation: only members ranked strictly below; never the owner
@@ -131,4 +131,12 @@ export function requireAbove(guildId, actorId, targetId) {
 // roles: only those ranked strictly below the actor
 export function requireRoleBelow(guildId, actorId, position) {
   if (position >= rank(guildId, actorId)) throw missingPermissions();
+}
+
+// a role the actor may hand out (member roles, onboarding, quarantine): of this guild, not @everyone, not managed, below the actor
+export function requireAssignable(guildId, actorId, roleId, field = 'roles') {
+  const role = get('SELECT position, managed FROM roles WHERE id = ? AND guild_id = ? AND id != guild_id', String(roleId), guildId);
+  if (!role) throw notFound(10011, 'Role');
+  if (role.managed) throw invalid(field, 'ROLE_MANAGED', 'Managed roles cannot be assigned or removed.');
+  requireRoleBelow(guildId, actorId, role.position);
 }

@@ -11,10 +11,14 @@ import { settingsOf, customStatusActivity, guildSettingsReady, notesOf } from '.
 import { callsOf, callConnect } from './calls.js';
 import { signal as cillvoiceSignal, endpoint as cillvoiceEndpoint } from './media/index.js';
 import { publicInstance } from './instance.js';
+import { limit } from './ratelimit.js';
 
 const HEARTBEAT = 41250;
 const RESUME_WINDOW = 2 * 60 * 1000; // dispatches kept for RESUME, and how long a dropped session waits for it
 const STATUSES = ['online', 'idle', 'dnd', 'invisible'];
+const MAX_SESSIONS = 20; // per user, live or resumable; every dispatch is encoded and buffered once per session
+// per-user budgets (ratelimit.js 'GW' rules) for ops that fan out, on top of SEND_LIMIT per connection; over budget the op is ignored
+const withinBudget = (rule, id) => { try { limit('GW', rule, {}, id, {}); return true; } catch { return false; } };
 const sessions = new Map(); // user id -> Set of sessions, live or waiting to be resumed
 const byId = new Map(); // session id -> session
 
@@ -104,7 +108,7 @@ const sharedGuilds = (a, b) => all('SELECT x.guild_id FROM members x JOIN member
 // sends PRESENCE_UPDATE when status or activities changed; bots get one per shared guild (they need guild_id)
 export function refreshPresence(id) {
   const p = presenceObj(id);
-  const key = JSON.stringify([p.status, p.activities]);
+  const key = JSON.stringify([p.status, p.activities?.map(({ created_at, ...a }) => a)]); // created_at is new on every op 3
   if (lastPresence.get(id) === key) return;
   lastPresence.set(id, key);
   for (const uid of audienceOf(id)) {
@@ -249,7 +253,12 @@ function identify(conn, d) {
   conn.session = s;
   byId.set(s.id, s);
   if (!sessions.has(user.id)) sessions.set(user.id, new Set());
-  sessions.get(user.id).add(s);
+  const own = sessions.get(user.id).add(s);
+  if (own.size > MAX_SESSIONS) {
+    const old = [...own].find(x => !isLive(x)) ?? own.values().next().value; // a dropped one first, else the oldest
+    drop(old);
+    old.ws?.close(4009, 'Too many sessions');
+  }
   send(s, 0, ready(s), 'READY');
   if (s.bot) for (const g of guildsOf(user.id)) deliver(s, 'GUILD_CREATE', botGuildCreate(g, s));
   else for (const call of callsOf(user.id)) send(s, 0, call, 'CALL_CREATE');
@@ -275,7 +284,7 @@ function resume(conn, d) {
 // op 8: members of one guild by prefix or ids; the whole list needs GUILD_MEMBERS for bots (else 4013, per the docs)
 function requestMembers(s, d) {
   const guildId = String(Array.isArray(d?.guild_id) ? d.guild_id[0] : d?.guild_id ?? '');
-  if (!isMember(guildId, s.user.id)) return;
+  if (!isMember(guildId, s.user.id) || !withinBudget('members', `${s.user.id}:${guildId}`)) return;
   let list = membersOf(guildId);
   let notFound;
   if (d.user_ids != null) {
@@ -334,6 +343,7 @@ export function attachGateway(server) {
         case 6: return resume(conn, msg.d);
         case 3:
           if (!s) return ws.close(4003, 'Not authenticated');
+          if (!withinBudget('presence', s.user.id)) return;
           applyPresence(s, msg.d);
           return refreshPresence(s.user.id);
         case 4:

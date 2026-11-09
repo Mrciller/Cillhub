@@ -26,6 +26,11 @@ const load = (): InstanceInfo[] => {
 let live: Record<string, Live> = Object.fromEntries(load().map((i) => [i.id, { ...i, status: 'connecting', meId: null, sessionId: null }]))
 const origins = new Map<string, string>() // snowflake -> instance id (node-owned ids only; hub ids are never recorded)
 const hub = { meId: '', sessionId: '' }
+// Ids the hub already showed us (store.ts registers it: its guilds, channels and users). A node never takes those over.
+let hubHas: (id: string) => boolean = () => false
+export const setHubHas = (f: (id: string) => boolean) => void (hubHas = f)
+/** A guild or channel the hub sent us (its GUILD_CREATE): the hub wins over a node that named the id first. */
+export const hubTakes = (id: string) => void origins.delete(id)
 const listeners = new Set<() => void>()
 const emit = () => listeners.forEach((l) => l())
 const persist = () => localStorage.setItem(KEY, JSON.stringify(Object.values(live).map(({ id, name, url, icon }) => ({ id, name, url, icon }))))
@@ -46,8 +51,7 @@ export function saveInstance(info: InstanceInfo, token: string) {
 export function removeInstance(id: string) {
   localStorage.removeItem(tokenKey(id))
   const { [id]: _, ...rest } = live
-  live = rest
-  for (const [k, v] of origins) if (v === id) origins.delete(k)
+  live = rest // its ids stay in `origins`: they still are not the hub's, and a new sign-in to the same node owns them again
   persist()
   emit()
 }
@@ -76,6 +80,8 @@ export function inbound<T>(id: string, data: T): T {
       if (n.meId && x === n.meId) return hub.meId || x
       if (n.sessionId && x === n.sessionId) return hub.sessionId || x
       if (URL_KEYS.has(key) && x.startsWith('/') && !x.startsWith('//')) return n.url + x
+      // A node's media proxy is its own: any other host would load (and see our IP) from wherever the node points.
+      if (key.startsWith('proxy_') && !x.startsWith(n.url + '/')) return undefined
       return n.meId && hub.meId ? swapMentions(x, n.meId, hub.meId) : x
     }
     if (Array.isArray(x)) return x.map((v) => walk(v, key))
@@ -83,7 +89,9 @@ export function inbound<T>(id: string, data: T): T {
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(x)) {
       // `hub_user_id` and friends name hub accounts, not node objects.
-      if ((k === 'id' || k.endsWith('_id')) && !k.startsWith('hub_') && typeof v === 'string' && SNOWFLAKE.test(v) && v !== n.meId) origins.set(v, id)
+      // First writer wins, and never our hub user or an id the hub already showed us (else a node could take over hub DMs and servers).
+      if ((k === 'id' || k.endsWith('_id')) && !k.startsWith('hub_') && typeof v === 'string' && SNOWFLAKE.test(v) && v !== n.meId
+        && v !== hub.meId && !origins.has(v) && !hubHas(v)) origins.set(v, id)
       out[k] = walk(v, k)
     }
     return out
@@ -111,8 +119,10 @@ export const outboundPath = (id: string, path: string) => {
 export function route(path: string, body?: unknown): string | undefined {
   const [p, q] = path.split('?')
   for (const seg of p.split('/')) {
-    const n = origins.get(seg.replace(/\.\w+$/, ''))
+    const s = seg.replace(/\.\w+$/, '')
+    const n = origins.get(s)
     if (n) return n
+    if (s !== hub.meId && hubHas(s)) return undefined // a hub channel decides for the messages under it
   }
   const params = new URLSearchParams(q ?? '')
   const b = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {}

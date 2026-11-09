@@ -3,10 +3,20 @@ import { randomBytes, createHash } from 'node:crypto';
 import { get, run, tx } from './db.js';
 import { HttpError } from './errors.js';
 import { totpStep, unseal, backupHash } from './totp.js';
+import { checkLogin, loginFailed } from './ratelimit.js';
 
-// a TOTP code (each time step accepted once) or an unused backup code; true when it checks out
+// a TOTP code (each time step accepted once) or an unused backup code; true when it checks out.
+// Wrong codes count per user across all tickets and sensitive actions: 10 in 15 minutes, then 429 (login lock).
 export function verifyCode(user, code) {
   if (!user?.mfa_secret || typeof code !== 'string') return false;
+  const keys = [`mfa:${user.id}`];
+  checkLogin(keys);
+  const ok = codeOk(user, code);
+  if (!ok) loginFailed(keys);
+  return ok;
+}
+
+function codeOk(user, code) {
   const clean = code.replace(/[\s-]/g, '');
   if (/^\d{6}$/.test(clean)) {
     const fresh = get('SELECT mfa_last_step FROM users WHERE id = ?', user.id);
@@ -63,8 +73,9 @@ export function elevate(userId) {
 // sensitive actions: with MFA on, a body `code` (TOTP or backup) or an elevation header; otherwise 401 60003 with a ticket (docs)
 export function requireMfa(ctx, user = ctx.user) {
   if (!user.mfa_secret) return;
+  // bot libraries send the same token as x-<their app>-mfa-authorization; accept that alias by shape
   const header = ctx.req.headers['x-cillhub-mfa-authorization']
-    ?? ctx.req.headers['x-discord-mfa-authorization']; // compatibility header used by external bot libraries
+    ?? Object.entries(ctx.req.headers).find(([k]) => /^x-[a-z]+-mfa-authorization$/.test(k))?.[1];
   const e = typeof header === 'string' && elevations.get(hash(header));
   if (e && e.userId === user.id && e.expires > Date.now()) return;
   if (ctx.body?.code != null) {

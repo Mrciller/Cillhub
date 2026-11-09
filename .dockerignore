@@ -1,4 +1,4 @@
-# Release images must not contain server/test: with it, NODE_ENV=test could swap the pinned network key.
+# Release images must not contain server/test (fixtures and the test-only hub-key loader hook).
 server/test
 # Never in the build context: secrets, data, host dependencies and the app shells.
 .env

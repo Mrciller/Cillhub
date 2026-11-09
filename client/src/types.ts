@@ -252,6 +252,8 @@ export type WelcomeScreen = {
 }
 export type MemberVerification = { version: string | null; description?: string | null; form_fields: { field_type: string; label: string; values?: string[] | null; required: boolean; response?: unknown }[] }
 export type Gif = { id: string; title: string; url: string; src: string; width: number; height: number; preview: string }
+/** A favourite GIF (validated in server/src/userdata.js): url = the link that is sent (unique), src = what is shown; 0 = unknown size. */
+export type FavoriteGif = { url: string; src: string; width: number; height: number; format: 'gif' | 'mp4' | 'webm' | 'image' }
 
 // ---------- v4 ----------
 /** A DM / group DM call (CALL_CREATE / CALL_UPDATE). */
@@ -279,6 +281,7 @@ export type UserSettings = {
   default_emoji_skin_tone?: number; show_avatars?: boolean; show_timestamps?: boolean
   sound_settings?: SoundSettings; entrance_sound?: { sound_id: string; guild_id: string | null } | null; keybinds?: Record<string, string | null>
   privacy?: { dm_read_receipts?: boolean }
+  favorite_gifs?: FavoriteGif[]
 }
 /** Colours are '#rrggbb'; gradient = two stops for the app background. */
 export type CustomTheme = { id: string; name: string; background: string; surface: string; accent: string; text: string; gradient: [string, string] | null }

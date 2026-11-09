@@ -20,12 +20,13 @@ class ActionReceiver : BroadcastReceiver() {
         const val INSTALL_STATUS = "io.github.mrciller.cillhub.INSTALL_STATUS"
         const val EXTRA_CHANNEL = "channel_id"
         const val EXTRA_MESSAGE = "message_id"
+        const val REPLY_SCHEME = "cillhub-reply"
         private const val TAG = "CillcordAction"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         val ctx = context.applicationContext
-        val channel = BridgeMessage.snowflake(intent.getStringExtra(EXTRA_CHANNEL))
+        val channel = BridgeMessage.snowflake(if (intent.action == REPLY) intent.data?.takeIf { it.scheme == REPLY_SCHEME }?.schemeSpecificPart else intent.getStringExtra(EXTRA_CHANNEL))
         when (intent.action) {
             REPLY -> {
                 val text = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(Notifications.REPLY_KEY)?.toString()?.trim()

@@ -226,16 +226,9 @@ class LeagueClientManager {
   // Sends an in-game invite to a target player (by summonerName or PUUID)
   async sendInvite(target) {
     if (!this.credentials) throw new Error('League client is not running');
-    const payload = [];
-    if (typeof target === 'string') {
-      if (target.includes('-') && target.length > 30) {
-        payload.push({ toPuuid: target });
-      } else {
-        payload.push({ toSummonerName: target });
-      }
-    } else if (target && typeof target === 'object') {
-      payload.push(target);
-    }
+    // from the page: a name or PUUID string only, never a raw LCU payload
+    if (typeof target !== 'string' || !target || target.length > 100) throw new Error('Invalid invite target');
+    const payload = [target.includes('-') && target.length > 30 ? { toPuuid: target } : { toSummonerName: target }];
     return lcuRequest(this.credentials, 'POST', '/lol-lobby/v2/lobby/invitations', payload);
   }
 
@@ -243,6 +236,8 @@ class LeagueClientManager {
   async acceptInvite(invitationId) {
     if (!this.credentials) throw new Error('League client is not running');
     if (invitationId) {
+      // goes into the LCU path: no ../ to other endpoints
+      if (typeof invitationId !== 'string' || !/^[\w-]{1,64}$/.test(invitationId)) throw new Error('Invalid invitation id');
       return lcuRequest(this.credentials, 'POST', `/lol-lobby/v2/received-invitations/${invitationId}/accept`);
     }
     // Check pending received invitations

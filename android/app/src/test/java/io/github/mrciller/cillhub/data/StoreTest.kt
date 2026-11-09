@@ -255,4 +255,27 @@ class StoreTest {
         assertFalse("muted DM is not unread by lastMessageId alone", Sel.isUnread(s, s.channels["200"]!!))
         assertEquals("muted DM with mentionCount=1 still counts in unreadDms badge", 1, Sel.unreadDms(s))
     }
+
+    @Test fun favoriteGifsFromSettingsUpdate() {
+        val gif = """{"url":"https://example.com/g","src":"https://example.com/g.gif","width":10,"height":20,"format":"gif"}"""
+        s = Reducer.apply(s, "USER_SETTINGS_UPDATE", o("""{"favorite_gifs":[$gif]}"""))
+        assertEquals(listOf(FavoriteGif("https://example.com/g", "https://example.com/g.gif", 10, 20, "gif")), s.favoriteGifs)
+        assertEquals("other keys leave the status alone", "dnd", s.myStatus)
+        s = Reducer.apply(s, "USER_SETTINGS_UPDATE", o("""{"status":"idle"}"""))
+        assertEquals("idle", s.myStatus)
+        assertEquals(1, s.favoriteGifs.size)
+        val fromReady = Reducer.apply(State(), "READY", JsonObject(ready + ("user_settings" to o("""{"status":"online","favorite_gifs":[$gif]}"""))))
+        assertEquals(1, fromReady.favoriteGifs.size)
+    }
+
+    @Test fun channelMembersGroupByHoistedRole() {
+        s = Reducer.apply(s, "GUILD_ROLE_UPDATE", o("""{"guild_id":"10","role":{"id":"11","name":"Team","position":1,"permissions":"0","hoist":true}}"""))
+        val groups = Sel.channelMembers(s, "10", s.channels["100"]!!)
+        assertEquals(listOf("11", "online"), groups.map { it.key })
+        assertEquals("Team", groups[0].role?.name)
+        assertEquals(listOf("2"), groups[1].members.map { it.user!!.id })
+        assertEquals("only the owner sees the hidden channel", listOf("online"), Sel.channelMembers(s, "10", s.channels["102"]!!).map { it.key })
+        s = Reducer.apply(s, "PRESENCE_UPDATE", o("""{"user":{"id":"2"},"status":"offline"}"""))
+        assertEquals(listOf("11", "offline"), Sel.channelMembers(s, "10", s.channels["100"]!!).map { it.key })
+    }
 }

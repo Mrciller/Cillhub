@@ -4,7 +4,7 @@ import { notifyEvent } from './notifications/notify'
 import { voiceEvent } from './voice/engine'
 import { soundEvent } from './custom/sounds'
 import { forgetInstances, nodeSend, startNodes, stopNodes } from './instances/nodes'
-import { nodeOf, setHubIdentity } from './instances/registry'
+import { hubTakes, nodeOf, setHubIdentity } from './instances/registry'
 
 export type Gateway = { connect: () => void; disconnect: () => void; send: (op: number, d: unknown) => boolean }
 type Options = {
@@ -118,6 +118,7 @@ const hub = createGateway({
   rejected: () => logout(),
   dispatch(t, d) {
     if (t === 'READY') setHubIdentity(d.user.id, d.session_id)
+    if (t === 'GUILD_CREATE') for (const x of [d.id, ...(d.channels ?? []).map((c: { id: string }) => c.id)]) hubTakes(x)
     const before = getState()
     apply(t, d)
     // A hub reconnect says nothing about a call on a node server (that node's own READY does).

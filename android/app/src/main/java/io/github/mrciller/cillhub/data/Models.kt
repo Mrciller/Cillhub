@@ -33,6 +33,8 @@ data class User(
     val accentColor: Int? = null,
     val banner: String? = null,
     val mfaEnabled: Boolean = false,
+    /** The server tag the user chose to show (v6 customization). */
+    val primaryGuild: PrimaryGuild? = null,
 ) {
     val displayName get() = globalName?.takeIf { it.isNotBlank() } ?: username.ifBlank { "Unknown" }
 }
@@ -46,7 +48,11 @@ data class Role(
     val position: Int = 0,
     val permissions: String = "0",
     val mentionable: Boolean = false,
+    val managed: Boolean = false,
 )
+
+@Serializable
+data class PrimaryGuild(val tag: String? = null)
 
 @Serializable
 data class Overwrite(val id: String, val type: Int = 0, val allow: String = "0", val deny: String = "0")
@@ -349,7 +355,21 @@ data class Ready(
 )
 
 @Serializable
-data class UserSettings(val status: String? = null, val locale: String? = null, val theme: String? = null)
+data class UserSettings(val status: String? = null, val locale: String? = null, val theme: String? = null, val favoriteGifs: List<FavoriteGif> = emptyList())
+
+/** A saved GIF in the settings document's favorite_gifs (newest first, at most 250; url is the key). */
+@Serializable
+data class FavoriteGif(val url: String, val src: String, val width: Int = 0, val height: Int = 0, val format: String = "gif")
+
+/** A GIF search result (GET /gifs/search, /gifs/trending). */
+@Serializable
+data class Gif(val id: String = "", val title: String = "", val url: String, val src: String, val width: Int = 0, val height: Int = 0, val preview: String? = null)
+
+// server administration (GET /guilds/:id/invites, /bans, /audit-logs)
+@Serializable data class Invite(val code: String, val channel: Channel? = null, val inviter: User? = null, val uses: Int = 0, val maxUses: Int = 0, val expiresAt: String? = null)
+@Serializable data class Ban(val user: User, val reason: String? = null)
+@Serializable data class AuditEntry(val id: String, val userId: String? = null, val targetId: String? = null, val actionType: Int = 0, val reason: String? = null)
+@Serializable data class AuditLog(val auditLogEntries: List<AuditEntry> = emptyList(), val users: List<User> = emptyList())
 
 @Serializable data class UserProfileMeta(val bio: String = "", val pronouns: String = "", val accentColor: Int? = null, val banner: String? = null)
 

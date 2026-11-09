@@ -203,7 +203,7 @@ async function startServer(tmp, name, port, env, key) {
   const dir = fs.mkdtempSync(path.join(tmp, `${name}-data-`))
   if (key) fs.writeFileSync(path.join(dir, 'federation.key'), key.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 })
   const out = fs.openSync(path.join(tmp, `${name}.log`), 'w')
-  const p = spawn(process.execPath, ['src/index.js'], { cwd: SERVER_DIR, env: { ...env, PORT: String(port), DATA_DIR: dir, STATIC_DIR: DIST, CILLCORD_FEDERATION_DEV_HTTP: '1' }, stdio: ['ignore', out, out] })
+  const p = spawn(process.execPath, ['--import', './test/hub-key.mjs', 'src/index.js'], { cwd: SERVER_DIR, env: { ...env, PORT: String(port), DATA_DIR: dir, STATIC_DIR: DIST, CILLCORD_FEDERATION_DEV_HTTP: '1' }, stdio: ['ignore', out, out] })
   children.push(p)
   const base = `http://127.0.0.1:${port}`
   await until(`instance ${name} on port ${port}`, async () => (await fetch(base + '/api/v9/instance')).ok, 20000)

@@ -63,6 +63,18 @@ test('backup codes are single use; MFA tickets expire after 5 minutes and die af
   }
 });
 
+test('wrong 2FA codes are limited per user across tickets: 10 in 15 minutes, then 429 even for a right code', () => {
+  run("INSERT INTO users (id, email, username, password_hash, salt, mfa_secret) VALUES ('2', 'c@d.e', 'u2', 'x', 'y', 'x')");
+  setBackupCodes('2', ['good1234']);
+  const user = { id: '2', mfa_secret: 'x' };
+  for (let i = 0; i < 2; i++) {
+    const t = newTicket('2', 'login'); // a fresh ticket per password login does not reset the count
+    for (let j = 0; j < 5; j++) assert.throws(() => redeemTicket(t, 'login', '00000000'), e => e.body.code === 60008);
+  }
+  assert.throws(() => redeemTicket(newTicket('2', 'login'), 'login', 'good1234'), e => e.status === 429);
+  assert.throws(() => verifyCode(user, 'good1234'), e => e.status === 429, 'sensitive actions share the lock');
+});
+
 test('enable TOTP, log in with the ticket flow, backup code, disable needs a code', async () => {
   const u = await srv.register('mfa');
   const enable = body => api('POST', '/users/@me/mfa/totp/enable', u.token, body);
@@ -86,7 +98,7 @@ test('enable TOTP, log in with the ticket flow, backup code, disable needs a cod
   const fin = await api('POST', '/mfa/finish', u.token, { ticket: off.body.mfa.ticket, mfa_type: 'backup', data: on.body.backup_codes[1].code });
   // the older elevation header name (still sent by bot libraries) is accepted as an alias
   const app = (await api('POST', '/applications', u.token, { name: 'Alias check' })).body;
-  assert.ok([200, 204].includes((await api('DELETE', `/applications/${app.id}`, u.token, undefined, { 'X-Discord-MFA-Authorization': fin.body.token })).status));
+  assert.ok([200, 204].includes((await api('DELETE', `/applications/${app.id}`, u.token, undefined, { 'X-Botlib-MFA-Authorization': fin.body.token })).status));
   const disabled = await api('POST', '/users/@me/mfa/totp/disable', u.token, {}, { 'X-Cillhub-MFA-Authorization': fin.body.token });
   assert.equal(disabled.status, 200);
   assert.equal((await api('GET', '/users/@me', u.token)).body.mfa_enabled, false);
@@ -130,6 +142,26 @@ test('login rate limit: 10 failures per account answer 429 with retry_after and 
   assert.equal(body.global, false);
   assert.ok(body.retry_after > 800 && body.retry_after <= 900);
   assert.ok(Number(res.headers.get('retry-after')) > 0);
+});
+
+test('login lock is per account+IP; X-Forwarded-For counts only from a trusted proxy (TRUST_PROXY)', async () => {
+  const attempt = (s, xff, password) => s.api('POST', '/auth/login', null, { login: 'shared', password }, { 'X-Forwarded-For': `198.51.100.9, ${xff}` });
+  await srv.register('shared');
+  for (let i = 0; i < 10; i++) assert.equal((await attempt(srv, '203.0.113.1', 'wrongwrong')).status, 401);
+  assert.equal((await attempt(srv, '203.0.113.1', 'hunter2hunter2')).status, 429, 'the guessing client is locked');
+  // X-Real-IP is client-controlled behind proxies that pass it through (audit H3): it changes nothing
+  const spoofed = await srv.api('POST', '/auth/login', null, { login: 'shared', password: 'hunter2hunter2' }, { 'X-Forwarded-For': '203.0.113.1', 'X-Real-IP': '198.51.100.77' });
+  assert.equal(spoofed.status, 429, 'a spoofed X-Real-IP does not unlock');
+  assert.equal((await attempt(srv, '203.0.113.2', 'hunter2hunter2')).status, 200, 'the owner on another IP is not');
+  // a peer outside TRUST_PROXY cannot pick its own IP: every attempt counts against the real peer
+  const untrusted = await startServer({ env: { TRUST_PROXY: '192.0.2.1' } });
+  try {
+    await untrusted.register('shared');
+    for (let i = 0; i < 10; i++) assert.equal((await attempt(untrusted, `203.0.113.${i + 10}`, 'wrongwrong')).status, 401);
+    assert.equal((await attempt(untrusted, '203.0.113.99', 'hunter2hunter2')).status, 429);
+  } finally {
+    await untrusted.stop();
+  }
 });
 
 test('account deletion: refused while owning a guild; afterwards "Deleted User" with messages kept', async () => {

@@ -11,6 +11,7 @@ import { addJob } from './timers.js';
 const IMAGES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const MAX_IMAGE = 8 * 1024 * 1024;
 const MAX_AGE = 7 * 24 * 3600 * 1000;
+const MAX_CACHE = 512 * 1024 * 1024; // all cached images together; anyone can have URLs signed, so the oldest give way
 const CACHE = join(DATA_DIR, 'external');
 mkdirSync(CACHE, { recursive: true });
 
@@ -61,6 +62,7 @@ export async function serveExternal(req, res, pathname) {
     bytes = await fetchImage(url);
     if (!bytes) throw notFound();
     await writeFile(file, bytes);
+    if ((cacheBytes += bytes.length) > MAX_CACHE) pruneProxyCache(Date.now(), MAX_CACHE * 0.9);
   }
   sendRanged(req, res, {
     'Content-Type': sniff(bytes), 'X-Content-Type-Options': 'nosniff',
@@ -68,11 +70,21 @@ export async function serveExternal(req, res, pathname) {
   }, bytes);
 }
 
-export function pruneProxyCache(now = Date.now()) {
-  for (const name of readdirSync(CACHE)) {
-    const file = join(CACHE, name);
-    if (now - statSync(file).mtimeMs >= MAX_AGE) rmSync(file, { force: true });
+// drops images older than MAX_AGE, then the oldest until the cache fits in maxBytes
+let cacheBytes = 0;
+export function pruneProxyCache(now = Date.now(), maxBytes = MAX_CACHE) {
+  const files = readdirSync(CACHE).map(name => {
+    const file = join(CACHE, name), s = statSync(file, { throwIfNoEntry: false });
+    return { file, size: s?.size ?? 0, at: s?.mtimeMs ?? 0 };
+  }).sort((a, b) => a.at - b.at);
+  cacheBytes = files.reduce((n, f) => n + f.size, 0);
+  for (const f of files) {
+    if (now - f.at < MAX_AGE && cacheBytes <= maxBytes) break;
+    rmSync(f.file, { force: true });
+    cacheBytes -= f.size;
   }
+  return cacheBytes;
 }
+pruneProxyCache();
 
 addJob({ name: 'media proxy cache', next: () => null, run: pruneProxyCache });

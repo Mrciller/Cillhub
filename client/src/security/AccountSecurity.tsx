@@ -164,14 +164,15 @@ function CodePrompt({ title, body, confirm, danger, password, onSubmit, onClose 
   )
 }
 
-function PasskeyManager() {
+function PasskeyManager({ mfa }: { mfa: boolean }) {
+  const [asking, setAsking] = useState(false)
   const [keys, setKeys] = useState<{ id: string; nickname: string; created_at: string; last_used_at: string | null }[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const reload = () => listPasskeys().then(setKeys, (err: Error) => setError(err.message))
   useEffect(() => { void reload() }, [])
 
-  async function registerPasskey() {
+  async function registerPasskey(password: string, code?: string) {
     if (typeof window === 'undefined' || !window.PublicKeyCredential) {
       setError(t('Passkeys are not supported by this browser.'))
       return
@@ -191,7 +192,8 @@ function PasskeyManager() {
         user: { id: string; name: string; displayName: string }
         pubKeyCredParams: { alg: number; type: 'public-key' }[]
         timeout: number
-      }>('/auth/webauthn/register/options', { method: 'POST' })
+      }>('/auth/webauthn/register/options', { method: 'POST', body: { password, ...(code && { code: code.replace(/\s/g, '') }) } })
+      setAsking(false)
 
       const challengeBytes = Uint8Array.from(atob(opts.challenge.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
       const userBytes = Uint8Array.from(atob(opts.user.id.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
@@ -254,9 +256,19 @@ function PasskeyManager() {
           ))}
         </ul>
       )}
-      <button type="button" className="secondary" disabled={busy} onClick={() => void registerPasskey()}>
-        {busy ? t('Creating Passkey…') : t('Add Passkey')}
-      </button>
+      {asking ? (
+        <form onSubmit={(e) => { const f = form(e); void registerPasskey(f.password, f.code) }}>
+          <p className="hint">{t('Make sure it is really you: enter your password to continue.')}</p>
+          <Field label={t('Password')} name="password" type="password" required autoComplete="current-password" autoFocus />
+          {mfa && <Field label={t('Authentication or backup code')} name="code" required autoComplete="one-time-code" />}
+          <div className="row-buttons">
+            <button type="button" className="secondary" onClick={() => setAsking(false)}>{t('Cancel')}</button>
+            <button className="primary" disabled={busy}>{busy ? t('Creating Passkey…') : t('Add Passkey')}</button>
+          </div>
+        </form>
+      ) : (
+        <button type="button" className="secondary" disabled={busy} onClick={() => setAsking(true)}>{t('Add Passkey')}</button>
+      )}
     </div>
   )
 }
@@ -295,7 +307,7 @@ export function AccountSecurity() {
       <section className="settings-section">
         <h2>{t('Passkeys / WebAuthn')}</h2>
         <p className="hint small">{t('Sign in with biometric sensors, Touch ID, Windows Hello, or security keys without typing a password.')}</p>
-        <PasskeyManager />
+        <PasskeyManager mfa={!!me.mfa_enabled} />
       </section>
       <section className="settings-section">
         <h2>{t('Your Data & Privacy')}</h2>

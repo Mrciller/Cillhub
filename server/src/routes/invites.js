@@ -100,7 +100,7 @@ export function checkAntiRaid(g, userId) {
       run('UPDATE guilds SET invites_disabled = 1 WHERE id = ?', g.id);
     }
     if (cfg.quarantine_role_id) {
-      run('INSERT OR IGNORE INTO member_roles (guild_id, user_id, role_id) VALUES (?, ?, ?)', g.id, userId, cfg.quarantine_role_id);
+      run('INSERT OR IGNORE INTO member_roles (guild_id, user_id, role_id) SELECT guild_id, ?, id FROM roles WHERE id = ? AND guild_id = ? AND id != guild_id', userId, cfg.quarantine_role_id, g.id);
     }
     sendToUsers(memberIds(g.id), 'GUILD_RAID_ALERT', {
       guild_id: g.id,

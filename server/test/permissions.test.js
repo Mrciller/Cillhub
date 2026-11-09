@@ -281,3 +281,38 @@ test('locked and archived threads reject member additions and typing from non-mo
   const typeArchived = await api('POST', `/channels/${t.id}/typing`, dave.token);
   assert.deepEqual([typeArchived.status, typeArchived.body.code], [400, 50083]);
 });
+
+test('onboarding and anti-raid cannot hand out roles the actor could not assign (audit H1, H2)', async () => {
+  const h = await guildWith(srv, ['hown', 'hmod', 'hjoin']);
+  const { hown, hmod, hjoin } = h.users;
+  const gp = p => `/guilds/${h.guild.id}${p}`;
+  const admin = (await api('POST', gp('/roles'), hown.token, { name: 'Admin', permissions: String(ADMIN) })).body;
+  const mod = (await api('POST', gp('/roles'), hown.token, { name: 'Mod', permissions: String(1n << 5n) })).body; // MANAGE_GUILD only
+  assert.equal((await api('PUT', gp(`/members/${hmod.id}/roles/${mod.id}`), hown.token)).status, 204);
+  const prompts = [{ options: [{ id: 'o1', role_ids: [admin.id] }] }];
+  assert.equal((await api('PUT', gp('/onboarding'), hmod.token, { enabled: true, prompts })).status, 403, 'no MANAGE_ROLES');
+  await api('PATCH', gp(`/roles/${mod.id}`), hown.token, { permissions: String((1n << 5n) | MANAGE_ROLES) });
+  assert.equal((await api('PUT', gp('/onboarding'), hmod.token, { enabled: true, prompts })).status, 403, 'Admin is above Mod');
+  // a role of another guild is unknown here, both for onboarding and the quarantine role
+  const evil = (await api('POST', '/guilds', hmod.token, { name: 'Evil' })).body;
+  const foreign = (await api('POST', `/guilds/${evil.id}/roles`, hmod.token, { name: 'R', permissions: String(ADMIN) })).body;
+  assert.equal((await api('PUT', gp('/onboarding'), hmod.token, { enabled: true, prompts: [{ options: [{ id: 'o1', role_ids: [foreign.id] }] }] })).status, 404);
+  assert.equal((await api('PUT', gp('/anti-raid'), hmod.token, { enabled: true, quarantine_role_id: foreign.id })).status, 404);
+  assert.equal((await api('PUT', gp('/anti-raid'), hmod.token, { enabled: true, quarantine_role_id: admin.id })).status, 403);
+  // a foreign role row in member_roles (written before this fix) grants nothing
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(`${srv.dataDir}/cillcord.sqlite`);
+  db.prepare('INSERT INTO member_roles (guild_id, user_id, role_id) VALUES (?, ?, ?)').run(h.guild.id, hjoin.id, foreign.id);
+  db.close();
+  assert.equal((await api('GET', gp('/audit-logs'), hjoin.token)).status, 403);
+});
+
+test('replies need READ_MESSAGE_HISTORY: a reply answers with the referenced content (audit M5)', async () => {
+  const h = await guildWith(srv, ['rown', 'rnew']);
+  const { rown, rnew } = h.users;
+  const secret = (await api('POST', `/channels/${h.general.id}/messages`, rown.token, { content: 'secret history' })).body;
+  await api('PUT', `/channels/${h.general.id}/permissions/${h.guild.id}`, rown.token, { type: 0, allow: '0', deny: String(1n << 16n) });
+  const r = await api('POST', `/channels/${h.general.id}/messages`, rnew.token, { content: 'hi', message_reference: { message_id: secret.id } });
+  assert.deepEqual([r.status, r.body.code], [403, 160002]);
+  assert.equal((await api('POST', `/channels/${h.general.id}/messages`, rown.token, { content: 'ok', message_reference: { message_id: secret.id } })).status, 201);
+});

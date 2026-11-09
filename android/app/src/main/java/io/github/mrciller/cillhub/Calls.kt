@@ -40,6 +40,9 @@ object Calls {
     @Volatile var current: Call? = null; private set
     private var lastVoice = VoiceUi()
 
+    /** [c] is the ringing call of [channelId] (what may show over the lock screen). */
+    fun rings(c: Call?, channelId: String) = c != null && c.channelId == channelId && c.state == State.RINGING
+
     fun ring(ctx: Context, channelId: String, name: String, personId: String?, isGroup: Boolean, title: String) {
         synchronized(this) {
             if (current != null) return // one call at a time; the in-app call screen still shows the other ring

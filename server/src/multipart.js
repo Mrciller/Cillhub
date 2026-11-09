@@ -15,6 +15,7 @@ mkdirSync(TMP, { recursive: true });
 
 const CRLF2 = Buffer.from('\r\n\r\n');
 const MAX_HEADERS = 16 * 1024;
+const MAX_PARTS = 200;
 const tooLarge = () => new HttpError(413, 0, 'Request entity too large');
 const bad = () => new HttpError(400, 0, 'The request body is not valid multipart/form-data.');
 
@@ -35,7 +36,8 @@ const param = (headers, key) => new RegExp(`(?:^|;)\\s*${key}="([^"]*)"`, 'i').e
 
 /**
  * Reads req as multipart/form-data. Returns {form, cleanup}; cleanup() removes the temp files that were not moved away.
- * Over maxTotal bytes or maxFields of text: 413 at once. More than maxFiles file parts: 400.
+ * Over maxTotal bytes or maxFields of text (part headers included): 413 at once. More than maxFiles file parts or
+ * MAX_PARTS parts: 400.
  */
 export async function parseMultipart(req, { maxTotal, maxFile, maxFields = 1024 * 1024, maxFiles = 20 }) {
   const m = /;\s*boundary=(?:"([^"]{1,70})"|([^\s;"]{1,70}))/i.exec(req.headers['content-type'] ?? '');
@@ -47,7 +49,7 @@ export async function parseMultipart(req, { maxTotal, maxFile, maxFields = 1024 
   let buf = Buffer.from('\r\n'); // the first boundary then looks like every other one
   let state = 'preamble'; // preamble | after (a boundary) | headers | body | done
   let part = null;
-  let total = 0, fieldBytes = 0, files = 0;
+  let total = 0, fieldBytes = 0, files = 0, parts = 0;
 
   async function data(chunk) {
     if (!chunk.length) return;
@@ -76,6 +78,9 @@ export async function parseMultipart(req, { maxTotal, maxFile, maxFields = 1024 
   }
 
   function startPart(headers) {
+    // part names and filenames stay in memory too, so their headers count against maxFields
+    if ((fieldBytes += headers.length) > maxFields) throw tooLarge();
+    if (++parts > MAX_PARTS) throw new HttpError(400, 0, `At most ${MAX_PARTS} form parts.`);
     const disposition = /^content-disposition:(.*)$/im.exec(headers)?.[1] ?? '';
     const name = param(disposition, 'name');
     if (name === undefined) throw bad();

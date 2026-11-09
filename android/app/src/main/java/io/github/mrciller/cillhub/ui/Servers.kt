@@ -111,9 +111,11 @@ fun ServersScreen(selected: String?, select: (String) -> Unit, detailChannel: St
 @Composable
 fun Loading() = Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator() }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ServerRail(state: State, selected: String?, select: (String) -> Unit, add: () -> Unit) {
     val ctx = LocalContext.current
+    val nav = LocalNav.current
     LazyColumn(
         Modifier.width(76.dp).fillMaxHeight().background(if (LocalExtra.current.isDark) MaterialTheme.colorScheme.surfaceContainerLowest else MaterialTheme.colorScheme.surfaceContainerHighest)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Start)),
@@ -135,7 +137,11 @@ private fun ServerRail(state: State, selected: String?, select: (String) -> Unit
                 val shape = RoundedCornerShape(if (isSel) 15.dp else 20.dp)
                 Box(
                     Modifier.size(50.dp).clip(shape)
-                        .clickable(role = Role.Tab, onClickLabel = g.name) { select(g.id) }
+                        .combinedClickable(
+                            role = Role.Tab, onClickLabel = g.name, onClick = { select(g.id) },
+                            onLongClickLabel = ctx.getString(R.string.server_settings),
+                            onLongClick = if (canOpenServerSettings(state, g.id)) { { nav.openServerSettings(g.id) } } else null,
+                        )
                         .semantics(mergeDescendants = true) { contentDescription = desc; this.selected = isSel },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -175,8 +181,15 @@ private fun ChannelList(state: State, g: Guild, selected: String?) {
     val groups = remember(state.channels, state.guilds[g.id], state.members[g.id], state.readStates, state.guildSettings) { Sel.sidebar(state, g.id) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLow)) {
         TopAppBar(
-            title = { Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold) },
-            actions = { IconButton({ nav.openMembers(g.id) }) { Ic(R.drawable.ms_group, s(R.string.members)) } },
+            title = {
+                val admin = canOpenServerSettings(state, g.id)
+                Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold,
+                    modifier = if (admin) Modifier.clickable(onClickLabel = s(R.string.server_settings)) { nav.openServerSettings(g.id) } else Modifier)
+            },
+            actions = {
+                IconButton({ nav.openMembers(g.id) }) { Ic(R.drawable.ms_group, s(R.string.members)) }
+                if (canOpenServerSettings(state, g.id)) IconButton({ nav.openServerSettings(g.id) }) { Ic(R.drawable.ms_settings, s(R.string.server_settings)) }
+            },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
             windowInsets = if (nav.twoPane) TopAppBarDefaults.windowInsets.only(WindowInsetsSides.Top) else TopAppBarDefaults.windowInsets.only(WindowInsetsSides.Top + WindowInsetsSides.End),
         )

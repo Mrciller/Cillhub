@@ -5,7 +5,7 @@ import { shortDate } from '../appearance/format'
 import { useMdContext } from '../chat/MessageList'
 import { Avatar, avatarUrl, bannerUrl, cls, memberAvatarUrl, memberBannerUrl, Icon, ICONS } from '../components/ui'
 import { t } from '../i18n'
-import { Markdown } from '../markdown/Markdown'
+import { Markdown, safeUrl } from '../markdown/Markdown'
 import { sortedRoles } from '../permissions'
 import { displayName, useStore } from '../store'
 import type { Guild, Member, Profile, Status, User, UserConnection } from '../types'
@@ -84,7 +84,7 @@ export function ProfileCard({ d, status, big, children, badges }: { d: CardData;
             <ul className="connected-accounts-badges">
               {d.connected_accounts.map((c) => {
                 const srv = SERVICES[c.type.toLowerCase()]
-                const url = c.metadata?.profile_url || srv?.url(c.name) || '#'
+                const url = safeUrl(c.metadata?.profile_url ?? '') || srv?.url(c.name) || '#'
                 return (
                   <li key={c.id || `${c.type}-${c.name}`} className="conn-badge-item">
                     <a

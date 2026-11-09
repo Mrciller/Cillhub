@@ -1,6 +1,6 @@
 import { get, all, run, tx, json, memberIds, memberRow, memberObj, userById } from '../db.js';
 import { HttpError, str, bool, list, invalid, notFound, missingPermissions } from '../errors.js';
-import { P, need, has, channelPerms, guildPerms, requireAbove, requireRoleBelow } from '../permissions.js';
+import { P, need, has, channelPerms, guildPerms, requireAbove, requireAssignable } from '../permissions.js';
 import { sendToUsers } from '../gateway.js';
 import { inVoice, voiceState, disconnect, move, recheck } from '../voice.js';
 import { audit, A, diff } from '../audit.js';
@@ -99,10 +99,7 @@ function patchMember(ctx) {
     const current = new Set(all('SELECT role_id FROM member_roles WHERE guild_id = ? AND user_id = ?', g.id, target.id).map(r => r.role_id));
     for (const id of new Set([...wanted, ...current])) {
       if (wanted.has(id) === current.has(id)) continue;
-      const role = get('SELECT position, managed FROM roles WHERE id = ? AND guild_id = ? AND id != guild_id', id, g.id);
-      if (!role) throw notFound(10011, 'Role');
-      if (role.managed) throw invalid('roles', 'ROLE_MANAGED', 'Managed roles cannot be assigned or removed.');
-      requireRoleBelow(g.id, user.id, role.position);
+      requireAssignable(g.id, user.id, id);
     }
     changes.roles = [...wanted];
   }

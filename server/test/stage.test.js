@@ -63,7 +63,8 @@ test('stage: audience joins suppressed with no publish grant; speaking follows s
 
   // back to the audience by their own choice
   assert.equal((await api('PATCH', me, bob.token, { suppress: true })).status, 204);
-  assert.deepEqual((await livekitCall('UpdateParticipant', bob.id)).body.permission.can_publish_sources, []);
+  const audience = (await livekitCall('UpdateParticipant', bob.id)).body.permission;
+  assert.deepEqual([audience.can_publish, audience.can_publish_sources], [false, []]);
 
   // REQUEST_TO_SPEAK is needed to raise a hand
   await api('PUT', `/channels/${stage.id}/permissions/${g.guild.id}`, alice.token, { type: 0, allow: '0', deny: bits(32) });

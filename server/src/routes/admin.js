@@ -110,6 +110,7 @@ function targetUser(ctx) {
 function endSessions(userId) {
   const hashes = all('SELECT token_hash FROM tokens WHERE user_id = ?', userId).map(t => t.token_hash);
   run('DELETE FROM tokens WHERE user_id = ?', userId);
+  run('DELETE FROM webauthn_credentials WHERE user_id = ?', userId); // passkeys would sign straight back in
   hashes.forEach(closeTokenSessions);
   refreshPresence(userId);
   return hashes.length;

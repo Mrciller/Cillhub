@@ -140,10 +140,20 @@ fn run_tauri_gui(settings: SettingsManager) {
         }
     });
 
+    let hub = url::Url::parse(&settings.get().hub_url).ok();
     let context = tauri::generate_context!();
     let res = tauri::Builder::default()
-        .on_permission_request(|_webview, _kind| {
-            tauri::webview::PermissionResponse::Allow
+        // Only the bundled app (tauri://localhost, or http(s)://tauri.localhost on Windows) and the configured hub get
+        // the permissions the client needs; any other page and any other permission is denied.
+        .on_permission_request(move |webview, kind| {
+            use tauri::webview::{PermissionKind as K, PermissionResponse as R};
+            let trusted = webview.url().map_or(false, |u| {
+                (u.scheme() == "tauri" && u.host_str() == Some("localhost"))
+                    || u.host_str() == Some("tauri.localhost")
+                    || hub.as_ref().map_or(false, |h| h.origin() == u.origin())
+            });
+            let needed = matches!(kind, K::Microphone | K::Camera | K::Notifications | K::DisplayCapture | K::ClipboardRead);
+            if trusted && needed { R::Allow } else { R::Deny }
         })
         .setup(|_app| {
             println!("Tauri main window created with resizable: true");

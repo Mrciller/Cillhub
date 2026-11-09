@@ -28,3 +28,27 @@ test('findDeepLink', () => {
   assert.equal(findDeepLink(['app.exe', 'cillcord://invite/abc']), 'cillcord://invite/abc');
   assert.equal(findDeepLink(['app.exe', 'https://x']), undefined);
 });
+
+test('permissionAllowed: only listed permissions, only for the app', () => {
+  const { permissionAllowed, HUB_URL } = require('../src/config');
+  assert.equal(permissionAllowed('media', 'app://cillhub/channels/@me'), true);
+  assert.equal(permissionAllowed('media', HUB_URL + '/download/desktop/'), false);
+  assert.equal(permissionAllowed('media', 'https://evil-node.example/x'), false);
+  assert.equal(permissionAllowed('hid', 'app://cillhub/'), false);
+  assert.equal(permissionAllowed('geolocation', 'app://cillhub/'), false);
+  assert.equal(permissionAllowed('media', undefined), false);
+});
+
+test('update feed: an http: hub never becomes the feed', () => {
+  const p = require.resolve('../src/config');
+  delete require.cache[p];
+  process.env.CILLCORD_HUB_URL = 'http://hub.example';
+  try {
+    const c = require('../src/config');
+    assert.equal(c.HUB_ORIGIN, 'http://hub.example');
+    assert.equal(c.UPDATE_URL, c.PROD_FEED);
+  } finally {
+    delete process.env.CILLCORD_HUB_URL;
+    delete require.cache[p];
+  }
+});

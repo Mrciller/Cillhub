@@ -325,7 +325,7 @@ async function run(browser, errors) {
   assert.deepEqual(imported.roles, snap.roles)
   // a template link from the other chat app: previewed through the server, created via POST /guilds with its snapshot
   await page.getByRole('button', { name: 'Add a server' }).click()
-  await add.getByLabel('Template link or code').fill('https://discord.new/hgM48av5Q69A')
+  await add.getByLabel('Template link or code').fill('https://templates.example/hgM48av5Q69A')
   await add.getByRole('button', { name: 'Preview Template' }).click()
   await add.getByText('1 roles, 2 channels').waitFor()
   const ext = await bodyOf(add.getByRole('button', { name: 'Create Server' }), 'POST', '/api/v9/guilds')

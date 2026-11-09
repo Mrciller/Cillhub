@@ -80,4 +80,44 @@ object Perm {
 
     fun outranks(guild: Guild, meId: String, me: Member?, targetId: String, target: Member?) =
         targetId != guild.ownerId && targetId != meId && rank(guild, meId, me) > rank(guild, targetId, target)
+
+    // The server's checks (server/src/permissions.js requireAbove / requireRoleBelow, routes/roles.js, members.js, channels.js).
+
+    /** Edit, delete or move a role: MANAGE_ROLES and the role strictly below the actor's highest (the owner may touch all). */
+    fun canManageRole(guild: Guild, meId: String, me: Member?, role: Role) =
+        has(base(guild, meId, me), MANAGE_ROLES) && role.position < rank(guild, meId, me)
+
+    /** Give or take a role: as above, never @everyone or a managed role. */
+    fun canAssignRole(guild: Guild, meId: String, me: Member?, role: Role) =
+        role.id != guild.id && !role.managed && canManageRole(guild, meId, me, role)
+
+    /** Kick, ban, timeout or rename another member: the guild permission and the target ranked strictly below. */
+    fun canModerate(guild: Guild, meId: String, me: Member?, bit: Long, targetId: String, target: Member?) =
+        has(base(guild, meId, me), bit) && outranks(guild, meId, me, targetId, target)
+
+    /** Administrators cannot be timed out. */
+    fun canTimeout(guild: Guild, meId: String, me: Member?, targetId: String, target: Member?) =
+        canModerate(guild, meId, me, MODERATE_MEMBERS, targetId, target) && !has(base(guild, targetId, target), ADMINISTRATOR)
+
+    /** A channel permission overwrite for a role (type 0) or member (type 1): MANAGE_ROLES in the channel and a target below the actor. */
+    fun canEditOverwrite(guild: Guild, meId: String, me: Member?, channelPerms: Long, targetId: String, type: Int, target: Member? = null): Boolean {
+        if (!has(channelPerms, MANAGE_ROLES)) return false
+        return if (type == 0) (guild.roles.firstOrNull { it.id == targetId }?.position ?: 0) < rank(guild, meId, me)
+        else outranks(guild, meId, me, targetId, target)
+    }
+
+    /** Bits an overwrite or role edit may change: what the actor holds in the channel or the guild. */
+    fun grantable(guild: Guild, meId: String, me: Member?, channelPerms: Long = 0L) = channelPerms or base(guild, meId, me)
+
+    // The server lets an actor take these from themselves, and nobody below an administrator can give them back; the app refuses.
+
+    /** False when the guild's roles [after], or the actor's own roles [afterMe], would cost the actor MANAGE_ROLES or ADMINISTRATOR. */
+    fun keepsAdmin(guild: Guild, meId: String, me: Member?, after: Guild = guild, afterMe: Member? = me) =
+        base(guild, meId, me) and base(after, meId, afterMe).inv() and (MANAGE_ROLES or ADMINISTRATOR) == 0L
+
+    /** False when [overwrites] would hide the channel from the actor or cost them MANAGE_ROLES in it. */
+    fun keepsChannelAccess(guild: Guild, meId: String, me: Member?, ch: Channel, overwrites: List<Overwrite>) =
+        has(channel(guild, meId, me, ch.copy(permissionOverwrites = overwrites)), VIEW_CHANNEL or MANAGE_ROLES)
+
+    fun bits(s: String?) = big(s)
 }

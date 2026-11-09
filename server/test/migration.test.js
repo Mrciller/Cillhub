@@ -44,7 +44,7 @@ test('a v1 database upgrades in place to v3', async () => {
     await srv.stop(true);
   }
   const db = new DatabaseSync(file);
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16); // v4 … v13 migrations ran too
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17); // v4 … v13 and later migrations ran too
   db.close();
   // a second start on the upgraded database changes nothing
   const again = await startServer({ dataDir: dir });
@@ -88,7 +88,7 @@ test('a v2 database upgrades in place to v3: new default bits, searchable histor
     await srv.stop(true);
   }
   const db = new DatabaseSync(file);
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16); // v4 … v13 migrations ran too
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17); // v4 … v13 and later migrations ran too
   db.close();
   const again = await startServer({ dataDir: dir });
   const { token } = (await again.api('POST', '/auth/login', null, { login: 'oldtimer', password: 'hunter2hunter2' })).body;
@@ -135,7 +135,7 @@ test('a v3 database upgrades in place to v4: profiles, settings, bots and comman
     await srv.stop(true);
   }
   const db = new DatabaseSync(file);
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
   db.close();
   await rm(dir, { recursive: true, force: true });
 });
@@ -174,7 +174,7 @@ test('a v4 database upgrades in place to v5: built-in bot, scheduled messages, s
     await srv.stop(true);
   }
   const db = new DatabaseSync(file);
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM applications WHERE builtin = 1').get().n, 1);
   db.close();
   // a second start keeps the one built-in app and its commands
@@ -220,7 +220,7 @@ test('a v5 database upgrades in place to v6: admin flag, customization and repor
     await srv.stop(true);
   }
   const db = new DatabaseSync(file);
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
   assert.deepEqual([db.prepare('SELECT COUNT(*) AS n FROM reports').get().n, db.prepare("SELECT instance_admin FROM users WHERE id = '100'").get().instance_admin], [1, 0]);
   db.close();
   const again = await startServer({ dataDir: dir });
@@ -255,7 +255,7 @@ test('a v6 database upgrades in place to v7: linked-account columns, directory a
     await srv.stop(true);
   }
   const db = new DatabaseSync(file);
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
   assert.deepEqual({ ...db.prepare("SELECT home, hub_user_id, instance_admin FROM users WHERE id = '100'").get() }, { home: null, hub_user_id: null, instance_admin: 1 });
   for (const t of ['fed_link_codes', 'fed_nodes', 'fed_node_accounts', 'directory_entries', 'directory_reports']) assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n, 0);
   db.close();
@@ -289,7 +289,7 @@ test('a v7 database upgrades to v8: built-in names become Cillhub, a taken usern
   }
   const db = new DatabaseSync(file);
   const user = id => ({ ...db.prepare('SELECT username, global_name FROM users WHERE id = ?').get(id) });
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
   assert.deepEqual(user('101'), { username: 'CillHub', global_name: 'Hub Fan' }); // the owner of the name keeps it
   assert.deepEqual(user('102'), { username: 'cillcord', global_name: 'Cillhub' }); // so the bot keeps its old username
   assert.deepEqual(user('103'), { username: 'cillhub-system', global_name: 'Cillhub System' });
@@ -324,7 +324,7 @@ test('a v9 database upgrades to v10: module tables and the users.module flag, ol
     await srv.stop(true);
   }
   const db = new DatabaseSync(file);
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
   assert.equal(db.prepare("SELECT module FROM users WHERE id = '100'").get().module, 0);
   for (const t of ['modules', 'module_settings', 'module_storage', 'module_logs', 'module_schedules', 'module_message_panels']) assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n, 0);
   db.close();
@@ -358,7 +358,7 @@ test('a v10 database upgrades to v11: message_ttl, quality_mode, canvas, onboard
     await srv.stop(true);
   }
   const db = new DatabaseSync(file);
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
   for (const t of ['channel_canvas', 'guild_onboarding', 'guild_analytics_daily', 'webauthn_credentials', 'user_e2ee_keys', 'soundboard_packs', 'recurring_messages', 'channel_whiteboard', 'message_edits', 'guild_snippets', 'dm_requests', 'guild_server_guide', 'saved_message_folders', 'user_connections']) assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n, 0);
   assert.equal(db.prepare("SELECT e2ee_envelope FROM messages WHERE id = '400'").get().e2ee_envelope, null);
   assert.equal(db.prepare("SELECT anti_raid FROM guilds WHERE id = '200'").get().anti_raid, null);

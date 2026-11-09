@@ -3,6 +3,7 @@ import { api } from '../api'
 import { toastError } from '../components/dialogs'
 import { FormError, Icon, ICONS, Modal } from '../components/ui'
 import { t } from '../i18n'
+import { safeUrl } from '../markdown/Markdown'
 import type { UserConnection } from '../types'
 import './connections.css'
 
@@ -154,7 +155,7 @@ export function ConnectionsSettings() {
           <ul className="connected-accounts-list">
             {connections.map((c) => {
               const srv = SERVICES[c.type.toLowerCase()]
-              const profileUrl = c.metadata?.profile_url || srv?.url(c.name) || '#'
+              const profileUrl = safeUrl(c.metadata?.profile_url ?? '') || srv?.url(c.name) || '#'
               return (
                 <li key={c.id} className="connected-account-card">
                   <div className="account-card-left">

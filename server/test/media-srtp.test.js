@@ -84,3 +84,13 @@ for (const profile of [1, 7]) {
     assert.equal(rx.unprotectRtcp(s2), null, 'replayed RTCP dropped');
   });
 }
+
+test('junk packets with new SSRCs allocate no stream state; streams are capped per context (audit H7)', () => {
+  const tx = new SrtpContext(1, Buffer.alloc(16, 1), Buffer.alloc(14, 2)), rx = new SrtpContext(1, Buffer.alloc(16, 1), Buffer.alloc(14, 2));
+  const rtp = (ssrc, seq) => { const p = Buffer.alloc(40); p[0] = 0x80; p.writeUInt16BE(seq, 2); p.writeUInt32BE(ssrc, 8); return p; };
+  for (let i = 0; i < 1000; i++) assert.equal(rx.unprotectRtp(rtp(i, 1)), null);
+  for (let i = 0; i < 1000; i++) assert.equal(rx.unprotectRtcp(Buffer.alloc(40, i & 0xff)), null);
+  assert.equal(rx.streams.size, 0);
+  for (let i = 0; i < 100; i++) assert.ok(rx.unprotectRtp(tx.protectRtp(rtp(i, 1))));
+  assert.equal(rx.streams.size, 64);
+});

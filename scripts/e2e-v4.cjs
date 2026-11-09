@@ -2,9 +2,9 @@
 // browsers against a running server that serves client/dist and has LiveKit configured, plus a bot on a real bot library (v14).
 // Run: NODE_PATH=<dir with playwright> E2E_BASE_URL=http://127.0.0.1:3300 node scripts/e2e-v4.cjs
 // Usernames get a random suffix, so any database works (use a throwaway instance). E2E_SCREENSHOTS=1 also writes
-// docs/screenshots/v4-*.png; E2E_FAIL_SHOTS=<dir> saves every page when a step fails. E2E_DJS_MODULES (default
-// /tmp/djs-ttii/node_modules) is a node_modules dir with the v14 bot library; the bot runs as a child process.
-// The login rate-limit step sends a made-up X-Real-IP (trusted from loopback), so 127.0.0.1 itself is never locked out.
+// docs/screenshots/v4-*.png; E2E_FAIL_SHOTS=<dir> saves every page when a step fails. E2E_BOTLIB is the
+// installed package directory of the v14 bot library; the bot runs as a child process.
+// The login rate-limit step sends a made-up X-Forwarded-For (trusted from loopback), so 127.0.0.1 itself is never locked out.
 const { chromium } = require('playwright')
 const { createHmac } = require('node:crypto')
 const { spawn } = require('node:child_process')
@@ -15,7 +15,7 @@ const os = require('node:os')
 
 const BASE = (process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3300').replace(/\/$/, '')
 const SHOTS = process.env.E2E_SCREENSHOTS ? path.join(__dirname, '..', 'docs', 'screenshots') : null
-const DJS = process.env.E2E_DJS_MODULES ?? '/tmp/djs-ttii/node_modules'
+const BOTLIB = process.env.E2E_BOTLIB ?? ''
 const LIVE = { timeout: 5000 } // live updates must arrive within 5 s, without reload
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const SFX = Math.random().toString(36).slice(2, 7)
@@ -105,7 +105,7 @@ function speechWav(sec = 6, rate = 48000) {
 
 // The bot: the unmodified v14 bot library pointed at Cillhub. Prints one JSON line per event for the test to follow.
 const BOT = `
-const { Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require('discord.js')
+const { Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require(process.env.BOTLIB)
 const [api, guildId] = process.argv.slice(2)
 const out = (o) => console.log(JSON.stringify(o))
 const client = new Client({ intents: [GatewayIntentBits.Guilds], rest: { api } })
@@ -338,11 +338,11 @@ async function main() {
     })
 
     await step("2c. Alice turns on the camera; Bob's call tile plays her video", async () => {
-      await callPanel(alice).getByRole('button', { name: 'Camera' }).click()
+      await callPanel(alice).getByRole('button', { name: 'Camera', exact: true }).click()
       const tile = callPanel(bob).getByRole('list', { name: 'Participants' }).getByRole('listitem').filter({ hasText: NAME.alice })
       await until("a playing <video> in Alice's call tile for Bob", () => tile.locator('video').evaluate((v) => v.videoWidth > 0 && !v.paused), 15000)
       await shot(bob, 'call')
-      await callPanel(alice).getByRole('button', { name: 'Camera' }).click()
+      await callPanel(alice).getByRole('button', { name: 'Camera', exact: true }).click()
       await until("Alice's video to leave Bob's call tile", async () => (await tile.locator('video').count()) === 0, 10000)
     })
 
@@ -662,10 +662,10 @@ async function main() {
 
     // ---- 14. A real bot library (v14) ----
     await step('14a. a bot on a real bot library (v14) logs in with that token and registers /ping, /secret and /feedback', async () => {
-      check(fs.existsSync(path.join(DJS, 'discord.js')), `bot library (v14) not found in ${DJS} (set E2E_DJS_MODULES)`)
+      check(BOTLIB && fs.existsSync(BOTLIB), 'bot library (v14) not found (set E2E_BOTLIB to its installed package directory)')
       const file = path.join(tmp, 'bot.cjs')
       fs.writeFileSync(file, BOT)
-      bot = spawn(process.execPath, [file, `${BASE}/api`, ids.guild], { env: { ...process.env, NODE_PATH: DJS, BOT_TOKEN: ids.botToken }, stdio: ['ignore', 'pipe', 'pipe'] })
+      bot = spawn(process.execPath, [file, `${BASE}/api`, ids.guild], { env: { ...process.env, BOTLIB, BOT_TOKEN: ids.botToken }, stdio: ['ignore', 'pipe', 'pipe'] })
       bot.lines = []
       let buf = ''
       bot.stdout.on('data', (d) => { buf += d; for (let i; (i = buf.indexOf('\n')) >= 0; buf = buf.slice(i + 1)) try { bot.lines.push(JSON.parse(buf.slice(0, i))) } catch { /* not ours */ } })
@@ -757,7 +757,7 @@ async function main() {
     // ---- 17. Login rate limit ----
     await step('17. login rate limit: after 10 failed logins the form shows the countdown', async () => {
       const ip = `198.51.100.${1 + Math.floor(Math.random() * 250)}`
-      const page = await newUser(browser, 'Stranger', { extraHTTPHeaders: { 'X-Real-IP': ip } })
+      const page = await newUser(browser, 'Stranger', { extraHTTPHeaders: { 'X-Forwarded-For': ip } })
       await page.goto(BASE + '/login')
       const codes = await page.evaluate(async (name) => {
         const out = []

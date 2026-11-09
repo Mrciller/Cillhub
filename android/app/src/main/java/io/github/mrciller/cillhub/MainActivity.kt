@@ -25,6 +25,8 @@ import io.github.mrciller.cillhub.ui.pendingOpen
 import io.github.mrciller.cillhub.ui.voiceScreenShown
 import io.github.mrciller.cillhub.voice.Voice
 import java.util.Locale
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -95,6 +97,7 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra(EXTRA_UPDATE, false) || System.currentTimeMillis() - prefs.lastUpdateCheck > 6 * 3600_000L) {
             Updater.checkFromActivity(this, interactive = intent.getBooleanExtra(EXTRA_UPDATE, false))
         }
+        lifecycleScope.launch { voiceScreenShown.drop(1).filter { !it }.collect { overLockScreen(false) } }
         // Android 12+: leaving the app from a call with video turns it into picture-in-picture by itself
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) lifecycleScope.launch {
             kotlinx.coroutines.flow.combine(voiceScreenShown, Voice.state) { _, _ -> pipWanted() }.collect { runCatching { setPictureInPictureParams(pipParams()) } }
@@ -118,8 +121,9 @@ class MainActivity : ComponentActivity() {
     private fun handle(i: Intent) {
         if (i.getBooleanExtra(EXTRA_SETTINGS, false) || i.action == Intent.ACTION_APPLICATION_PREFERENCES) { pendingOpen.value = "settings:notifications"; return }
         BridgeMessage.snowflake(i.getStringExtra(EXTRA_VOICE))?.let { id ->
-            // a ring shows over the lock screen and turns the screen on, like a phone call
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) { val ring = i.getBooleanExtra(EXTRA_RINGING, false) || i.action == ACTION_ANSWER; setShowWhenLocked(ring); setTurnScreenOn(ring) }
+            // a ring shows over the lock screen and turns the screen on, like a phone call; only for the call that is ringing
+            // now (this activity is exported, any app can send these extras), and only until the voice screen is left
+            if ((i.getBooleanExtra(EXTRA_RINGING, false) || i.action == ACTION_ANSWER) && Calls.rings(Calls.current, id)) overLockScreen(true)
             if (i.action == ACTION_ANSWER) {
                 if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) Calls.answer(this, id, openApp = false)
                 else { answerAfterMic = id; askMic.launch(Manifest.permission.RECORD_AUDIO) }
@@ -131,6 +135,10 @@ class MainActivity : ComponentActivity() {
         val channel = m.groupValues[2]
         Notifications.read(this, channel, null) // opened from its notification: that conversation counts as seen
         pendingOpen.value = channel
+    }
+
+    private fun overLockScreen(on: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) { setShowWhenLocked(on); setTurnScreenOn(on) }
     }
 
     override fun onStart() {

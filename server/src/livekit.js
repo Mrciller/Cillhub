@@ -13,9 +13,10 @@ function jwt(claims, ttl) {
 // sources use the token spelling: microphone, camera, screen_share, screen_share_audio. canUpdateOwnMetadata lets a client
 // set participant attributes: a viewer without AV1 says `av1: '0'` so sharers leave AV1 out (client voice/engine.ts);
 // nothing reads LiveKit names or metadata, so a participant changing its own is harmless.
+// An empty canPublishSources means every source to LiveKit, so no sources must be canPublish: false.
 export const joinToken = (userId, name, room, sources) => jwt({
   sub: userId, name, metadata: JSON.stringify({ user_id: userId }),
-  video: { room, roomJoin: true, canSubscribe: true, canPublish: true, canPublishData: false, canUpdateOwnMetadata: true, canPublishSources: sources },
+  video: { room, roomJoin: true, canSubscribe: true, canPublish: sources.length > 0, canPublishData: false, canUpdateOwnMetadata: true, canPublishSources: sources },
 }, 6 * 3600);
 
 function call(method, body) {
@@ -34,5 +35,5 @@ export const removeParticipant = (room, identity) => call('RemoveParticipant', {
 // Twirp's protobuf JSON wants the TrackSource enum names, the uppercase form of the token spelling
 export const updateParticipant = (room, identity, sources) => call('UpdateParticipant', {
   room, identity,
-  permission: { can_subscribe: true, can_publish: true, can_publish_data: false, can_publish_sources: sources.map(s => s.toUpperCase()) },
+  permission: { can_subscribe: true, can_publish: sources.length > 0, can_publish_data: false, can_publish_sources: sources.map(s => s.toUpperCase()) },
 });

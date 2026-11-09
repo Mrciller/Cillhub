@@ -150,6 +150,10 @@ fi
 
 # 4. Files
 mkdir -p "$DIR/data" "$DIR/backups"
+chmod 700 "$DIR/backups"
+# the app runs as uid 1000 (user: in docker-compose.yml), so data belongs to it and nobody else on the host may read it
+docker run --rm -v "$(cd "$DIR/data" && pwd):/data" --entrypoint sh "$IMAGE:current" -c 'chown -R 1000:1000 /data && chmod 700 /data' \
+  || die "could not hand $DIR/data to the app user (uid 1000)"
 for f in docker-compose.yml Caddyfile updater.mjs release-public-key.pem; do
   cp "$TMP/$f" "$DIR/$f"
   chmod 644 "$DIR/$f"
@@ -258,6 +262,7 @@ case ",$PROFILES," in *,caddy,*) ;; *)
           proxy_set_header Upgrade \$http_upgrade;
           proxy_set_header Connection "upgrade";
           proxy_set_header Host \$http_host;
+          proxy_set_header X-Real-IP \$remote_addr;
           proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto \$scheme;
           proxy_read_timeout 3600s;

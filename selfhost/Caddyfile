@@ -4,5 +4,8 @@
 	handle_path /livekit/* {
 		reverse_proxy livekit:7880
 	}
-	reverse_proxy app:3000
+	# never pass a client-sent X-Real-IP through (the app reads X-Forwarded-For, this is for anything else that looks)
+	reverse_proxy app:3000 {
+		header_up X-Real-IP {remote_host}
+	}
 }

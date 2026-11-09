@@ -6,7 +6,7 @@ import { ask, toastError } from '../components/dialogs'
 import { Popover, type Anchor } from '../components/menu'
 import { cls, Icon, ICONS } from '../components/ui'
 import { t } from '../i18n'
-import { CustomEmoji } from '../markdown/Markdown'
+import { CustomEmoji, safeUrl } from '../markdown/Markdown'
 import { sortedRoles } from '../permissions'
 import { displayName, getState, useStore } from '../store'
 import type { Component, Message, SelectOption } from '../types'
@@ -36,14 +36,15 @@ function Button({ m, c }: { m: Message; c: Component }) {
   const pending = useComponentState(m, c.custom_id)
   const busy = pending && pending.state !== 'failed'
   if (c.style === 5 && c.url) {
+    const url = safeUrl(c.url) // node messages skip the server's link-button check
     const open = () =>
       void ask({
         title: t('Leaving Cillhub'),
         body: <><p>{t('This link is taking you to the following website')}</p><p className="leave-url">{c.url}</p><p className="hint">{t('Are you sure you want to go there?')}</p></>,
         confirm: t('Visit Site'),
-      }).then((ok) => ok && window.open(c.url, '_blank', 'noopener,noreferrer'))
+      }).then((ok) => ok && url && window.open(url, '_blank', 'noopener,noreferrer'))
     return (
-      <button className={cls('cbtn', 'link')} disabled={c.disabled} onClick={open}>
+      <button className={cls('cbtn', 'link')} disabled={c.disabled || !url} onClick={open}>
         <CEmoji e={c.emoji} />{c.label}<Icon d={ICONS.external} size={14} />
       </button>
     )

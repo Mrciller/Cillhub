@@ -10,6 +10,8 @@ const RULES = [
   ['POST', '/channels/:id/messages/:mid/report', 5, 60_000],
   ['*', '/admin/*', 30, 10_000], // every admin route, each its own bucket
   ['NODE', '*', 300, 60_000], // v7: signed calls per linked node (identity node:<id>), on top of the per-IP limit
+  ['GW', 'presence', 5, 20_000], // gateway op 3 per user (it fans out to everyone who shares a guild)
+  ['GW', 'members', 3, 10_000], // gateway op 8 (loads the guild's whole member list), per user and guild
   ['*', '*', 50, 1000],
 ];
 const buckets = new Map(); // bucket key -> { count, reset (unix ms) }

@@ -2,13 +2,12 @@
 // PKCE, EdDSA ID tokens), node -> hub NOTIFY, the Nodes admin pages and release channel. On a node every route here is 404.
 import { createHash } from 'node:crypto';
 import { snowflake } from '../snowflake.js';
-import { get, all, run, tx, userObj, userById } from '../db.js';
+import { get, all, run, tx, userObj } from '../db.js';
 import { HttpError, str, invalid, notFound, missingAccess } from '../errors.js';
 import { setting, setSetting, adminAudit, adminAuditObj } from '../instance.js';
 import { checkLogin, loginFailed } from '../ratelimit.js';
 import { requireMfa } from '../mfa.js';
 import { pushTo } from '../push.js';
-import { sendToUsers } from '../gateway.js';
 import {
   isHub, PUBLIC_KEY, KEY, instanceUrl, publicUrl, fetchJson, signedFetch, nodeFromSignature, requireActive, hubEvent, hubUserClaims,
 } from '../federation.js';
@@ -421,72 +420,6 @@ function latestRelease(ctx) {
 // matched by url, and the client cuts off suspended ones
 const activeNodes = () => (hubOnly(), all(`SELECT * FROM fed_nodes WHERE status IN ('active', 'suspended') ORDER BY name`).map(nodePublic));
 
-// v10: Federated Public Channel Directory & Cross-Node DMs
-const federatedChannels = new Map();
-
-function userNodeLookup(ctx) {
-  const userId = ctx.params.hub_user_id;
-  const u = userById(userId);
-  if (!u) throw notFound(10011, 'Unknown user');
-  const node = u.node_id ? get('SELECT * FROM fed_nodes WHERE id = ?', u.node_id) : null;
-  return {
-    hub_user_id: u.id,
-    node_id: node?.id ?? null,
-    node_url: node?.url ?? null,
-    public_key: node?.public_key ?? PUBLIC_KEY,
-  };
-}
-
-function putPublicChannels(ctx) {
-  const node = ctx.node;
-  const channels = Array.isArray(ctx.body?.channels) ? ctx.body.channels : [];
-  for (const c of channels) {
-    if (!c.id || !c.name) continue;
-    const key = `${node?.id || 'local'}:${c.id}`;
-    federatedChannels.set(key, {
-      channel_id: String(c.id),
-      name: String(c.name).slice(0, 100),
-      topic: c.topic ? String(c.topic).slice(0, 500) : null,
-      guild_name: c.guild_name ? String(c.guild_name).slice(0, 100) : 'Federated Guild',
-      node_id: node?.id ?? null,
-      node_url: node?.url ?? null,
-      member_count: typeof c.member_count === 'number' ? c.member_count : 1,
-      indexed_at: new Date().toISOString(),
-    });
-  }
-  return { published: channels.length, total: federatedChannels.size };
-}
-
-function getDirectoryChannels(ctx) {
-  const query = (ctx.query?.get?.('query') || '').toLowerCase().trim();
-  const limit = Math.min(100, Math.max(1, parseInt(ctx.query?.get?.('limit') || '50', 10)));
-  const results = [];
-  for (const ch of federatedChannels.values()) {
-    if (!query || ch.name.toLowerCase().includes(query) || (ch.topic && ch.topic.toLowerCase().includes(query)) || ch.guild_name.toLowerCase().includes(query)) {
-      results.push(ch);
-      if (results.length >= limit) break;
-    }
-  }
-  return { channels: results, count: results.length };
-}
-
-function routeDmEnvelope(ctx) {
-  const b = ctx.body ?? {};
-  const { recipient_id, sender_id, encrypted_payload, signature } = b;
-  if (!recipient_id || !encrypted_payload) throw invalid('recipient_id', 'BASE_TYPE_REQUIRED', 'Missing envelope fields');
-  const recipient = userById(recipient_id);
-  if (!recipient) throw notFound(10011, 'Recipient not found');
-
-  sendToUsers([recipient.id], 'FEDERATED_DM_ENVELOPE', {
-    recipient_id,
-    sender_id: sender_id ?? 'federated_user',
-    encrypted_payload,
-    signature: signature ?? null,
-    timestamp: new Date().toISOString(),
-  });
-  return { delivered: true, recipient_id };
-}
-
 const admin = { admin: true };
 export default [
   ['POST', '/federation/link', link, { open: true }],
@@ -497,10 +430,6 @@ export default [
   ['GET', '/federation/nodes', activeNodes, { userOnly: true }],
   ['POST', '/federation/link-codes', userLinkCode, { userOnly: true }],
   ['GET', '/server/releases/latest', latestRelease, { open: true }],
-  ['GET', '/federation/users/:hub_user_id/node', userNodeLookup, { open: true }],
-  ['PUT', '/federation/public-channels', putPublicChannels, { open: true }],
-  ['GET', '/federation/directory/channels', getDirectoryChannels, { open: true }],
-  ['POST', '/federation/dm/envelope', routeDmEnvelope, { open: true }],
   ['GET', '/admin/federation/nodes', listNodes, admin],
   ['GET', '/admin/federation/nodes/:node_id', nodeDetail, admin],
   ['POST', '/admin/federation/nodes/:node_id/update', requestUpdate, admin],

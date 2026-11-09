@@ -2,7 +2,7 @@
 import { randomBytes } from 'node:crypto';
 import { DATA_DIR, get, all, run, tx, json, audienceOf, userById, userObj } from '../db.js';
 import { HttpError, str, invalid } from '../errors.js';
-import { checkPassword } from '../auth.js';
+import { confirmPassword } from '../auth.js';
 import { sendToUsers, closeTokenSessions } from '../gateway.js';
 import { base32Decode, totpStep, seal, newBackupCode } from '../totp.js';
 import { requireMfa, setBackupCodes } from '../mfa.js';
@@ -14,7 +14,7 @@ import { leaveGroup } from './groups.js';
 import { deleteApplication } from './applications.js';
 
 async function passwordOk(ctx) {
-  if (!(await checkPassword(ctx.body?.password, ctx.user))) throw invalid('password', 'PASSWORD_DOES_NOT_MATCH', 'Password does not match.');
+  if (!(await confirmPassword(ctx.body?.password, ctx.user, ctx.headers))) throw invalid('password', 'PASSWORD_DOES_NOT_MATCH', 'Password does not match.');
 }
 
 const announce = userId => {
@@ -75,7 +75,7 @@ export function anonymize(userId) {
     run(`UPDATE users SET username = ?, global_name = 'Deleted User', email = ?, avatar = NULL, banner = NULL, bio = NULL, pronouns = NULL,
            accent_color = NULL, settings = '{}', customization = '{}', mfa_secret = NULL, deleted = 1, password_hash = ?, status = 'invisible' WHERE id = ?`,
     `deleted_user_${userId}`, `deleted-${userId}@users.invalid`, randomBytes(32).toString('hex'), userId);
-    for (const t of ['tokens', 'notes', 'user_guild_settings', 'push_subscriptions', 'mfa_backup_codes', 'recent_mentions', 'scheduled_messages', 'saved_messages', 'bot_reminders', 'user_sounds']) run(`DELETE FROM ${t} WHERE user_id = ?`, userId);
+    for (const t of ['tokens', 'notes', 'user_guild_settings', 'push_subscriptions', 'mfa_backup_codes', 'recent_mentions', 'scheduled_messages', 'saved_messages', 'bot_reminders', 'user_sounds', 'webauthn_credentials']) run(`DELETE FROM ${t} WHERE user_id = ?`, userId);
     run('DELETE FROM relationships WHERE user_id = ? OR other_id = ?', userId, userId);
     run('DELETE FROM notes WHERE target_id = ?', userId);
   });

@@ -250,6 +250,7 @@ async function runOnly(browser, errors) {
 }
 
 async function main() {
+  await require(path.join(__dirname, 'smoke-registry.cjs')).run() // no browser needed
   const preview = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', ...(process.env.SMOKE_DIST ? ['--outDir', process.env.SMOKE_DIST] : [])], { cwd: root, stdio: 'ignore', detached: true }) // own process group: npx's vite child is stopped with it
   const browser = await chromium.launch()
   const errors = []

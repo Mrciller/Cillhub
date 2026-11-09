@@ -66,11 +66,9 @@ async function main() {
   console.log('\n=== 5. Verifying NODE_PATH and Playwright Resolution ===');
   const pwPath = require.resolve('playwright');
   console.log(`  Playwright resolved to: ${pwPath}`);
-  assert(
-    pwPath.startsWith('/home/dsagent/pw/node_modules'),
-    `Playwright must be loaded via NODE_PATH=/home/dsagent/pw/node_modules (got ${pwPath})`
-  );
-  console.log('  -> PASS: NODE_PATH=/home/dsagent/pw/node_modules correctly used');
+  const dirs = (process.env.NODE_PATH ?? '').split(path.delimiter).filter(Boolean).map((d) => path.resolve(d));
+  assert(dirs.some((d) => pwPath.startsWith(d)), `Playwright must be loaded via NODE_PATH (got ${pwPath})`);
+  console.log(`  -> PASS: loaded from NODE_PATH (${process.env.NODE_PATH})`);
 
   console.log('\n--- Starting Static Server for client/dist on port', PORT, '---');
   const server = createStaticServer();

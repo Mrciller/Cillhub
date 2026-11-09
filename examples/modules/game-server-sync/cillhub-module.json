@@ -19,8 +19,7 @@
     "api.mcsrvstat.us",
     "api.minetools.eu",
     "localhost",
-    "*.example.com",
-    "*.cillerian.org"
+    "*.example.com"
   ],
   "settings": [
     {
@@ -64,6 +63,14 @@
       "type": "secret",
       "label": "RCON Password",
       "description": "Secret password used to authenticate console RCON commands.",
+      "per_server": true,
+      "required": false
+    },
+    {
+      "key": "webhook_secret",
+      "type": "secret",
+      "label": "Chat Webhook Secret",
+      "description": "Shared secret the game server sends as \"secret\" when it posts chat to /modules/game-server-sync/http/chat. The bridge stays closed while it is empty.",
       "per_server": true,
       "required": false
     },

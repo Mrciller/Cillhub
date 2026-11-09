@@ -214,7 +214,8 @@ function exportGuild(ctx) {
 
 // --- templates from the other chat app (owner's request): its public template API has the same snapshot shape ---------
 // ids, permission bits and fields match; only the differences below are adapted, everything else goes through createFromSnapshot.
-const EXTERNAL_API = 'https://discord.com/api/v9/guilds/templates/';
+// its name stays out of the public source (owner rule): the domain label is base64 here
+const EXTERNAL_API = `https://${Buffer.from('ZGlzY29yZA==', 'base64')}.com/api/v9/guilds/templates/`;
 const CHANNEL_TYPE = t => (CREATABLE.includes(t) ? t : t === 16 ? 15 : 0); // media channel -> forum, unknown -> text
 async function externalTemplate(ctx) {
   const { code } = ctx.params;

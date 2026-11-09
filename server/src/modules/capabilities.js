@@ -90,7 +90,9 @@ async function send(mod, args) {
   const panel = args.accessory_panel ?? null;
   if (panel !== null && !mod.manifest.ui.panels.some(p => p.id === panel && p.slot === 'message_accessory')) throw E('INVALID', 'accessory_panel must name one of the module\'s message_accessory panels.');
   write(mod, ch.id);
-  const body = Object.fromEntries(['content', 'embeds', 'components', 'allowed_mentions', 'message_reference'].filter(k => args[k] !== undefined).map(k => [k, args[k]]));
+  // a reply or forward answers with the referenced message's content, which only messages.read may see
+  const keys = ['content', 'embeds', 'components', 'allowed_mentions', ...(has(mod, 'messages.read') ? ['message_reference'] : [])];
+  const body = Object.fromEntries(keys.filter(k => args[k] !== undefined).map(k => [k, args[k]]));
   const out = await sending.run({ botId: mod.app_id, moduleId: mod.id, panel }, () => rest(mod, 'POST', '/channels/:id/messages', { id: ch.id }, { body }));
   delete out.nonce;
   return out;

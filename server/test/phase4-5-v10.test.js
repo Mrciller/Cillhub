@@ -55,7 +55,7 @@ test('Interactive Collaborative Whiteboard (Contract v10 §10)', async () => {
   }
 });
 
-test('Federation Directory, DMs and Telemetry (Contract v10 §11, §12, §13)', async () => {
+test('Unsigned federation routes are gone; telemetry (Contract v10 §13)', async () => {
   const srv = await startServer();
   try {
     const { token } = (await srv.api('POST', '/auth/register', null, {
@@ -66,37 +66,10 @@ test('Federation Directory, DMs and Telemetry (Contract v10 §11, §12, §13)', 
 
     const me = (await srv.api('GET', '/users/@me', token)).body;
 
-    // 1. User Node Lookup (§11)
-    const lookupRes = await srv.api('GET', `/federation/users/${me.id}/node`, null);
-    assert.equal(lookupRes.status, 200);
-    assert.equal(lookupRes.body.hub_user_id, me.id);
-    assert.ok(lookupRes.body.public_key);
-
-    // 2. Route Federated DM Envelope (§11)
-    const dmRes = await srv.api('POST', '/federation/dm/envelope', null, {
-      recipient_id: me.id,
-      sender_id: 'remote_user_42',
-      encrypted_payload: 'cipher-text-blob',
-      signature: 'mock-sig',
-    });
-    assert.equal(dmRes.status, 200);
-    assert.equal(dmRes.body.delivered, true);
-    assert.equal(dmRes.body.recipient_id, me.id);
-
-    // 3. Federated Public Channel Directory (§12)
-    const pubRes = await srv.api('PUT', '/federation/public-channels', null, {
-      channels: [
-        { id: '1001', name: 'general-federated', topic: 'Chat across instances', guild_name: 'Argon Hub' },
-        { id: '1002', name: 'dev-discuss', topic: 'Core protocol engineering', guild_name: 'Argon Hub' },
-      ],
-    });
-    assert.equal(pubRes.status, 200);
-    assert.equal(pubRes.body.published, 2);
-
-    const dirSearch = await srv.api('GET', '/federation/directory/channels?query=dev', null);
-    assert.equal(dirSearch.status, 200);
-    assert.equal(dirSearch.body.channels.length, 1);
-    assert.equal(dirSearch.body.channels[0].name, 'dev-discuss');
+    // The unsigned v10 directory / cross-node DM routes are gone: no login, no node signature, no caller.
+    for (const [method, path] of [['GET', `/federation/users/${me.id}/node`], ['POST', '/federation/dm/envelope'], ['PUT', '/federation/public-channels'], ['GET', '/federation/directory/channels']]) {
+      assert.equal((await srv.api(method, path, null, method === 'GET' ? undefined : { recipient_id: me.id, encrypted_payload: 'x', channels: [{ id: '1', name: 'n' }] })).status, 404, path);
+    }
 
     // 4. Node Telemetry Monitor (§13)
     // Enable 2FA on fedadmin and grant instance admin via CLI

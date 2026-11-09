@@ -10,7 +10,9 @@ export const tempDir = () => mkdtemp(join(tmpdir(), 'cillcord-test-'));
 export async function startServer({ env = {}, dataDir } = {}) {
   dataDir ??= await tempDir();
   const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('LIVEKIT_')));
-  const proc = spawn(process.execPath, ['src/index.js'], {
+  // a test network key (federation tests) is pinned by a loader hook, and only in a NODE_ENV=test run
+  const hook = env.NODE_ENV === 'test' && env.CILLCORD_TEST_HUB_KEY ? ['--import', './test/hub-key.mjs'] : [];
+  const proc = spawn(process.execPath, [...hook, 'src/index.js'], {
     cwd: new URL('..', import.meta.url),
     env: { ...clean, PORT: '0', DATA_DIR: dataDir, CILLCORD_RATE_LIMIT_SCALE: '100', ...env },
     stdio: ['ignore', 'pipe', 'inherit'],

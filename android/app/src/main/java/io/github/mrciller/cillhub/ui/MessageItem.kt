@@ -66,6 +66,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -102,6 +103,8 @@ import io.github.mrciller.cillhub.data.Reaction
 import io.github.mrciller.cillhub.data.Sel
 import io.github.mrciller.cillhub.data.Session
 import io.github.mrciller.cillhub.data.State
+import io.github.mrciller.cillhub.data.User
+import io.github.mrciller.cillhub.data.FavoriteGif
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -178,9 +181,12 @@ fun MessageItem(
             }
         },
     ) {
-        Row(
+        val bar = LocalExtra.current.idle
+        Column(
             Modifier.fillMaxWidth()
                 .background(if (mentionsMe) LocalExtra.current.mentionBg else MaterialTheme.colorScheme.surfaceContainer)
+                // a mention of us: tinted row with a bar on the leading edge
+                .drawBehind { if (mentionsMe) drawRect(bar, size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) }
                 .combinedClickable(onClick = { if (m.failed) onLongPress() }, onLongClick = onLongPress, onLongClickLabel = a11yMore)
                 .padding(start = 16.dp, end = 16.dp, top = if (header) 10.dp else 1.dp, bottom = 1.dp)
                 .alpha(if (m.pending) 0.6f else 1f)
@@ -192,17 +198,16 @@ fun MessageItem(
                     )
                 },
         ) {
+        if (m.type == 19 && m.messageReference != null) ReplyPreview(state, m.referencedMessage, guildId) { m.referencedMessage?.let { onJump(it.id) } }
+        Row {
             if (header) Box(Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).clickable(onClickLabel = s(R.string.view_profile)) { nav.openProfile(m.author.id, guildId) }) { Avatar(m.author.let { state.users[it.id] ?: it }, 40.dp) }
             else Spacer(Modifier.width(40.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                if (m.type == 19 && m.messageReference != null) ReplyPreview(state, m.referencedMessage, guildId) { m.referencedMessage?.let { onJump(it.id) } }
                 if (header) Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(name, fontWeight = FontWeight.SemiBold, color = roleColor ?: MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false).clickable(onClickLabel = s(R.string.view_profile)) { nav.openProfile(m.author.id, guildId) })
-                    if (m.author.bot || m.webhookId != null) Surface(color = MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(4.dp), modifier = Modifier.padding(start = 6.dp)) {
-                        Text(s(R.string.app_tag), color = MaterialTheme.colorScheme.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp))
-                    }
+                    UserTags(state.users[m.author.id] ?: m.author, app = m.author.bot || m.webhookId != null)
                     Spacer(Modifier.width(8.dp))
                     Text(timeText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
@@ -226,7 +231,9 @@ fun MessageItem(
                         }
                     }
                 }
-                if (m.content.isNotEmpty()) MarkdownText(m.content, state, guildId)
+                // a bare GIF or image link shows only its embed
+                val bareMedia = m.embeds.singleOrNull()?.let { it.url == m.content.trim() && it.type in setOf("gifv", "image") } == true
+                if (m.content.isNotEmpty() && !bareMedia) MarkdownText(m.content, state, guildId)
                 if (m.editedTimestamp != null) {
                     Text(
                         "(${s(R.string.edited)})",
@@ -245,6 +252,7 @@ fun MessageItem(
                     Reactions(m.reactions, onReact, onAddReaction, canAdd = Sel.canAddReaction(perms), canToggleOthers = Perm.has(perms, Perm.READ_MESSAGE_HISTORY))
                 }
             }
+        }
         }
     }
     if (showEdits) {
@@ -266,16 +274,34 @@ private fun LaunchedEffectSwipe(state: androidx.compose.material3.SwipeToDismiss
     }
 }
 
+/** The APP tag of bots and webhooks, and the server tag a user chose to show. */
+@Composable
+fun UserTags(u: User?, app: Boolean = u?.bot == true) {
+    @Composable fun chip(text: String, bg: Color, fg: Color) = Surface(color = bg, shape = RoundedCornerShape(4.dp), modifier = Modifier.padding(start = 6.dp)) {
+        Text(text, color = fg, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(horizontal = 4.dp))
+    }
+    if (app) chip(s(R.string.app_tag), MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary)
+    u?.primaryGuild?.tag?.takeIf { it.isNotBlank() }?.let { chip(it, MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant) }
+}
+
+/** The replied-to message above a reply, joined to the avatar by a curved line. */
 @Composable
 private fun ReplyPreview(state: State, ref: Message?, guildId: String?, onClick: () -> Unit) {
-    Row(Modifier.padding(bottom = 2.dp).clickable(onClickLabel = s(R.string.jump_to_reply), onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
-        Ic(R.drawable.ms_reply, null, Modifier.size(14.dp), MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(4.dp))
+    val line = MaterialTheme.colorScheme.outline
+    Row(Modifier.heightIn(min = 22.dp).padding(bottom = 2.dp).clickable(onClickLabel = s(R.string.jump_to_reply), onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(52.dp).height(22.dp).drawBehind {
+            val x = 20.dp.toPx(); val y = size.height / 2; val r = 6.dp.toPx(); val w = 2.dp.toPx()
+            val path = androidx.compose.ui.graphics.Path().apply {
+                moveTo(x, size.height + 2.dp.toPx()); lineTo(x, y + r); quadraticTo(x, y, x + r, y); lineTo(size.width - 6.dp.toPx(), y)
+            }
+            drawPath(path, line, style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+        })
         if (ref == null) Text(s(R.string.original_deleted), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         else {
             Avatar(state.users[ref.author.id] ?: ref.author, 16.dp)
             Spacer(Modifier.width(4.dp))
-            Text(Sel.memberName(state, guildId, ref.author.id), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            Text("@" + Sel.memberName(state, guildId, ref.author.id), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                color = Sel.roleColor(state, guildId, ref.author.id)?.let { Color(0xFF000000 or it.toLong()) } ?: MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.width(6.dp))
             Text(io.github.mrciller.cillhub.data.Md.plain(ref.content) { n -> if (n is io.github.mrciller.cillhub.data.Md.UserMention) "@" + Sel.memberName(state, guildId, n.id) else "" }.ifBlank { s(R.string.attachment) }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -337,12 +363,16 @@ fun download(ctx: android.content.Context, url: String, name: String) {
     }
 }
 
+/** Embed media only through the server's proxy (or its own root-relative URL), never from the third-party host directly. */
+private fun proxied(m: io.github.mrciller.cillhub.data.EmbedMedia?): String? =
+    (m?.proxyUrl ?: m?.url?.takeIf { it.startsWith("/") && !it.startsWith("//") })?.let(Config::cdn)
+
 @Composable
 private fun EmbedView(e: Embed, state: State, guildId: String?) {
     val nav = LocalNav.current
     val ctx = LocalContext.current
     if (e.type == "image" && e.thumbnail?.url != null && e.title == null) { // a bare image link
-        val u = Config.cdn(e.thumbnail.proxyUrl ?: e.thumbnail.url)
+        val u = proxied(e.thumbnail) ?: return
         AsyncImage(u, null, Modifier.padding(top = 4.dp).widthIn(max = 320.dp).heightIn(max = 320.dp).clip(RoundedCornerShape(12.dp)).clickable { nav.openImage(u, "image") })
         return
     }
@@ -360,14 +390,13 @@ private fun EmbedView(e: Embed, state: State, guildId: String?) {
                 MarkdownText(f.value, state, guildId, style = MaterialTheme.typography.bodyMedium)
             }
             val img = e.image ?: e.thumbnail?.takeIf { e.type == "video" || e.type == "article" && e.image == null }
-            img?.url?.let { u ->
-                val full = Config.cdn(img.proxyUrl ?: u)
+            proxied(img)?.let { full ->
                 AsyncImage(full, null, Modifier.fillMaxWidth().heightIn(max = 240.dp).clip(RoundedCornerShape(8.dp)).clickable { nav.openImage(full, "image") }, contentScale = ContentScale.Fit)
             }
             e.footer?.text?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        if (e.image == null && e.type != "video" && e.type != "article") e.thumbnail?.url?.let { u ->
-            AsyncImage(Config.cdn(e.thumbnail.proxyUrl ?: u), null, Modifier.padding(12.dp).size(72.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+        if (e.image == null && e.type != "video" && e.type != "article") proxied(e.thumbnail)?.let { u ->
+            AsyncImage(u, null, Modifier.padding(12.dp).size(72.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
         }
     }
 }
@@ -453,6 +482,10 @@ fun MessageActions(
             if (Perm.has(perms, Perm.SEND_MESSAGES)) action(R.drawable.ms_reply, R.string.reply) { vm.replyTo = m; vm.editing = null }
             if (mine && m.type in setOf(0, 19)) action(R.drawable.ms_edit, R.string.edit) { vm.startEdit(m) }
             if (m.editedTimestamp != null && onShowEdits != null) action(R.drawable.ms_history, R.string.edit_history) { onShowEdits() }
+            gifOf(m)?.let { gif ->
+                val fav = state.favoriteGifs.any { it.url == gif.url }
+                action(if (fav) R.drawable.ms_star_fill else R.drawable.ms_star, if (fav) R.string.gif_unfavorite else R.string.gif_favorite) { vm.favorite(gif) }
+            }
             if (m.content.isNotEmpty()) action(R.drawable.ms_content_copy, R.string.copy_text) { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("message", m.content))) } }
             if (mine || Perm.has(perms, Perm.MANAGE_MESSAGES)) action(R.drawable.ms_delete, R.string.delete, MaterialTheme.colorScheme.error) { onDelete() }
         }

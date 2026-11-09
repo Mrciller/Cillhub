@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { BlockList, isIP } from 'node:net';
 import { existsSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -76,6 +77,7 @@ import { originOf, wellKnownCillcord, fedState, startHeartbeat, corsOrigin, publ
 const PORT = Number(process.env.PORT ?? 3000);
 const STATIC_DIR = process.env.STATIC_DIR && path.resolve(process.env.STATIC_DIR);
 const MAX_BODY = 1024 * 1024;
+const MAX_VALUES = 100_000; // commas, objects and arrays in a body over MAX_BODY
 const maxMultipart = () => 10 * maxUpload() + MAX_BODY; // 10 files at the instance's upload limit plus payload_json
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -88,6 +90,15 @@ const TYPES = {
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon',
   '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.map': 'application/json',
 };
+// web client: scripts only from here (plus the YouTube player API for Watch Together); media, API and voice may live on
+// linked nodes and LiveKit hosts, so those stay open. Nobody else may frame the app (OAuth consent, admin pages).
+const CSP = [
+  "default-src 'self'", "script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com", "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' https: http: data: blob:", "media-src 'self' https: http: data: blob:", "font-src 'self' data:",
+  "connect-src 'self' https: http: wss: ws: data: blob:", "frame-src 'self' https: http:", "worker-src 'self' blob:",
+  "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'self'",
+].join('; ');
+const STATIC_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'SAMEORIGIN' };
 
 // absolute, from CILLCORD_PUBLIC_URL when set (a hub's client opens node gateways cross-origin)
 const gatewayUrl = ({ req }) => ({ url: `${publicUrl(req).replace(/^http/, 'ws')}/gateway` });
@@ -122,11 +133,27 @@ function wellKnown(req, pathname) {
 // one shard, no real session start limit (self-hosted)
 const gatewayBot = ctx => ({ ...gatewayUrl(ctx), shards: 1, session_start_limit: { total: 1000, remaining: 1000, reset_after: 86_400_000, max_concurrency: 1 } });
 
-// behind the local nginx the peer is loopback; then X-Real-IP is the client
+// reverse proxies whose X-Forwarded-For we believe: TRUST_PROXY (comma list of IPs or CIDRs), default loopback
+const trustedProxies = new BlockList();
+const ipType = a => (isIP(a) === 6 ? 'ipv6' : 'ipv4');
+for (const p of (process.env.TRUST_PROXY ?? '127.0.0.0/8,::1').split(',').map(s => s.trim()).filter(Boolean)) {
+  const [addr, bits] = p.split('/');
+  if (bits) trustedProxies.addSubnet(addr, Number(bits), ipType(addr)); else trustedProxies.addAddress(addr, ipType(addr));
+}
+const trusted = a => isIP(a) && trustedProxies.check(a, ipType(a));
+// X-Real-IP is never read: proxies that do not overwrite it (Caddy's default) pass the client's own value through.
+// Each proxy appends its peer to X-Forwarded-For, so walking from the right past our own proxies gives the client.
 export const clientIp = req => {
   const peer = req.socket.remoteAddress ?? '';
-  const loopback = peer === '127.0.0.1' || peer === '::1' || peer === '::ffff:127.0.0.1';
-  return (loopback && typeof req.headers['x-real-ip'] === 'string' && req.headers['x-real-ip']) || peer;
+  let ip = peer.replace(/^::ffff:(?=\d+\.)/, '');
+  if (!trusted(ip)) return peer;
+  for (const hop of String(req.headers['x-forwarded-for'] ?? '').split(',').reverse()) {
+    const h = hop.trim().replace(/^::ffff:(?=\d+\.)/, '');
+    if (!isIP(h)) break;
+    ip = h;
+    if (!trusted(h)) break;
+  }
+  return ip;
 };
 
 // route entries: [method, path with :params, handler, {open?, maxBody?, multipart?, userOnly?, botOnly?, admin?, when?(params)}]
@@ -160,6 +187,14 @@ async function readBody(req, max, ctx) {
   if (size > max) throw tooLarge();
   if (!size) return {};
   ctx.rawBody = Buffer.concat(chunks);
+  // big bodies are big because of data URIs; millions of tiny values would stall JSON.parse on the main thread
+  if (size > MAX_BODY) {
+    let values = 0;
+    for (let i = 0; i < size; i++) {
+      const b = ctx.rawBody[i];
+      if ((b === 0x2c || b === 0x7b || b === 0x5b) && ++values > MAX_VALUES) throw tooLarge();
+    }
+  }
   try {
     return JSON.parse(ctx.rawBody);
   } catch {
@@ -225,7 +260,13 @@ async function serveStatic(res, pathname) {
     }
   }
   if (!data) data = await readFile(file = path.join(STATIC_DIR, 'index.html')); // SPA fallback
-  res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] ?? 'application/octet-stream' });
+  const headers = { 'Content-Type': TYPES[path.extname(file)] ?? 'application/octet-stream', ...STATIC_HEADERS };
+  // the app shell gets the full policy; other pages (offline.html, downloads) may use inline code, so only framing is limited
+  if (file === path.join(STATIC_DIR, 'index.html')) headers['Content-Security-Policy'] = CSP;
+  else if (path.extname(file) === '.html') headers['Content-Security-Policy'] = "frame-ancestors 'self'";
+  // browsers ignore HSTS over plain http, so a spoofed X-Forwarded-Proto cannot do harm
+  if (res.req.socket.encrypted || res.req.headers['x-forwarded-proto'] === 'https') headers['Strict-Transport-Security'] = 'max-age=31536000';
+  res.writeHead(200, headers);
   res.end(data);
 }
 

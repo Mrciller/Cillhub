@@ -1,102 +1,94 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateKeyPairSync, createSign, createHash } from 'node:crypto';
+import { generateKeyPairSync, sign, createHash, randomBytes } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { startServer } from './helpers.js';
 
-test('WebAuthn / Passkey registration and login flows (Contract v9 §9)', async () => {
+// Tiny CBOR encoder (ints, byte/text strings, maps) to build attestationObjects like an authenticator.
+function cbor(v) {
+  const head = (mt, n) => n < 24 ? Buffer.from([mt << 5 | n]) : n < 256 ? Buffer.from([mt << 5 | 24, n]) : Buffer.from([mt << 5 | 25, n >> 8, n & 255]);
+  if (typeof v === 'number') return v >= 0 ? head(0, v) : head(1, -1 - v);
+  if (Buffer.isBuffer(v)) return Buffer.concat([head(2, v.length), v]);
+  if (typeof v === 'string') return Buffer.concat([head(3, Buffer.byteLength(v)), Buffer.from(v)]);
+  return Buffer.concat([head(5, v.size), ...[...v].flatMap(([k, x]) => [cbor(k), cbor(x)])]);
+}
+
+function authenticator(type) {
+  const { publicKey, privateKey } = type === 'rsa' ? generateKeyPairSync('rsa', { modulusLength: 2048 })
+    : type === 'ec' ? generateKeyPairSync('ec', { namedCurve: 'P-256' }) : generateKeyPairSync('ed25519');
+  const j = publicKey.export({ format: 'jwk' });
+  const b = s => Buffer.from(s, 'base64url');
+  const cose = type === 'ec' ? new Map([[1, 2], [3, -7], [-1, 1], [-2, b(j.x)], [-3, b(j.y)]])
+    : type === 'rsa' ? new Map([[1, 3], [3, -257], [-1, b(j.n)], [-2, b(j.e)]])
+    : new Map([[1, 1], [3, -8], [-1, 6], [-2, b(j.x)]]);
+  const id = randomBytes(16);
+  let count = 0;
+  const authData = (rpId, extra = Buffer.alloc(0), flags = 0x01) => {
+    const c = Buffer.alloc(4); c.writeUInt32BE(count++);
+    return Buffer.concat([createHash('sha256').update(rpId).digest(), Buffer.from([flags]), c, extra]);
+  };
+  const clientData = (type, challenge, rpId) => Buffer.from(JSON.stringify({ type, challenge, origin: `http://${rpId}:3000` })).toString('base64url');
+  return {
+    id: id.toString('base64url'),
+    register(opts) {
+      const len = Buffer.from([0, id.length]);
+      const ad = authData(opts.rp.id, Buffer.concat([Buffer.alloc(16), len, id, cbor(cose)]), 0x41);
+      return { id: id.toString('base64url'), response: { clientDataJSON: clientData('webauthn.create', opts.challenge, opts.rp.id), attestationObject: cbor(new Map([['fmt', 'none'], ['attStmt', new Map()], ['authData', ad]])).toString('base64url') } };
+    },
+    sign(opts, key = privateKey) {
+      const ad = authData(opts.rpId);
+      const cd = clientData('webauthn.get', opts.challenge, opts.rpId);
+      const sig = sign(type === 'ed25519' ? null : 'sha256', Buffer.concat([ad, createHash('sha256').update(b(cd)).digest()]), key);
+      return { id: id.toString('base64url'), response: { clientDataJSON: cd, authenticatorData: ad.toString('base64url'), signature: sig.toString('base64url') } };
+    },
+  };
+}
+
+test('WebAuthn / Passkey: real signatures log in, forged assertions do not', async () => {
   const srv = await startServer();
   try {
-    const { token } = (await srv.api('POST', '/auth/register', null, {
-      email: 'alice@example.com',
-      username: 'alice',
-      password: 'password123',
-    })).body;
-    const me = (await srv.api('GET', '/users/@me', token)).body;
-    const userId = me.id;
+    const alice = await srv.register('alice');
+    const mallory = await srv.register('mallory');
+    for (const type of ['ec', 'rsa', 'ed25519']) {
+      const auth = authenticator(type);
+      // adding a passkey needs the password (audit M2)
+      assert.equal((await srv.api('POST', '/auth/webauthn/register/options', alice.token)).status, 400);
+      const regOptions = (await srv.api('POST', '/auth/webauthn/register/options', alice.token, { password: 'hunter2hunter2' })).body;
+      assert.ok(regOptions.pubKeyCredParams.some(p => p.alg === -8));
+      const reg = await srv.api('POST', '/auth/webauthn/register/verify', alice.token, { credential: auth.register(regOptions), nickname: 'Key ' + type });
+      assert.equal(reg.status, 200, JSON.stringify(reg.body));
 
-    // 1. Request registration options
-    const regOptions = (await srv.api('POST', '/auth/webauthn/register/options', token)).body;
-    assert.ok(regOptions.challenge);
-    assert.equal(regOptions.rp.name, 'Cillhub');
-    assert.ok(regOptions.user.id);
+      // Another user cannot take over the credential id.
+      const steal = await srv.api('POST', '/auth/webauthn/register/verify', mallory.token, { credential: auth.register((await srv.api('POST', '/auth/webauthn/register/options', mallory.token, { password: 'hunter2hunter2' })).body) });
+      assert.equal(steal.status, 400);
 
-    // 2. Generate a key pair to simulate authenticator
-    const { publicKey, privateKey } = generateKeyPairSync('rsa', {
-      modulusLength: 2048,
-      publicKeyEncoding: { type: 'spki', format: 'pem' },
-      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-    });
+      // Options never reveal credential ids, even when asked about a user.
+      const opts = async () => (await srv.api('POST', '/auth/webauthn/authenticate/options', null, { login: 'alice' })).body;
+      assert.deepEqual((await opts()).allowCredentials, []);
 
-    const clientDataJSON = Buffer.from(JSON.stringify({
-      type: 'webauthn.create',
-      challenge: regOptions.challenge,
-      origin: 'http://localhost',
-    })).toString('base64url');
-
-    const credId = 'test-cred-' + Date.now();
-    const regVerifyRes = await srv.api('POST', '/auth/webauthn/register/verify', token, {
-      credential: {
-        id: credId,
-        publicKey,
-        response: {
-          clientDataJSON,
-          transports: ['internal'],
-        },
-      },
-      nickname: 'Work Laptop',
-    });
-    assert.equal(regVerifyRes.status, 200);
-    assert.equal(regVerifyRes.body.ok, true);
-    assert.equal(regVerifyRes.body.nickname, 'Work Laptop');
-
-    // 3. List credentials
-    const creds = (await srv.api('GET', '/users/@me/webauthn/credentials', token)).body;
-    assert.equal(creds.length, 1);
-    assert.equal(creds[0].id, credId);
-    assert.equal(creds[0].nickname, 'Work Laptop');
-
-    // 4. Request authentication options
-    const authOptions = (await srv.api('POST', '/auth/webauthn/authenticate/options', null, {
-      login: 'alice',
-    })).body;
-    assert.ok(authOptions.challenge);
-    assert.equal(authOptions.allowCredentials.length, 1);
-    assert.equal(authOptions.allowCredentials[0].id, credId);
-
-    // 5. Sign the challenge
-    const authClientData = Buffer.from(JSON.stringify({
-      type: 'webauthn.get',
-      challenge: authOptions.challenge,
-      origin: 'http://localhost',
-    })).toString('base64url');
-
-    const authData = Buffer.from('auth-data-bytes-32-chars-long-padding');
-    const clientDataHash = createHash('sha256').update(Buffer.from(authClientData, 'base64url')).digest();
-    const signer = createSign('SHA256');
-    signer.update(Buffer.concat([authData, clientDataHash]));
-    const signature = signer.sign(privateKey).toString('base64url');
-
-    const authVerifyRes = await srv.api('POST', '/auth/webauthn/authenticate/verify', null, {
-      credential: {
-        id: credId,
-        response: {
-          clientDataJSON: authClientData,
-          authenticatorData: authData.toString('base64url'),
-          signature,
-        },
-      },
-    });
-    assert.equal(authVerifyRes.status, 200);
-    assert.ok(authVerifyRes.body.token);
-    assert.equal(authVerifyRes.body.user_id, userId);
-
-    // 6. Delete credential
-    const delRes = await srv.api('DELETE', `/users/@me/webauthn/credentials/${credId}`, token);
-    assert.equal(delRes.status, 200);
-    const credsAfter = (await srv.api('GET', '/users/@me/webauthn/credentials', token)).body;
-    assert.equal(credsAfter.length, 0);
+      const login = async credential => srv.api('POST', '/auth/webauthn/authenticate/verify', null, { credential });
+      // Forged: no signature, a signature by another key, a reused challenge.
+      const noSig = auth.sign(await opts()); delete noSig.response.signature;
+      assert.equal((await login(noSig)).status, 400);
+      const other = type === 'rsa' ? generateKeyPairSync('rsa', { modulusLength: 2048 }) : type === 'ec' ? generateKeyPairSync('ec', { namedCurve: 'P-256' }) : generateKeyPairSync('ed25519');
+      assert.equal((await login(auth.sign(await opts(), other.privateKey))).status, 401);
+      const o = await opts();
+      const ok = await login(auth.sign(o));
+      assert.equal(ok.status, 200, JSON.stringify(ok.body));
+      assert.equal(ok.body.user_id, alice.id);
+      assert.equal((await login(auth.sign(o))).status, 400);
+    }
+    const creds = (await srv.api('GET', '/users/@me/webauthn/credentials', alice.token)).body;
+    assert.equal(creds.length, 3);
+    assert.equal((await srv.api('DELETE', `/users/@me/webauthn/credentials/${creds[0].id}`, alice.token)).status, 200);
+    assert.equal((await srv.api('GET', '/users/@me/webauthn/credentials', alice.token)).body.length, 2);
+    // a password change removes every passkey: one added with a stolen token must not outlive the reset
+    assert.equal((await srv.api('PATCH', '/users/@me', alice.token, { password: 'hunter2hunter2', new_password: 'hunter3hunter3' })).status, 200);
+    assert.equal((await srv.api('GET', '/users/@me/webauthn/credentials', alice.token)).body.length, 0);
+    // password re-entry with a token is under the login lock (audit M1)
+    for (let i = 0; i < 10; i++) assert.equal((await srv.api('POST', '/auth/webauthn/register/options', mallory.token, { password: 'wrongwrong' })).status, 400);
+    assert.equal((await srv.api('POST', '/auth/webauthn/register/options', mallory.token, { password: 'hunter2hunter2' })).status, 429);
   } finally {
     await srv.stop();
   }

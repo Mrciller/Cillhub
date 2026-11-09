@@ -2,7 +2,7 @@
 const path = require('path');
 const { app, BrowserWindow, session, shell, nativeImage, screen, ipcMain, dialog } = require('electron');
 const log = require('electron-log/main');
-const { APP_URL, APP_ORIGIN, HUB_URL, TEST_HOOK, APP_ID, MOVED_TO, originOf, isAppUrl, isHttpUrl, appUrlFor } = require('./config');
+const { APP_URL, APP_ORIGIN, HUB_URL, TEST_HOOK, APP_ID, MOVED_TO, originOf, isAppUrl, isHttpUrl, appUrlFor, permissionAllowed } = require('./config');
 const settings = require('./settings');
 const protocol = require('./protocol');
 const gpu = require('./gpu');
@@ -29,7 +29,6 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   let win = null;
   let quitting = false;
-  const ALLOWED_PERMISSIONS = new Set(['media', 'notifications', 'display-capture', 'clipboard-sanitized-write', 'fullscreen']);
   const SIGNIN = 'cillcord-signin'; // window name the client uses for "sign in with the hub" on a linked node
   const badge = nativeImage.createFromPath(path.join(__dirname, 'assets', 'badge.png'));
 
@@ -145,11 +144,10 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   function lockDownSession(ses) {
-    ses.setPermissionRequestHandler((_wc, _permission, callback) => {
-      callback(true);
-    });
-    ses.setPermissionCheckHandler(() => true);
-    ses.setDevicePermissionHandler(() => true);
+    // The node sign-in popup shares this session and may load any node's page: it gets nothing, and no page gets USB/HID/serial.
+    ses.setPermissionRequestHandler((_wc, permission, callback, details) => callback(permissionAllowed(permission, details.requestingUrl)));
+    ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => permissionAllowed(permission, requestingOrigin));
+    ses.setDevicePermissionHandler(() => false);
     screenshare.setup(ses, () => win);
   }
 

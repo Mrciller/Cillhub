@@ -9,8 +9,8 @@
 // Run (fresh instance; the server must let its SSRF guard reach the two local helper ports):
 //   PORT=3330 DATA_DIR=$(mktemp -d) STATIC_DIR=<copy of client/dist> CILLCORD_UNFURL_ALLOW=127.0.0.1:3338,127.0.0.1:3339 node server/src/index.js
 //   NODE_PATH=/tmp/pw/node_modules E2E_BASE_URL=http://127.0.0.1:3330 node scripts/e2e-v5-apps.cjs
-// E2E_PUSH_PORT (3338) and E2E_HOOK_PORT (3339) choose the helper ports; E2E_DJS_MODULES (default /tmp/djs-ttii/node_modules)
-// is a node_modules dir with the v14 bot library (the bot runs as a child process). Usernames get a random suffix.
+// E2E_PUSH_PORT (3338) and E2E_HOOK_PORT (3339) choose the helper ports; E2E_BOTLIB is the installed
+// package directory of the v14 bot library (the bot runs as a child process). Usernames get a random suffix.
 // E2E_SECTIONS=bots,cillbot,... runs only those sections after the setup step (for debugging).
 const { chromium } = require('playwright')
 const { spawn } = require('node:child_process')
@@ -23,7 +23,7 @@ const os = require('node:os')
 const BASE = (process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3330').replace(/\/$/, '')
 const PUSH_PORT = Number(process.env.E2E_PUSH_PORT ?? 3338)
 const HOOK_PORT = Number(process.env.E2E_HOOK_PORT ?? 3339)
-const DJS = process.env.E2E_DJS_MODULES ?? '/tmp/djs-ttii/node_modules'
+const BOTLIB = process.env.E2E_BOTLIB ?? ''
 const SECTIONS = process.env.E2E_SECTIONS ? new Set(process.env.E2E_SECTIONS.split(',')) : null
 const LIVE = { timeout: 5000 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -61,7 +61,7 @@ const check = (ok, what) => { if (!ok) throw new Error(what) }
 
 // ---- the bot: the unmodified v14 bot library pointed at Cillhub; one JSON line per event on stdout ----
 const BOT = `
-const { Client, GatewayIntentBits, Events, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder, RoleSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, AttachmentBuilder } = require('discord.js')
+const { Client, GatewayIntentBits, Events, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder, RoleSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, AttachmentBuilder } = require(process.env.BOTLIB)
 const [api, guildId, base] = process.argv.slice(2)
 const out = (o) => console.log(JSON.stringify(o))
 const GAMES = [{ name: 'Valorant', value: 'valorant' }, { name: 'Counter-Strike 2', value: 'cs2' }, { name: 'League of Legends', value: 'lol' }]
@@ -365,13 +365,13 @@ async function main() {
     // ---- 1. A real bot library (v14) ----
     await run('bots', async () => {
       await step('1a. Alice creates an application, installs its bot and starts it with a real bot library (v14); it registers /pick, /menus, /echo, "High Five" and "Quote"', async () => {
-        check(fs.existsSync(path.join(DJS, 'discord.js')), `bot library (v14) not found in ${DJS} (set E2E_DJS_MODULES)`)
+        check(BOTLIB && fs.existsSync(BOTLIB), 'bot library (v14) not found (set E2E_BOTLIB to its installed package directory)')
         const app = await ok(api(alice, 'POST', '/applications', { name: `Toolbox ${SFX}` }))
         ids.app = app.id
         await ok(api(alice, 'POST', `/oauth2/authorize?client_id=${app.id}&scope=bot%20applications.commands&permissions=3072`, { authorize: true, guild_id: ids.guild, permissions: '3072' }))
         const file = path.join(tmp, 'bot.cjs')
         fs.writeFileSync(file, BOT)
-        bot = spawn(process.execPath, [file, `${BASE}/api`, ids.guild, BASE], { env: { ...process.env, NODE_PATH: DJS, BOT_TOKEN: app.bot.token }, stdio: ['ignore', 'pipe', 'pipe'] })
+        bot = spawn(process.execPath, [file, `${BASE}/api`, ids.guild, BASE], { env: { ...process.env, BOTLIB, BOT_TOKEN: app.bot.token }, stdio: ['ignore', 'pipe', 'pipe'] })
         bot.lines = []
         let buf = ''
         bot.stdout.on('data', (d) => { buf += d; for (let i; (i = buf.indexOf('\n')) >= 0; buf = buf.slice(i + 1)) try { bot.lines.push(JSON.parse(buf.slice(0, i))) } catch { /* not ours */ } })

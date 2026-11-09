@@ -6,8 +6,15 @@ services:
     pull_policy: never
     restart: unless-stopped
     env_file: .env
+    # unprivileged: uid 1000 owns ./data (install.sh), no capabilities, no setuid escalation
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     environment:
       CILLVOICE_BIND_IP: 0.0.0.0
+      # Caddy (and a host proxy via the published loopback port) reach the app from the Docker network:
+      # trust their X-Forwarded-For. Nothing else can reach port 3000.
+      TRUST_PROXY: 127.0.0.0/8,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
     volumes:
       - ./data:/data
     ports:

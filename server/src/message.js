@@ -219,7 +219,7 @@ export function bumpMentions(ch, m, counted, allowedUsers) {
   const users = new Set([...m.content.matchAll(/<@!?(\d+)>/g)].map(x => x[1]).filter(id => !allowedUsers || allowedUsers(id)));
   if (!ch.guild_id) channelUserIds(ch).forEach(id => kinds.set(id, 'dm'));
   else {
-    const hasRole = id => counted.roleIds.some(r => get('SELECT 1 FROM member_roles WHERE user_id = ? AND role_id = ?', id, r));
+    const hasRole = id => counted.roleIds.some(r => get('SELECT 1 FROM member_roles WHERE guild_id = ? AND user_id = ? AND role_id = ?', ch.guild_id, id, r));
     for (const id of viewersOf(ch)) {
       const kind = users.has(id) ? 'user' : hasRole(id) ? 'role' : counted.all || (counted.here && isOnline(id)) ? 'everyone' : null;
       if (kind) kinds.set(id, kind);

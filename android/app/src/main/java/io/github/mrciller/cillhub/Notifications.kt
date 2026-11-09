@@ -131,7 +131,8 @@ object Notifications {
 
         val replyPi = PendingIntent.getBroadcast(
             ctx, code(conv.channelId, 1),
-            Intent(ctx, ActionReceiver::class.java).setAction(ActionReceiver.REPLY).putExtra(ActionReceiver.EXTRA_CHANNEL, conv.channelId),
+            // the channel is in the data URI: the intent is mutable (RemoteInput), and a fill-in can replace extras but not a set URI
+            Intent(ctx, ActionReceiver::class.java).setAction(ActionReceiver.REPLY).setData(android.net.Uri.fromParts(ActionReceiver.REPLY_SCHEME, conv.channelId, null)),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE // RemoteInput fills in the text
         )
         val reply = NotificationCompat.Action.Builder(R.drawable.ic_reply, ctx.getString(R.string.reply), replyPi)

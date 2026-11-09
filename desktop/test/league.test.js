@@ -43,3 +43,13 @@ test('findLockfilePath: finds lockfile in install directory from command line', 
 
   fs.rmSync(dir, { recursive: true });
 });
+
+test('page input to the LCU: ids that stay in their path segment, string targets only', async () => {
+  const { LeagueClientManager } = require('../src/league');
+  const m = new LeagueClientManager();
+  m.credentials = { port: 1, password: 'x' }; // rejected before any request is made
+  await assert.rejects(m.acceptInvite('../../lol-login/v1/session'), /Invalid invitation id/);
+  await assert.rejects(m.acceptInvite({ id: 1 }), /Invalid invitation id/);
+  await assert.rejects(m.sendInvite({ toSummonerId: 1, raw: true }), /Invalid invite target/);
+  await assert.rejects(m.sendInvite(''), /Invalid invite target/);
+});

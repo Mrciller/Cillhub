@@ -175,6 +175,10 @@ object Session {
         Voice.leave()
         Calls.current?.let { Calls.end(app, android.telecom.DisconnectCause.LOCAL) }
         Notifications.clearAll(app)
+        // the in-app web client got the token in its localStorage (WebCallActivity): it must not outlive the login
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            runCatching { android.webkit.WebStorage.getInstance().deleteAllData(); android.webkit.CookieManager.getInstance().removeAllCookies(null) }
+        }
         store.reset()
         _loggedIn.value = false
         Delivery.apply(app)
@@ -486,6 +490,31 @@ object Session {
             putJsonObject("privacy") { put("dm_read_receipts", enabled) }
         }
         rest.request("PATCH", "/users/@me/settings", payload)
+    }
+
+    // ---------- GIFs ----------
+    suspend fun gifs(query: String): List<Gif> =
+        rest.get(if (query.isBlank()) "/gifs/trending?limit=30" else "/gifs/search?limit=30&q=" + URLEncoder.encode(query.trim(), "UTF-8"))
+
+    /** Adds (newest first) or removes a favourite; optimistic, the settings echo confirms it, a failure puts the old list back. */
+    suspend fun toggleFavoriteGif(g: FavoriteGif) {
+        val before = store.value.favoriteGifs
+        val next = if (before.any { it.url == g.url }) before.filter { it.url != g.url } else (listOf(g) + before).take(250)
+        store.update { it.copy(favoriteGifs = next) }
+        try {
+            rest.request("PATCH", "/users/@me/settings", buildJsonObject {
+                // every field explicitly: the shared json config leaves defaults out
+                putJsonArray("favorite_gifs") { next.forEach { f -> add(buildJsonObject { put("url", f.url); put("src", f.src); put("width", f.width); put("height", f.height); put("format", f.format) }) } }
+            })
+        } catch (e: ApiError) {
+            store.update { it.copy(favoriteGifs = before) }
+            throw e
+        }
+    }
+
+    // ---------- server administration (the gateway echoes every change into the store) ----------
+    suspend fun setMemberRole(guildId: String, userId: String, roleId: String, add: Boolean) {
+        rest.request(if (add) "PUT" else "DELETE", "/guilds/$guildId/members/$userId/roles/$roleId")
     }
 
     // ---------- Draft Persistence ----------

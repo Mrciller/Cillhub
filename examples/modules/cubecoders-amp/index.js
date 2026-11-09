@@ -377,29 +377,28 @@ cillhub.on('HTTP_REQUEST', async (req) => {
   const primaryGuildId = guilds[0]?.id;
   const settings = primaryGuildId ? (await cillhub.call('settings.get', { guild_id: primaryGuildId })) : {};
 
-  // Verify signature or webhook secret
+  // Verify signature or webhook secret; without a secret anyone could post fake events
   const secret = settings?.webhook_secret;
-  if (secret) {
-    const providedSig = req.headers['x-amp-signature'] || req.headers['x-signature'] || '';
-    const providedSecret = req.headers['x-amp-secret'] || req.headers['x-webhook-secret'] || '';
-    let authorized = false;
+  if (!secret) return { status: 503, body: JSON.stringify({ error: 'Set the webhook secret in the module settings first' }) };
+  const providedSig = req.headers['x-amp-signature'] || req.headers['x-signature'] || '';
+  const providedSecret = req.headers['x-amp-secret'] || req.headers['x-webhook-secret'] || '';
+  let authorized = false;
 
-    if (providedSecret && cillhub.crypto.equal(providedSecret, secret)) {
+  if (providedSecret && cillhub.crypto.equal(providedSecret, secret)) {
+    authorized = true;
+  } else if (providedSig) {
+    const expectedHmac = 'sha256=' + await cillhub.call('crypto.hmac', {
+      algorithm: 'sha256',
+      key: secret,
+      data: req.body
+    });
+    if (cillhub.crypto.equal(providedSig, expectedHmac)) {
       authorized = true;
-    } else if (providedSig) {
-      const expectedHmac = 'sha256=' + await cillhub.call('crypto.hmac', {
-        algorithm: 'sha256',
-        key: secret,
-        data: req.body
-      });
-      if (cillhub.crypto.equal(providedSig, expectedHmac)) {
-        authorized = true;
-      }
     }
+  }
 
-    if (!authorized) {
-      return { status: 403, body: JSON.stringify({ error: 'Invalid webhook signature or secret' }) };
-    }
+  if (!authorized) {
+    return { status: 403, body: JSON.stringify({ error: 'Invalid webhook signature or secret' }) };
   }
 
   let eventData = {};

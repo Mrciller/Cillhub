@@ -17,7 +17,8 @@ export type MdContext = {
 
 type Rule = { re: RegExp; ok?: (src: string, i: number) => boolean; render: (m: RegExpExecArray, ctx: MdContext, key: number, depth: number) => ReactNode }
 
-const safeUrl = (u: string) => {
+/** The URL if it is http(s), else null (no javascript:, data:, file: or OS protocol handlers). */
+export const safeUrl = (u: string) => {
   try {
     const url = new URL(u)
     return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null

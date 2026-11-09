@@ -117,7 +117,8 @@ test('no microphone without SPEAK, no camera or screen without STREAM', async ()
     name: 'Listen', type: 2, permission_overwrites: [{ id: g.guild.id, type: 0, allow: '0', deny }],
   })).body;
   join(carol.gw, s.listen.id);
-  assert.deepEqual(verify((await carol.gw.event('VOICE_SERVER_UPDATE')).token).video.canPublishSources, []);
+  const muted = verify((await carol.gw.event('VOICE_SERVER_UPDATE')).token).video;
+  assert.deepEqual([muted.canPublish, muted.canPublishSources], [false, []]); // empty sources alone would allow all (audit M8)
 });
 
 test('user_limit; moving between channels; MOVE_MEMBERS bypasses the limit', async () => {

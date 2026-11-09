@@ -10,8 +10,9 @@ import { EMOJI } from '../emoji/data'
 import { emojiUrl } from '../markdown/Markdown'
 import { canUseEmoji, has, P } from '../permissions'
 import { myMember } from '../selectors'
+import { FavoriteMedia, GifStar } from './GifStar'
 import { getState, useStore } from '../store'
-import type { Gif, Sticker } from '../types'
+import type { FavoriteGif, Gif, Sticker } from '../types'
 import { skin } from '../custom/AppearanceV6'
 import './expressions.css'
 
@@ -131,6 +132,10 @@ function GifTab({ onPick, onMissing }: { onPick: (g: Gif) => void; onMissing: ()
   const [error, setError] = useState('')
   const [categories, setCategories] = useState<GifCategory[]>(DEFAULT_GIF_CATEGORIES)
   const [activeCategory, setActiveCategory] = useState<string>('trending')
+  const favs = useStore((s) => s.settings.favorite_gifs) ?? []
+  const showFavs = activeCategory === 'favorites'
+  // favourites are kept as {url, src, width, height, format}; the picker's tiles and onPick speak Gif
+  const shown: Gif[] | null = showFavs ? favs.map((f) => ({ ...f, id: f.url, title: '', preview: f.src })) : list
 
   useEffect(() => {
     gifCategories().then((res) => {
@@ -163,8 +168,8 @@ function GifTab({ onPick, onMissing }: { onPick: (g: Gif) => void; onMissing: ()
         data-autofocus
       />
       <div className="gif-categories" role="tablist" aria-label={t('GIF categories')}>
-        {categories.map((c) => {
-          const isSelected = activeCategory === c.id || (!q && c.id === 'trending') || (q.toLowerCase() === c.q.toLowerCase() && !!c.q)
+        {[{ id: 'favorites', name: 'Favorites', q: '' }, ...categories].map((c) => {
+          const isSelected = c.id === 'favorites' ? showFavs : !showFavs && (activeCategory === c.id || (!q && c.id === 'trending') || (q.toLowerCase() === c.q.toLowerCase() && !!c.q))
           return (
             <button
               key={c.id}
@@ -180,25 +185,28 @@ function GifTab({ onPick, onMissing }: { onPick: (g: Gif) => void; onMissing: ()
         })}
       </div>
       <div className="gif-scroll" onKeyDown={gridKeys(2, '.gif-btn')}>
-        {error && <p className="form-error">{error}</p>}
+        {error && !showFavs && <p className="form-error">{error}</p>}
         <div className="gif-masonry">
-          {list?.map((g) => {
+          {shown?.map((g) => {
             const aspect = g.width && g.height ? `${g.width} / ${g.height}` : undefined
+            const fav: FavoriteGif = { url: g.url, src: g.src, width: g.width, height: g.height, format: showFavs ? (g as Gif & FavoriteGif).format : 'gif' }
             return (
-              <button
-                key={g.id}
-                className="gif-btn"
-                style={aspect ? { aspectRatio: aspect } : undefined}
-                title={g.title}
-                aria-label={t('Send GIF {name}', { name: g.title || g.id })}
-                onClick={() => onPick(g)}
-              >
-                <img src={cdn(g.preview || g.src)} alt={g.title || ''} loading="lazy" />
-              </button>
+              <div key={g.id} className="gif-tile">
+                <button
+                  className="gif-btn"
+                  style={aspect ? { aspectRatio: aspect } : undefined}
+                  title={g.title}
+                  aria-label={t('Send GIF {name}', { name: g.title || g.id })}
+                  onClick={() => onPick(g)}
+                >
+                  {showFavs ? <FavoriteMedia f={fav} src={cdn(g.src)} /> : <img src={cdn(g.preview || g.src)} alt={g.title || ''} loading="lazy" />}
+                </button>
+                <GifStar gif={fav} />
+              </div>
             )
           })}
         </div>
-        {list?.length === 0 && <p className="hint">{t('No GIFs found.')}</p>}
+        {shown?.length === 0 && <p className="hint">{showFavs ? t('No favorite GIFs yet. Star a GIF to keep it here.') : t('No GIFs found.')}</p>}
       </div>
     </>
   )

@@ -64,6 +64,9 @@ import kotlinx.serialization.Serializable
 @Serializable object FriendsRoute
 @Serializable data class SettingsRoute(val page: String)
 @Serializable data class VoiceRoute(val channelId: String, val start: Boolean = false)
+@Serializable data class ChannelInfoRoute(val channelId: String)
+@Serializable data class ChannelAccessRoute(val channelId: String)
+@Serializable data class ServerSettingsRoute(val guildId: String)
 
 /** What screens may ask of the app shell. */
 interface Nav {
@@ -77,6 +80,9 @@ interface Nav {
     fun openMembers(guildId: String)
     fun openFriends()
     fun openSettings(page: String)
+    fun openChannelInfo(channelId: String)
+    fun openChannelAccess(channelId: String)
+    fun openServerSettings(guildId: String)
     fun back()
 }
 
@@ -145,6 +151,9 @@ private fun MainShell() {
             override fun openMembers(guildId: String) = nav.navigate(MembersRoute(guildId)) { launchSingleTop = true }
             override fun openFriends() = nav.navigate(FriendsRoute) { launchSingleTop = true }
             override fun openSettings(page: String) = nav.navigate(SettingsRoute(page)) { launchSingleTop = true }
+            override fun openChannelInfo(channelId: String) = nav.navigate(ChannelInfoRoute(channelId)) { launchSingleTop = true }
+            override fun openChannelAccess(channelId: String) = nav.navigate(ChannelAccessRoute(channelId)) { launchSingleTop = true }
+            override fun openServerSettings(guildId: String) = nav.navigate(ServerSettingsRoute(guildId)) { launchSingleTop = true }
             override fun back() { nav.popBackStack() }
         }
     }
@@ -196,6 +205,9 @@ private fun MainShell() {
                 composable<MembersRoute> { MembersScreen(it.toRoute<MembersRoute>().guildId) }
                 composable<FriendsRoute> { FriendsScreen() }
                 composable<SettingsRoute> { SettingsScreen(it.toRoute<SettingsRoute>().page) }
+                composable<ChannelInfoRoute> { ChannelInfoScreen(it.toRoute<ChannelInfoRoute>().channelId) }
+                composable<ChannelAccessRoute> { ChannelAccessScreen(it.toRoute<ChannelAccessRoute>().channelId) }
+                composable<ServerSettingsRoute> { ServerSettingsScreen(it.toRoute<ServerSettingsRoute>().guildId) }
                 composable<VoiceRoute> { it.toRoute<VoiceRoute>().let { r -> VoiceScreen(r.channelId, r.start) } }
             }
         }

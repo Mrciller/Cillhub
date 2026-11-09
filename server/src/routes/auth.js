@@ -51,12 +51,13 @@ const loginSettings = userId => { const s = settingsOf(userId); return { locale:
 const loginTail = user => ({ user_settings: loginSettings(user.id), ...(user.require_password_change && { required_actions: ['update_password'] }) });
 const disabled = () => new HttpError(400, 20013, 'This account has been disabled.');
 
-// 10 failures per account or per IP in 15 minutes lock both out (429 with retry_after); MFA answers with a ticket (docs)
+// 10 failures per account+IP or per IP in 15 minutes lock that pair / that IP out (429 with retry_after), so a stranger
+// cannot lock an account for everyone; MFA answers with a ticket (docs)
 async function login(ctx) {
   const { body } = ctx;
   const login = str(body, 'login', 1, 254);
   const password = str(body, 'password', 1, 72, false);
-  const keys = [`login:${login.toLowerCase()}`, `ip:${ctx.ip}`];
+  const keys = [`login:${login.toLowerCase()}:${ctx.ip}`, `ip:${ctx.ip}`];
   checkLogin(keys, ctx.headers);
   const user = get(`SELECT * FROM users WHERE ${login.includes('@') ? 'email' : 'username'} = ?`, login);
   if (!(await checkPassword(password, user))) {

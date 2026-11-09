@@ -24,3 +24,26 @@ test('Static /download directory and transparent installer delivery', async () =
     await srv.stop();
   }
 });
+
+test('web client pages carry CSP, nosniff and frame protection; HSTS only behind https (audit M3)', async () => {
+  const { mkdtemp, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const dir = await mkdtemp(`${tmpdir()}/cillhub-static-`);
+  await writeFile(`${dir}/index.html`, '<!doctype html>');
+  await writeFile(`${dir}/offline.html`, '<button onclick="location.reload()">');
+  const srv = await startServer({ env: { STATIC_DIR: dir } });
+  try {
+    const app = await fetch(`${srv.origin}/oauth2/authorize?client_id=1`);
+    const csp = app.headers.get('content-security-policy');
+    assert.match(csp, /frame-ancestors 'self'/);
+    assert.match(csp, /script-src 'self' 'wasm-unsafe-eval'/);
+    assert.equal(app.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(app.headers.get('x-frame-options'), 'SAMEORIGIN');
+    assert.equal(app.headers.get('strict-transport-security'), null);
+    const offline = await fetch(`${srv.origin}/offline.html`, { headers: { 'X-Forwarded-Proto': 'https' } });
+    assert.equal(offline.headers.get('content-security-policy'), "frame-ancestors 'self'");
+    assert.equal(offline.headers.get('strict-transport-security'), 'max-age=31536000');
+  } finally {
+    await srv.stop();
+  }
+});

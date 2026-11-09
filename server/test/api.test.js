@@ -257,6 +257,27 @@ test('presence: op 3 reaches users sharing a DM, READY lists presences, second s
   await s.bob.gw.wait(f => f.op === 11);
 });
 
+test('gateway: at most 20 sessions per user, the oldest goes; repeated op 3 with the same activity is not re-sent (audit H5, M11)', async () => {
+  const u = await srv.register('manytabs');
+  const first = await gateway(u.token);
+  const rest = [];
+  for (let i = 0; i < 20; i++) rest.push(await gateway(u.token));
+  assert.equal(await first.closed, 4009);
+  rest[0].send({ op: 3, d: { status: 'online', activities: [{ type: 0, name: 'Chess' }] } });
+  await rest[1].event('PRESENCE_UPDATE', d => d.activities[0]?.name === 'Chess');
+  rest[0].send({ op: 3, d: { status: 'online', activities: [{ type: 0, name: 'Chess' }] } });
+  assert.ok(await rest[1].none(f => f.t === 'PRESENCE_UPDATE'));
+  for (const gw of rest) gw.ws.close();
+});
+
+test('big JSON bodies: many tiny values are refused before parsing, big strings are not (audit H6)', async () => {
+  const tiny = await api('POST', '/guilds', s.alice.token, { name: 'x', roles: Array.from({ length: 700_000 }, () => ({})) });
+  assert.equal(tiny.status, 413);
+  const icon = await api('POST', '/guilds', s.alice.token, { name: 'x', icon: `data:image/png;base64,${'A'.repeat(2 * 1024 * 1024)}` });
+  assert.equal(icon.status, 400, 'parsed and validated, not refused for size');
+  assert.equal((await api('POST', '/guilds/backup-restore', s.alice.token, { name: 'x', pad: 'A'.repeat(1024 * 1024) })).status, 413);
+});
+
 test('owner cannot leave; member can', async () => {
   const r = await api('DELETE', `/users/@me/guilds/${s.guild.id}`, s.alice.token);
   assert.equal(r.status, 400);

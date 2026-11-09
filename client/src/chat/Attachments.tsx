@@ -4,6 +4,7 @@ import { cdn } from '../api'
 import { formatSize, Icon, ICONS, Modal } from '../components/ui'
 import type { Attachment, Message } from '../types'
 import { VoicePlayer } from './VoicePlayer'
+import { GifStar } from '../expressions/GifStar'
 
 /** Spoiler attachments: SPOILER_ filename prefix (or the IS_SPOILER attachment flag 1 << 3). */
 export const isSpoiler = (a: Attachment) => a.filename.startsWith('SPOILER_') || !!((a.flags ?? 0) & (1 << 3))
@@ -65,12 +66,17 @@ export function Attachments({ list, voice }: { list: Attachment[]; voice?: boole
         const alt = a.description || shownName(a)
         let el: ReactNode
         if (isAudioAttachment(a, voice)) el = <VoicePlayer a={a} />
-        else if (IMAGE.test(type))
+        else if (IMAGE.test(type)) {
           el = (
             <button className="att-image" aria-label={t('Open image {name}', { name: alt })} onClick={() => setOpen(a)}>
               <img src={url} alt={alt} title={a.description ?? undefined} style={fit(a)} loading="lazy" />
             </button>
           )
+          // GIF uploads can be starred; the full https link is what a favourite sends
+          const src = a.url.split('/').map(encodeURIComponent).join('/') // filenames may hold spaces, ? or #
+          if (type === 'image/gif' && url.startsWith('https://'))
+            el = <span className="gif-fav">{el}<GifStar gif={{ url: cdn(src), src, width: a.width ?? 0, height: a.height ?? 0, format: 'gif' }} /></span>
+        }
         else if (VIDEO.test(type)) el = <video className="att-video" src={url} controls preload="metadata" style={fit(a)} aria-label={alt} />
         else el = <FileCard a={a} />
         return <SpoilerBox key={a.id} spoiler={isSpoiler(a)}>{el}</SpoilerBox>

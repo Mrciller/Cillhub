@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { snowflake } from '../snowflake.js';
 import { DATA_DIR, get, all, run, tx, json, isMember, memberIds, membersOf, userById, userObj, guildObj } from '../db.js';
 import { HttpError, str, int, bool, intParam, invalid, notFound, missingAccess, missingPermissions } from '../errors.js';
-import { P, need, guildPerms, DEFAULT_PERMISSIONS } from '../permissions.js';
+import { P, need, guildPerms, requireAssignable, DEFAULT_PERMISSIONS } from '../permissions.js';
 import { audit, A, diff } from '../audit.js';
 import { sendToUsers, presences, guildFull } from '../gateway.js';
 import { disconnect } from '../voice.js';
@@ -203,6 +203,11 @@ function putAntiRaid(ctx) {
     auto_pause_invites: b.auto_pause_invites !== undefined ? !!b.auto_pause_invites : true,
     notify_channel_id: b.notify_channel_id ? String(b.notify_channel_id) : null,
   };
+  if (cfg.quarantine_role_id) {
+    need(g.perms, P.MANAGE_ROLES);
+    requireAssignable(g.id, ctx.user.id, cfg.quarantine_role_id, 'quarantine_role_id');
+  }
+  if (cfg.notify_channel_id && !get('SELECT 1 FROM channels WHERE id = ? AND guild_id = ?', cfg.notify_channel_id, g.id)) throw notFound(10003, 'Channel');
   run('UPDATE guilds SET anti_raid = ? WHERE id = ?', JSON.stringify(cfg), g.id);
   return { anti_raid: cfg };
 }
@@ -259,7 +264,7 @@ function patchVanityUrl({ params, body, user }) {
 }
 
 export default [
-  ['POST', '/guilds', createGuild, { maxBody: 64 * 1024 * 1024 }], // imports carry emoji as data URIs (up to 200 x 256 KiB)
+  ['POST', '/guilds', createGuild, { maxBody: 32 * 1024 * 1024 }], // imports carry emoji as data URIs (up to 200, typically far below 256 KiB each)
   ['GET', '/guilds/:id', ({ params, user }) => guildObj(loadGuild(params.id, user), true)],
   ['PATCH', '/guilds/:id', patchGuild, { maxBody: 12 * 1024 * 1024 }],
   ['DELETE', '/guilds/:id', deleteGuild],
@@ -270,6 +275,6 @@ export default [
   ['GET', '/guilds/:id/vanity-url', getVanityUrl],
   ['PATCH', '/guilds/:id/vanity-url', patchVanityUrl],
   ['GET', '/guilds/:id/backup-export', backupExport],
-  ['POST', '/guilds/backup-restore', backupRestore, { maxBody: 64 * 1024 * 1024 }],
+  ['POST', '/guilds/backup-restore', backupRestore], // name, channels and roles only
   ['DELETE', '/users/@me/guilds/:id', leaveGuild],
 ];

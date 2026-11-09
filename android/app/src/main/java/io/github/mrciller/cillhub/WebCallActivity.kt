@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.webkit.PermissionRequest
@@ -24,9 +23,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import io.github.mrciller.cillhub.data.Session
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /**
@@ -38,7 +41,6 @@ import org.json.JSONObject
 class WebCallActivity : ComponentActivity() {
     companion object {
         const val EXTRA_PATH = "path"
-        const val EXTRA_CALL = "call"
         private val PATH = Regex("^/channels/(@me|\\d{1,19})/\\d{1,19}$")
         private val PERMISSIONS = mapOf(
             PermissionRequest.RESOURCE_AUDIO_CAPTURE to Manifest.permission.RECORD_AUDIO,
@@ -93,6 +95,7 @@ class WebCallActivity : ComponentActivity() {
         if (token != null && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(web, "try{localStorage.setItem('token',${JSONObject.quote(token)})}catch(e){}", setOf(Config.ORIGIN))
         }
+        lifecycleScope.launch { Session.loggedIn.first { !it }; finish() } // logged out in the app: close the page that holds the token
         installBridge()
         web.webViewClient = Client()
         web.webChromeClient = Chrome()
@@ -100,22 +103,13 @@ class WebCallActivity : ComponentActivity() {
             // back returns to the native app; the call keeps running in this task
             override fun handleOnBackPressed() { moveTaskToBack(true) }
         })
-        handle(intent)
         web.loadUrl(Config.APP_URL + (intent.getStringExtra(EXTRA_PATH)?.takeIf { PATH.matches(it) } ?: "/channels/@me"))
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handle(intent)
         intent.getStringExtra(EXTRA_PATH)?.takeIf { PATH.matches(it) }?.let { WebLink.send(JSONObject().put("type", "open").put("path", it), queue = true) }
-    }
-
-    private fun handle(i: Intent) {
-        if (i.getBooleanExtra(EXTRA_CALL, false) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        }
     }
 
     private fun installBridge() {

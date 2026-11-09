@@ -3,6 +3,7 @@ package io.github.mrciller.cillhub.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -82,6 +84,12 @@ import coil3.compose.AsyncImage
 import io.github.mrciller.cillhub.Config
 import io.github.mrciller.cillhub.R
 import io.github.mrciller.cillhub.data.Member
+import io.github.mrciller.cillhub.data.Perm
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.InputChip
 import io.github.mrciller.cillhub.data.Profile
 import io.github.mrciller.cillhub.data.Relationship
 import io.github.mrciller.cillhub.data.Sel
@@ -128,6 +136,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
     var profile by remember { mutableStateOf<Profile?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmRemove by remember { mutableStateOf(false) }
+    var dialog by remember { mutableStateOf<String?>(null) }
     val ctx = LocalContext.current
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
@@ -136,7 +145,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
     val me = userId == state.me?.id
     val rel = state.relationships[userId]?.type
     ModalBottomSheet(close) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 24.dp)) {
             val accent = profile?.userProfile?.accentColor?.let { Color(0xFF000000 or it.toLong()) } ?: MaterialTheme.colorScheme.primaryContainer
             Box(Modifier.fillMaxWidth().height(84.dp).padding(horizontal = 16.dp).clip(RoundedCornerShape(16.dp)).background(accent)) {
                 profile?.userProfile?.banner?.let { AsyncImage(Config.cdn("/banners/$userId/$it.png?size=600"), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
@@ -192,17 +201,122 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                     MarkdownText(bio, state, guildId, style = MaterialTheme.typography.bodyMedium)
                 }
                 val g = guildId?.let { state.guilds[it] }
-                val roles = (profile?.guildMember ?: guildId?.let { state.members[it]?.get(userId) })?.roles.orEmpty()
-                    .mapNotNull { r -> g?.roles?.firstOrNull { it.id == r } }.sortedByDescending { it.position }
-                if (roles.isNotEmpty()) {
+                // the store's copy first: it follows GUILD_MEMBER_UPDATE after a role change
+                val target = guildId?.let { state.members[it]?.get(userId) } ?: profile?.guildMember
+                val meId = state.me?.id ?: ""
+                val myM = Sel.myMember(state, guildId)
+                val roles = target?.roles.orEmpty().mapNotNull { r -> g?.roles?.firstOrNull { it.id == r } }.sortedByDescending { it.position }
+                val assignable = if (g != null && target != null) g.roles.filter { Perm.canAssignRole(g, meId, myM, it) }.map { it.id }.toSet() else emptySet()
+                fun act(f: suspend () -> Unit) = scope.launch { try { f(); error = null } catch (e: Exception) { error = errorText(ctx, e) } }
+                if (roles.isNotEmpty() || assignable.isNotEmpty()) {
                     Text(s(R.string.roles), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (r in roles) Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
-                            Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(10.dp).clip(CircleShape).background(if (r.color != 0) Color(0xFF000000 or r.color.toLong()) else MaterialTheme.colorScheme.outline))
-                                Spacer(Modifier.width(6.dp))
-                                Text(r.name, style = MaterialTheme.typography.labelLarge)
+                        for (r in roles) {
+                            if (r.id in assignable) InputChip(
+                                selected = false,
+                                onClick = {
+                                    act {
+                                        check(!me || Perm.keepsAdmin(g!!, meId, myM, afterMe = myM?.copy(roles = myM.roles - r.id))) { ctx.getString(R.string.self_lockout) }
+                                        Session.setMemberRole(guildId!!, userId, r.id, false)
+                                    }
+                                },
+                                label = { Text(r.name) }, leadingIcon = { RoleDot(r.color, 10.dp) },
+                                trailingIcon = { Ic(R.drawable.ms_close, s(R.string.remove_role, r.name), Modifier.size(18.dp)) },
+                            ) else Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+                                Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    RoleDot(r.color, 10.dp)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(r.name, style = MaterialTheme.typography.labelLarge)
+                                }
                             }
+                        }
+                        if (assignable.any { it !in target?.roles.orEmpty() }) AssistChip(
+                            onClick = { dialog = "role" }, label = { Text(s(R.string.add_role)) }, leadingIcon = { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)) },
+                        )
+                    }
+                }
+                // canModerate never offers moderation on oneself, but the add-role dialog below must open on one's own profile too
+                if (g != null && target != null) {
+                    val canNick = Perm.canModerate(g, meId, myM, Perm.MANAGE_NICKNAMES, userId, target)
+                    val canTimeout = Perm.canTimeout(g, meId, myM, userId, target)
+                    val canKick = Perm.canModerate(g, meId, myM, Perm.KICK_MEMBERS, userId, target)
+                    val canBan = Perm.canModerate(g, meId, myM, Perm.BAN_MEMBERS, userId, target)
+                    if (canNick || canTimeout || canKick || canBan) {
+                        Text(s(R.string.moderation), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
+                        if (Perm.timedOut(target)) Text(s(R.string.timed_out), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (canNick) OutlinedButton({ dialog = "nick" }) { Text(s(R.string.nickname)) }
+                            if (canTimeout) OutlinedButton({ dialog = "timeout" }) { Text(s(R.string.timeout)) }
+                            if (canKick) OutlinedButton({ dialog = "kick" }) { Text(s(R.string.kick), color = MaterialTheme.colorScheme.error) }
+                            if (canBan) OutlinedButton({ dialog = "ban" }) { Text(s(R.string.ban), color = MaterialTheme.colorScheme.error) }
+                        }
+                    }
+                    val path = "/guilds/${g.id}/members/$userId"
+                    when (dialog) {
+                        "role" -> AlertDialog(
+                            onDismissRequest = { dialog = null },
+                            title = { Text(s(R.string.add_role)) },
+                            text = {
+                                LazyColumn {
+                                    items(g.roles.filter { it.id in assignable && it.id !in target.roles }.sortedByDescending { it.position }, key = { it.id }) { r ->
+                                        ListItem(headlineContent = { Text(r.name) }, leadingContent = { RoleDot(r.color) }, colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                            modifier = Modifier.clickable { dialog = null; act { Session.setMemberRole(g.id, userId, r.id, true) } })
+                                    }
+                                }
+                            },
+                            confirmButton = { TextButton({ dialog = null }) { Text(s(R.string.cancel)) } },
+                        )
+                        "nick" -> {
+                            var nick by remember { mutableStateOf(target.nick ?: "") }
+                            AlertDialog(
+                                onDismissRequest = { dialog = null },
+                                title = { Text(s(R.string.nickname)) },
+                                text = { OutlinedTextField(nick, { nick = it.take(32) }, singleLine = true, placeholder = { Text(user?.displayName ?: "") }, modifier = Modifier.fillMaxWidth()) },
+                                confirmButton = {
+                                    TextButton({
+                                        dialog = null
+                                        act { Session.rest.request("PATCH", path, buildJsonObject { if (nick.isBlank()) put("nick", JsonNull) else put("nick", nick.trim()) }) }
+                                    }) { Text(s(R.string.save)) }
+                                },
+                                dismissButton = { TextButton({ dialog = null }) { Text(s(R.string.cancel)) } },
+                            )
+                        }
+                        "timeout" -> AlertDialog(
+                            onDismissRequest = { dialog = null },
+                            title = { Text(s(R.string.timeout)) },
+                            text = {
+                                Column {
+                                    for ((secs, label) in TIMEOUTS) ListItem(headlineContent = { Text(s(label)) }, colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                        modifier = Modifier.clickable {
+                                            dialog = null
+                                            act { Session.rest.request("PATCH", path, buildJsonObject { put("communication_disabled_until", java.time.Instant.now().plusSeconds(secs).toString()) }) }
+                                        })
+                                    if (Perm.timedOut(target)) ListItem(headlineContent = { Text(s(R.string.remove_timeout), color = MaterialTheme.colorScheme.primary) },
+                                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                        modifier = Modifier.clickable { dialog = null; act { Session.rest.request("PATCH", path, buildJsonObject { put("communication_disabled_until", JsonNull) }) } })
+                                }
+                            },
+                            confirmButton = { TextButton({ dialog = null }) { Text(s(R.string.cancel)) } },
+                        )
+                        "kick", "ban" -> {
+                            val ban = dialog == "ban"
+                            val name = Sel.memberName(state, g.id, userId)
+                            AlertDialog(
+                                onDismissRequest = { dialog = null },
+                                title = { Text(s(if (ban) R.string.ban else R.string.kick)) },
+                                text = { Text(s(if (ban) R.string.ban_confirm else R.string.kick_confirm, name)) },
+                                confirmButton = {
+                                    TextButton({
+                                        dialog = null
+                                        act {
+                                            if (ban) Session.rest.request("PUT", "/guilds/${g.id}/bans/$userId", buildJsonObject { put("delete_message_seconds", 0) })
+                                            else Session.rest.request("DELETE", path)
+                                            close()
+                                        }
+                                    }) { Text(s(if (ban) R.string.ban else R.string.kick), color = MaterialTheme.colorScheme.error) }
+                                },
+                                dismissButton = { TextButton({ dialog = null }) { Text(s(R.string.cancel)) } },
+                            )
                         }
                     }
                 }
@@ -225,6 +339,8 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
         )
     }
 }
+
+private val TIMEOUTS = listOf(60L to R.string.timeout_60s, 300L to R.string.timeout_5m, 600L to R.string.timeout_10m, 3600L to R.string.timeout_1h, 86400L to R.string.timeout_1d, 604800L to R.string.timeout_1w)
 
 /** A server's members, online first (pull to refresh). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -258,13 +374,18 @@ fun MembersScreen(guildId: String) {
 }
 
 @Composable
-private fun MemberRow(state: State, guildId: String, m: Member, onClick: () -> Unit) {
+fun MemberRow(state: State, guildId: String, m: Member, onClick: () -> Unit) {
     val u = m.user ?: return
     val status = Sel.presence(state, u.id)
     val color = Sel.roleColor(state, guildId, u.id)?.let { Color(0xFF000000 or it.toLong()) }
     val ctx = LocalContext.current
     ListItem(
-        headlineContent = { Text(Sel.memberName(state, guildId, u.id), color = color ?: MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        headlineContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(Sel.memberName(state, guildId, u.id), color = color ?: MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                UserTags(state.users[u.id] ?: u)
+            }
+        },
         supportingContent = Sel.customStatus(state, u.id)?.state?.takeIf { it.isNotBlank() }?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         leadingContent = { Avatar(state.users[u.id] ?: u, 40.dp, status) },
         trailingContent = if (state.guilds[guildId]?.ownerId == u.id) { { Text(s(R.string.owner), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } else null,
@@ -567,7 +688,7 @@ private fun FriendCard(
                             Surface(
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier.size(38.dp).clip(CircleShape).clickable {
+                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).clickable {
                                     act { val c = Session.openDm(r.id); nav.openChannel(c.id) }
                                 },
                             ) {
@@ -576,13 +697,13 @@ private fun FriendCard(
                             Surface(
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier.size(38.dp).clip(CircleShape).clickable {
+                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).clickable {
                                     act { val c = Session.openDm(r.id); nav.openVoice(c.id, start = !state.calls.containsKey(c.id)) }
                                 },
                             ) {
                                 Box(contentAlignment = Alignment.Center) { Ic(R.drawable.ms_call, s(R.string.start_call), Modifier.size(20.dp)) }
                             }
-                            IconButton({ onConfirmRemove(u) }, Modifier.size(36.dp)) {
+                            IconButton({ onConfirmRemove(u) }) {
                                 Ic(R.drawable.ms_person_remove, s(R.string.remove_friend), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -590,7 +711,7 @@ private fun FriendCard(
                             Surface(
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(38.dp).clip(CircleShape).clickable {
+                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).clickable {
                                     act { Session.acceptFriend(r.id) }
                                 },
                             ) {
@@ -599,7 +720,7 @@ private fun FriendCard(
                             Surface(
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier.size(38.dp).clip(CircleShape).clickable {
+                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).clickable {
                                     act { Session.removeRelationship(r.id) }
                                 },
                             ) {

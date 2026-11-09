@@ -6,7 +6,7 @@ import { navigate } from './router'
 import { permsOf } from './selectors'
 import { apply, emojiKey, getState, mergeSettings, replaceToken, setMyVotes, setState } from './store'
 import type {
-  Activity, Application, AuditLog, AuthSession, AutoModRule, Channel, ChannelCanvas, CommandIndex, CustomStatus, Draft, Emoji, Gif, Guild, GuildAnalytics, GuildOnboarding, GuildPayload, Invite, Member,
+  Activity, Application, AuditLog, AuthSession, AutoModRule, Channel, ChannelCanvas, CommandIndex, CustomStatus, Draft, Emoji, FavoriteGif, Gif, Guild, GuildAnalytics, GuildOnboarding, GuildPayload, Invite, Member,
   MemberVerification, Message, MessageEdit, OnboardingPrompt, Profile, Role, ScheduledEvent, Snippet, Sound, StageInstance, Status, Sticker, ThreadMember, User, UserGuildSettings, UserSettings,
   Webhook, WelcomeScreen, GuildSnapshot, GuildTemplate, SavedMessage, ScheduledMessage, WatchSession,
 } from './types'
@@ -534,6 +534,13 @@ export async function gifs(q?: string): Promise<Gif[] | null> {
     if (e instanceof ApiError && e.status === 404) return (gifsAvailable = false), null
     throw e
   }
+}
+
+/** Stars or un-stars a GIF (newest first, unique by url, at most 250), saved like any setting and synced by USER_SETTINGS_UPDATE. */
+export function toggleFavoriteGif(g: FavoriteGif) {
+  const list = getState().settings.favorite_gifs ?? []
+  const rest = list.filter((x) => x.url !== g.url)
+  return patchSettings({ favorite_gifs: rest.length < list.length ? rest : [g, ...list].slice(0, 250) })
 }
 
 export const getWelcomeScreen = (guildId: string) => api<WelcomeScreen>(`/guilds/${guildId}/welcome-screen`)

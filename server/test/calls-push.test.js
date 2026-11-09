@@ -55,15 +55,12 @@ test('DM calls: op 4 with guild_id null starts the call, ring and stop-ringing u
   assert.ok((await alice.gw.event('MESSAGE_UPDATE', m => m.id === msg.id && m.call.ended_timestamp)).call.ended_timestamp);
 });
 
-test('a user who blocked the caller is not rung', async () => {
+test('a 1:1 call with a user who blocked the caller does not start: no ringing, no call message (audit M4)', async () => {
   const dm = (await api('POST', '/users/@me/channels', alice.token, { recipient_id: carol.id })).body;
   await api('PUT', `/users/@me/relationships/${alice.id}`, carol.token, { type: 2 });
   alice.gw.send({ op: 4, d: { guild_id: null, channel_id: dm.id, self_mute: false, self_deaf: false } });
-  await alice.gw.event('CALL_CREATE', c => c.channel_id === dm.id);
-  await api('POST', `/channels/${dm.id}/call/ring`, alice.token, {});
-  assert.deepEqual((await alice.gw.event('CALL_UPDATE', c => c.channel_id === dm.id)).ringing, []);
-  alice.gw.send({ op: 4, d: { guild_id: null, channel_id: null } });
-  await alice.gw.event('CALL_DELETE');
+  assert.ok(await carol.gw.none(f => f.t === 'CALL_CREATE' || (f.t === 'MESSAGE_CREATE' && f.d.channel_id === dm.id)));
+  assert.ok(await alice.gw.none(f => f.t === 'CALL_CREATE' && f.d.channel_id === dm.id, 50));
   await api('DELETE', `/users/@me/relationships/${alice.id}`, carol.token);
 });
 

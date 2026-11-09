@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { cdn } from '../api'
 import { Icon, ICONS } from '../components/ui'
 import { Markdown, type MdContext } from '../markdown/Markdown'
+import { GifStar } from '../expressions/GifStar'
 import type { Embed, EmbedMedia } from '../types'
 
 /** The proxied URL of embed media, or null (root-relative URLs are our own server's, e.g. /external/<token>). */
@@ -52,8 +53,14 @@ function EmbedView({ e, ctx }: { e: Embed; ctx: MdContext }) {
   const thumb = media(e.thumbnail)
   const video = e.video && media(e.video)
   // Plain image / gifv embeds: just the picture.
-  if ((e.type === 'image' || e.type === 'gifv') && (image || thumb) && !e.title && !e.description)
-    return <img className="embed-media-only" src={(image || thumb)!} alt="" loading="lazy" style={fit(e.image ?? e.thumbnail, 400, 300)} />
+  if ((e.type === 'image' || e.type === 'gifv') && (image || thumb) && !e.title && !e.description) {
+    const m = (e.image ?? e.thumbnail)!
+    const img = <img className="embed-media-only" src={(image || thumb)!} alt="" loading="lazy" style={fit(m, 400, 300)} />
+    // a GIF link can be starred: url = the posted link, src = our proxied copy
+    const src = m.proxy_url ?? (m.url?.startsWith('/') ? m.url : undefined)
+    if (!(e.type === 'gifv' || /\.gif([?#]|$)/i.test(e.url ?? '')) || !e.url?.startsWith('https://') || !src) return img
+    return <span className="gif-fav">{img}<GifStar gif={{ url: e.url, src, width: m.width ?? 0, height: m.height ?? 0, format: 'gif' }} /></span>
+  }
   if (e.type === 'video' && video && !playerUrl(e) && !e.title)
     return <video className="embed-media-only" src={video} controls preload="metadata" style={fit(e.video, 400, 300)} />
   const player = playerUrl(e)

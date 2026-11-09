@@ -1,7 +1,7 @@
 import { snowflake } from '../snowflake.js';
 import { get, run, tx, json, memberIds, memberRow, memberObj } from '../db.js';
 import { HttpError } from '../errors.js';
-import { P } from '../permissions.js';
+import { P, need, requireAssignable } from '../permissions.js';
 import { sendToUsers } from '../gateway.js';
 import { loadGuild } from './guilds.js';
 
@@ -36,7 +36,14 @@ function putOnboarding(ctx) {
     })),
   }));
 
-  const defaultChannelIds = (Array.isArray(body.default_channel_ids) ? body.default_channel_ids : []).map(String);
+  const inGuild = id => !!get('SELECT 1 FROM channels WHERE id = ? AND guild_id = ?', id, g.id);
+  const defaultChannelIds = (Array.isArray(body.default_channel_ids) ? body.default_channel_ids : []).map(String).filter(inGuild);
+  // answering hands these roles out, so setting them needs the same rights as assigning them directly
+  for (const o of prompts.flatMap(p => p.options)) {
+    o.channel_ids = o.channel_ids.filter(inGuild);
+    if (o.role_ids.length) need(g.perms, P.MANAGE_ROLES);
+    for (const id of o.role_ids) requireAssignable(g.id, ctx.user.id, id, 'prompts');
+  }
 
   run(`
     INSERT INTO guild_onboarding (guild_id, enabled, prompts, default_channel_ids)

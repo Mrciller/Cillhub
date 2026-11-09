@@ -1,6 +1,7 @@
 import { randomBytes, scrypt, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { get, run } from './db.js';
+import { checkLogin, loginFailed } from './ratelimit.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -12,6 +13,16 @@ export async function hashPassword(password, salt = randomBytes(16).toString('he
 export async function checkPassword(password, user) {
   const { hash } = await hashPassword(String(password ?? ''), user?.salt);
   return !!user && !user.bot && !user.deleted && !user.system && timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.password_hash, 'hex'));
+}
+
+// a signed-in user re-entering the password (account settings): the login lock applies per account, so a stolen token
+// cannot be used to guess the password
+export async function confirmPassword(password, user, headers) {
+  const keys = [`pw:${user.id}`];
+  checkLogin(keys, headers);
+  if (await checkPassword(password, user)) return true;
+  loginFailed(keys);
+  return false;
 }
 
 export const tokenHash = token => createHash('sha256').update(token).digest('hex');

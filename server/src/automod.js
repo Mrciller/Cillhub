@@ -7,21 +7,24 @@ import { audit, A } from './audit.js';
 import { insertMessage, broadcastMessage, getChannel } from './message.js';
 import { recheck } from './voice.js';
 
+// one budget for all regex patterns of all rules on one message (the main thread waits for it)
 const BUDGET_MS = 50;
+const COOLDOWN_MS = 60_000;
 const MAX_INPUT = 4096;
 const WORD = '[\\p{L}\\p{N}_]';
+const slowPatterns = new Map(); // rule id + pattern -> when it last ran out of budget; skipped for COOLDOWN_MS
 
-// rule regexes run inside a vm context with a timeout, which interrupts runaway backtracking
+// rule regexes run inside a vm context with a timeout, which interrupts runaway backtracking; undefined on timeout
 const sandbox = vm.createContext({ re: null, s: '' });
-function timedExec(re, s) {
+function timedExec(re, s, ms) {
   sandbox.re = re;
   sandbox.s = s;
   try {
-    return vm.runInContext('re.exec(s)', sandbox, { timeout: BUDGET_MS });
+    return vm.runInContext('re.exec(s)', sandbox, { timeout: Math.max(1, Math.ceil(ms)) });
   } catch (e) {
     if (e.code !== 'ERR_SCRIPT_EXECUTION_TIMEOUT') throw e;
-    console.warn(`automod: /${re.source}/ ran out of its ${BUDGET_MS} ms budget, treated as no match`);
-    return null;
+    console.warn(`automod: /${re.source}/ ran out of the ${BUDGET_MS} ms budget, skipped for a minute`);
+    return undefined;
   } finally {
     sandbox.re = null;
     sandbox.s = '';
@@ -77,7 +80,7 @@ function wordAt(s, index, length) {
   return s.slice(a, b);
 }
 
-function keywordHit(meta, content) {
+function keywordHit(meta, content, ruleId, deadline) {
   const allowed = (meta.allow_list ?? []).map(k => keywordRegex(k, 'iu'));
   const ok = (word, matched) => !allowed.some(re => re.test(word) || re.test(matched));
   for (const k of meta.keyword_filter ?? []) {
@@ -86,7 +89,10 @@ function keywordHit(meta, content) {
     }
   }
   for (const p of meta.regex_patterns ?? []) {
-    const m = timedExec(new RegExp(p, 'iu'), content);
+    const key = `${ruleId}\0${p}`;
+    if (Date.now() - (slowPatterns.get(key) ?? -Infinity) < COOLDOWN_MS || deadline - Date.now() <= 0) continue;
+    const m = timedExec(new RegExp(p, 'iu'), content, deadline - Date.now());
+    if (m === undefined) slowPatterns.set(key, Date.now());
     if (m && ok(wordAt(content, m.index, m[0].length), m[0])) return { keyword: p, matched: m[0] };
   }
   return null;
@@ -108,10 +114,11 @@ function exempt(rule, guildId, userId, ch) {
 function check(guildId, eventType, ch, userId, content) {
   const text = content.slice(0, MAX_INPUT);
   const hits = [];
+  const deadline = Date.now() + BUDGET_MS;
   for (const rule of all('SELECT * FROM automod_rules WHERE guild_id = ? AND enabled = 1 AND event_type = ?', guildId, eventType)) {
     if (exempt(rule, guildId, userId, ch)) continue;
     const meta = json(rule.trigger_metadata, {});
-    const hit = rule.trigger_type === 5 ? mentionHit(meta, text) : keywordHit(meta, text);
+    const hit = rule.trigger_type === 5 ? mentionHit(meta, text) : keywordHit(meta, text, rule.id, deadline);
     if (hit) hits.push({ rule: { ...rule, actions: json(rule.actions) }, ...hit });
   }
   return hits;

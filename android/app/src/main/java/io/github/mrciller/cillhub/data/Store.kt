@@ -50,6 +50,8 @@ data class State(
     val snippets: Map<String, List<Snippet>> = emptyMap(),
     /** channel id -> draft text */
     val drafts: Map<String, String> = emptyMap(),
+    /** The settings document's favorite_gifs. */
+    val favoriteGifs: List<FavoriteGif> = emptyList(),
 )
 
 /** Voice states are kept per guild; DM and group DM calls (guild_id null) live under "@me" (store.ts voiceKey). */
@@ -172,9 +174,12 @@ object Reducer {
         "PRESENCE_UPDATE" -> d.decode<Presence>().let { p ->
             s.copy(presences = s.presences + (p.user.id to p.status), activities = p.activities?.let { s.activities + (p.user.id to it) } ?: s.activities)
         }
-        "USER_SETTINGS_UPDATE" -> d.str("status")?.let { st ->
-            s.copy(myStatus = st, presences = s.me?.let { s.presences + (it.id to (if (st == "invisible") "offline" else st)) } ?: s.presences)
-        } ?: s
+        "USER_SETTINGS_UPDATE" -> {
+            val next = d.str("status")?.let { st ->
+                s.copy(myStatus = st, presences = s.me?.let { s.presences + (it.id to (if (st == "invisible") "offline" else st)) } ?: s.presences)
+            } ?: s
+            d["favorite_gifs"]?.let { next.copy(favoriteGifs = json.decodeFromJsonElement(it)) } ?: next
+        }
         "USER_GUILD_SETTINGS_UPDATE" -> d.decode<UserGuildSettings>().let { g -> s.copy(guildSettings = s.guildSettings + ((g.guildId ?: "@me") to g)) }
         "TYPING_START" -> {
             val cid = d.str("channel_id") ?: ""
@@ -234,6 +239,7 @@ object Reducer {
             guildSettings = ugs.associateBy { it.guildId ?: "@me" },
             myStatus = status,
             sessionId = r.sessionId,
+            favoriteGifs = r.userSettings?.favoriteGifs.orEmpty(),
             dmRecipientReads = dmReads.mapValues { it.value.toMap() },
             // a fresh session may have missed events: cached history is dropped and refetched on view
         )

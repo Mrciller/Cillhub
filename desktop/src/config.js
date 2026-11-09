@@ -22,7 +22,8 @@ const APP_URL = `${APP_ORIGIN}/`;
 // only with the test hook on.
 const FEED_PATH = '/download/desktop/';
 const PROD_FEED = PROD_HUB + FEED_PATH;
-const UPDATE_URL = (TEST_HOOK && process.env.CILLCORD_UPDATE_URL) || HUB_ORIGIN + FEED_PATH;
+// Never an http: hub's feed: anyone on the path could hand us an installer.
+const UPDATE_URL = (TEST_HOOK && process.env.CILLCORD_UPDATE_URL) || (HUB_ORIGIN.startsWith('https:') ? HUB_ORIGIN + FEED_PATH : PROD_FEED);
 // package.json metadata: the app id (Windows AppUserModelID) and, only in a maintainer's legacy build for the old app id,
 // the download page users are sent to because the app moved (main.js shows a notice on every start; updater.js keeps
 // the feed that build was made with).
@@ -39,6 +40,11 @@ const isHttpUrl = (url) => {
   try { return ['http:', 'https:'].includes(new URL(url).protocol); } catch { return false; }
 };
 
+// Permissions the client needs (calls, screen share, notifications, copy, fullscreen); only its own pages get them (hub pages
+// shown in the app are only the sign-in popup and non-client paths, which need none).
+const ALLOWED_PERMISSIONS = new Set(['media', 'notifications', 'display-capture', 'clipboard-sanitized-write', 'fullscreen']);
+const permissionAllowed = (permission, url) => ALLOWED_PERMISSIONS.has(permission) && originOf(url) === APP_ORIGIN;
+
 // Pages of the web client. A hub link to one of them (invite, message link, OAuth consent, sign-in callback) opens in the
 // app; any other hub path (/download, /api, files) is not part of the bundle and opens in the browser.
 const SPA_SECTIONS = new Set(['', 'channels', 'invite', 'template', 'login', 'register', 'oauth2', 'instances', 'developers', 'admin', 'directory']);
@@ -50,4 +56,4 @@ function appUrlFor(url) {
   return APP_ORIGIN + u.pathname + u.search + u.hash;
 }
 
-module.exports = { PROD_HUB, LEGACY_ORIGIN, PROD_FEED, APP_ID, MOVED_TO, HUB_URL, HUB_ORIGIN, APP_ORIGIN, APP_URL, UPDATE_URL, TEST_HOOK, originOf, isAppUrl, isHttpUrl, appUrlFor };
+module.exports = { PROD_HUB, LEGACY_ORIGIN, PROD_FEED, APP_ID, MOVED_TO, HUB_URL, HUB_ORIGIN, APP_ORIGIN, APP_URL, UPDATE_URL, TEST_HOOK, originOf, isAppUrl, isHttpUrl, appUrlFor, permissionAllowed };

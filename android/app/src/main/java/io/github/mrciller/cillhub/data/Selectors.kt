@@ -154,6 +154,35 @@ object Sel {
         return Perm.has(p, Perm.CONNECT) && (c.userLimit == 0 || n < c.userLimit || Perm.has(p, Perm.MOVE_MEMBERS))
     }
 
+    /** A member list section: a hoisted role, or ONLINE / OFFLINE / BOTS (role null). */
+    data class MemberGroup(val key: String, val role: Role?, val members: List<Member>)
+
+    /**
+     * Who can see a channel, grouped like the web member list: bots apart, offline people apart, everyone else under
+     * their highest hoisted role or "online"; names sorted within each group.
+     */
+    fun channelMembers(s: State, guildId: String, ch: Channel): List<MemberGroup> {
+        val g = s.guilds[guildId] ?: return emptyList()
+        val parent = parentOf(s, ch)
+        val hoisted = g.roles.filter { it.hoist && it.id != g.id }.sortedByDescending { it.position }
+        val groups = LinkedHashMap<String, MutableList<Member>>()
+        hoisted.forEach { groups[it.id] = mutableListOf() }
+        listOf("online", "offline", "bots").forEach { groups[it] = mutableListOf() }
+        for (m in s.members[guildId].orEmpty().values) {
+            val u = m.user ?: continue
+            if (!Perm.has(Perm.channel(g, u.id, m, ch, parent), Perm.VIEW_CHANNEL)) continue
+            val key = when {
+                (s.users[u.id] ?: u).bot -> "bots"
+                presence(s, u.id) == "offline" -> "offline"
+                else -> hoisted.firstOrNull { it.id in m.roles }?.id ?: "online"
+            }
+            groups.getValue(key) += m
+        }
+        return groups.filterValues { it.isNotEmpty() }.map { (k, list) ->
+            MemberGroup(k, hoisted.firstOrNull { it.id == k }, list.sortedBy { memberName(s, guildId, it.user!!.id).lowercase() })
+        }
+    }
+
     /** "Anna, Ben +2" for a channel row (the car list and notifications). */
     fun voiceSummary(s: State, guildId: String?, channelId: String, max: Int = 2): String {
         val names = voiceUsers(s, guildId, channelId).map { memberName(s, guildId, it.userId) }

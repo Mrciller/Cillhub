@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { instanceEvent } from './admin/instance'
-import { nodeOf } from './instances/registry'
+import { nodeOf, setHubHas } from './instances/registry'
 import { moduleUiEvent } from './modules/events'
 import type { Anchor } from './components/menu'
 import type { Activity, Call, Channel, ChannelCanvas, Component, Guild, GuildPayload, Member, Message, Poll, Presence, ReadState, Relationship, SavedMessage, ScheduledEvent, Sound, StageInstance, Status, User, UserGuildSettings, UserSettings, VoiceState, WatchSession } from './types'
@@ -227,6 +227,7 @@ let state: State = { ...empty, token: localStorage.getItem('token'), updateReady
 const listeners = new Set<() => void>()
 
 export const getState = () => state
+setHubHas((id) => !!(state.guilds[id] || state.channels[id] || state.users[id]))
 export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }
   listeners.forEach((l) => l())
