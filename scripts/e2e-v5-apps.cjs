@@ -773,7 +773,7 @@ async function main() {
       await step('8. My Account: Carol changes her username (wrong password refused) and her email; others see the new name live, the new email logs in', async () => {
         await openChannel(alice, 'general')
         await userSettings(carol, 'My Account')
-        await carol.getByRole('button', { name: 'Edit' }).first().click()
+        await carol.locator('.account-rows').getByRole('button', { name: 'Edit', exact: true }).first().click()
         let dlg = modal(carol, 'Change your username')
         const fresh = `Caro_${SFX}`
         await dlg.getByLabel('Username').fill(fresh)
@@ -786,7 +786,7 @@ async function main() {
         check((await ok(api(carol, 'GET', '/users/@me'))).username === fresh, 'the username was not saved')
         await members(alice).getByRole('button', { name: new RegExp(fresh) }).first().waitFor(LIVE)
         NAME.carol = fresh
-        await carol.getByRole('button', { name: 'Edit' }).nth(1).click()
+        await carol.locator('.account-rows').getByRole('button', { name: 'Edit', exact: true }).nth(1).click()
         dlg = modal(carol, 'Change your email address')
         const email = `carol.new.${SFX}@example.com`
         await dlg.getByLabel('Email').fill(email)

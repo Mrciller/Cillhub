@@ -434,6 +434,9 @@ async function main() {
     })
 
     const screenTrack = (page) => page.evaluate(() => {
+      // the sharer sees a "You are sharing your screen" card instead of a self-view: read the captured track itself
+      const own = window.__e2eScreen?.getVideoTracks()[0]
+      if (own) return { ...own.getSettings(), contentHint: own.contentHint }
       for (const v of document.querySelectorAll('video')) {
         const t = v.srcObject?.getVideoTracks?.()[0]
         if (t && (t.label.includes('screen') || /screen|window|tab|desktop/i.test(t.label) || t.getSettings().displaySurface)) return { ...t.getSettings(), contentHint: t.contentHint }
@@ -441,6 +444,10 @@ async function main() {
       return null
     })
     await step('6b. Alice shares her screen through the Go Live dialog (720p, 15 FPS, Clarity); Bob and Carol see the stream playing', async () => {
+      await alice.evaluate(() => {
+        const md = navigator.mediaDevices, gdm = md.getDisplayMedia.bind(md)
+        md.getDisplayMedia = async (c) => (window.__e2eScreen = await gdm(c))
+      })
       await callPanel(alice).getByRole('button', { name: 'Share Your Screen' }).click()
       const dialog = modal(alice, 'Screen Share')
       await dialog.getByLabel('720p').check()
@@ -450,10 +457,11 @@ async function main() {
       for (const p of [bob, carol]) {
         await until('a playing screen share tile', () => callPanel(p).locator('video').evaluateAll((vs) => vs.some((v) => v.videoWidth > 0 && !v.paused)), 20000)
       }
+      let cap = null
       await until("Alice's screen capture at most 1280x720, 15 FPS, detail", async () => {
-        const s = await screenTrack(alice)
+        const s = (cap = await screenTrack(alice))
         return s && s.height <= 720 && s.width <= 1280 && s.frameRate <= 15 && s.contentHint === 'detail'
-      }, 10000)
+      }, 10000).catch((e) => { throw new Error(`${e.message}; last capture ${JSON.stringify(cap)}`) })
       await shot(bob, 'group-call-screen')
     })
 
