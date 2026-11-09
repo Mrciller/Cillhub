@@ -107,10 +107,27 @@ export function channelPerms(ch, userId) {
   return perms;
 }
 
-// shortcut: one permission computation per member per event, fine for org-sized guilds; batch the queries past a few hundred members
-export const viewersOf = ch => ch.guild_id
-  ? memberIds(ch.guild_id).filter(id => has(channelPerms(ch, id), P.VIEW_CHANNEL))
-  : all('SELECT user_id FROM dm_recipients WHERE channel_id = ?', ch.id).map(r => r.user_id);
+// who may VIEW the channel; the same decision as channelPerms (restriction and CONNECT never drop VIEW), but a fixed
+// number of queries per event instead of several per member
+export function viewersOf(ch) {
+  if (!ch.guild_id) return all('SELECT user_id FROM dm_recipients WHERE channel_id = ?', ch.id).map(r => r.user_id);
+  const parent = isThread(ch) ? get('SELECT * FROM channels WHERE id = ?', ch.parent_id) : ch;
+  const owner = ownerOf(ch.guild_id);
+  if (!parent || !owner) return [];
+  const everyone = BigInt(get('SELECT permissions FROM roles WHERE id = ?', ch.guild_id)?.permissions ?? 0);
+  const rolesOf = Map.groupBy(all(`SELECT mr.user_id, r.id, r.permissions FROM member_roles mr
+    JOIN roles r ON r.id = mr.role_id AND r.guild_id = mr.guild_id WHERE mr.guild_id = ?`, ch.guild_id), r => r.user_id);
+  const overwrites = all('SELECT * FROM overwrites WHERE channel_id = ?', parent.id);
+  const inThread = ch.type === 12 && new Set(all('SELECT user_id FROM thread_members WHERE channel_id = ?', ch.id).map(r => r.user_id));
+  return memberIds(ch.guild_id).filter(id => {
+    if (id === owner) return true;
+    const roles = rolesOf.get(id) ?? [];
+    const perms = roles.reduce((p, r) => p | BigInt(r.permissions), everyone);
+    if (has(perms, P.ADMINISTRATOR)) return true;
+    const eff = overwritten(parent, { perms, roles }, id, overwrites);
+    return has(eff, P.VIEW_CHANNEL) && (!inThread || has(eff, P.MANAGE_THREADS) || inThread.has(id));
+  });
+}
 
 // the guild's channels (no threads) a member may VIEW; one query for all overwrites, for GUILD_CREATE and visibility diffs
 export function visibleChannels(guildId, userId) {
