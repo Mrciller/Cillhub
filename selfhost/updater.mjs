@@ -16,6 +16,7 @@ import path from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 process.umask(0o077); // backups hold the database and the node's keys: owner only
@@ -32,11 +33,13 @@ const DB = path.join(ROOT, 'data', 'cillcord.sqlite');
 const STATE_FILE = path.join(ROOT, 'updater-state.json');
 const VERSION_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/;
 
-if (SECRET.length < 32 || !REPO || !PROJECT || !HUB) {
+const MAIN = process.argv[1] === fileURLToPath(import.meta.url); // imported by selfhost/test/updater-feed.test.mjs otherwise
+if (MAIN && (SECRET.length < 32 || !REPO || !PROJECT || !HUB)) {
   console.error('updater: CILLCORD_UPDATER_SECRET (32+ chars), CILLCORD_IMAGE, COMPOSE_PROJECT_NAME and CILLCORD_HUB_URL are required');
   process.exit(1);
 }
-const PUBKEY = crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'release-public-key.pem')));
+// the pinned release keys: one or more PEM public keys; a feed names the one it is signed with by key_id (sha256 of the DER key)
+const KEYS_FILE = path.join(ROOT, 'release-public-key.pem');
 
 // ---- state (persisted so the dashboard still sees the last result after a restart)
 let state = { state: 'idle' };
@@ -86,7 +89,7 @@ async function currentVersion() {
 }
 
 // shortcut: numeric dot compare; a pre-release sorts after its release. Use real semver if pre-releases ship.
-function cmp(a, b) {
+export function cmp(a, b) {
   const x = String(a).split(/[.-]/), y = String(b).split(/[.-]/);
   for (let i = 0; i < Math.max(x.length, y.length); i++) {
     const p = x[i] ?? '', q = y[i] ?? '';
@@ -103,20 +106,44 @@ async function get(url) {
   if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
   return Buffer.from(await r.arrayBuffer());
 }
+const fingerprint = (k) => crypto.createHash('sha256').update(k.export({ type: 'spki', format: 'der' })).digest('hex');
+export const parseKeys = (pem) => new Map((String(pem).match(/-----BEGIN PUBLIC KEY-----[A-Za-z0-9+/=\s]+-----END PUBLIC KEY-----/g) ?? [])
+  .map((p) => crypto.createPublicKey(p)).filter((k) => k.asymmetricKeyType === 'ed25519').map((k) => [fingerprint(k), k]));
+// latest.json is trusted only when signed by a pinned key (key_id), not expired (expires, Unix seconds) and not below the
+// highest min_version this node has seen (floor), so an old signed feed cannot be replayed to freeze or roll back nodes
+export function verifyFeed(body, sig, keys, floor, now = Date.now()) {
+  let j;
+  try { j = JSON.parse(body); } catch { throw new Error('latest.json: malformed'); }
+  const key = typeof j?.key_id === 'string' && keys.get(j.key_id);
+  if (!key) throw new Error(`latest.json: signed by a key this node does not trust (${String(j?.key_id).slice(0, 16)})`);
+  if (!crypto.verify(null, body, key, sig)) throw new Error('latest.json: signature does not verify');
+  if (!VERSION_RE.test(j.version) || !/^[0-9a-f]{64}$/.test(j.sha256) || !Number.isSafeInteger(j.size)
+    || typeof j.url !== 'string' || !(j.url.startsWith('https://') || j.url.startsWith(`${HUB}/download/server/`)) || (j.min_upgrade_from && !VERSION_RE.test(j.min_upgrade_from))
+    || (j.security !== undefined && typeof j.security !== 'boolean') || !Number.isSafeInteger(j.expires)
+    || (j.min_version && !VERSION_RE.test(j.min_version)) || (j.keys !== undefined && !(Array.isArray(j.keys) && j.keys.every((k) => parseKeys(k).size === 1)))) throw new Error('latest.json: malformed');
+  if (j.expires * 1000 <= now) throw new Error(`latest.json: expired on ${new Date(j.expires * 1000).toISOString()}; the hub has to re-sign it`);
+  const min = [floor, j.min_version].filter(Boolean).sort(cmp).pop();
+  if (min && cmp(j.version, min) < 0) throw new Error(`latest.json: offers ${j.version}, below the minimum version ${min}`);
+  return j;
+}
 async function latest() {
   const base = `${HUB}/download/server/latest.json`;
   const [body, sig] = await Promise.all([get(base), get(`${base}.sig`)]);
-  if (!crypto.verify(null, body, PUBKEY, sig)) throw new Error('latest.json: signature does not verify');
-  const j = JSON.parse(body);
-  if (!VERSION_RE.test(j.version) || !/^[0-9a-f]{64}$/.test(j.sha256) || !Number.isSafeInteger(j.size)
-    || !/^https?:\/\//.test(j.url) || (j.min_upgrade_from && !VERSION_RE.test(j.min_upgrade_from))
-    || (j.security !== undefined && typeof j.security !== 'boolean')) throw new Error('latest.json: malformed');
+  const j = verifyFeed(body, sig, parseKeys(fs.readFileSync(KEYS_FILE, 'utf8')), state.min_version);
+  if (j.min_version && (!state.min_version || cmp(j.min_version, state.min_version) > 0)) save({ min_version: j.min_version });
+  // key rotation: a newer feed brings the key list from then on (adds the next key, drops a retired one); an older one never does
+  if (j.keys?.length && (!state.keys_from || cmp(j.version, state.keys_from) > 0)) {
+    fs.rmSync(KEYS_FILE + '.tmp', { force: true });
+    fs.writeFileSync(KEYS_FILE + '.tmp', j.keys.map((k) => crypto.createPublicKey(k).export({ type: 'spki', format: 'pem' })).join(''), { flag: 'wx', mode: 0o644 });
+    fs.renameSync(KEYS_FILE + '.tmp', KEYS_FILE); // rename replaces a planted symlink instead of following it
+    save({ keys_from: j.version });
+  }
   return j;
 }
 async function download(j) {
   fs.mkdirSync(path.join(ROOT, 'releases'), { recursive: true });
   const file = path.join(ROOT, 'releases', `cillhub-server-${j.version}.tar.gz`);
-  const r = await fetch(j.url);
+  const r = await fetch(j.url, { signal: AbortSignal.timeout(30 * 60e3) });
   if (!r.ok) throw new Error(`download: HTTP ${r.status}`);
   const hash = crypto.createHash('sha256');
   let size = 0;
@@ -315,7 +342,7 @@ async function handle(req, res) {
   send(404, { error: 'not found' });
 }
 
-http.createServer((req, res) => {
+if (MAIN) http.createServer((req, res) => {
   handle(req, res).catch((err) => {
     console.error(`updater: ${req.method} ${req.url}: ${err.message}`);
     if (!res.headersSent) { res.writeHead(502, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: err.message })); }

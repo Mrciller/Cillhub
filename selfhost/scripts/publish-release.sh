@@ -34,7 +34,7 @@ put() {
   chmod 644 "$DEST/.$1.tmp"
   mv -f "$DEST/.$1.tmp" "$DEST/$1"
 }
-for f in "$TARBALL" install.sh docker-compose.yml Caddyfile updater.mjs; do put "$f"; done
+for f in "$TARBALL" install.sh docker-compose.yml Caddyfile updater.mjs release-public-key.pem; do put "$f"; done
 put SHA256SUMS.sig; put SHA256SUMS
 put latest.json.sig; put latest.json
 

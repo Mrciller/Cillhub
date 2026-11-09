@@ -1,12 +1,14 @@
 #!/bin/sh
 # Cillhub server installer (self-hosted node). POSIX sh; safe to run again (it keeps .env and data).
 #
-#   curl -fsSLO https://cillhub.cillerian.org/download/server/install.sh && sh install.sh
+#   Check this script before running it (README.md): its SHA256SUMS must carry a valid signature by the release key
+#   published in the source repository (selfhost/release-public-key.pem), then: sh install.sh
 #
 # What it does, in order:
 #   1. checks Docker, Docker Compose, curl, openssl 3 and sha256sum
-#   2. downloads SHA256SUMS + SHA256SUMS.sig from the hub and verifies the Ed25519 signature with the
-#      public key below, then verifies every downloaded file against SHA256SUMS
+#   2. downloads SHA256SUMS + SHA256SUMS.sig and latest.json + .sig (https only) from the hub and verifies the Ed25519
+#      signatures with the public key below; latest.json must not be expired and must name the same version.
+#      Then verifies every downloaded file against SHA256SUMS
 #   3. only then `docker load`s the server image (skipped if this install already has one)
 #   4. writes <dir>/docker-compose.yml, Caddyfile, updater.mjs and, on the first run only, .env with
 #      generated secrets (asks for hostname, mode, voice backend, UDP port unless given as flags)
@@ -107,17 +109,26 @@ case $PROJECT in *[!a-z0-9_-]*|'') die "bad --project (lowercase letters, digits
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 REL="$HUB/download/server"
-fetch() { curl -fsSL --proto '=https,http' -o "$TMP/$1" "$REL/$1" || die "download of $REL/$1 failed"; }
+# https only; plain http just for a hub on this machine (the self-host tests run one)
+case $HUB in https://*) PROTO='=https' ;; http://127.0.0.1:*|http://localhost:*) PROTO='=http' ;; *) die "--hub must be an https:// URL" ;; esac
+fetch() { curl -fsSL --proto "$PROTO" --proto-redir "$PROTO" -o "$TMP/$1" "$REL/$1" || die "download of $REL/$1 failed"; }
 
 # 2. Signature first, then checksums. Nothing from the hub is used before both pass.
 say "Downloading the release list from $REL"
 fetch SHA256SUMS
 fetch SHA256SUMS.sig
-printf -- '-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----\n' "$RELEASE_PUBKEY" > "$TMP/release-public-key.pem"
-[ "$(openssl pkey -pubin -in "$TMP/release-public-key.pem" -outform DER | sha256sum | cut -d' ' -f1)" = "$RELEASE_FPR" ] \
+printf -- '-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----\n' "$RELEASE_PUBKEY" > "$TMP/signing-key.pem"
+[ "$(openssl pkey -pubin -in "$TMP/signing-key.pem" -outform DER | sha256sum | cut -d' ' -f1)" = "$RELEASE_FPR" ] \
   || die "the public key in this script does not match its fingerprint; get a fresh install.sh"
-openssl pkeyutl -verify -rawin -pubin -inkey "$TMP/release-public-key.pem" -in "$TMP/SHA256SUMS" -sigfile "$TMP/SHA256SUMS.sig" >/dev/null 2>&1 \
+openssl pkeyutl -verify -rawin -pubin -inkey "$TMP/signing-key.pem" -in "$TMP/SHA256SUMS" -sigfile "$TMP/SHA256SUMS.sig" >/dev/null 2>&1 \
   || die "SIGNATURE CHECK FAILED for SHA256SUMS: the download is not from the Cillhub release key. Nothing was installed."
+# latest.json carries the expiry: an old SHA256SUMS replayed by the hub does not match a fresh, unexpired latest.json
+fetch latest.json
+fetch latest.json.sig
+openssl pkeyutl -verify -rawin -pubin -inkey "$TMP/signing-key.pem" -in "$TMP/latest.json" -sigfile "$TMP/latest.json.sig" >/dev/null 2>&1 \
+  || die "SIGNATURE CHECK FAILED for latest.json: the download is not from the Cillhub release key. Nothing was installed."
+EXPIRES=$(sed -n 's/^  "expires": \([0-9]*\),\{0,1\}$/\1/p' "$TMP/latest.json")
+[ -n "$EXPIRES" ] && [ "$EXPIRES" -gt "$(date +%s)" ] || die "the hub's release feed is expired or has no expiry (an old or replayed release). Nothing was installed."
 say "Signature OK: signed by $RELEASE_SIGNER"
 say "  key fingerprint (sha256) $RELEASE_FPR"
 
@@ -130,7 +141,9 @@ TARBALL=$(awk '{ sub(/^\*/, "", $2); print $2 }' "$TMP/SHA256SUMS" | grep -E '^c
 [ -n "$TARBALL" ] || die "no server image listed in SHA256SUMS"
 VERSION=${TARBALL#cillhub-server-}
 VERSION=${VERSION%.tar.gz}
-for f in docker-compose.yml Caddyfile updater.mjs; do fetch "$f"; verify "$f"; done
+grep -qxF "  \"version\": \"$VERSION\"," "$TMP/latest.json" \
+  || die "SHA256SUMS ($VERSION) and latest.json name different releases; the hub may be publishing right now, try again in a minute"
+for f in docker-compose.yml Caddyfile updater.mjs release-public-key.pem; do fetch "$f"; verify "$f"; done
 
 # 3. Image. An existing install keeps its image; updates go through the admin dashboard.
 envget() { [ -f "$DIR/.env" ] && sed -n "s/^$1=//p" "$DIR/.env" | tail -n 1; }

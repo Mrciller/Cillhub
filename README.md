@@ -84,8 +84,13 @@ For detailed setup guides, tutorials, and architecture deep dives, visit our **[
 You need a Linux machine with Docker (Compose v2), a domain pointing at it, ports 80/443 and one UDP port for voice.
 
 ```sh
-curl -fsSLO https://cillhub.cillerian.org/download/server/install.sh
-sh install.sh            # asks for hostname, mode, voice backend, UDP port; --help lists all flags
+# 1. the release key from this repository, the installer and its signed checksum list (https only)
+curl -fsSL --proto '=https' -o release-public-key.pem https://raw.githubusercontent.com/Mrciller/Cillhub/main/selfhost/release-public-key.pem
+for f in install.sh SHA256SUMS SHA256SUMS.sig; do curl -fsSLO --proto '=https' "https://cillhub.cillerian.org/download/server/$f"; done
+# 2. run nothing unless the signature and the installer's checksum are good
+openssl pkeyutl -verify -rawin -pubin -inkey release-public-key.pem -in SHA256SUMS -sigfile SHA256SUMS.sig \
+  && sha256sum -c --ignore-missing SHA256SUMS \
+  && sh install.sh       # asks for hostname, mode, voice backend, UDP port; --help lists all flags
 ```
 
 The installer verifies every download against the Cillhub release key (signed by Pascal Oraze), starts the stack (server, updater, optional Caddy with Let's Encrypt and optional LiveKit) in `/opt/cillhub` and prints the address of the first-run wizard. There you create the admin account (2FA required), choose standalone or connected mode and automatic updates.

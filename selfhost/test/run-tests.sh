@@ -60,6 +60,7 @@ else
   done
 fi
 check "node --check updater.mjs" node --check "$SELFHOST/updater.mjs"
+check "updater feed unit tests (key list, expiry, minimum version)" node --test "$SELFHOST/test/updater-feed.test.mjs"
 mkdir -p "$T/c" && cp "$SELFHOST/docker-compose.yml" "$T/c/" &&
   printf 'CILLCORD_IMAGE=x\nCILLCORD_HTTP_PORT=1\nCILLVOICE_UDP_PORT=2\nCILLCORD_HOSTNAME=h\nLIVEKIT_API_KEY=k\nLIVEKIT_API_SECRET=s\n' > "$T/c/.env"
 check "compose file parses (all profiles)" sh -c "cd '$T/c' && docker compose --profile caddy --profile livekit config -q"
@@ -106,7 +107,7 @@ check "make-release refuses the test key against the real public key" sh -c \
 check "make-release refuses to run without RELEASE_KEY" sh -c \
   "! env -u RELEASE_KEY PUBLIC_KEY='$TPUB' OUT_DIR='$T/rel/y' sh '$SELFHOST/scripts/make-release.sh' 9.9.9 '$REPO:base'"
 R="$T/rel/1.0.0"
-check "release has all files" sh -c "cd '$R' && ls cillhub-server-1.0.0.tar.gz install.sh docker-compose.yml Caddyfile updater.mjs SHA256SUMS SHA256SUMS.sig latest.json latest.json.sig"
+check "release has all files" sh -c "cd '$R' && ls cillhub-server-1.0.0.tar.gz install.sh docker-compose.yml Caddyfile updater.mjs release-public-key.pem SHA256SUMS SHA256SUMS.sig latest.json latest.json.sig"
 check "SHA256SUMS signed with the test key" openssl pkeyutl -verify -rawin -pubin -inkey "$TPUB" -in "$R/SHA256SUMS" -sigfile "$R/SHA256SUMS.sig"
 check "  and not with the real key" sh -c "! openssl pkeyutl -verify -rawin -pubin -inkey '$SELFHOST/release-public-key.pem' -in '$R/SHA256SUMS' -sigfile '$R/SHA256SUMS.sig'"
 check "latest.json signed" openssl pkeyutl -verify -rawin -pubin -inkey "$TPUB" -in "$R/latest.json" -sigfile "$R/latest.json.sig"
@@ -114,7 +115,9 @@ check "latest.json fields" node -e "
   const j = require('$R/latest.json'), fs = require('fs'), c = require('crypto');
   const f = fs.readFileSync('$R/cillhub-server-1.0.0.tar.gz');
   if (j.version !== '1.0.0' || j.size !== f.length || j.sha256 !== c.createHash('sha256').update(f).digest('hex')
-    || j.url !== 'http://fakehub:8000/download/server/cillhub-server-1.0.0.tar.gz' || j.notes !== 'Test release 1.0.0' || j.min_upgrade_from !== null || j.security !== false) process.exit(1)"
+    || j.url !== 'http://fakehub:8000/download/server/cillhub-server-1.0.0.tar.gz' || j.notes !== 'Test release 1.0.0' || j.min_upgrade_from !== null || j.security !== false || j.min_version !== null
+    || j.key_id !== c.createHash('sha256').update(c.createPublicKey(fs.readFileSync('$TPUB')).export({ type: 'spki', format: 'der' })).digest('hex')
+    || !(j.expires > Date.now() / 1000 + 29 * 86400) || j.keys.length !== 1) process.exit(1)"
 check "install.sh in the release carries the test key" grep -q "^RELEASE_SIGNER='TEST KEY" "$R/install.sh"
 check "make-release left no versioned tag behind" sh -c "! docker image inspect $REPO:1.0.0"
 
@@ -169,6 +172,8 @@ check "prints the signer" grep -q "Signature OK: signed by TEST KEY" "$T/install
 check "prints the setup code from .env" grep -q "Setup code: $(envget CILLCORD_SETUP_CODE) " "$T/install.log"
 check "prints the voice port to open" grep -q "UDP 3421" "$T/install.log"
 check "prints an nginx example (--no-caddy)" grep -q "proxy_pass http://127.0.0.1:3420;" "$T/install.log"
+check "install dir trusts the release's key list" cmp -s "$T/inst/release-public-key.pem" "$TPUB"
+check "install.sh refuses a plain-http hub" sh -c "sh '$R/install.sh' --hub http://hub.example.test --dir '$T/nope' --yes 2>&1 | grep -q 'must be an https' && test ! -e '$T/nope/.env'"
 check ".env is chmod 600" test "$(stat -c %a "$T/inst/.env")" = 600
 check ".env has the automatic update settings (--auto-update all --update-hour)" sh -c "grep -qx 'CILLCORD_AUTO_UPDATE=all' '$T/inst/.env' && grep -qx 'CILLCORD_AUTO_UPDATE_HOUR=$FAR_HOUR' '$T/inst/.env'"
 check "install.sh refuses a bad --auto-update / --update-hour" sh -c "! sh '$R/install.sh' --auto-update=weekly --dir '$T/nope' --yes && ! sh '$R/install.sh' --update-hour 24 --dir '$T/nope' --yes && test ! -e '$T/nope/.env'"
