@@ -1,6 +1,6 @@
 [package]
 name = "cillhub"
-version = "3.0.1"
+version = "3.0.2"
 edition = "2021"
 authors = ["Pascal Oraze"]
 description = "Cillhub desktop client"

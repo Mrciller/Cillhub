@@ -1,5 +1,5 @@
 # Installs the staged Windows desktop installer on a clean runner: fresh install, the update from the 2.2.x app, and the
-# self-update from the published 3.0.0 (run the way src/main.rs runs it).
+# self-update from the published 3.0.1 (run the way src/main.rs runs it).
 name: desktop-windows-smoke
 on:
   push:
@@ -9,9 +9,9 @@ permissions:
   contents: read
 env:
   BASE: https://cillhub.cillerian.org/download/desktop
-  SETUP: Cillhub-Setup-3.0.1.exe
-  VERSION: 3.0.1
-  SHA512: 19f54e2bec4265b1e7d354ba8f37628416e4390aacb95b9cf235bc478e998229502d4d79e07b1512060d4e2666ce1876c342448d91b5fc3995a1877e0e9fdc12
+  SETUP: Cillhub-Setup-3.0.2.exe
+  VERSION: 3.0.2
+  SHA512: 7cea778d8cf3218d52ff04e4f81e1ea94bf903b863ed85b5f9f4fdf7f78f38856ece8d7696465e02be2bba89159e9992dbccb1b16d1b6359949c0e601a982890
   OLD_KEY: HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\59cd2796-830e-5e8c-88dd-c707d7eebc0a
 defaults:
   run:
@@ -36,10 +36,10 @@ jobs:
           Invoke-WebRequest "$env:BASE/Cillhub-Setup-2.2.2.exe" -OutFile old.exe
           (Start-Process .\old.exe -ArgumentList '/S' -PassThru).WaitForExit()
           if (-not (Test-Path $env:OLD_KEY)) { throw '2.2.2 uninstall entry missing' }
-      - name: Install the published 3.0.0 first
+      - name: Install the published 3.0.1 first
         if: matrix.mode == 'update'
         run: |
-          Invoke-WebRequest "$env:BASE/Cillhub-Setup-3.0.0.exe" -OutFile old.exe
+          Invoke-WebRequest "$env:BASE/Cillhub-Setup-3.0.1.exe" -OutFile old.exe
           (Start-Process .\old.exe -ArgumentList '/S' -PassThru).WaitForExit()
           Start-Process "$env:LOCALAPPDATA\Cillhub\cillhub.exe"
           Start-Sleep 10
