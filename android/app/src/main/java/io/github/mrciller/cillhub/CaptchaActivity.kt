@@ -38,10 +38,10 @@ class CaptchaActivity : ComponentActivity() {
             setResult(Activity.RESULT_OK, Intent().putExtra(EXTRA_TOKEN, token))
             finish()
         }
-        // the page stays on the server; Google's links (privacy, terms) open in the browser
+        // the page stays on the server; Google's links (privacy, terms) open in the browser, its frames load in place
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                if (Origins.same(request.url.toString(), Config.ORIGIN)) return false
+                if (!request.isForMainFrame || Origins.same(request.url.toString(), Config.ORIGIN)) return false // Google's challenge iframes stay
                 if (request.url.scheme == "https") runCatching { startActivity(Intent(Intent.ACTION_VIEW, request.url).addCategory(Intent.CATEGORY_BROWSABLE)) }
                 return true
             }
