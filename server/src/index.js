@@ -185,7 +185,7 @@ const routes = [
 const API_PREFIX = /^\/api(\/v\d+)?(?=\/)/; // /api/v9 (the client), /api/v10 (bot libraries) and unversioned
 
 // while an admin requires a new password, only these work (plus the gateway): change it, read yourself, log out
-const PASSWORD_CHANGE_ROUTES = new Set(['GET /users/@me', 'PATCH /users/@me', 'POST /auth/logout', 'GET /instance']);
+const PASSWORD_CHANGE_ROUTES = new Set(['GET /users/@me', 'PATCH /users/@me', 'POST /mfa/finish', 'POST /auth/logout', 'GET /instance']); // mfa/finish: the 2FA step-up of that change
 
 const tooLarge = () => new HttpError(413, 0, 'Request entity too large');
 
@@ -376,6 +376,8 @@ const server = createServer(async (req, res) => {
       if (/(^|[/\\])\.\.([/\\]|$)|\0/.test(rel)) throw new HttpError(404, 0, '404: Not Found'); // no existence oracle outside the folders
       const local = [STATIC_DIR && path.join(STATIC_DIR, rel), DATA_DIR && path.join(DATA_DIR, rel)].find(p => p && existsSync(p));
       if (local) return await serveStatic(res, url.pathname);
+      // only plain names go to the hub: no second escape layer (%252e) in its request, no quote in the filename header
+      if (!/^[\w./ +-]+$/.test(rel)) throw new HttpError(404, 0, '404: Not Found');
       limit('GET', '/download', {}, netOf(clientIp(req)), headers); // every node relays these to the hub
       return await proxyHubDownload(req, res, url.pathname);
     }

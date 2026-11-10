@@ -21,10 +21,10 @@ const connect = async () => {
   for (const u of [alice, bob]) u.gw = await srv.gateway(u.token);
 };
 
-async function run(who, name, options = []) {
+async function run(who, name, options = [], channelId = g.general.id) {
   const cmd = cmds.find(c => c.name === name);
   const r = await api('POST', '/interactions', who.token, {
-    type: 2, application_id: botId, guild_id: g.guild.id, channel_id: g.general.id, nonce: name, data: { id: cmd.id, name, type: 1, options },
+    type: 2, application_id: botId, guild_id: g.guild.id, channel_id: channelId, nonce: name, data: { id: cmd.id, name, type: 1, options },
   });
   assert.equal(r.status, 204, JSON.stringify(r.body));
   await who.gw.event('INTERACTION_SUCCESS', d => d.nonce === name);
@@ -182,4 +182,18 @@ test('the winner draw is uniform and without repeats; time phrases and dice pars
   assert.equal(roll('d1'), null);
   assert.equal(roll('101d6'), null);
   assert.equal(roll('3d1000').rolls.length, 3);
+});
+
+test('/scrim in a private channel makes no server-wide event; /lfg keeps out members who blocked each other', async () => {
+  const hidden = (await api('POST', `/guilds/${g.guild.id}/channels`, alice.token, { name: 'staff-scrims' })).body;
+  await api('PUT', `/channels/${hidden.id}/permissions/${g.guild.id}`, alice.token, { type: 0, allow: '0', deny: String(1n << 10n) });
+  const card = await run(alice, 'scrim', [{ name: 'opponent', type: 3, value: 'Team Z' }, { name: 'when', type: 3, value: '4h' }], hidden.id);
+  assert.ok(card.id);
+  assert.ok(await bob.gw.none(f => f.t === 'GUILD_SCHEDULED_EVENT_CREATE' && f.d.name === 'Scrim vs Team Z', 500), 'no event naming the hidden channel');
+
+  assert.equal((await api('PUT', `/users/@me/relationships/${bob.id}`, alice.token, { type: 2 })).status, 204);
+  const lfg = await run(alice, 'lfg', [{ name: 'game', type: 3, value: 'Chess' }, { name: 'players', type: 4, value: 2 }]);
+  await click(bob, lfg, 'lfg:join');
+  assert.ok(await alice.gw.none(f => f.t === 'CHANNEL_CREATE' && f.d.type === 3 && f.d.name === 'Chess LFG', 500), 'no group DM');
+  await api('DELETE', `/users/@me/relationships/${bob.id}`, alice.token);
 });

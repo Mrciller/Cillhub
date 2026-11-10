@@ -231,33 +231,39 @@ async function saveFiles(ch, d) {
 export async function send(d, authorId, { webhook, id, type = 0 } = {}) {
   const ch = d.ch;
   const attachments = await saveFiles(ch, d);
-  let snapshot = null;
-  if (d.forward) {
-    const copies = await copyAttachments(d.forward.src.id, ch.id, true);
-    const s = messageObj(d.forward.src, d.forward.srcCh, null, true);
-    const copyObj = a => ({
-      id: a.id, filename: a.filename, size: a.size, content_type: a.content_type, url: attachmentUrl(a), proxy_url: attachmentUrl(a),
-      ...(a.width != null && { width: a.width, height: a.height }), ...(a.description != null && { description: a.description }), flags: a.flags,
+  let m;
+  try { // files already on disk go again if the message cannot be stored (channel gone, database error)
+    let snapshot = null;
+    if (d.forward) {
+      const copies = await copyAttachments(d.forward.src.id, ch.id, true);
+      const s = messageObj(d.forward.src, d.forward.srcCh, null, true);
+      const copyObj = a => ({
+        id: a.id, filename: a.filename, size: a.size, content_type: a.content_type, url: attachmentUrl(a), proxy_url: attachmentUrl(a),
+        ...(a.width != null && { width: a.width, height: a.height }), ...(a.description != null && { description: a.description }), flags: a.flags,
+      });
+      snapshot = { message: {
+        type: s.type, content: s.content, embeds: s.embeds, attachments: copies.map(copyObj),
+        timestamp: s.timestamp, edited_timestamp: s.edited_timestamp, flags: s.flags, mentions: s.mentions, mention_roles: s.mention_roles,
+        ...(s.sticker_items && { sticker_items: s.sticker_items }),
+      } };
+      attachments.push(...copies);
+    }
+    // webhook embeds may point at their own uploads with attachment://name
+    const embeds = d.rich ? richEmbeds(d.embeds, name => {
+      const a = attachments.find(x => x.filename === name);
+      return a && attachmentUrl({ ...a, channel_id: ch.id });
+    }) : [];
+    m = insertMessage({
+      id, ch, authorId, content: d.content, type: d.forward ? 0 : d.referenceId ? 19 : (d.type ?? type), flags: d.flags | (d.forward ? F.HAS_SNAPSHOT : 0),
+      referenceId: d.referenceId, mentionEveryone: d.counted.all || d.counted.here, mentionRoles: d.counted.roleIds, embeds,
+      stickerItems: d.stickerItems, poll: d.poll, attachments, webhook, components: d.components,
+      snapshot, reference: d.forward && { type: 1, message_id: d.forward.src.id, channel_id: d.forward.srcCh.id, guild_id: d.forward.srcCh.guild_id ?? undefined },
+      e2eeEnvelope: d.e2eeEnvelope,
     });
-    snapshot = { message: {
-      type: s.type, content: s.content, embeds: s.embeds, attachments: copies.map(copyObj),
-      timestamp: s.timestamp, edited_timestamp: s.edited_timestamp, flags: s.flags, mentions: s.mentions, mention_roles: s.mention_roles,
-      ...(s.sticker_items && { sticker_items: s.sticker_items }),
-    } };
-    attachments.push(...copies);
+  } catch (e) {
+    attachments.forEach(a => removeAttachment(ch.id, a.id));
+    throw e;
   }
-  // webhook embeds may point at their own uploads with attachment://name
-  const embeds = d.rich ? richEmbeds(d.embeds, name => {
-    const a = attachments.find(x => x.filename === name);
-    return a && attachmentUrl({ ...a, channel_id: ch.id });
-  }) : [];
-  const m = insertMessage({
-    id, ch, authorId, content: d.content, type: d.forward ? 0 : d.referenceId ? 19 : (d.type ?? type), flags: d.flags | (d.forward ? F.HAS_SNAPSHOT : 0),
-    referenceId: d.referenceId, mentionEveryone: d.counted.all || d.counted.here, mentionRoles: d.counted.roleIds, embeds,
-    stickerItems: d.stickerItems, poll: d.poll, attachments, webhook, components: d.components,
-    snapshot, reference: d.forward && { type: 1, message_id: d.forward.src.id, channel_id: d.forward.srcCh.id, guild_id: d.forward.srcCh.guild_id ?? undefined },
-    e2eeEnvelope: d.e2eeEnvelope,
-  });
   bumpMentions(ch, m, d.counted, d.allowedUsers);
   broadcastMessage(ch, 'MESSAGE_CREATE', m, d.nonce === undefined ? undefined : { nonce: d.nonce });
   if (d.embedLinks && !(m.flags & F.SUPPRESS_EMBEDS)) unfurlLater(m);

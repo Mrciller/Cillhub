@@ -54,6 +54,7 @@ test('migration removes false badges, changes the default, and cleans already de
     assert.equal(old.prepare("SELECT calendar_token FROM users WHERE id='b'").get().calendar_token, null);
     old.exec("INSERT INTO user_connections (id,user_id,type,name,created_at) VALUES ('c','a','steam','someone','now')");
     assert.equal(old.prepare("SELECT verified FROM user_connections WHERE id='c'").get().verified, 0);
+    assert.ok(old.prepare('PRAGMA table_info(scheduled_messages)').all().some(c => c.name === 'message_id'), 'scheduled messages get a delivery id');
     assert.deepEqual(old.prepare('PRAGMA foreign_key_check').all(), []);
   } finally { old.close(); }
 });

@@ -159,6 +159,7 @@ function requirePasswordChange(ctx) {
   const u = targetUser(ctx);
   const required = ctx.body?.required === undefined ? true : bool(ctx.body, 'required');
   run('UPDATE users SET require_password_change = ? WHERE id = ?', Number(required), u.id);
+  if (required) all('SELECT token_hash FROM tokens WHERE user_id = ?', u.id).forEach(t => closeTokenSessions(t.token_hash)); // the gateway too
   ctx.audit = { action: 'user.require_password_change', details: { required } };
   return adminUserObj(loadUser(u.id));
 }

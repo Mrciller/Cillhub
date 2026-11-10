@@ -106,11 +106,13 @@ async function deliverScheduled(r) {
     gone.guild_id = ch.guild_id ?? null;
     ch.perms = channelPerms(ch, user.id);
     if (!has(ch.perms, P.VIEW_CHANNEL)) throw missingAccess();
-    const { d, mod } = await checked(ch, user, JSON.parse(r.body));
-    const m = await send(d, user.id);
-    if (isThread(ch)) reopened(ch);
-    mod?.execute(m.id);
-    sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { ...gone, message_id: m.id });
+    if (!get('SELECT 1 FROM messages WHERE id = ?', r.message_id)) { // there already: sent just before a crash
+      const { d, mod } = await checked(ch, user, JSON.parse(r.body));
+      const m = await send(d, user.id, { id: r.message_id });
+      if (isThread(ch)) reopened(ch);
+      mod?.execute(m.id);
+    }
+    sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { ...gone, message_id: r.message_id });
   } catch (e) {
     if (!(e instanceof HttpError)) console.error('scheduled message failed:', e);
     sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { ...gone, failed: true, code: e.body?.code ?? 0 });
@@ -120,10 +122,13 @@ async function deliverScheduled(r) {
 addJob({
   name: 'scheduled messages',
   next: () => get('SELECT MIN(send_at) AS t FROM scheduled_messages').t,
-  run: now => {
+  // the message id is fixed before the send and the row removed after it: a crash in between sends it at the next
+  // start under that same id, or finds it already there, so it is neither lost nor sent twice
+  run: async now => {
     for (const r of all('SELECT * FROM scheduled_messages WHERE send_at <= ? ORDER BY send_at', now)) {
-      run('DELETE FROM scheduled_messages WHERE id = ?', r.id); // removed first: a crash mid-send never sends twice
-      deliverScheduled(r);
+      if (!r.message_id) run('UPDATE scheduled_messages SET message_id = ? WHERE id = ?', r.message_id = snowflake(), r.id);
+      await deliverScheduled(r);
+      run('DELETE FROM scheduled_messages WHERE id = ?', r.id);
     }
   },
 });
@@ -209,10 +214,11 @@ const recurringObj = r => ({
   created_at: new Date(r.created_at).toISOString(),
 });
 
+const TIME_OF_DAY = /^([01]\d|2[0-3]):[0-5]\d$/;
 function computeNextRun(intervalType, timeOfDay) {
-  const [hh, mm] = (timeOfDay || '12:00').split(':').map(Number);
+  const [hh, mm] = (TIME_OF_DAY.test(timeOfDay) ? timeOfDay : '12:00').split(':').map(Number);
   const next = new Date();
-  next.setHours(hh || 12, mm || 0, 0, 0);
+  next.setHours(hh, mm, 0, 0);
   if (next.getTime() <= Date.now()) {
     if (intervalType === 'weekly') next.setDate(next.getDate() + 7);
     else if (intervalType === 'monthly') next.setMonth(next.getMonth() + 1);
@@ -233,7 +239,7 @@ async function createRecurring(ctx) {
   if (ch.guild_id) need(ch.perms, P.MANAGE_MESSAGES);
   const content = str(ctx.body ?? {}, 'content', 1, 2000);
   const intervalType = ['daily', 'weekly', 'monthly'].includes(ctx.body?.interval_type) ? ctx.body.interval_type : 'daily';
-  const timeOfDay = typeof ctx.body?.time_of_day === 'string' && /^\d{2}:\d{2}$/.test(ctx.body.time_of_day) ? ctx.body.time_of_day : '12:00';
+  const timeOfDay = typeof ctx.body?.time_of_day === 'string' && TIME_OF_DAY.test(ctx.body.time_of_day) ? ctx.body.time_of_day : '12:00';
   const nextRun = computeNextRun(intervalType, timeOfDay);
   const id = snowflake();
   run('INSERT INTO recurring_messages (id, channel_id, author_id, content, interval_type, time_of_day, next_run, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',

@@ -5,7 +5,7 @@ import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { snowflake } from '../snowflake.js';
 import { get, all, run, tx, json, isMember, memberIds, userById } from '../db.js';
 import { HttpError } from '../errors.js';
-import { P, has, guildPerms } from '../permissions.js';
+import { P, has, guildPerms, everyoneCanView } from '../permissions.js';
 import { sendToUsers, inProcessBots } from '../gateway.js';
 import { localApps, recordForCallback, respond } from '../interactions.js';
 import { insertMessage, broadcastMessage, bumpMentions, getChannel } from '../message.js';
@@ -16,6 +16,7 @@ import { authorize } from './applications.js';
 import { loadGuild, removeMember } from './guilds.js';
 import { openDm } from './channels.js';
 import { insertGroup } from './groups.js';
+import { blockedEither } from './relationships.js';
 import { eventObj } from './events.js';
 
 const MAX_REMINDERS = 25;
@@ -225,10 +226,12 @@ const commands = {
     const d = { opponent: option(i, 'opponent'), starts_at: startsAt, slots: option(i, 'slots') ?? 5, event_id: null };
     const perms = BigInt(i.member.permissions);
     return [{ type: 4, data: cardView({ kind: 'scrim', message_id: '0', host_id: i.member.user.id }, d) }, id => {
-      // the matching scheduled event, if the invoker may create events
-      if (has(perms, P.CREATE_EVENTS) || has(perms, P.MANAGE_EVENTS)) {
+      // the matching scheduled event, if the invoker may create events; it goes to every member, so only for a channel
+      // everyone can see, and within the guild's event limit
+      const ch = getChannel(i.channel_id), home = ch?.type === 11 ? getChannel(ch.parent_id) : ch; // a public thread: its channel
+      if ((has(perms, P.CREATE_EVENTS) || has(perms, P.MANAGE_EVENTS)) && home && home.type !== 12 && everyoneCanView(home)
+        && get('SELECT COUNT(*) AS n FROM scheduled_events WHERE guild_id = ? AND status IN (1, 2)', i.guild_id).n < 100) {
         d.event_id = snowflake();
-        const ch = getChannel(i.channel_id);
         run(`INSERT INTO scheduled_events (id, guild_id, channel_id, creator_id, name, description, scheduled_start_time, scheduled_end_time,
              privacy_level, status, entity_type, entity_metadata) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 2, 1, 3, ?)`,
         d.event_id, i.guild_id, i.member.user.id, `Scrim vs ${d.opponent}`, `Roster in #${ch?.name ?? 'channel'}`,
@@ -301,6 +304,7 @@ const components = {
     const ids = members(c.message_id);
     if (ids.includes(userId)) return eph('You are already in this group.');
     if (d.group_id || ids.length >= d.players) return eph('This group is full.');
+    if (ids.some(id => blockedEither(id, userId))) return eph('You cannot join this group.'); // it becomes a group DM
     join(c.message_id, userId);
     if (ids.length + 1 === d.players) {
       const all_ = [...ids, userId].filter(id => isMember(c.guild_id, id));

@@ -134,7 +134,8 @@ export class DtlsServer {
         if (type === CT.HANDSHAKE) this.onHandshakeRecord(body, epoch);
         else if (type === CT.CCS) this.clientCcs = true;
         else if (type === CT.ALERT && body.length >= 2) {
-          if (body[0] === 2 || body[1] === 0) return this.close(false); // fatal or close_notify
+          // fatal or close_notify; once the keys are in place only an encrypted one (a plaintext alert is unauthenticated)
+          if ((body[0] === 2 || body[1] === 0) && (epoch === 1 || !this.readKey)) return this.close(false);
         }
       } catch (e) {
         return this.fail(`bad handshake: ${e.message}`, 50);

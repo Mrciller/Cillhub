@@ -50,3 +50,23 @@ test('web client pages carry CSP, nosniff and frame protection; HSTS only behind
     await srv.stop();
   }
 });
+
+test('the hub download relay forwards only plain names: no double escapes, no quotes in the filename', async () => {
+  const { createServer } = await import('node:http');
+  const seen = [];
+  const hub = createServer((req, res) => { seen.push(req.url); res.writeHead(200, { 'Content-Type': 'application/octet-stream' }); res.end('x'); });
+  await new Promise(r => hub.listen(3393, '127.0.0.1', r));
+  const srv = await startServer({ env: { CILLCORD_DOWNLOAD_UPSTREAM: 'http://127.0.0.1:3393' } });
+  try {
+    for (const p of ['/download/desktop/%252e%252e/%252e%252e/secret', '/download/desktop/a%22.exe', '/download/desktop/a%0d%0aX:1.exe']) {
+      assert.equal((await fetch(srv.origin + p)).status, 404, p);
+    }
+    assert.deepEqual(seen.filter(u => u !== '/download/desktop/Cillhub-Setup-9.9.9.exe'), [], 'nothing odd reached the hub');
+    const ok = await fetch(`${srv.origin}/download/desktop/Cillhub-Setup-9.9.9.exe`);
+    assert.equal(ok.status, 200);
+    assert.equal(ok.headers.get('content-disposition'), 'attachment; filename="Cillhub-Setup-9.9.9.exe"');
+  } finally {
+    await srv.stop();
+    hub.close();
+  }
+});

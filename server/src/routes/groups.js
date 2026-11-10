@@ -1,7 +1,7 @@
 // Group DMs (type 3: recipients, name, icon, owner) and DM/group call ringing, per the user docs
 import { snowflake } from '../snowflake.js';
 import { get, all, run, tx, isFriend, userById, userObj, channelObj, channelUserIds } from '../db.js';
-import { HttpError, str, invalid, notFound, missingAccess, missingPermissions, snowflakes } from '../errors.js';
+import { HttpError, str, int, invalid, notFound, missingAccess, missingPermissions, snowflakes } from '../errors.js';
 import { sendToUsers } from '../gateway.js';
 import { saveImage, removeImage, removeChannelFiles } from '../files.js';
 import { disconnectChannel, disconnectFromChannel } from '../voice.js';
@@ -107,6 +107,8 @@ export async function patchGroup(ctx, ch) {
     next.owner_id = String(body.owner);
   }
   for (const [k, v] of Object.entries(next)) run(`UPDATE channels SET ${k} = ? WHERE id = ?`, v, ch.id); // keys are fixed above
+  // like a 1:1 DM: the lifetime covers messages from now on, what members sent before stays
+  if (next.message_ttl !== undefined) run('UPDATE channels SET message_ttl_since = CASE WHEN ? > 0 THEN COALESCE(message_ttl_since, ?) END WHERE id = ?', next.message_ttl, snowflake(), ch.id);
   if (next.message_ttl !== undefined) schedule();
   if ('icon' in next && next.icon !== ch.icon) removeImage('channel-icons', ch.id, ch.icon);
   const updated = getChannel(ch.id);

@@ -256,9 +256,12 @@ function applyPresence(s, d) {
 }
 
 // IDENTIFY: bots must send valid intents (4013) and may only use privileged ones their application enables (4014)
+// an account an admin asked for a new password gets no gateway until it is changed (HTTP allows only that change)
+const sessionUser = token => { const u = userByToken(token.replace(/^Bot\s+/i, '')); return u && !u.require_password_change ? u : undefined; };
+
 function identify(conn, d) {
   if (conn.session) return conn.ws.close(4005, 'Already authenticated');
-  const user = typeof d?.token === 'string' ? userByToken(d.token.replace(/^Bot\s+/i, '')) : undefined;
+  const user = typeof d?.token === 'string' ? sessionUser(d.token) : undefined;
   if (!user) return conn.ws.close(4004, 'Authentication failed');
   const s = {
     id: randomBytes(16).toString('hex'), user, bot: !!user.bot, tokenHash: tokenHash(d.token.replace(/^Bot\s+/i, '')), url: conn.url,
@@ -295,7 +298,7 @@ function identify(conn, d) {
 function resume(conn, d) {
   if (conn.session) return conn.ws.close(4005, 'Already authenticated');
   const s = typeof d?.session_id === 'string' && byId.get(d.session_id);
-  const ok = s && typeof d.token === 'string' && tokenHash(d.token.replace(/^Bot\s+/i, '')) === s.tokenHash && userByToken(d.token.replace(/^Bot\s+/i, ''))
+  const ok = s && typeof d.token === 'string' && tokenHash(d.token.replace(/^Bot\s+/i, '')) === s.tokenHash && sessionUser(d.token)
     && Number.isInteger(d.seq) && d.seq <= s.seq && (s.seq === d.seq || s.buffer[0]?.seq <= d.seq + 1);
   if (!ok) return raw(conn.ws, 9, false);
   if (isLive(s) && s.ws !== conn.ws) s.ws.close(4009, 'Session resumed elsewhere');

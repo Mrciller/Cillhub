@@ -93,6 +93,8 @@ is_port() { case $1 in ''|*[!0-9]*) return 1 ;; esac; [ "$1" -ge 1 ] && [ "$1" -
 # PUBLIC_IP is written into .env with an unquoted heredoc, so it must be a plain address (or empty). Nothing else may expand.
 is_ipv4() { printf '%s\n' "$1" | grep -Eq '^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'; }
 if [ -n "$PUBLIC_IP" ]; then is_ipv4 "$PUBLIC_IP" || die "bad --public-ip (an IPv4 address, or leave it empty)"; fi
+# the same goes for HUB: a plain URL, so no newline, quote, $ or ` can reach .env
+case $HUB in *[!A-Za-z0-9.:/_~-]*|'') die "--hub must be a plain URL (letters, digits and . : / _ ~ -)" ;; esac
 
 # 1. Prerequisites
 command -v docker >/dev/null || die "Docker is not installed (https://docs.docker.com/engine/install/)"

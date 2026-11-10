@@ -103,3 +103,19 @@ test('mismatched DTLS fragment headers for the same message_seq are ignored with
   srv.handle(hsFrag(0, 20, 15, Buffer.alloc(5)));
   assert.equal(closed, false);
 });
+
+test('a plaintext alert cannot close a transport once the keys are in place', () => {
+  let closed = false;
+  const srv = new DtlsServer({ cert: makeCertificate(), remoteFingerprint: 'AA:'.repeat(31) + 'AA', send: () => {}, onConnected: () => {}, onClose: () => { closed = true; } });
+  const alert = Buffer.alloc(15);
+  alert[0] = 21; // ALERT, epoch 0
+  alert.writeUInt16BE(0xfefd, 1);
+  alert.writeUInt16BE(2, 11);
+  alert[13] = 2; // fatal
+  srv.readKey = Buffer.alloc(16); // past the key exchange (as after a handshake)
+  srv.handle(alert);
+  assert.equal(closed, false, 'spoofed epoch-0 alert ignored');
+  srv.readKey = null;
+  srv.handle(alert);
+  assert.equal(closed, true, 'during the handshake a plaintext alert still ends it');
+});

@@ -32,3 +32,6 @@ UPDATE users SET calendar_token = NULL, hub_user_id = NULL, hub_avatar = NULL, h
 
 -- a lifetime set on a 1:1 DM covers only messages from then on (the other side's history stays)
 ALTER TABLE channels ADD COLUMN message_ttl_since TEXT;
+
+-- a due scheduled message gets its message id before it is sent and is removed after: a crash in between resends it
+ALTER TABLE scheduled_messages ADD COLUMN message_id TEXT;
