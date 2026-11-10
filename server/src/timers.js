@@ -27,3 +27,4 @@ export function schedule() {
 }
 
 export const startTimers = fire;
+export const stopTimers = () => { clearTimeout(handle); handle = null; };

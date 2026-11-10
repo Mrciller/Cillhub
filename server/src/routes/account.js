@@ -1,6 +1,8 @@
 // MFA settings and account deletion (user docs: /users/@me/mfa/*, /users/@me/delete)
 import { randomBytes } from 'node:crypto';
-import { DATA_DIR, get, all, run, tx, json, audienceOf, userById, userObj } from '../db.js';
+import { deletePrivateData } from '../account-data.js';
+import { exportAccount } from '../account-export.js';
+import { DATA_DIR, db, get, all, run, tx, audienceOf, userById, userObj } from '../db.js';
 import { HttpError, str, invalid } from '../errors.js';
 import { confirmPassword } from '../auth.js';
 import { sendToUsers, closeTokenSessions } from '../gateway.js';
@@ -74,9 +76,9 @@ export function anonymize(userId) {
   const sounds = all('SELECT id FROM user_sounds WHERE user_id = ?', userId);
   tx(() => {
     run(`UPDATE users SET username = ?, global_name = 'Deleted User', email = ?, avatar = NULL, banner = NULL, bio = NULL, pronouns = NULL,
-           accent_color = NULL, settings = '{}', customization = '{}', mfa_secret = NULL, deleted = 1, password_hash = ?, status = 'invisible' WHERE id = ?`,
+           accent_color = NULL, settings = '{}', customization = '{}', mfa_secret = NULL, mfa_last_step = 0, calendar_token = NULL, hub_user_id = NULL, hub_avatar = NULL, home = NULL, deleted = 1, password_hash = ?, status = 'invisible' WHERE id = ?`,
     `deleted_user_${userId}`, `deleted-${userId}@users.invalid`, randomBytes(32).toString('hex'), userId);
-    for (const t of ['tokens', 'notes', 'user_guild_settings', 'push_subscriptions', 'mfa_backup_codes', 'recent_mentions', 'scheduled_messages', 'saved_messages', 'bot_reminders', 'user_sounds', 'webauthn_credentials']) run(`DELETE FROM ${t} WHERE user_id = ?`, userId);
+    deletePrivateData(db, userId);
     run('DELETE FROM relationships WHERE user_id = ? OR other_id = ?', userId, userId);
     run('DELETE FROM notes WHERE target_id = ?', userId);
   });
@@ -98,28 +100,13 @@ async function deleteAccount(ctx) {
   anonymize(ctx.user.id);
 }
 
-function exportAccountData(ctx) {
-  const userId = ctx.user.id;
-  const userRow = userById(userId);
-  const data = {
-    exported_at: new Date().toISOString(),
-    user: userObj(userRow, true),
-    settings: json(get('SELECT settings FROM users WHERE id = ?', userId)?.settings, {}),
-    guilds: all('SELECT g.id, g.name, m.nick, m.joined_at FROM members m JOIN guilds g ON g.id = m.guild_id WHERE m.user_id = ?', userId),
-    relationships: all('SELECT other_id, type FROM relationships WHERE user_id = ?', userId),
-    notes: all('SELECT target_id, note FROM notes WHERE user_id = ?', userId),
-    bookmarks: all('SELECT message_id, channel_id, saved_at AS created_at, due_at FROM saved_messages WHERE user_id = ?', userId),
-    messages: all('SELECT id, channel_id, content, timestamp, edited_timestamp FROM messages WHERE author_id = ? AND webhook_id IS NULL ORDER BY CAST(id AS INTEGER) DESC LIMIT 10000', userId)
-      .map(r => ({ ...r, attachments: all('SELECT id, filename, size, content_type FROM attachments WHERE message_id = ?', r.id) })),
-  };
-  ctx.headers['Content-Type'] = 'application/json; charset=utf-8';
-  ctx.headers['Content-Disposition'] = `attachment; filename="cillhub-data-export-${userId}.json"`;
-  return data;
+async function exportAccountData(ctx) {
+  return exportAccount(DATA_DIR, userObj(userById(ctx.user.id), true));
 }
 
 const user = { userOnly: true };
 export default [
-  ['GET', '/users/@me/export', exportAccountData, { userOnly: true, bucket: 'account-export', limit: 2, window: 3600 }],
+  ['GET', '/users/@me/export', exportAccountData, { userOnly: true, rateLimit: { max: 2, windowMs: 3_600_000 } }],
   ['POST', '/users/@me/mfa/totp/enable', enableTotp, user],
   ['POST', '/users/@me/mfa/totp/disable', disableTotp, user],
   ['POST', '/users/@me/mfa/codes-verification', backupCodes, user],

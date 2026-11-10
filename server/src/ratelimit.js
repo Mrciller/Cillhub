@@ -53,9 +53,10 @@ function rateLimitError(seconds, headers) {
 }
 
 // counts one request; sets the X-RateLimit-* headers and throws 429 when the bucket is empty
-export function limit(method, pattern, params, identity, headers) {
-  const [, , base, windowMs] = RULES.find(([m, p]) => (m === '*' || m === method)
+export function limit(method, pattern, params, identity, headers, policy) {
+  const [, , defaultMax, defaultWindow] = RULES.find(([m, p]) => (m === '*' || m === method)
     && (p === '*' || p === pattern || (p.endsWith('/*') && pattern.startsWith(p.slice(0, -1)))));
+  const base = policy?.max ?? defaultMax, windowMs = policy?.windowMs ?? defaultWindow;
   const max = base * SCALE;
   const bucket = bucketId(method, pattern);
   const key = `${bucket}:${resourceOf(pattern, params)}:${identity}`;

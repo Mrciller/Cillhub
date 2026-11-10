@@ -1,5 +1,6 @@
 // German UI strings (settings area: server, channel and user settings, moderation, permissions): English source text -> German.
 export const settings: Record<string, string> = {
+  'Add account links to your profile. Ownership of these accounts has not been verified.': 'Füge Kontolinks zu deinem Profil hinzu. Die Inhaberschaft dieser Konten wurde nicht bestätigt.',
   '(default)': '(Standard)',
   '1 Hour': '1 Stunde', '1 Week': '1 Woche', '1 day': '1 Tag', '1 hour': '1 Stunde', '1 minute': '1 Minute', '1 week': '1 Woche',
   '10 minutes': '10 Minuten', '15 minutes': '15 Minuten', '30 minutes': '30 Minuten', '5 minutes': '5 Minuten', '60 seconds': '60 Sekunden',

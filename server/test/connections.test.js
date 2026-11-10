@@ -26,7 +26,7 @@ test('connections: CRUD connections, show_on_profile toggle, reflected in GET /u
   assert.ok(gh.id);
   assert.equal(gh.type, 'github');
   assert.equal(gh.name, 'torvalds');
-  assert.equal(gh.verified, true);
+  assert.equal(gh.verified, false);
   assert.equal(gh.show_on_profile, true);
   assert.deepEqual(gh.metadata, { profile_url: 'https://github.com/torvalds' });
 

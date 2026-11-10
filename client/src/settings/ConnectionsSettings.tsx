@@ -121,7 +121,7 @@ export function ConnectionsSettings() {
     <div className="connections-settings-page">
       <h1>{t('Connections')}</h1>
       <p className="hint">
-        {t('Connect your accounts to show verified badges on your Cillhub profile.')}
+        {t('Add account links to your profile. Ownership of these accounts has not been verified.')}
       </p>
 
       <section className="connections-grid-section">

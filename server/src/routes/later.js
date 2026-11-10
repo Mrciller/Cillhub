@@ -156,6 +156,9 @@ function save(ctx) {
   if (!get('SELECT 1 FROM messages WHERE id = ? AND channel_id = ?', ctx.params.message_id, ch.id)) throw notFound(10008, 'Message');
   const due = futureTime(ctx.body, 'due_at', false);
   const folderId = ctx.body?.folder_id ?? null;
+  if (folderId !== null && (typeof folderId !== 'string' || !get('SELECT 1 FROM saved_message_folders WHERE id = ? AND user_id = ?', folderId, ctx.user.id))) {
+    throw notFound(10008, 'Folder');
+  }
   const tags = Array.isArray(ctx.body?.tags) ? JSON.stringify(ctx.body.tags) : '[]';
   const exists = get('SELECT 1 FROM saved_messages WHERE user_id = ? AND message_id = ?', ctx.user.id, ctx.params.message_id);
   if (!exists && get('SELECT COUNT(*) AS n FROM saved_messages WHERE user_id = ?', ctx.user.id).n >= MAX_SAVED) {

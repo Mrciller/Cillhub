@@ -37,7 +37,7 @@ function createConnection(ctx) {
 
   run(`
     INSERT INTO user_connections (id, user_id, type, name, verified, show_on_profile, metadata, created_at)
-    VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+    VALUES (?, ?, ?, ?, 0, ?, ?, ?)
   `, id, ctx.user.id, type, name, showOnProfile, metadata, createdAt);
 
   const row = get('SELECT * FROM user_connections WHERE id = ?', id);

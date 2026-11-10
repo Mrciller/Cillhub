@@ -7,6 +7,8 @@ import { DATA_DIR } from './db.js';
 import { HttpError, unauthorized } from './errors.js';
 import { authenticate } from './auth.js';
 import { limit, netOf } from './ratelimit.js';
+import { compileRoute } from './route-policy.js';
+import { AccountExport } from './account-export.js';
 import { attachGateway } from './gateway.js';
 import { isCdnPath, serveCdn } from './files.js';
 import { isProxyPath, serveExternal } from './proxy.js';
@@ -179,9 +181,7 @@ const routes = [
   ...members, ...bans, ...groups, ...channels, ...reads, ...search, ...messages, ...threads, ...reactions, ...pins, ...polls, ...invites,
   ...emojis, ...stickers, ...soundboard, ...interactions, ...webhooks, ...stage, ...events, ...automod, ...auditlog, ...gifs, ...snippets,
   ...applications, ...commands,
-].map(([method, pattern, handler, opts = {}]) => ({
-  method, pattern, handler, ...opts, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`),
-}));
+].map(compileRoute);
 const API_PREFIX = /^\/api(\/v\d+)?(?=\/)/; // /api/v9 (the client), /api/v10 (bot libraries) and unversioned
 
 // while an admin requires a new password, only these work (plus the gateway): change it, read yourself, log out
@@ -234,7 +234,7 @@ async function api(req, url, headers) {
         throw e;
       }
     }
-    limit(route.method, route.pattern, ctx.params, ctx.user?.id ?? netOf(ctx.ip), headers); // anonymous: per IPv4 or IPv6 /64
+    limit(route.method, route.pattern, ctx.params, ctx.user?.id ?? netOf(ctx.ip), headers, route.rateLimit); // anonymous: per IPv4 or IPv6 /64
     if (route.admin) requireAdmin(ctx); // flag and 2FA, re-read from the database on every request
     // a multipart route reads its form itself, after its permission checks, so refused uploads are never read;
     // files stream to temp files (at most maxFile bytes each), removed after the handler unless it moved them
@@ -344,6 +344,7 @@ async function proxyHubDownload(req, res, pathname) {
 
 // answers to federation calls that bring a challenge are signed on the hub (federation.js answerSignature)
 function reply(res, status, body, headers = {}) {
+  if (body instanceof AccountExport) return body.send(res, { ...CORS, ...headers });
   const isText = typeof body === 'string' && (headers['Content-Type'] || '').startsWith('text/');
   const data = body === undefined ? undefined : (isText ? body : JSON.stringify(body));
   const signed = answerSignature(res.req, data ?? '');
@@ -363,7 +364,7 @@ const server = createServer(async (req, res) => {
     if (allow !== '*') res.setHeader('Vary', 'Origin'); // CDN and media answers too (they don't go through reply)
     if (isModulePath(url.pathname)) return await serveModulePath(req, res, url, netOf(clientIp(req))); // v8: panel files and module HTTP endpoints, no auth
     if (req.method === 'OPTIONS') return reply(res, 204, undefined, headers);
-    if (API_PREFIX.test(url.pathname)) return reply(res, ...await api(req, url, headers), headers);
+    if (API_PREFIX.test(url.pathname)) return await reply(res, ...await api(req, url, headers), headers);
     const known = req.method === 'GET' && url.pathname.startsWith('/.well-known/') && wellKnown(req, url.pathname.replace(/\/$/, ''));
     if (known) return reply(res, 200, known);
     if ((req.method === 'GET' || req.method === 'HEAD') && isCdnPath(url.pathname)) return await serveCdn(req, res, url.pathname);

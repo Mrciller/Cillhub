@@ -244,7 +244,7 @@ function listChannelMedia(ctx) {
 export default [
   ['GET', '/channels/:id/messages', list],
   ['GET', '/channels/:id/media', listChannelMedia],
-  ['POST', '/channels/:id/messages/bulk-delete', bulkDelete, { bucket: 'msg-delete', limit: 5, window: 5 }],
+  ['POST', '/channels/:id/messages/bulk-delete', bulkDelete, { rateLimit: { max: 5, windowMs: 5000 } }],
   ['GET', '/channels/:id/messages/:mid/edits', getMessageEdits],
   ['GET', '/channels/:id/messages/:mid', ctx => {
     const [ch, m] = loadMessage(ctx);
