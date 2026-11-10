@@ -105,6 +105,12 @@ function instrument() {
     if (this instanceof GainNode && !args.length) for (const g of window.__gains) if (g.p === this.gain) g.dead = true
     return disconnect.apply(this, args)
   }
+  // every peer connection, so a test can read how much remote audio actually arrives (getStats inbound-rtp)
+  window.__pcs = []
+  const PC = window.RTCPeerConnection
+  window.RTCPeerConnection = function (...args) { const pc = new PC(...args); window.__pcs.push(pc); return pc }
+  window.RTCPeerConnection.prototype = PC.prototype
+  Object.setPrototypeOf(window.RTCPeerConnection, PC)
   window.__played = []
   const play = HTMLMediaElement.prototype.play
   HTMLMediaElement.prototype.play = function () {
@@ -119,6 +125,21 @@ function instrument() {
 }
 // Volumes livekit-client last set on remote audio (one per remote track); deafened means all 0.
 const gains = (page) => page.evaluate(() => window.__gains.filter((g) => !g.dead).map((g) => g.v))
+// Remote audio bytes received over all open peer connections (inbound-rtp, kind audio).
+const audioBytes = (page) => page.evaluate(async () => {
+  let n = 0
+  for (const pc of window.__pcs) {
+    if (pc.connectionState === 'closed') continue
+    for (const r of (await pc.getStats()).values()) if (r.type === 'inbound-rtp' && r.kind === 'audio') n += r.bytesReceived ?? 0
+  }
+  return n
+})
+// Bytes of remote audio that arrive during ms (0 when nothing is delivered; a gone track can make it negative).
+async function audioIn(page, ms = 2000) {
+  const a = await audioBytes(page)
+  await sleep(ms)
+  return (await audioBytes(page)) - a
+}
 const sounds = (page) => page.evaluate(() => window.__played.map(({ src, progressed, ended }) => ({ src, progressed, ended })))
 
 function watch(page, name) {
@@ -268,22 +289,27 @@ async function main() {
       await until("Alice to see Bob speaking again", () => speaking(alice, 'General', NAME.bob), 15000)
     })
 
-    await step('1c. Alice server-deafens Bob: his mic is off (LiveKit grant too) and he plays nothing, not even Carol joining; lifting it restores both', async () => {
+    await step('1c. Alice server-deafens Bob: his mic is off and the media server delivers him no audio, not even from Carol joining; lifting it restores both live, without a rejoin', async () => {
+      await until('Bob to receive Alice\'s audio before the deafen', async () => (await audioIn(bob, 1000)) > 1000, 10000)
       await contextMenu(alice, voiceUser(alice, 'General', NAME.bob), 'Server Deafen')
       await voiceUser(bob, 'General', NAME.bob).getByRole('img', { name: 'Server deafened' }).waitFor(LIVE)
-      await until("Bob's remote gains 0 while server-deafened", async () => (await gains(bob)).every((v) => v === 0))
       await micIs(ids.voice, ids.bob, false, "server deafen stops Bob's mic")
       await until('Alice to lose the speaking indicator for Bob', async () => (await speaking(alice, 'General', NAME.bob)) === 0, 10000)
-      // someone joining while Bob is deafened is not played either
-      const before = (await gains(bob)).length
+      // enforced on the media server: no remote audio reaches Bob at all (LiveKit: no subscription; cillvoice: nothing forwarded)
+      await until('no remote audio to reach Bob while server-deafened', async () => (await audioIn(bob, 1500)) <= 0, 10000)
       await join(carol, 'General')
-      await until("Bob to get Carol's track, silenced", async () => { const g = await gains(bob); return g.length > before && g.every((v) => v === 0) }, 15000)
+      await voiceUser(bob, 'General', NAME.carol).waitFor(LIVE)
+      await sleep(1500)
+      check((await audioIn(bob, 3000)) <= 0, 'Bob receives audio while server-deafened (Alice speaking, Carol joined)')
       await shot(alice, 'server-deafen')
       await panel(carol).getByRole('button', { name: 'Disconnect' }).click()
+      const session = await bob.evaluate(() => window.__pcs.length)
       await contextMenu(alice, voiceUser(alice, 'General', NAME.bob), 'Server Deafen')
       await voiceUser(bob, 'General', NAME.bob).getByRole('img', { name: 'Server deafened' }).waitFor({ state: 'detached', ...LIVE })
+      await until("Alice's audio to reach Bob again after the server undeafen", async () => (await audioIn(bob, 1000)) > 1000, 15000)
       await until("Bob's remote gains back to 1", async () => (await gains(bob)).every((v) => v === 1))
       await micIs(ids.voice, ids.bob, true, "Bob's mic back after server undeafen")
+      check((await bob.evaluate(() => window.__pcs.length)) === session, 'Bob did not rejoin (no new peer connection) to get audio back')
     })
 
     // ---- 2. Move ----
