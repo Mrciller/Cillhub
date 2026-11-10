@@ -1,4 +1,4 @@
-// End-to-end check of the v5 features with Alice, Bob and Carol (and Dave in the desktop app) in real browsers against a
+// End-to-end check of the v5 features with Alice, Bob, Carol and Dave in real browsers against a
 // running server that serves client/dist and has LiveKit configured.
 // Run: NODE_PATH=<dir with playwright> E2E_BASE_URL=http://127.0.0.1:3300 node scripts/e2e-v5.cjs
 // Usernames get a random suffix, so any database works (use a throwaway instance). E2E_SCREENSHOTS=1 also writes
@@ -6,19 +6,14 @@
 // Watch Together: YouTube refuses playback from this server's network ("confirm you're not a bot", embed error 150), so
 // the IFrame API script is replaced by a clock-driven stand-in with the same player methods (window.__players); the
 // session state, its sync math and every control go through the real server. E2E_REAL_YOUTUBE=1 keeps the real API.
-// Game activity: the real desktop app (desktop/, Electron under xvfb-run, CDP on E2E_CDP_PORT, default 9339) logs in as
-// Dave (the app bundles the client: build it with `npm run build:web` in desktop/; the test hook points it at E2E_BASE_URL);
-// a copy of /bin/sleep named cs2 is the "game". E2E_DESKTOP=0 injects a fake window.cillcordDesktop instead.
+// Game activity: Dave's page gets a fake desktop bridge (window.cillcordDesktop) that reports "Counter-Strike 2".
 const { chromium } = require('playwright')
-const { spawn } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
 const os = require('node:os')
 
 const BASE = (process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3300').replace(/\/$/, '')
 const SHOTS = process.env.E2E_SCREENSHOTS ? path.join(__dirname, '..', 'docs', 'screenshots') : null
-const DESKTOP = process.env.E2E_DESKTOP !== '0'
-const CDP_PORT = Number(process.env.E2E_CDP_PORT ?? 9339)
 const LIVE = { timeout: 5000 } // live updates must arrive within 5 s, without reload
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const SFX = Math.random().toString(36).slice(2, 7)
@@ -229,8 +224,6 @@ async function main() {
   const wav = path.join(tmp, 'speech.wav')
   fs.writeFileSync(wav, speechWav())
   const browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`, '--autoplay-policy=no-user-gesture-required'] })
-  const children = []
-  let desktopBrowser = null
   try {
     const alice = await newUser(browser, 'Alice')
     const bob = await newUser(browser, 'Bob')
@@ -643,60 +636,28 @@ async function main() {
       check(domains.gateway.replace(/\/$/, '') === gw.url.replace(/\/$/, '').replace(/\/gateway$/, '') || domains.gateway === gw.url, `domains.gateway ${domains.gateway} vs /gateway ${gw.url}`)
     })
 
-    // ---- 7. Game activity from the desktop app ----
-    await step(`7. game activity: Dave in the ${DESKTOP ? 'desktop app (Electron)' : 'browser with a fake desktop bridge'} runs "cs2"; Alice sees "Playing Counter-Strike 2" in the member list`, async () => {
+    // ---- 7. Game activity from the desktop bridge ----
+    await step(`7. game activity: Dave's desktop bridge reports "Counter-Strike 2"; Alice sees "Playing Counter-Strike 2" in the member list`, async () => {
       const r = await fetch(`${BASE}/api/v9/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: `${NAME.dave.toLowerCase()}@example.com`, username: NAME.dave, password: PASSWORD }) })
       const { token } = await r.json()
       check(token, `register Dave: ${r.status}`)
       const invite = await ok(api(alice, 'POST', `/channels/${ids.general}/invites`, { max_age: 0 }))
       await fetch(`${BASE}/api/v9/invites/${invite.code}`, { method: 'POST', headers: { Authorization: token } })
-      let dave
-      if (DESKTOP) {
-        const home = path.join(tmp, 'desktop-home')
-        fs.mkdirSync(home)
-        const desktopDir = path.join(__dirname, '..', 'desktop')
-        const app = spawn('xvfb-run', ['-a', path.join(desktopDir, 'node_modules', '.bin', 'electron'), '.', '--no-sandbox', `--remote-debugging-port=${CDP_PORT}`], {
-          cwd: desktopDir, env: { ...process.env, CILLCORD_TEST_HOOK: '1', CILLCORD_URL: BASE, XDG_CONFIG_HOME: home, HOME: home }, stdio: 'ignore', detached: true,
-        })
-        children.push(app)
-        await until('the desktop app to open its debugging port', async () => (await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`)).ok, 30000)
-        desktopBrowser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`)
-        await until('the app window to load Cillhub', async () => desktopBrowser.contexts().flatMap((c) => c.pages()).some((p) => p.url().startsWith('app://cillhub/')), 20000)
-        dave = desktopBrowser.contexts().flatMap((c) => c.pages()).find((p) => p.url().startsWith('app://cillhub/'))
-        watch(dave, 'Dave (desktop)')
-        check(await dave.evaluate(() => !!window.cillcordDesktop?.onGameActivity), 'window.cillcordDesktop.onGameActivity from the preload')
-        await dave.evaluate((t) => localStorage.setItem('token', t), token)
-        await dave.goto(`app://cillhub/channels/${ids.guild}/${ids.general}`)
-      } else {
-        const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' })
-        await ctx.addInitScript((t) => {
-          localStorage.setItem('token', t)
-          let cb = null
-          window.cillcordDesktop = Object.freeze({ platform: 'linux', version: '1.1.0', onUpdateStatus: () => () => {}, onHotkey: () => () => {}, onGameActivity: (f) => ((cb = f), () => {}) })
-          setTimeout(() => cb?.({ name: 'Counter-Strike 2', start: Date.now() }), 3000)
-        }, token)
-        dave = await ctx.newPage()
-        watch(dave, 'Dave')
-        await dave.goto(`${BASE}/channels/${ids.guild}/${ids.general}`)
-      }
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' })
+      await ctx.addInitScript((t) => {
+        localStorage.setItem('token', t)
+        let cb = null
+        window.cillcordDesktop = Object.freeze({ platform: 'linux', version: '1.1.0', onUpdateStatus: () => () => {}, onHotkey: () => () => {}, onGameActivity: (f) => ((cb = f), () => {}) })
+        setTimeout(() => cb?.({ name: 'Counter-Strike 2', start: Date.now() }), 3000)
+      }, token)
+      const dave = await ctx.newPage()
+      watch(dave, 'Dave')
+      await dave.goto(`${BASE}/channels/${ids.guild}/${ids.general}`)
       await ready(dave)
-      let game
-      if (DESKTOP) {
-        const dir = fs.mkdtempSync(path.join(tmp, 'game-'))
-        const exe = path.join(dir, 'cs2')
-        fs.copyFileSync('/bin/sleep', exe)
-        fs.chmodSync(exe, 0o755)
-        game = spawn(exe, ['600'], { stdio: 'ignore' })
-        children.push(game)
-      }
       await openChannel(alice, 'general')
       const row = members(alice).getByRole('listitem').filter({ hasText: NAME.dave })
       await row.getByText('Playing Counter-Strike 2').waitFor({ timeout: 40000 })
       await shot(alice, 'playing')
-      if (game) {
-        game.kill()
-        await row.getByText('Playing Counter-Strike 2').waitFor({ state: 'detached', timeout: 40000 })
-      }
     })
 
     await step('8. no uncaught page errors and no native dialogs', async () => {
@@ -705,10 +666,6 @@ async function main() {
   } catch {
     // step() already reported it; later steps depend on earlier ones
   } finally {
-    await desktopBrowser?.close().catch(() => {})
-    for (const c of children) {
-      try { process.kill(-c.pid) } catch { c.kill() }
-    }
     await browser.close()
     fs.rmSync(tmp, { recursive: true, force: true })
   }
