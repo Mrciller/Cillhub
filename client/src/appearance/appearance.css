@@ -1,20 +1,20 @@
 /* Themes (CONTRACT-v4: dark, light, ash, onyx) override the palette in index.css's :root. */
 :root[data-theme="light"] {
-  --rail: #dfe5ef; --sidebar: #eef2f7; --chat: #fafbfd; --panel: #e5ebf3; --input: #e8eef6; --accent: #0068a8; --accent-hover: #00548a; --on-accent: #ffffff;
-  --text: #1c2536; --header: #0b111e; --muted: #505e75; --hover: #e3e9f2; --selected: #d5dfed; --menu: #ffffff; --focus: #0068a8;
-  --mention-bg: rgb(194 24 91 / .08); --signal: #c2185b; --signal-strong: #be123c; --danger: #d93a42; --online: #15803d; --offline: #647189;
-  --interactive: #3b485e; --btn-secondary: #48566d; --btn-secondary-hover: #364257; --border: #c6d0e1;
-  --danger-text: #b91c1c; --card: #f0f4f9; --scroll-thumb: #b4c0d4; --strong: #0b111e; --shadow: 0 10px 28px rgb(11 17 30 / .14), 0 2px 6px rgb(11 17 30 / .08); color-scheme: light;
+  --rail: #e3e6eb; --sidebar: #eef0f3; --chat: #fbfbfc; --panel: #e8ebef; --input: #eceef2; --accent: #c2410c; --accent-hover: #9a3412; --on-accent: #ffffff;
+  --text: #1d2128; --header: #0d1016; --muted: #596271; --hover: #e4e7ec; --selected: #d8dce3; --menu: #ffffff; --focus: #0b5fd6;
+  --mention-bg: rgb(190 18 60 / .08); --signal: #be123c; --signal-strong: #9f1239; --danger: #d93a42; --online: #15803d; --offline: #6b7380;
+  --interactive: #3d4555; --btn-secondary: #4b5464; --btn-secondary-hover: #384050; --border: #c8cdd6;
+  --danger-text: #b91c1c; --card: #f2f4f7; --scroll-thumb: #b4bac6; --strong: #0d1016; --shadow: 0 10px 28px rgb(13 16 22 / .14), 0 2px 6px rgb(13 16 22 / .08); color-scheme: light;
 }
 /* Ash: softer gunmetal slate, lifted for bright rooms. */
 :root[data-theme="ash"] {
-  --rail: #151922; --sidebar: #1b212e; --chat: #222938; --panel: #181d29; --input: #2b3345; --text: #e6ecf8; --hover: #293144; --selected: #323c52;
-  --menu: #242c3d; --card: #1f2635; --border: #364158; --scroll-thumb: #364158; --dot-bg: var(--sidebar); --muted: #a8b4ce;
+  --rail: #17181c; --sidebar: #1d1f25; --chat: #24262d; --panel: #1a1b20; --input: #2d3038; --text: #e8eaef; --hover: #2c2f37; --selected: #363a44;
+  --menu: #25282f; --card: #22252c; --border: #3a3e48; --scroll-thumb: #3a3e48; --dot-bg: var(--sidebar); --muted: #aab0bb;
 }
 /* Onyx: true black for OLED screens. */
 :root[data-theme="onyx"] {
-  --rail: #000000; --sidebar: #05070c; --chat: #080a10; --panel: #030408; --input: #111520; --hover: #121723; --selected: #1a2132;
-  --menu: #0c0f17; --card: #0c0f17; --border: #1d2436; --scroll-thumb: #1d2436;
+  --rail: #000000; --sidebar: #060607; --chat: #0a0a0c; --panel: #030304; --input: #15161a; --hover: #141518; --selected: #1e1f24;
+  --menu: #0e0f12; --card: #0e0f12; --border: #24262c; --scroll-thumb: #24262c;
 }
 :root[data-theme="light"] .avatar, :root[data-theme="light"] .badge { color: #fff; }
 :root[data-theme="light"] .mention { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--header); }
@@ -28,9 +28,9 @@
 :root[data-theme="light"] .bot-card-lfg { --kind: #157140; }
 /* The voice and stage grid stays dark in the light theme, so its text and cards use the dark palette. */
 :root[data-theme="light"] .voice-view .voice-body {
-  --text: #dfe6f4; --header: #f5f8ff; --strong: #fff; --muted: #929fb8; --interactive: #b8c4dc; --sidebar: #0f141e; --dot-bg: #0f141e;
-  --panel: #0b0f18; --card: #101622; --input: #1b2333; --hover: #1c2436; --selected: #232e45; --border: #253047; --danger-text: #ff8589;
-  --btn-secondary: #263149; --btn-secondary-hover: #313f5d; --focus: #38bdf8; color: var(--text); color-scheme: dark;
+  --text: #e3e6ec; --header: #f7f8fa; --strong: #fff; --muted: #9aa1ad; --interactive: #c0c6d0; --sidebar: #121418; --dot-bg: #121418; --rail: #0b0c0f;
+  --panel: #0e0f12; --card: #1a1d23; --input: #1f2228; --hover: #202329; --selected: #2a2e36; --border: #2c3038; --danger-text: #ff8a8a;
+  --btn-secondary: #2b2f38; --btn-secondary-hover: #363b46; --focus: #7cc4ff; color: var(--text); color-scheme: dark;
 }
 /* Increase Contrast (OS setting): secondary text as strong as body text, firmer lines, thicker focus rings. */
 @media (prefers-contrast: more) {
@@ -109,4 +109,4 @@
 .range-field input[type="range"] { width: 100%; accent-color: var(--accent); }
 .range-ticks { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
 .settings-section { margin-bottom: 28px; }
-.settings-section h2 { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 8px; }
+.settings-section h2 { font-size: 12px; color: var(--muted); margin-bottom: 8px; }

@@ -80,7 +80,7 @@ function setup(opts) {
 function open(section) {
   if (win) { win.show(); win.focus(); return win; }
   win = new BrowserWindow({
-    width: 580, height: 720, minWidth: 440, minHeight: 460, title: 'Cillhub Settings', backgroundColor: '#141a26',
+    width: 580, height: 720, minWidth: 440, minHeight: 460, title: 'Cillhub Settings', backgroundColor: '#17191e',
     icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true, show: false,
     webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });

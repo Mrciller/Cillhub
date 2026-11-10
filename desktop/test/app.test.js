@@ -79,14 +79,14 @@ test('identity: app id matches the build config, release builds have no moved no
   assert.ok(!pkg.build.publish, 'the feed comes from scripts/dist.js (src/config.js), not package.json');
 });
 
-test('argon theme: desktop windows, settings page, and screen-share picker use obsidian surfaces and cyan-teal accent', () => {
+test('arena theme: desktop windows, settings page, and screen-share picker use charcoal surfaces and the orange accent', () => {
   for (const f of ['main.js', 'settings-window.js', 'screenshare.js']) {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
-    assert.match(src, /backgroundColor:\s*'#141a26'/, `${f} uses Argon obsidian surface`);
+    assert.match(src, /backgroundColor:\s*'#17191e'/, `${f} uses the arena charcoal surface`);
   }
   for (const f of ['settings.html', 'picker.html']) {
     const html = fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
-    assert.match(html, /#141a26/, `${f} uses Argon obsidian background`);
-    assert.match(html, /#00d2eb/, `${f} uses Argon cyan-teal accent`);
+    assert.match(html, /#17191e/, `${f} uses the arena charcoal background`);
+    assert.match(html, /#ff6a1f/, `${f} uses the orange accent`);
   }
 });

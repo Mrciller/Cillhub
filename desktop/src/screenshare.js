@@ -27,7 +27,7 @@ function pick(parent, sources) {
     const validParent = parent && !parent.isDestroyed() ? parent : null;
     const win = new BrowserWindow({
       parent: validParent, modal: !!validParent, width: 760, height: 560, minWidth: 480, minHeight: 360,
-      title: 'Share your screen', backgroundColor: '#141a26', autoHideMenuBar: true, show: false,
+      title: 'Share your screen', backgroundColor: '#17191e', autoHideMenuBar: true, show: false,
       webPreferences: { preload: path.join(__dirname, 'picker-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
     let done = false;

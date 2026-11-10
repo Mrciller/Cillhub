@@ -6,42 +6,42 @@
 <title>Cillhub Settings</title>
 <style>
   [hidden] { display: none !important; }
-  body { margin: 0; background: #141a26; color: #dfe6f4; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { margin: 0; background: #17191e; color: #e3e6ec; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   main { max-width: 620px; margin: 0 auto; padding: 12px 22px 28px; }
-  h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.015em; color: #f5f8ff; margin: 16px 0 4px; }
-  h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #929fb8; margin: 26px 0 10px; }
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.015em; color: #f7f8fa; margin: 16px 0 4px; }
+  h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #9aa1ad; margin: 26px 0 10px; }
   h2:focus { outline: none; }
-  section { border-bottom: 1px solid #253047; padding-bottom: 16px; }
-  p.hint { color: #929fb8; font-size: 13px; margin: 4px 0 10px; }
+  section { border-bottom: 1px solid #2c3038; padding-bottom: 16px; }
+  p.hint { color: #9aa1ad; font-size: 13px; margin: 4px 0 10px; }
   .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
   .row > .grow { flex: 1; }
-  label.switch { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; color: #f5f8ff; cursor: pointer; }
-  input[type=checkbox] { width: 18px; height: 18px; accent-color: #00d2eb; margin: 2px 0 0; cursor: pointer; }
-  input[type=text] { background: #0b0f18; color: #dfe6f4; border: 1px solid #253047; border-radius: 8px; padding: 8px 11px; font: inherit; width: 100%; box-sizing: border-box; }
-  .field { flex: 1; display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: #b8c4dc; }
-  button { border: 1px solid #253047; border-radius: 8px; padding: 7px 14px; font: inherit; font-weight: 600; cursor: pointer; background: #1b2333; color: #f5f8ff; transition: background 0.15s, border-color 0.15s; }
-  button:hover { background: #253047; }
-  button.primary { background: #00d2eb; color: #041318; border-color: transparent; font-weight: 700; }
-  button.primary:hover { background: #38e1f5; }
-  button.link { background: transparent; border-color: transparent; color: #38bdf8; padding: 4px 6px; }
+  label.switch { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; color: #f7f8fa; cursor: pointer; }
+  input[type=checkbox] { width: 18px; height: 18px; accent-color: #ff6a1f; margin: 2px 0 0; cursor: pointer; }
+  input[type=text] { background: #0e0f12; color: #e3e6ec; border: 1px solid #2c3038; border-radius: 8px; padding: 8px 11px; font: inherit; width: 100%; box-sizing: border-box; }
+  .field { flex: 1; display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: #c0c6d0; }
+  button { border: 1px solid #2c3038; border-radius: 8px; padding: 7px 14px; font: inherit; font-weight: 600; cursor: pointer; background: #1f2228; color: #f7f8fa; transition: background 0.15s, border-color 0.15s; }
+  button:hover { background: #2c3038; }
+  button.primary { background: #ff6a1f; color: #170900; border-color: transparent; font-weight: 700; }
+  button.primary:hover { background: #ff8747; }
+  button.link { background: transparent; border-color: transparent; color: #7cc4ff; padding: 4px 6px; }
   button.link:hover { text-decoration: underline; background: transparent; }
-  button.key { min-width: 150px; background: #0b0f18; font-family: ui-monospace, Consolas, monospace; }
-  button.key[aria-pressed="true"] { outline: 2px solid #f43f5e; border-color: #f43f5e; }
-  button:focus-visible, input:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+  button.key { min-width: 150px; background: #0e0f12; font-family: ui-monospace, Consolas, monospace; }
+  button.key[aria-pressed="true"] { outline: 2px solid #ff3d57; border-color: #ff3d57; }
+  button:focus-visible, input:focus-visible { outline: 2px solid #7cc4ff; outline-offset: 2px; }
   ul { list-style: none; padding: 0; margin: 6px 0; }
-  li { display: flex; align-items: center; justify-content: space-between; background: #101622; border: 1px solid #253047; border-radius: 8px; padding: 7px 12px; margin: 5px 0; }
-  li code { color: #929fb8; margin-left: 6px; }
-  .now { background: #101622; border: 1px solid #253047; border-radius: 8px; padding: 9px 12px; }
-  .error { color: #fb7185; font-size: 13px; min-height: 1em; margin: 4px 0; }
-  .warn { color: #f59e0b; font-size: 13px; }
+  li { display: flex; align-items: center; justify-content: space-between; background: #1a1d23; border: 1px solid #2c3038; border-radius: 8px; padding: 7px 12px; margin: 5px 0; }
+  li code { color: #9aa1ad; margin-left: 6px; }
+  .now { background: #1a1d23; border: 1px solid #2c3038; border-radius: 8px; padding: 9px 12px; }
+  .error { color: #ff8a8a; font-size: 13px; min-height: 1em; margin: 4px 0; }
+  .warn { color: #ffb020; font-size: 13px; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-  .badge.ok { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
-  .badge.dim { background: rgba(146, 159, 184, 0.12); color: #929fb8; border: 1px solid #253047; }
-  .badge.active { background: rgba(0, 210, 235, 0.15); color: #00d2eb; border: 1px solid rgba(0, 210, 235, 0.3); }
-  .info-card { background: #101622; border: 1px solid #253047; border-radius: 8px; padding: 10px 14px; margin: 8px 0; }
-  .info-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px solid rgba(37, 48, 71, 0.5); }
+  .badge.ok { background: rgba(47, 211, 106, 0.15); color: #2fd36a; border: 1px solid rgba(47, 211, 106, 0.3); }
+  .badge.dim { background: rgba(154, 161, 173, 0.12); color: #9aa1ad; border: 1px solid #2c3038; }
+  .badge.active { background: rgba(255, 106, 31, 0.15); color: #ff6a1f; border: 1px solid rgba(255, 106, 31, 0.3); }
+  .info-card { background: #1a1d23; border: 1px solid #2c3038; border-radius: 8px; padding: 10px 14px; margin: 8px 0; }
+  .info-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px solid rgba(44, 48, 56, 0.5); }
   .info-row:last-child { border-bottom: none; }
-  .info-row .label { color: #dfe6f4; font-weight: 500; }
+  .info-row .label { color: #e3e6ec; font-weight: 500; }
   @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
 </head>
@@ -142,7 +142,7 @@
         <span class="badge dim" id="update-badge">Checking…</span>
       </div>
       <div class="info-row" style="margin-top:4px">
-        <span class="grow" id="update-status-label" style="font-size:13px;color:#929fb8">Checking for updates…</span>
+        <span class="grow" id="update-status-label" style="font-size:13px;color:#9aa1ad">Checking for updates…</span>
         <div style="display:flex;gap:8px">
           <button type="button" id="btn-check-update">Check for updates</button>
           <button type="button" class="primary" id="btn-install-update" hidden>Restart to update</button>

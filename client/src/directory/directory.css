@@ -16,14 +16,14 @@
 .dir-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 0 16px 16px; border-radius: var(--radius-m); border: 1px solid var(--border); background: var(--sidebar); overflow: hidden;
   transition: transform .16s var(--ease-out), box-shadow .16s var(--ease-out), border-color .16s; }
 .dir-card:hover { transform: translateY(-2px); border-color: var(--btn-secondary-hover); box-shadow: 0 8px 20px rgb(0 0 0 / .24); }
-.dir-banner { height: 96px; margin: 0 -16px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 32%, var(--panel)), color-mix(in srgb, var(--signal) 18%, var(--panel))) center / cover; }
-.dir-icon { width: 56px; height: 56px; margin-top: -32px; border-radius: 16px; border: 4px solid var(--sidebar); background: var(--chat); display: grid; place-items: center;
+.dir-banner { height: 96px; margin: 0 -16px; background: var(--accent) center / cover; }
+.dir-icon { width: 56px; height: 56px; margin-top: -32px; border-radius: var(--radius-l); border: 4px solid var(--sidebar); background: var(--chat); display: grid; place-items: center;
   overflow: hidden; color: var(--header); font-weight: 600; }
 .dir-icon img { width: 100%; height: 100%; object-fit: cover; }
 .dir-card h3 { color: var(--header); font-size: 16px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
 .dir-desc { color: var(--text); font-size: 14px; margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .dir-node { margin: 0; font-size: 12px; color: var(--interactive); }
-.node-chip { display: inline-block; padding: 1px 6px; border-radius: 5px; background: var(--btn-secondary); color: #fff; font-weight: 600; }
+.node-chip { display: inline-block; padding: 1px 6px; border-radius: var(--radius-s); background: var(--btn-secondary); color: #fff; font-weight: 600; }
 .dir-node.down .node-chip { background: var(--danger); }
 .dir-tags { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
 .dir-tags li { padding: 2px 8px; border-radius: 999px; background: var(--chat); border: 1px solid var(--border); font-size: 12px; color: var(--interactive); }

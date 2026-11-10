@@ -87,7 +87,7 @@ if (!app.requestSingleInstanceLock()) {
       minHeight: 320,
       resizable: true,
       title: 'Cillhub',
-      backgroundColor: '#141a26',
+      backgroundColor: '#17191e',
       icon: path.join(__dirname, 'assets', 'icon.png'),
       autoHideMenuBar: true,
       show: false,
@@ -158,7 +158,7 @@ if (!app.requestSingleInstanceLock()) {
       const inApp = appUrlFor(url);
       if (inApp) { openInApp(inApp); return { action: 'deny' }; }
       if (frameName === SIGNIN && isHttpUrl(url) && isAppUrl(contents.getURL())) {
-        return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 720, title: 'Cillhub', autoHideMenuBar: true, backgroundColor: '#141a26' } };
+        return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 720, title: 'Cillhub', autoHideMenuBar: true, backgroundColor: '#17191e' } };
       }
       openExternal(url);
       return { action: 'deny' };
