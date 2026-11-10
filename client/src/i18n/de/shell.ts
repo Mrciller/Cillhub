@@ -33,6 +33,7 @@ export const shell: Record<string, string> = {
   'Multi-Factor Authentication': 'Mehrstufige Authentifizierung',
   'Enter one of your 8-character backup codes.': 'Gib einen deiner 8-stelligen Backup-Codes ein.',
   'Enter the 6-digit code from your authenticator app.': 'Gib den 6-stelligen Code aus deiner Authentifizierungs-App ein.',
+  'Your account uses two-factor authentication: enter a code to confirm.': 'Dein Konto nutzt Zwei-Faktor-Authentifizierung: Gib zur Bestätigung einen Code ein.',
   'Backup code': 'Backup-Code', 'Authentication code': 'Authentifizierungscode', 'Authentication or backup code': 'Authentifizierungs- oder Backup-Code',
   'Use a backup code': 'Backup-Code verwenden', 'Use your authenticator app instead': 'Stattdessen Authentifizierungs-App verwenden', 'Go back to login': 'Zurück zur Anmeldung',
   'This invite is invalid or has expired.': 'Diese Einladung ist ungültig oder abgelaufen.', '{name} invited you to join': '{name} hat dich eingeladen beizutreten',

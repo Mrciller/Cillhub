@@ -29,6 +29,7 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
   const [busy, setBusy] = useState(false)
   const [mfa, setMfa] = useState<Mfa | null>(null)
   const [renew, setRenew] = useState<string | null>(null) // token of a login that must set a new password first (v6 admin)
+  const [renewCode, setRenewCode] = useState(false) // the account has 2FA: the change also needs a code (server step-up)
   const [backup, setBackup] = useState(false)
   const [forgot, setForgot] = useState<'form' | 'sent' | null>(null) // 7.10: password reset by email
   const [captchaKey, setCaptchaKey] = useState('')
@@ -212,10 +213,15 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
     setError(null)
     localStorage.setItem('token', renew) // api() sends the stored token; the store only learns it in done()
     try {
-      const r = await api<{ token?: string }>('/users/@me', { method: 'PATCH', body: { password: f.password, new_password: f.new_password } })
+      const code = f.code ? { code: f.code.replace(/[\s-]/g, '') } : {}
+      const r = await api<{ token?: string }>('/users/@me', { method: 'PATCH', body: { password: f.password, new_password: f.new_password, ...code } })
       done(r.token ?? renew)
     } catch (err) {
       localStorage.removeItem('token')
+      if (err instanceof ApiError && err.code === 60003) {
+        setRenewCode(true)
+        return fail(new ApiError(0, { message: t('Your account uses two-factor authentication: enter a code to confirm.') }))
+      }
       fail(err)
     }
   }
@@ -230,6 +236,7 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
             <Field label={t('Current Password')} name="password" type="password" autoComplete="current-password" required error={fieldError('password')} autoFocus />
             <Field label={t('New Password')} name="new_password" type="password" autoComplete="new-password" required minLength={8} maxLength={72} error={fieldError('new_password')} />
             <Field label={t('Confirm New Password')} name="confirm" type="password" autoComplete="new-password" required minLength={8} maxLength={72} />
+            {renewCode && <Field label={t('Authentication or backup code')} name="code" required autoComplete="one-time-code" maxLength={11} autoFocus />}
             <FormError error={message} />
             <button className="primary wide" disabled={busy}>{t('Change Password')}</button>
           </form>
