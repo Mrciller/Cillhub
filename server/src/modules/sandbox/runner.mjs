@@ -104,7 +104,7 @@ function load({ files: f, main }) {
     else if (t === 'done') line = `{"t":"done","eid":${id},"ok":${a === 'ok'},"${a === 'ok' ? 'result' : 'error'}":${b}}`;
     else if (t === 'log') {
       if (Date.now() - logWindow > 1000) { logWindow = Date.now(); logCount = 0; }
-      if (++logCount > 50) return vm.false;
+      if (++logCount > 200) return vm.false;
       line = JSON.stringify({ t: 'log', level: a, message: b.slice(0, 2000) });
     } else return vm.false;
     if (Buffer.byteLength(line) > MAX_FRAME) return vm.false;
