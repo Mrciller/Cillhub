@@ -21,6 +21,13 @@ export function str(body, field, min, max, trim = true) {
   return v;
 }
 
+// one plain address: no list separators, quotes, brackets, whitespace or control characters a mailer could split on
+export function emailField(body, field = 'email') {
+  const v = str(body, field, 3, 254);
+  if (!/^[^@\s,;<>"()\x00-\x1f\x7f-\x9f]+@[^@\s,;<>"()\x00-\x1f\x7f-\x9f]+$/.test(v)) throw invalid(field, 'EMAIL_TYPE_INVALID_EMAIL', 'Not a well formed email address.');
+  return v;
+}
+
 export function intParam(query, name, fallback, min, max) {
   if (!query.has(name)) return fallback;
   const n = Number(query.get(name));

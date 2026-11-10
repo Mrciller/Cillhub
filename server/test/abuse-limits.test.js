@@ -1,5 +1,5 @@
 // Limits and leaks from the 2026-11-10 risk check: anonymous limits per IPv6 /64, the calendar feed only shows visible
-// events, generated invite codes never collide with custom invite names, /download relaying is limited.
+// events, generated invite codes never collide with custom invite names, /download relaying is limited, email checks.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
@@ -36,6 +36,17 @@ test('sign-up limit counts one IPv6 /64 as one client', async () => {
   for (let i = 0; i < 13; i++) codes.push((await reg(`kim${i}`, `2001:db8:1:2::${(0x10 + i).toString(16)}`)).status);
   assert.deepEqual([codes.filter(c => c === 201).length, codes.filter(c => c === 429).length], [10, 3], codes.join());
   assert.equal((await reg('kim-other', '2001:db8:1:3::10')).status, 201, 'another /64 has its own budget');
+});
+
+test('email addresses: one plain address only, at sign-up and on change', async () => {
+  for (const bad of ['robin@x.test,postmaster', 'robin@x.test;b', '<robin@x.test>', '"robin"@x.test', 'robin(x)@x.test', 'ro bin@x.test', 'robin@x.test\u0007']) {
+    const r = await reg('robin', '192.0.2.50', bad);
+    assert.deepEqual([r.status, Object.keys(r.body.errors ?? {})], [400, ['email']], JSON.stringify(bad));
+  }
+  assert.equal((await reg('robin', '192.0.2.51', 'robin+chat@x.test')).status, 201);
+  const robin = (await api('POST', '/auth/login', null, { login: 'robin', password: 'hunter2hunter2' })).body.token;
+  assert.equal((await api('PATCH', '/users/@me', robin, { email: 'robin@x.test, kim@x.test', password: 'hunter2hunter2' })).status, 400);
+  assert.equal((await api('PATCH', '/users/@me', robin, { email: 'robin@y.test', password: 'hunter2hunter2' })).body.email, 'robin@y.test');
 });
 
 test('calendar feed: no events of channels the member cannot see', async () => {

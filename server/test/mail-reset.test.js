@@ -9,7 +9,8 @@ import { createServer as httpServer, request as httpRequest } from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { rm } from 'node:fs/promises';
+import { rm, mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { startServer, tempDir } from './helpers.js';
 
 process.env.DATA_DIR = await tempDir(); // scrub() runs in-process against its own database
@@ -72,7 +73,7 @@ async function mailTo(addr, ms = 3000) {
   return null;
 }
 // the link is quoted-printable in the mail body
-const linkIn = m => m.data.replace(/=\n/g, '').replace(/=3D/g, '=').match(/https:\/\/\S+\/reset\?token=([\w-]+)/);
+const linkIn = m => m.data.replace(/=\n/g, '').replace(/=3D/g, '=').match(/https:\/\/\S+\/reset#token=([\w-]+)/);
 
 let srv, api, root;
 let forgotCalls = 0; // every counted POST /auth/forgot from 127.0.0.1 (10 per hour)
@@ -83,8 +84,11 @@ const dbRun = (sql, ...args) => { const db = new DatabaseSync(join(srv.dataDir, 
 before(async () => {
   await new Promise(r => smtp.listen(SMTP_PORT, '127.0.0.1', r));
   await new Promise(r => captcha.listen(CAPTCHA_PORT, '127.0.0.1', r));
+  const staticDir = await mkdtemp(join(tmpdir(), 'cillhub-static-'));
+  await writeFile(join(staticDir, 'index.html'), '<!doctype html>');
   srv = await startServer({
     env: {
+      STATIC_DIR: staticDir,
       CILLCORD_RATE_LIMIT_SCALE: '1', CILLCORD_HOSTNAME: 'old.example.org', CILLCORD_PUBLIC_URL: 'https://old.example.org',
       CAPTCHA_VERIFY_URL: `http://127.0.0.1:${CAPTCHA_PORT}/verify`,
     },
@@ -198,7 +202,7 @@ test('forgot and reset: no account oracle, single use, expiry, sessions end, 2FA
   assert.match(m.data, /Reset your password on Cillhub/);
   assert.match(m.data, /30 minutes/);
   const [, token] = linkIn(m);
-  assert.match(linkIn(m)[0], /^https:\/\/chat\.example\.org\/reset\?token=/, 'link on the public URL');
+  assert.match(linkIn(m)[0], /^https:\/\/chat\.example\.org\/reset#token=/, 'link on the public URL, token in the fragment (never in a log)');
   assert.ok(!m.data.includes('evil'), 'no forged host in the mail');
 
   const reset = (t, password = 'new-pass-alex') => api('POST', '/auth/reset', null, { token: t, password });
@@ -271,4 +275,44 @@ test('no configured address: password reset is off (the Host header never builds
   } finally {
     await other.stop();
   }
+});
+
+test('app CSP: reCAPTCHA script hosts only while captcha is on, without a restart', async () => {
+  const scripts = async () => (await fetch(`${srv.origin}/login`)).headers.get('content-security-policy').match(/script-src [^;]*/)[0];
+  await api('PATCH', '/admin/settings', root.token, { captcha_site_key: 'site-key-kim', captcha_secret: 'captcha-secret-kim' });
+  assert.match(await scripts(), /https:\/\/www\.google\.com\/recaptcha\/ https:\/\/www\.gstatic\.com\/recaptcha\//);
+  await api('PATCH', '/admin/settings', root.token, { captcha_secret: null });
+  assert.equal(await scripts(), "script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com");
+});
+
+test('a pending reset link dies when the email or the password changes', async () => {
+  const sam = await srv.register('sam');
+  const ask = async addr => {
+    assert.equal((await api('POST', '/auth/forgot', null, { login: addr }, { 'X-Forwarded-For': '2001:db8:77::1' })).status, 204);
+    return linkIn(await mailTo(addr))[1];
+  };
+  const reset = t => api('POST', '/auth/reset', null, { token: t, password: 'new-pass-sam' });
+  const t1 = await ask('sam@example.com');
+  assert.equal((await api('PATCH', '/users/@me', sam.token, { email: 'sam2@example.com', password: 'hunter2hunter2' })).status, 200);
+  assert.equal((await reset(t1)).status, 400, 'email change');
+  const t2 = await ask('sam2@example.com');
+  assert.equal((await api('PATCH', '/users/@me', sam.token, { new_password: 'other-pass-sam', password: 'hunter2hunter2' })).status, 200);
+  assert.equal((await reset(t2)).status, 400, 'password change');
+});
+
+test('forgot answers before any lookup or write: same reply and speed for every address', async () => {
+  // with the database write-locked from outside, the old code failed or waited on its writes; now the 204 is already out
+  const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sqlite'));
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (const addr of ['robin@example.com', 'nobody@example.com']) {
+      assert.equal((await api('POST', '/auth/forgot', null, { login: addr }, { 'X-Forwarded-For': '2001:db8:78::1' })).status, 204, addr);
+    }
+  } finally {
+    db.exec('ROLLBACK');
+    db.close();
+  }
+  assert.equal(await mailTo('robin@example.com', 300), null, 'the failed background work sent nothing');
+  assert.equal((await api('POST', '/auth/forgot', null, { login: 'robin@example.com' }, { 'X-Forwarded-For': '2001:db8:78::1' })).status, 204);
+  assert.ok(await mailTo('robin@example.com'), 'mail once the database is free');
 });

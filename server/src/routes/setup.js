@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { snowflake } from '../snowflake.js';
 import { get, run } from '../db.js';
-import { HttpError, str, invalid } from '../errors.js';
+import { HttpError, str, invalid, emailField } from '../errors.js';
 import { hashPassword, issueToken } from '../auth.js';
 import { checkLogin, loginFailed, netOf } from '../ratelimit.js';
 import { setting, setSetting, publicInstance, adminAudit } from '../instance.js';
@@ -45,8 +45,7 @@ function state() {
 async function createAdmin(ctx) {
   checkCode(ctx);
   if (setting('setup_admin_id')) throw new HttpError(400, 0, 'The first admin already exists; sign in to continue.');
-  const email = str(ctx.body, 'email', 3, 254);
-  if (!/^[^@\s]+@[^@\s]+$/.test(email)) throw invalid('email', 'EMAIL_TYPE_INVALID_EMAIL', 'Not a well formed email address.');
+  const email = emailField(ctx.body);
   const username = str(ctx.body, 'username', 2, 32);
   if (username.includes('@')) throw invalid('username', 'USERNAME_INVALID_CONTAINS', 'Username cannot contain "@".');
   const { hash, salt } = await hashPassword(str(ctx.body, 'password', 8, 72, false));

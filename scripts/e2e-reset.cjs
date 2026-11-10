@@ -149,8 +149,8 @@ async function main() {
       await page.getByRole('button', { name: 'Send link' }).click()
       await page.getByText('If an account with this address exists, a mail with a link is on its way.').waitFor()
       const mail = await until('the reset mail', async () => mails.find((m) => m.to.includes('alex@example.com')))
-      link = mail.data.replace(/=\n/g, '').replace(/=3D/g, '=').match(/http:\/\/\S+\/reset\?token=[\w-]+/)?.[0]
-      check(link?.startsWith(`${BASE}/reset?token=`), `link on this instance: ${link}`)
+      link = mail.data.replace(/=\n/g, '').replace(/=3D/g, '=').match(/http:\/\/\S+\/reset#token=[\w-]+/)?.[0]
+      check(link?.startsWith(`${BASE}/reset#token=`), `link on this instance, token in the fragment: ${link}`)
     })
 
     await step('3. the link sets a new password; the old session ends; the old password stops working', async () => {
@@ -171,8 +171,24 @@ async function main() {
       await page.getByLabel('Password').fill('new-pass-alex')
       await page.getByRole('button', { name: 'Log In' }).click()
       await page.waitForURL('**/channels/@me')
-      const again = await fetch(`${BASE}/api/v9/auth/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: new URL(link).searchParams.get('token'), password: 'third-pass-alex' }) })
+      const again = await fetch(`${BASE}/api/v9/auth/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: new URL(link).hash.slice('#token='.length), password: 'third-pass-alex' }) })
       check(again.status === 400, 'second use refused')
+    })
+
+    await step('4b. a 7.10.0 link (?token=) still works', async () => {
+      await api('POST', '/auth/forgot', null, { login: 'alex@example.com' })
+      const mail = await until('the second reset mail', async () => mails.filter((m) => m.to.includes('alex@example.com'))[1])
+      const fresh = mail.data.replace(/=\n/g, '').replace(/=3D/g, '=').match(/http:\/\/\S+\/reset#token=[\w-]+/)?.[0]
+      const legacy = fresh.replace('#token=', '?token=')
+      const oc = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' })
+      const other = await oc.newPage()
+      await other.goto(legacy)
+      await other.getByLabel('New Password', { exact: true }).fill('fourth-pass-alex')
+      await other.getByLabel('Confirm New Password').fill('fourth-pass-alex')
+      await other.getByRole('button', { name: 'Change Password' }).click()
+      await other.getByRole('heading', { name: 'Password changed' }).waitFor()
+      check(!other.url().includes('token='), 'token left the address bar')
+      await oc.close()
     })
 
     await step('5. with captcha keys set, Robin signs up through the checkbox (server checks the token)', async () => {

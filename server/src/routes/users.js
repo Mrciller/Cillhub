@@ -1,5 +1,5 @@
 import { get, all, run, audienceOf, userById, userObj, guildObj, guildsOf } from '../db.js';
-import { str, int, invalid, notFound } from '../errors.js';
+import { str, int, invalid, notFound, emailField } from '../errors.js';
 import { sendToUsers, closeTokenSessions } from '../gateway.js';
 import { saveImage, removeImage } from '../files.js';
 import { hashPassword, confirmPassword, tokenHash } from '../auth.js';
@@ -30,8 +30,7 @@ async function patchMe(ctx) {
     if (next.username.includes('@')) throw invalid('username', 'USERNAME_INVALID_CONTAINS', 'Username cannot contain "@".');
   }
   if (body.email !== undefined) {
-    next.email = str(body, 'email', 3, 254);
-    if (!/^[^@\s]+@[^@\s]+$/.test(next.email)) throw invalid('email', 'EMAIL_TYPE_INVALID_EMAIL', 'Not a well formed email address.');
+    next.email = emailField(body);
   }
   if (body.new_password !== undefined) Object.assign(next, await hashPassword(str(body, 'new_password', 8, 72, false)));
   if (next.hash) { next.password_hash = next.hash; delete next.hash; next.require_password_change = 0; }
@@ -43,6 +42,7 @@ async function patchMe(ctx) {
   if (next.username && get('SELECT 1 FROM users WHERE username = ? AND id != ?', next.username, user.id)) throw invalid('username', 'USERNAME_ALREADY_TAKEN', 'Username is unavailable.');
   if (next.email && get('SELECT 1 FROM users WHERE email = ? AND id != ?', next.email, user.id)) throw invalid('email', 'EMAIL_ALREADY_REGISTERED', 'Email is already registered.');
   for (const [k, v] of Object.entries(next)) run(`UPDATE users SET ${k} = ? WHERE id = ?`, v, user.id); // keys are fixed above
+  if (next.email || next.password_hash) run('DELETE FROM password_resets WHERE user_id = ?', user.id); // a pending reset link dies with the old address or password
   if ('avatar' in next && next.avatar !== user.avatar) removeImage('avatars', user.id, user.avatar);
   if ('banner' in next && next.banner !== user.banner) removeImage('banners', user.id, user.banner);
   if (next.password_hash) {

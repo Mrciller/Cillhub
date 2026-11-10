@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { snowflake } from '../snowflake.js';
 import { get, all, run } from '../db.js';
 import { hashPassword, checkPassword, issueToken, revokeToken, tokenHash, sessionIdHash } from '../auth.js';
-import { HttpError, str, invalid, unauthorized } from '../errors.js';
+import { HttpError, str, invalid, unauthorized, emailField } from '../errors.js';
 import { closeTokenSessions } from '../gateway.js';
 import { checkLogin, loginFailed, loginSucceeded, limit, netOf } from '../ratelimit.js';
 import { newTicket, redeemTicket, requireMfa, elevate } from '../mfa.js';
@@ -34,8 +34,7 @@ async function register(ctx) {
   if (setting('registration_mode') === 'closed') registrationCode({}); // says "closed" before asking for a captcha
   await requireCaptcha(ctx); // before the hash and before any answer about taken names
   registrationCode(ctx.body ?? {});
-  const email = str(ctx.body, 'email', 3, 254);
-  if (!/^[^@\s]+@[^@\s]+$/.test(email)) throw invalid('email', 'EMAIL_TYPE_INVALID_EMAIL', 'Not a well formed email address.');
+  const email = emailField(ctx.body);
   const username = str(ctx.body, 'username', 2, 32);
   if (username.includes('@')) throw invalid('username', 'USERNAME_INVALID_CONTAINS', 'Username cannot contain "@".');
   const password = str(ctx.body, 'password', 8, 72, false);
@@ -52,8 +51,8 @@ async function register(ctx) {
 }
 
 // --- password reset by email ---------------------------------------------------------------------------------------------
-// POST /auth/forgot {login: email}: always 204 and the same work whether the account exists, so it tells nobody which
-// addresses have accounts; the mail goes out in the background. Only the token's SHA-256 is stored, 30 minutes.
+// POST /auth/forgot {login: email}: always 204, answered before any lookup, so it tells nobody which addresses have
+// accounts; the work and the mail happen after the reply. Only the token's SHA-256 is stored, 30 minutes.
 const RESET_MS = 30 * 60_000;
 const resetHash = token => createHash('sha256').update(token).digest('hex');
 const RESET_MAIL = {
@@ -73,6 +72,12 @@ async function forgot(ctx) {
   limit('AUTH', 'forgot-ip', {}, netOf(ctx.ip), ctx.headers);
   await requireCaptcha(ctx);
   const email = str(ctx.body, 'login', 3, 254);
+  // the 204 goes out before the lookup, so known and unknown addresses answer equally fast
+  setImmediate(() => {
+    try { sendReset(email); } catch (e) { console.error(`password reset failed: ${e.message}`); } // the token is never in the message
+  });
+}
+function sendReset(email) {
   run('DELETE FROM password_resets WHERE expires_at <= ?', Date.now());
   try { limit('AUTH', 'forgot-email', {}, email.toLowerCase(), {}); } catch { return; } // silent: a 429 would say the address is known
   const user = get(`SELECT * FROM users WHERE email = ? AND disabled = 0 AND deleted = 0 AND bot = 0 AND system = 0 AND home IS NULL`, email);
@@ -80,7 +85,8 @@ async function forgot(ctx) {
   const token = randomBytes(32).toString('base64url');
   run('DELETE FROM password_resets WHERE user_id = ?', user.id);
   run('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)', resetHash(token), user.id, Date.now() + RESET_MS);
-  const mail = (RESET_MAIL[settingsOf(user.id).locale] ?? RESET_MAIL['en-US'])(setting('instance_name'), `${configuredUrl()}/reset?token=${token}`);
+  // the token rides in the fragment, which browsers never send, so it stays out of server and proxy logs
+  const mail = (RESET_MAIL[settingsOf(user.id).locale] ?? RESET_MAIL['en-US'])(setting('instance_name'), `${configuredUrl()}/reset#token=${token}`);
   sendMail({ to: user.email, ...mail }).catch(e => console.error(`password reset mail failed: ${mailError(e)}`));
 }
 

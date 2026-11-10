@@ -1,4 +1,5 @@
-// /reset?token=…: the page the password reset mail links to. Talks to this page's own origin (the instance that sent
+// /reset#token=…: the page the password reset mail links to (the fragment never reaches a server or proxy log; mails of
+// 7.10.0 still carry ?token=). Talks to this page's own origin (the instance that sent
 // the mail), never to a server chosen on the login page. No token comes back: the user signs in again, 2FA included.
 import { useEffect, useState, type FormEvent } from 'react'
 import { t } from '../i18n'
@@ -6,7 +7,7 @@ import { Link } from '../router'
 import { Field, FormError } from './ui'
 
 export function ResetPage() {
-  const [token] = useState(() => new URLSearchParams(location.search).get('token') ?? '')
+  const [token] = useState(() => new URLSearchParams(location.hash.slice(1)).get('token') ?? new URLSearchParams(location.search).get('token') ?? '')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
