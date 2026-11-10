@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- matches the web client Argon palette (client/src: rail, accent, on-accent, text, muted) -->
-    <color name="accent">#00D2EB</color>
+    <color name="accent">#FF6A1F</color>
     <color name="on_accent">#041318</color>
     <color name="background">#0B0F18</color>
     <color name="text">#DFE6F4</color>

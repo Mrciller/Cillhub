@@ -24,12 +24,12 @@ class ThemeTest {
     }
 
     @Test fun argonPalettesMatchWebClientAndMeetWcagAaContrast() {
-        assertEquals(Color(0xFF00D2EB), Dark.primary)
+        assertEquals(Color(0xFFFF6A1F), Dark.primary)
         assertEquals(Color(0xFF141A26), Dark.surface)
         assertEquals(Color(0xFF090C12), Dark.surfaceContainerLowest)
         assertEquals(Color(0xFFF43F5E), DarkExtra.mention)
 
-        assertEquals(Color(0xFF0068A8), Light.primary)
+        assertEquals(Color(0xFFB84300), Light.primary)
         assertEquals(Color(0xFFFAFBFD), Light.surface)
         assertEquals(Color(0xFFBE123C), LightExtra.mention)
 

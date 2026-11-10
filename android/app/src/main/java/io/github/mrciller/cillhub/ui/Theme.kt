@@ -27,11 +27,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // Argon Tactile Obsidian & Daylight Slate palette (client/src/index.css and appearance.css):
-//   Dark  --rail #090C12, --panel #0B0F18, --sidebar #0F141E, --chat #141A26, --input #1B2333, --selected #232E45, --accent #00D2EB, --signal #F43F5E
-//   Light --rail #DFE5EF, --panel #E5EAF3, --sidebar #EEF2F7, --chat #FAFBFD, --input #E6ECF5, --selected #D3DEEF, --accent #0068A8, --signal #BE123C
+//   Dark  --rail #090C12, --panel #0B0F18, --sidebar #0F141E, --chat #141A26, --input #1B2333, --selected #232E45, --accent #FF6A1F (matches the web client), --signal #F43F5E
+//   Light --rail #DFE5EF, --panel #E5EAF3, --sidebar #EEF2F7, --chat #FAFBFD, --input #E6ECF5, --selected #D3DEEF, --accent #B84300, --signal #BE123C
 internal val Dark = darkColorScheme(
-    primary = Color(0xFF00D2EB), onPrimary = Color(0xFF041318),
-    primaryContainer = Color(0xFF0A3242), onPrimaryContainer = Color(0xFFA5F3FC),
+    primary = Color(0xFFFF6A1F), onPrimary = Color(0xFF1A0A00),
+    primaryContainer = Color(0xFF4A1D05), onPrimaryContainer = Color(0xFFFFDBC8),
     secondary = Color(0xFF38BDF8), onSecondary = Color(0xFF041318),
     secondaryContainer = Color(0xFF232E45), onSecondaryContainer = Color(0xFFF5F8FF),
     tertiary = Color(0xFFF43F5E), onTertiary = Color(0xFFFFFFFF),
@@ -42,16 +42,16 @@ internal val Dark = darkColorScheme(
     surfaceContainerLowest = Color(0xFF090C12), surfaceContainerLow = Color(0xFF0B0F18),
     surfaceContainer = Color(0xFF0F141E), surfaceContainerHigh = Color(0xFF1B2333), surfaceContainerHighest = Color(0xFF232E45),
     surfaceBright = Color(0xFF28344E), surfaceDim = Color(0xFF090C12),
-    surfaceTint = Color(0xFF00D2EB),
+    surfaceTint = Color(0xFFFF6A1F),
     outline = Color(0xFF384664), outlineVariant = Color(0xFF253047),
     error = Color(0xFFF43F5E), onError = Color(0xFFFFFFFF), errorContainer = Color(0xFF4C0519), onErrorContainer = Color(0xFFFFE4E6),
-    inverseSurface = Color(0xFFF5F8FF), inverseOnSurface = Color(0xFF0F141E), inversePrimary = Color(0xFF0068A8),
+    inverseSurface = Color(0xFFF5F8FF), inverseOnSurface = Color(0xFF0F141E), inversePrimary = Color(0xFFB84300),
     scrim = Color(0xFF000000),
 )
 
 internal val Light = lightColorScheme(
-    primary = Color(0xFF0068A8), onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFD6EFFF), onPrimaryContainer = Color(0xFF002038),
+    primary = Color(0xFFB84300), onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFFFDBC8), onPrimaryContainer = Color(0xFF3A1300),
     secondary = Color(0xFF0284C7), onSecondary = Color(0xFFFFFFFF),
     secondaryContainer = Color(0xFFD3DEEF), onSecondaryContainer = Color(0xFF0D1320),
     tertiary = Color(0xFFBE123C), onTertiary = Color(0xFFFFFFFF),
@@ -62,10 +62,10 @@ internal val Light = lightColorScheme(
     surfaceContainerLowest = Color(0xFFDFE5EF), surfaceContainerLow = Color(0xFFE5EAF3),
     surfaceContainer = Color(0xFFEEF2F7), surfaceContainerHigh = Color(0xFFE6ECF5), surfaceContainerHighest = Color(0xFFD3DEEF),
     surfaceBright = Color(0xFFFFFFFF), surfaceDim = Color(0xFFDFE5EF),
-    surfaceTint = Color(0xFF0068A8),
+    surfaceTint = Color(0xFFB84300),
     outline = Color(0xFF94A3B8), outlineVariant = Color(0xFFCBD5E4),
     error = Color(0xFFBE123C), onError = Color(0xFFFFFFFF), errorContainer = Color(0xFFFFE4E6), onErrorContainer = Color(0xFF4C0519),
-    inverseSurface = Color(0xFF1C2536), inverseOnSurface = Color(0xFFFAFBFD), inversePrimary = Color(0xFF00D2EB),
+    inverseSurface = Color(0xFF1C2536), inverseOnSurface = Color(0xFFFAFBFD), inversePrimary = Color(0xFFFF6A1F),
     scrim = Color(0xFF000000),
 )
 
