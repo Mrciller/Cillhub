@@ -20,6 +20,9 @@ test('Static /download directory and transparent installer delivery', async () =
     const apkRes = await fetch(`${srv.origin}/download/android/Cillhub.apk`, { method: 'HEAD', redirect: 'manual' });
     assert.equal(apkRes.status, 200);
     assert.equal(apkRes.headers.get('content-disposition'), 'attachment; filename="Cillhub.apk"');
+
+    // 4. no file-existence oracle outside the download folders, no 500 on a bad escape (review L-3)
+    for (const p of ['/download/server/%2e%2e/%2e%2e/cillcord.sqlite', '/download/server/%']) assert.equal((await fetch(srv.origin + p)).status, 404, p);
   } finally {
     await srv.stop();
   }

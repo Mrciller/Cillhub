@@ -356,10 +356,10 @@ const server = createServer(async (req, res) => {
     if ((req.method === 'GET' || req.method === 'HEAD') && isProxyPath(url.pathname)) return await serveExternal(req, res, url.pathname, clientIp(req), headers);
     if ((req.method === 'GET' || req.method === 'HEAD') && isEphemeralPath(url.pathname)) return serveEphemeral(req, res, url.pathname);
     if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname.startsWith('/download/desktop/') || url.pathname.startsWith('/download/android/') || url.pathname.startsWith('/download/server/'))) {
-      const local = [
-        STATIC_DIR && path.join(STATIC_DIR, decodeURIComponent(url.pathname)),
-        DATA_DIR && path.join(DATA_DIR, decodeURIComponent(url.pathname)),
-      ].find(p => p && existsSync(p));
+      let rel;
+      try { rel = decodeURIComponent(url.pathname); } catch { rel = '..'; }
+      if (/(^|[/\\])\.\.([/\\]|$)|\0/.test(rel)) throw new HttpError(404, 0, '404: Not Found'); // no existence oracle outside the folders
+      const local = [STATIC_DIR && path.join(STATIC_DIR, rel), DATA_DIR && path.join(DATA_DIR, rel)].find(p => p && existsSync(p));
       if (local) return await serveStatic(res, url.pathname);
       return await proxyHubDownload(req, res, url.pathname);
     }
