@@ -1,4 +1,5 @@
-# Installs the staged Windows desktop installer on a clean runner: fresh install, and the update from the 2.2.x app.
+# Installs the staged Windows desktop installer on a clean runner: fresh install, the update from the 2.2.x app, and the
+# self-update from the published 3.0.0 (run the way src/main.rs runs it).
 name: desktop-windows-smoke
 on:
   push:
@@ -6,8 +7,9 @@ on:
   workflow_dispatch:
 env:
   BASE: https://cillhub.cillerian.org/download/desktop
-  SETUP: Cillhub-Setup-3.0.0.exe
-  SHA512: a0ee2ba8cad16871b77d47ebc9c73126dc6b906c1dc04f409b6b9d3474bcf4cd086ea9619acbd0d6e5fa529a45165ec4423de024b0c62c544902872e1773cbfd
+  SETUP: Cillhub-Setup-3.0.1.exe
+  VERSION: 3.0.1
+  SHA512: 19f54e2bec4265b1e7d354ba8f37628416e4390aacb95b9cf235bc478e998229502d4d79e07b1512060d4e2666ce1876c342448d91b5fc3995a1877e0e9fdc12
   OLD_KEY: HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\59cd2796-830e-5e8c-88dd-c707d7eebc0a
 defaults:
   run:
@@ -17,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [fresh, migrate]
+        mode: [fresh, migrate, update]
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -31,12 +33,20 @@ jobs:
           Invoke-WebRequest "$env:BASE/Cillhub-Setup-2.2.2.exe" -OutFile old.exe
           (Start-Process .\old.exe -ArgumentList '/S' -PassThru).WaitForExit()
           if (-not (Test-Path $env:OLD_KEY)) { throw '2.2.2 uninstall entry missing' }
-      - name: Install (fresh) or update the way the 2.2.x updater does (migrate)
+      - name: Install the published 3.0.0 first
+        if: matrix.mode == 'update'
         run: |
-          $installArgs = if ('${{ matrix.mode }}' -eq 'migrate') { '--updated /S --force-run' } else { '/S' }
+          Invoke-WebRequest "$env:BASE/Cillhub-Setup-3.0.0.exe" -OutFile old.exe
+          (Start-Process .\old.exe -ArgumentList '/S' -PassThru).WaitForExit()
+          Start-Process "$env:LOCALAPPDATA\Cillhub\cillhub.exe"
+          Start-Sleep 10
+      - name: Install (fresh), update the way the 2.2.x updater does (migrate) or the app does (update)
+        run: |
+          $installArgs = @{ fresh = '/S'; migrate = '--updated /S --force-run'; update = '/P /R' }['${{ matrix.mode }}']
           (Start-Process .\setup.exe -ArgumentList $installArgs -PassThru).WaitForExit()
           $exe = "$env:LOCALAPPDATA\Cillhub\cillhub.exe"
           if (-not (Test-Path $exe)) { throw "not installed at $exe" }
+          if ((Get-Item $exe).VersionInfo.ProductVersion -notlike "$env:VERSION*") { throw "installed version is not $env:VERSION" }
           if ('${{ matrix.mode }}' -eq 'fresh') { Start-Process $exe }
           Start-Sleep 30
           if ('${{ matrix.mode }}' -eq 'migrate') {

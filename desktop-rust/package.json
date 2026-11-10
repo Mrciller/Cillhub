@@ -1,6 +1,6 @@
 {
   "name": "cillhub-desktop",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "private": true,
   "description": "Cillhub desktop client (Tauri shell around the web client)",
   "license": "AGPL-3.0-only",
@@ -15,5 +15,5 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4"
   },
-  "cillhubServer": "7.9.1"
+  "cillhubServer": "7.9.2"
 }
