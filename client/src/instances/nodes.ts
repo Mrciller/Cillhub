@@ -148,9 +148,11 @@ export async function joinOnNode(node: InstanceInfo, then: Then) {
   const state = crypto.randomUUID()
   // The hub's web address: nodes send tokens back only there (the desktop app opens that callback page in itself).
   const url = `${node.url}/api/v9/federation/hub-login${qs({ return_to: `${apiOrigin()}/instances/callback`, state })}`
-  const popup = window.open(url, 'cillcord-signin', 'popup,width=520,height=720')
+  const popup = window.open('', 'cillcord-signin', 'popup,width=520,height=720')
   localStorage.setItem(PENDING, JSON.stringify({ state, node, then, at: Date.now(), popup: !!popup } satisfies Pending))
   if (!popup) return void location.assign(url) // popups blocked (or the desktop app): redirect, the callback page finishes
+  popup.opener = null // the node's page must not be able to navigate this window (the answer comes over BroadcastChannel)
+  popup.location.href = url
   return new Promise<void>((resolve, reject) => {
     const bc = new BroadcastChannel(CHANNEL)
     let gone = 0
