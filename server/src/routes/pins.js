@@ -4,7 +4,7 @@ import { P, need, viewersOf } from '../permissions.js';
 import { sendToUsers } from '../gateway.js';
 import { audit, A } from '../audit.js';
 import { loadChannel } from './channels.js';
-import { requireUnarchived } from './messages.js';
+import { requireUnarchived, forViewer } from './messages.js';
 import { messageObj, getMessage, broadcastMessage } from '../message.js';
 
 function load({ params, user }) {
@@ -46,7 +46,7 @@ function unpin(ctx) {
 function list({ params, user }) {
   const ch = loadChannel(params.id, user);
   need(ch.perms, P.READ_MESSAGE_HISTORY);
-  return all('SELECT * FROM messages WHERE channel_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC', ch.id).map(m => messageObj(m, ch, user.id));
+  return all('SELECT * FROM messages WHERE channel_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC', ch.id).map(m => forViewer(messageObj(m, ch, user.id), user));
 }
 
 export default [

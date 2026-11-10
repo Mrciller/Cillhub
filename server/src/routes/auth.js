@@ -191,7 +191,9 @@ function detailedSessions({ user, token }) {
   };
 }
 
-function revokeAllOthers({ user, token }) {
+function revokeAllOthers(ctx) {
+  const { user, token } = ctx;
+  requireMfa(ctx); // like sessions/logout: a stolen session must not throw the owner out
   const current = tokenHash(token);
   const others = all('SELECT token_hash FROM tokens WHERE user_id = ? AND token_hash != ?', user.id, current);
   for (const t of others) {

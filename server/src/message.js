@@ -270,22 +270,17 @@ export function unfurlLater(m) {
   }).catch(e => console.error('unfurl failed:', e));
 }
 
+// messages under a lifetime, with the time each expires. A 1:1 DM keeps what was sent before its lifetime was set
+// (message_ttl_since: the first message id it covers), so one side cannot erase the other's history.
+const TTL_TTL = 'COALESCE(NULLIF(c.message_ttl, 0), (SELECT p.message_ttl FROM channels p WHERE p.id = c.parent_id), 0)';
+const TTL_EXPIRY = `((CAST(m.id AS INTEGER) >> 22) + 1420070400000) + ${TTL_TTL} * 1000`;
+const TTL_FROM = `FROM messages m JOIN channels c ON c.id = m.channel_id
+  WHERE (c.message_ttl > 0 OR (c.parent_id IS NOT NULL AND (SELECT p.message_ttl FROM channels p WHERE p.id = c.parent_id) > 0))
+    AND (c.message_ttl_since IS NULL OR CAST(m.id AS INTEGER) >= CAST(c.message_ttl_since AS INTEGER))`;
+
+// only due rows, at most 1000 per run (the timer fires again at once while more are due)
 export function sweepExpiredMessages() {
-  const nowMs = Date.now();
-  const rows = all(`
-    SELECT m.id, m.channel_id, m.pinned_at, c.guild_id,
-           COALESCE(NULLIF(c.message_ttl, 0), (SELECT p.message_ttl FROM channels p WHERE p.id = c.parent_id), 0) AS effective_ttl
-    FROM messages m
-    JOIN channels c ON c.id = m.channel_id
-    WHERE (c.message_ttl > 0 OR (c.parent_id IS NOT NULL AND (SELECT p.message_ttl FROM channels p WHERE p.id = c.parent_id) > 0))
-  `);
-
-  const expired = rows.filter(m => {
-    if (!m.effective_ttl || m.effective_ttl <= 0) return false;
-    const createdAtMs = Number(BigInt(m.id) >> 22n) + 1420070400000;
-    return (nowMs - createdAtMs) >= m.effective_ttl * 1000;
-  });
-
+  const expired = all(`SELECT m.id, m.channel_id, m.pinned_at, c.guild_id ${TTL_FROM} AND ${TTL_EXPIRY} <= ? LIMIT 1000`, Date.now());
   if (!expired.length) return 0;
 
   const byChannel = new Map();
@@ -310,15 +305,7 @@ export function sweepExpiredMessages() {
 addJob({
   name: 'message ttl sweep',
   next() {
-    const row = get(`
-      SELECT MIN(
-        ((CAST(m.id AS INTEGER) >> 22) + 1420070400000) +
-        (COALESCE(NULLIF(c.message_ttl, 0), (SELECT p.message_ttl FROM channels p WHERE p.id = c.parent_id), 0) * 1000)
-      ) AS next_expiry
-      FROM messages m
-      JOIN channels c ON c.id = m.channel_id
-      WHERE (c.message_ttl > 0 OR (c.parent_id IS NOT NULL AND (SELECT p.message_ttl FROM channels p WHERE p.id = c.parent_id) > 0))
-    `);
+    const row = get(`SELECT MIN(${TTL_EXPIRY}) AS next_expiry ${TTL_FROM}`);
     return row?.next_expiry ? Number(row.next_expiry) : null;
   },
   run: sweepExpiredMessages,

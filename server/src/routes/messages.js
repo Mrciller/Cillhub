@@ -202,9 +202,10 @@ function bulkDelete(ctx) {
 function getMessageEdits(ctx) {
   const [ch, m] = loadMessage(ctx);
   need(ch.perms, P.VIEW_CHANNEL | P.READ_MESSAGE_HISTORY);
-  return {
-    edits: all('SELECT previous_content AS content, edited_at FROM message_edits WHERE message_id = ? ORDER BY id ASC', m.id),
-  };
+  const obj = messageObj(m, ch, ctx.user.id);
+  const hidden = forViewer(obj, ctx.user) !== obj; // a bot without message content reads no old versions either
+  const edits = all('SELECT previous_content AS content, edited_at FROM message_edits WHERE message_id = ? ORDER BY id ASC', m.id);
+  return { edits: hidden ? edits.map(e => ({ ...e, content: '' })) : edits };
 }
 
 function listChannelMedia(ctx) {

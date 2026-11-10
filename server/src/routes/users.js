@@ -3,7 +3,7 @@ import { str, int, invalid, notFound, emailField } from '../errors.js';
 import { sendToUsers, closeTokenSessions } from '../gateway.js';
 import { saveImage, removeImage } from '../files.js';
 import { hashPassword, confirmPassword, tokenHash } from '../auth.js';
-import { requireMfa } from '../mfa.js';
+import { requireMfa, dropMfaState } from '../mfa.js';
 import { customizationPatch } from './customization.js';
 import { pushUserUpdate, publicUrl } from '../federation.js';
 
@@ -47,6 +47,8 @@ async function patchMe(ctx) {
   if ('banner' in next && next.banner !== user.banner) removeImage('banners', user.id, user.banner);
   if (next.password_hash) {
     run('DELETE FROM webauthn_credentials WHERE user_id = ?', user.id); // a passkey added with a stolen token must not outlive the reset
+    run('UPDATE users SET calendar_token = NULL WHERE id = ?', user.id); // so must a copied calendar feed link
+    dropMfaState(user.id);
     const keep = tokenHash(ctx.token);
     for (const { token_hash: t } of all('SELECT token_hash FROM tokens WHERE user_id = ? AND token_hash != ?', user.id, keep)) {
       run('DELETE FROM tokens WHERE token_hash = ?', t);

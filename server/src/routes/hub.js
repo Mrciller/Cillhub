@@ -51,6 +51,7 @@ function newLinkCode(userId, note) {
 }
 function adminLinkCode(ctx) {
   hubOnly();
+  requireMfa(ctx); // a link code lets a new node into the network
   ctx.status = 201;
   const out = newLinkCode(ctx.user.id, ctx.body?.note);
   ctx.audit = { action: 'federation.link_code.create', target_type: 'link_code', target_id: out.id };
@@ -197,6 +198,10 @@ function heartbeat(ctx) {
   const node = nodeFromSignature(ctx);
   if (node.status === 'banned' || node.status === 'unlinked') requireActive(node);
   const b = ctx.body ?? {};
+  if (node.status === 'suspended') { // still alive, but its record and listings stay as the hub admin froze them
+    run('UPDATE fed_nodes SET last_seen = ? WHERE id = ?', Date.now(), node.id);
+    return { status: node.status, hub_name: setting('instance_name'), listed_servers: 0, hidden: [] };
+  }
   const count = n => (Number.isInteger(n) && n >= 0 ? Math.min(n, 1e9) : 0);
   const listed = syncListings(node, b.servers);
   run(`UPDATE fed_nodes SET name = ?, description = ?, version = ?, sign_in = ?, member_count = ?, public_servers_count = ?, last_seen = ? WHERE id = ?`,
@@ -357,7 +362,7 @@ async function nodeAction(ctx) {
   const n = loadNode(ctx.params.node_id);
   const status = STATUS_ACTIONS[ctx.params.action];
   if (!status) throw notFound(0, 'Action');
-  if (ctx.params.action === 'ban' || ctx.params.action === 'unlink') requireMfa(ctx);
+  requireMfa(ctx); // suspend and unsuspend too: each changes what the whole network sees
   if (n.status === 'banned' && status !== 'banned') throw new HttpError(400, 0, 'A banned node stays banned.');
   const reason = clean(ctx.body?.reason, 200) || null;
   if (ctx.params.action === 'unsuspend') {
@@ -402,6 +407,7 @@ function deleteLinkCode(ctx) {
 const SEMVER = /^\d{1,4}\.\d{1,4}\.\d{1,4}(-[0-9A-Za-z.-]{1,32})?$/;
 function putRelease(ctx) {
   hubOnly();
+  requireMfa(ctx); // nodes are offered this version
   const version = str(ctx.body, 'version', 5, 48);
   if (!SEMVER.test(version)) throw invalid('version', 'BASE_TYPE_BAD_VALUE', 'Must be a version like 7.0.0.');
   const release = { version, notes: clean(ctx.body.notes ?? '', 4000), published_at: new Date().toISOString() };

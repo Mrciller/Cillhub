@@ -29,3 +29,6 @@ DELETE FROM fed_node_accounts WHERE user_id IN (SELECT id FROM users WHERE delet
 DELETE FROM dm_requests WHERE recipient_id IN (SELECT id FROM users WHERE deleted = 1);
 DELETE FROM recurring_messages WHERE author_id IN (SELECT id FROM users WHERE deleted = 1);
 UPDATE users SET calendar_token = NULL, hub_user_id = NULL, hub_avatar = NULL, home = NULL, mfa_last_step = 0 WHERE deleted = 1;
+
+-- a lifetime set on a 1:1 DM covers only messages from then on (the other side's history stays)
+ALTER TABLE channels ADD COLUMN message_ttl_since TEXT;

@@ -117,9 +117,10 @@ export const listReports = (status: Report['status']) => admin<Report[]>(`/repor
 export const resolveReport = (id: string, action: ReportAction, duration_seconds?: number) => post<Report>(`/reports/${id}/resolve`, { action, duration_seconds })
 
 export const getSettings = () => admin<InstanceSettings>('/settings')
-export const saveSettings = (patch: SettingsPatch) => admin<InstanceSettings>('/settings', { method: 'PATCH', body: patch })
+// address, mail and captcha changes and the test mail need a fresh 2FA step-up (elevated())
+export const saveSettings = (patch: SettingsPatch, mfa?: string) => admin<InstanceSettings>('/settings', { method: 'PATCH', body: patch, headers: elevation(mfa) })
 /** Sends a test mail to the admin's own address; error is the SMTP server's answer. */
-export const testMail = () => post<{ ok: boolean; error: string | null }>('/settings/test-mail', {})
+export const testMail = (mfa?: string) => admin<{ ok: boolean; error: string | null }>('/settings/test-mail', { method: 'POST', body: {}, headers: elevation(mfa) })
 export const listCodes = () => admin<RegistrationCode[]>('/registration-codes')
 /** max_uses 0 = unlimited, max_age in seconds (0 = never expires). */
 export const createCode = (max_uses: number, max_age: number) => post<RegistrationCode>('/registration-codes', { max_uses, max_age })
@@ -180,21 +181,22 @@ export type Updates = {
 }
 
 export const listNodes = (status?: string) => admin<AdminNode[]>(`/federation/nodes${qs({ status })}`)
-export const suspendNode = (id: string, reason: string) => post<AdminNode>(`/federation/nodes/${id}/suspend`, { reason })
-export const unsuspendNode = (id: string) => post<AdminNode>(`/federation/nodes/${id}/unsuspend`)
+// suspend, unsuspend, link codes and the release need a 2FA step-up (elevated())
+export const suspendNode = (id: string, reason: string, mfa?: string) => admin<AdminNode>(`/federation/nodes/${id}/suspend`, { method: 'POST', body: { reason }, headers: elevation(mfa) })
+export const unsuspendNode = (id: string, mfa?: string) => admin<AdminNode>(`/federation/nodes/${id}/unsuspend`, { method: 'POST', body: {}, headers: elevation(mfa) })
 export const banNode = (id: string, reason: string, code: string) => post<AdminNode>(`/federation/nodes/${id}/ban`, { reason, code })
 export const unlinkNode = (id: string, code: string) => post<AdminNode>(`/federation/nodes/${id}/unlink`, { code })
 /** A signed update request to the node; `result` is the node's answer (202 accepted, 403 turned off there, …). */
 export const requestNodeUpdate = (id: string, code: string) =>
   post<{ node: AdminNode; result: { status: number; accepted: boolean; message: string | null } }>(`/federation/nodes/${id}/update`, { code })
 export const listLinkCodes = () => admin<LinkCode[]>('/federation/link-codes')
-export const createLinkCode = (note?: string) => post<LinkCode>('/federation/link-codes', { note })
+export const createLinkCode = (note?: string, mfa?: string) => admin<LinkCode>('/federation/link-codes', { method: 'POST', body: { note }, headers: elevation(mfa) })
 export const deleteLinkCode = (id: string) => admin<void>(`/federation/link-codes/${id}`, { method: 'DELETE' })
 export const getHubFederation = () => admin<HubFederation>('/federation')
 export const setUserLinkCodes = (user_link_codes: boolean) => admin<HubFederation>('/federation', { method: 'PATCH', body: { user_link_codes } })
 // GET /admin/federation/release answers a bare null when nothing is offered yet; the federation view carries it as a field
 export const getRelease = () => getHubFederation().then((f) => f.release)
-export const putRelease = (version: string, notes: string) => admin<Release>('/federation/release', { method: 'PUT', body: { version, notes } })
+export const putRelease = (version: string, notes: string, mfa?: string) => admin<Release>('/federation/release', { method: 'PUT', body: { version, notes }, headers: elevation(mfa) })
 
 export const listDirectory = (query: string, filter: 'all' | 'reported' | 'hidden') => admin<DirectoryEntry[]>(`/directory${qs({ query, filter })}`)
 export const setListingHidden = (guildId: string, hidden: boolean, reason?: string) => admin<DirectoryEntry>(`/directory/${guildId}`, { method: 'PATCH', body: { hidden, reason } })

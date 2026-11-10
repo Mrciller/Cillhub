@@ -7,6 +7,7 @@ import { get, all, run, json, isMember, memberIds, membersOf, userById } from '.
 import { HttpError, str } from '../errors.js';
 import { sendToUsers } from '../gateway.js';
 import { voiceStates } from '../voice.js';
+import { P, has as hasPerms, channelPerms } from '../permissions.js';
 import { safeFetch, FetchRefused, ENV_ALLOW } from '../ssrf.js';
 import { schedule as rearm } from '../timers.js';
 import { richEmbeds } from '../embeds.js';
@@ -248,7 +249,8 @@ const ACTIONS = {
     await rest(mod, method, '/guilds/:id/members/:user_id/roles/:role_id', { id: g, user_id: id(a, 'user_id'), role_id: id(a, 'role_id') });
     return null;
   }]])),
-  'voice.list': ['voice.read', (mod, a) => voiceStates(guildOf(mod, a.guild_id))],
+  'voice.list': ['voice.read', (mod, a) => voiceStates(guildOf(mod, a.guild_id)) // only channels its bot may see
+    .filter(v => { const ch = getChannel(v.channel_id); return ch && hasPerms(channelPerms(ch, mod.app_id), P.VIEW_CHANNEL); })],
   'interactions.respond': ['commands', (mod, a) => { respond(interactionOf(mod, a), a.response, false); return null; }],
   'interactions.followup': ['commands', (mod, a) => {
     const rec = interactionOf(mod, a);

@@ -166,7 +166,9 @@ function execute(hits, ctx, blocked) {
         timeout(ctx.guildId, ctx.userId, a.metadata.duration_seconds);
         audit({ user: { id: ctx.userId } }, ctx.guildId, A.AUTO_MODERATION_USER_COMMUNICATION_DISABLED, ctx.userId, { options });
       }
-      sendToUsers(holders(ctx.guildId, P.MANAGE_GUILD), 'AUTO_MODERATION_ACTION_EXECUTION', {
+      // the event carries the message text: only managers who can also see that channel get it
+      const viewers = ctx.ch && new Set(viewersOf(ctx.ch));
+      sendToUsers(holders(ctx.guildId, P.MANAGE_GUILD).filter(id => !viewers || viewers.has(id)), 'AUTO_MODERATION_ACTION_EXECUTION', {
         guild_id: ctx.guildId, action: a, rule_id: hit.rule.id, rule_trigger_type: hit.rule.trigger_type, user_id: ctx.userId,
         ...(ctx.ch && { channel_id: ctx.ch.id }), ...(ctx.messageId && { message_id: ctx.messageId }),
         ...(alertId && { alert_system_message_id: alertId }),

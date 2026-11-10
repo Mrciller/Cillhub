@@ -11,11 +11,11 @@ import {
   DATA_DIR, get, all, run, tx, json, idTime, isMember, memberIds, memberRow, memberObj, userById, userObj, guildObj, rolesOf,
   guildChannels, channelObj,
 } from '../db.js';
-import { HttpError, str, int, bool, intParam, idParam, invalid, notFound, missingAccess } from '../errors.js';
+import { HttpError, str, int, bool, intParam, idParam, invalid, notFound, missingAccess, plainEmail } from '../errors.js';
 import { P, has, guildPerms, viewersOf } from '../permissions.js';
 import { sessionIdHash } from '../auth.js';
 import { sendToUsers, sendToAllUsers, visibility, syncVisibility, closeTokenSessions, refreshPresence, isOnline } from '../gateway.js';
-import { requireMfa } from '../mfa.js';
+import { requireMfa, dropMfaState } from '../mfa.js';
 import { audit, A } from '../audit.js';
 import { recheck, configuredBackends, defaultBackend, voiceStateCount } from '../voice.js';
 import { mediaStats } from '../media/index.js';
@@ -113,6 +113,8 @@ export function endSessions(userId) {
   const hashes = all('SELECT token_hash FROM tokens WHERE user_id = ?', userId).map(t => t.token_hash);
   run('DELETE FROM tokens WHERE user_id = ?', userId);
   run('DELETE FROM webauthn_credentials WHERE user_id = ?', userId); // passkeys would sign straight back in
+  run('UPDATE users SET calendar_token = NULL WHERE id = ?', userId); // a copied feed link must not outlive the sessions
+  dropMfaState(userId);
   hashes.forEach(closeTokenSessions);
   refreshPresence(userId);
   return hashes.length;
@@ -146,6 +148,7 @@ function resetMfa(ctx) {
     run('UPDATE users SET mfa_secret = NULL, mfa_last_step = 0 WHERE id = ?', u.id);
     run('DELETE FROM mfa_backup_codes WHERE user_id = ?', u.id);
   });
+  dropMfaState(u.id);
   const fresh = loadUser(u.id);
   sendToUsers([u.id], 'USER_UPDATE', userObj(fresh, true));
   ctx.audit = { action: 'user.reset_mfa' };
@@ -396,9 +399,16 @@ function patchSettings(ctx) {
       next[k] = v;
     } else if (k === 'smtp_from') {
       next[k] = optLine(body, k, 255);
-      if (next[k] && next[k].split('@').length !== 2) throw invalid(k, 'EMAIL_TYPE_INVALID_EMAIL', 'Must be one address, e.g. Cillhub <no-reply@example.org>.');
+      // one address, optionally with a display name: nothing a mailer could read as a second recipient
+      const named = next[k] && /^([^<>@,;"\x00-\x1f]*)<([^<>]+)>$/.exec(next[k]);
+      if (next[k] && !plainEmail(named ? named[2].trim() : next[k])) throw invalid(k, 'EMAIL_TYPE_INVALID_EMAIL', 'Must be one address, e.g. Cillhub <no-reply@example.org>.');
     } else throw invalid(k, 'UNKNOWN_SETTING', 'This setting does not exist.');
   }
+  // where mail and reset links go, and who may sign up: a stolen admin session alone must not change these
+  const guarded = k => k === 'public_url' || k.startsWith('smtp_') || k.startsWith('captcha_');
+  if (Object.entries(next).some(([k, v]) => guarded(k) && (k.endsWith('password') || k.endsWith('secret') || v !== (setting(k) ?? null)))) requireMfa(ctx);
+  // the stored password only ever goes to the host it was entered for
+  if ('smtp_host' in next && next.smtp_host !== (setting('smtp_host') ?? null) && !('smtp_password' in next)) next.smtp_password = null;
   const before = Object.fromEntries(Object.keys(next).map(k => [k, masked(k, setting(k))]));
   for (const [k, v] of Object.entries(next)) setSetting(k, v);
   sendToAllUsers('INSTANCE_SETTINGS_UPDATE', publicInstance());
@@ -409,6 +419,7 @@ function patchSettings(ctx) {
 
 // POST /admin/settings/test-mail: a mail to the calling admin's own address; the SMTP error text when it fails
 async function testMail(ctx) {
+  requireMfa(ctx);
   const de = settingsOf(ctx.user.id).locale === 'de';
   let error = null;
   try {

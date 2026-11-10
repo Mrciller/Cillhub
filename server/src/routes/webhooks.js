@@ -218,7 +218,10 @@ export default [
   }],
   ['GET', '/guilds/:id/webhooks', ({ params, user }) => all(
     'SELECT * FROM webhooks WHERE guild_id = ? ORDER BY rowid', loadGuild(params.id, user, P.MANAGE_WEBHOOKS).id,
-  ).map(w => webhookObj(w))],
+  ).filter(w => { // like GET /channels/:id/webhooks: only channels the caller may see and manage (tokens are capabilities)
+    const ch = getChannel(w.channel_id);
+    return ch && has(channelPerms(ch, user.id), P.VIEW_CHANNEL | P.MANAGE_WEBHOOKS);
+  }).map(w => webhookObj(w))],
   ['POST', '/channels/:id/followers', follow],
   ['POST', '/webhooks/:webhook_id/regenerate-token', regenerate],
   ['GET', '/webhooks/:webhook_id', ctx => webhookObj(byId(ctx))],

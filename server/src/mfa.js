@@ -53,7 +53,11 @@ export function redeemTicket(ticket, purpose, code) {
     tickets.delete(key);
     throw new HttpError(400, 60006, 'Invalid two-factor auth ticket');
   }
-  const user = get('SELECT * FROM users WHERE id = ? AND deleted = 0', t.userId);
+  const user = get('SELECT * FROM users WHERE id = ? AND deleted = 0 AND disabled = 0', t.userId);
+  if (!user) {
+    tickets.delete(key);
+    throw new HttpError(400, 60006, 'Invalid two-factor auth ticket');
+  }
   if (!verifyCode(user, code)) {
     if (++t.attempts >= MAX_ATTEMPTS) tickets.delete(key);
     throw new HttpError(400, 60008, 'Invalid two-factor code');
@@ -64,6 +68,11 @@ export function redeemTicket(ticket, purpose, code) {
 
 // elevation tokens from POST /mfa/finish, sent back in X-Cillhub-MFA-Authorization (5 minutes)
 const elevations = new Map(); // sha256(token) -> { userId, expires }
+
+// a new password, a forced logout, a disabled account or a 2FA reset ends pending tickets and elevations too
+export function dropMfaState(userId) {
+  for (const map of [tickets, elevations]) for (const [k, t] of map) if (t.userId === userId) map.delete(k);
+}
 export function elevate(userId) {
   const token = randomBytes(32).toString('base64url');
   elevations.set(hash(token), { userId, expires: Date.now() + TICKET_TTL });

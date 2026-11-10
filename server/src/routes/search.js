@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto';
-import { get, all, isMember, threadObj, threadMemberObj } from '../db.js';
+import { get, all, isMember, threadObj, threadMemberObj, userById } from '../db.js';
 import { invalid, intParam, idParam, notFound } from '../errors.js';
 import { P, has, need, channelPerms, isThread } from '../permissions.js';
 import { messageObj, getChannel } from '../message.js';
 import { loadChannel } from './channels.js';
+import { forViewer } from './messages.js';
 
 const HAS = {
   link: "(m.content LIKE '%http://%' OR m.content LIKE '%https://%')",
@@ -98,10 +99,11 @@ function search(query, readable, userId) {
   const total = get(`SELECT COUNT(*) AS n ${from}`, ...args).n;
   const rows = all(`SELECT m.* ${from} ORDER BY ${relevance ? 'f.rank' : `CAST(m.id AS INTEGER) ${dir}`} LIMIT ? OFFSET ?`, ...args, limit, offset);
   const threads = [...new Set(rows.map(m => m.channel_id))].map(getChannel).filter(isThread);
+  const viewer = userById(userId);
   return {
     analytics_id: randomBytes(16).toString('hex'), doing_deep_historical_index: false, total_results: total,
     messages: rows.map(m => {
-      const { reactions: _, ...msg } = messageObj(m, getChannel(m.channel_id), userId);
+      const { reactions: _, ...msg } = forViewer(messageObj(m, getChannel(m.channel_id), userId), viewer);
       return [{ ...msg, hit: true }];
     }),
     threads: threads.map(t => threadObj(t, userId)),

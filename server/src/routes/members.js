@@ -1,5 +1,5 @@
 import { get, all, run, tx, json, memberIds, memberRow, memberObj, userById } from '../db.js';
-import { HttpError, str, bool, list, invalid, notFound, missingPermissions } from '../errors.js';
+import { HttpError, str, int, bool, list, invalid, notFound, missingPermissions } from '../errors.js';
 import { P, need, has, channelPerms, guildPerms, requireAbove, requireAssignable } from '../permissions.js';
 import { sendToUsers, visibility, syncVisibility } from '../gateway.js';
 import { inVoice, voiceState, disconnect, move, recheck } from '../voice.js';
@@ -211,7 +211,7 @@ function bulkMemberAction(ctx) {
   const g = loadGuild(params.id, user);
   const action = body?.action;
   const userIds = Array.isArray(body?.user_ids) ? body.user_ids : [];
-  const reason = body?.reason || '';
+  const reason = body?.reason == null ? '' : str(body, 'reason', 0, 512);
   if (!['kick', 'ban', 'timeout'].includes(action)) throw invalid('action', 'INVALID_ACTION', 'Must be kick, ban, or timeout');
   if (!userIds.length || userIds.length > 100) throw invalid('user_ids', 'INVALID_COUNT', 'Must provide 1 to 100 user IDs');
 
@@ -219,7 +219,8 @@ function bulkMemberAction(ctx) {
   if (action === 'ban') need(g.perms, P.BAN_MEMBERS);
   if (action === 'timeout') need(g.perms, P.MODERATE_MEMBERS);
 
-  const durationSecs = Number(body?.duration_seconds) || 3600;
+  // the same rules as one member's timeout: at most 28 days, administrators immune, voice rechecked
+  const durationSecs = body?.duration_seconds == null ? 3600 : int(body, 'duration_seconds', 1, MAX_TIMEOUT / 1000);
   const timeoutUntil = new Date(Date.now() + durationSecs * 1000).toISOString();
   const successful = [];
 
@@ -237,9 +238,11 @@ function bulkMemberAction(ctx) {
         removeMember(g.id, target);
         audit(ctx, g.id, A.MEMBER_BAN_ADD, target.id, { reason });
       } else if (action === 'timeout') {
+        if (has(guildPerms(g.id, target.id), P.ADMINISTRATOR)) throw missingPermissions();
         run('UPDATE members SET communication_disabled_until = ? WHERE guild_id = ? AND user_id = ?', timeoutUntil, g.id, target.id);
         const out = memberObj(memberRow(g.id, target.id));
         sendToUsers(memberIds(g.id), 'GUILD_MEMBER_UPDATE', { guild_id: g.id, ...out });
+        recheck(g.id, target.id);
         audit(ctx, g.id, A.MEMBER_UPDATE, target.id, { reason, changes: { communication_disabled_until: timeoutUntil } });
       }
       successful.push(targetId);

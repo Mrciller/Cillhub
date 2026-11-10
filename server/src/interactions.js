@@ -46,7 +46,8 @@ const EPH = 'ephemeral';
 const ephFiles = new Map(); // attachment id -> { appId, filename, size, content_type, expires }
 removeChannelFiles(EPH); // nothing outlives a restart
 const ephPath = id => join(DATA_DIR, 'attachments', EPH, id);
-const ephUrl = (appId, a) => `/ephemeral-attachments/${appId}/${a.id}/${a.filename}`;
+// ids are time-based and filenames guessable: the random key in the URL is what makes the link private
+const ephUrl = (appId, a) => `/ephemeral-attachments/${appId}/${a.id}/${a.filename}?key=${ephFiles.get(a.id)?.key ?? ''}`;
 const uploadObj = (a, url) => ({
   id: a.id, filename: a.filename, size: a.size, content_type: a.content_type, url, proxy_url: url,
   ...(a.width != null && { width: a.width, height: a.height }), ...(a.description != null && { description: a.description }), flags: a.flags ?? 0,
@@ -68,7 +69,7 @@ export async function stageFiles(appId, files, metas) {
     if (typeof meta?.filename === 'string' && meta.filename) a.filename = safeFilename(meta.filename);
     if (typeof meta?.description === 'string' && meta.description) a.description = meta.description.slice(0, 1024);
     if (a.filename.startsWith('SPOILER_')) a.flags = IS_SPOILER;
-    ephFiles.set(id, { appId, filename: a.filename, size: a.size, content_type: a.content_type, expires: Date.now() + TOKEN_TTL });
+    ephFiles.set(id, { appId, key: randomBytes(18).toString('base64url'), filename: a.filename, size: a.size, content_type: a.content_type, expires: Date.now() + TOKEN_TTL });
     out.push(a);
   }
   return out;
@@ -88,7 +89,8 @@ export const isEphemeralPath = pathname => EPH_PATH.test(pathname);
 export function serveEphemeral(req, res, pathname) {
   const [, appId, id, name] = EPH_PATH.exec(pathname);
   const f = ephFiles.get(id);
-  if (!f || f.appId !== appId || f.filename !== name || f.expires <= Date.now()) throw new HttpError(404, 0, '404: Not Found');
+  const key = new URL(req.url, 'http://x').searchParams.get('key');
+  if (!f || f.appId !== appId || f.filename !== name || f.key !== key || f.expires <= Date.now()) throw new HttpError(404, 0, '404: Not Found');
   res.writeHead(200, {
     'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Content-Type': f.content_type,
     'Content-Length': f.size, 'Content-Disposition': `attachment; filename="${f.filename}"`, 'Cache-Control': 'private, max-age=900',

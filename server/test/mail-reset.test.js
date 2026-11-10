@@ -65,6 +65,14 @@ const captcha = httpServer((req, res) => {
 });
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
+// turns 2FA on and trades a backup code for a 5-minute elevation header (admin settings need the step-up)
+async function elevation(s, token) {
+  const on = await s.api('POST', '/users/@me/mfa/totp/enable', token, { password: 'hunter2hunter2', secret: SECRET, code: totp() });
+  assert.equal(on.status, 200);
+  const ticket = (await s.api('POST', '/users/@me/mfa/totp/disable', token, {})).body.mfa.ticket;
+  const r = await s.api('POST', '/mfa/finish', token, { ticket, mfa_type: 'backup', data: on.body.backup_codes[0].code });
+  return { 'X-Cillhub-MFA-Authorization': r.body.token };
+}
 async function mailTo(addr, ms = 3000) {
   for (const end = Date.now() + ms; Date.now() < end; await wait(50)) {
     const m = mails.find(x => x.to.includes(addr));
@@ -96,7 +104,8 @@ before(async () => {
   });
   api = srv.api;
   root = await srv.register('jordan');
-  assert.equal((await api('POST', '/users/@me/mfa/totp/enable', root.token, { password: 'hunter2hunter2', secret: SECRET, code: totp() })).status, 200);
+  const el = await elevation(srv, root.token);
+  api = (m, p, t, b, h = {}) => srv.api(m, p, t, b, t === root.token ? { ...el, ...h } : h); // mail, address and captcha settings need the step-up
   execFileSync(process.execPath, ['src/admin-cli.js', 'grant', 'jordan'], { cwd: new URL('..', import.meta.url), env: { ...process.env, DATA_DIR: srv.dataDir } });
 });
 after(async () => {
@@ -262,15 +271,15 @@ test('no configured address: password reset is off (the Host header never builds
   const other = await startServer(); // no CILLCORD_PUBLIC_URL
   try {
     const t = (await other.register('taylor')).token;
-    assert.equal((await other.api('POST', '/users/@me/mfa/totp/enable', t, { password: 'hunter2hunter2', secret: SECRET, code: totp() })).status, 200);
+    const el = await elevation(other, t);
     execFileSync(process.execPath, ['src/admin-cli.js', 'grant', 'taylor'], { cwd: new URL('..', import.meta.url), env: { ...process.env, DATA_DIR: other.dataDir } });
-    await other.api('PATCH', '/admin/settings', t, { smtp_host: '127.0.0.1', smtp_port: SMTP_PORT, smtp_security: 'none', smtp_from: 'no-reply@example.org' });
+    await other.api('PATCH', '/admin/settings', t, { smtp_host: '127.0.0.1', smtp_port: SMTP_PORT, smtp_security: 'none', smtp_from: 'no-reply@example.org' }, el);
     assert.equal((await other.api('GET', '/instance')).body.password_reset, false);
     assert.equal((await other.api('POST', '/auth/forgot', null, { login: 'taylor@example.com' })).status, 400);
-    await other.api('PATCH', '/admin/settings', t, { public_url: 'https://chat.example.org' });
+    await other.api('PATCH', '/admin/settings', t, { public_url: 'https://chat.example.org' }, el);
     assert.equal((await other.api('GET', '/instance')).body.password_reset, true);
     // a closed instance says so before asking for a captcha
-    await other.api('PATCH', '/admin/settings', t, { captcha_site_key: 'site-key-kim', captcha_secret: 'captcha-secret-kim', registration_mode: 'closed' });
+    await other.api('PATCH', '/admin/settings', t, { captcha_site_key: 'site-key-kim', captcha_secret: 'captcha-secret-kim', registration_mode: 'closed' }, el);
     const closed = await other.api('POST', '/auth/register', null, { email: 'kim@example.com', username: 'kim', password: 'hunter2hunter2' });
     assert.deepEqual([closed.status, closed.body.message], [403, 'Registration is closed on this instance.']);
   } finally {

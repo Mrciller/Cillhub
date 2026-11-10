@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto';
 import { snowflake } from '../snowflake.js';
 import { get, all, run, tx, json, isMember, memberIds, memberRow, memberObj, userById, userObj, guildObj, featuresOf } from '../db.js';
 import { HttpError, int, notFound, missingPermissions } from '../errors.js';
-import { P, need, has, guildPerms, visibleChannels } from '../permissions.js';
+import { P, need, has, guildPerms, visibleChannels, everyoneCanView } from '../permissions.js';
 import { sendToUsers, statusOf } from '../gateway.js';
 import { loadChannel } from './channels.js';
 import { audit, A } from '../audit.js';
@@ -38,7 +38,8 @@ function findInvite(code) {
   if (inv) return inv;
   const g = get('SELECT * FROM guilds WHERE vanity_url_code = ? OR vanity_code = ?', code, code);
   if (!g) throw notFound(10006, 'Invite');
-  const ch = get('SELECT id FROM channels WHERE guild_id = ? AND type = 0 ORDER BY id = ? DESC, position LIMIT 1', g.id, g.system_channel_id ?? '');
+  // the first text channel a new member could see: the public link must not name a private one
+  const ch = all('SELECT * FROM channels WHERE guild_id = ? AND type = 0 ORDER BY id = ? DESC, position', g.id, g.system_channel_id ?? '').find(everyoneCanView);
   return { code, guild_id: g.id, channel_id: ch?.id, inviter_id: null, uses: g.vanity_uses ?? 0, max_uses: 0, max_age: 0, created_at: null, expires_at: null, vanity: true };
 }
 

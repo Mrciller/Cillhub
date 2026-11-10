@@ -258,12 +258,16 @@ addJob({
   run: async now => {
     for (const r of all('SELECT * FROM recurring_messages WHERE next_run <= ?', now)) {
       const ch = getChannel(r.channel_id);
-      if (ch) {
-        try {
-          const d = await prepare({ ch, perms: 0n, userId: r.author_id }, { content: r.content }, []);
-          await send(d, r.author_id);
+      const author = userById(r.author_id);
+      if (ch && author && !author.deleted && !author.disabled) {
+        try { // every run checks the author's current rights, blocks and AutoMod, like a scheduled message
+          ch.perms = channelPerms(ch, author.id);
+          if (!has(ch.perms, P.VIEW_CHANNEL)) throw missingAccess();
+          const { d, mod } = await checked(ch, author, { content: r.content });
+          const m = await send(d, author.id);
+          mod?.execute(m.id);
         } catch (e) {
-          console.error('Failed to deliver recurring message:', e);
+          if (!(e instanceof HttpError)) console.error('Failed to deliver recurring message:', e);
         }
       }
       const nextRun = computeNextRun(r.interval_type, r.time_of_day);

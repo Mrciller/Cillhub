@@ -6,7 +6,7 @@ import { toast } from '../components/dialogs'
 import { Field, FormError } from '../components/ui'
 import { t } from '../i18n'
 import * as A from './api'
-import { useLoad, when } from './util'
+import { askCode, useLoad, when } from './util'
 
 export function ReleasePage() {
   const { data, error, setData } = useLoad(A.getRelease, [])
@@ -18,8 +18,9 @@ export function ReleasePage() {
     const f = new FormData(e.currentTarget)
     setBusy(true)
     setSaveError('')
-    A.putRelease(String(f.get('version')).trim(), String(f.get('notes')))
-      .then((r) => (setData(r), toast(t('Release published.'))), (err: Error) => setSaveError(err.message)).finally(() => setBusy(false))
+    const version = String(f.get('version')).trim(), notes = String(f.get('notes'))
+    A.elevated((mfa) => A.putRelease(version, notes, mfa), () => askCode(t('Publish'), <p>{t('Confirm with your own two-factor code.')}</p>, t('Publish')))
+      .then((r) => r && (setData(r), toast(t('Release published.'))), (err: Error) => setSaveError(err.message)).finally(() => setBusy(false))
   }
   return (
     <>

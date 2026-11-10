@@ -136,8 +136,15 @@ export function storageList(moduleId, { prefix = '', after = '', limit = 100 } =
 
 // --- logs (§4.4): the latest 1000 lines per module -----------------------------------------------------------------
 export const LEVELS = ['debug', 'info', 'warn', 'error', 'system'];
+// admins read these, and secret settings are write-only for them: a module that prints one gets it masked
+function scrubbed(moduleId, message) {
+  const keys = new Set((json(get('SELECT manifest FROM modules WHERE id = ?', moduleId)?.manifest, {}).settings ?? []).filter(s => s.type === 'secret').map(s => s.key));
+  const secrets = all('SELECT key, value FROM module_settings WHERE module_id = ?', moduleId)
+    .filter(r => keys.has(r.key)).map(r => JSON.parse(r.value)).filter(v => typeof v === 'string' && v.length >= 4);
+  return secrets.reduce((t, v) => t.split(v).join('[redacted]'), String(message));
+}
 export function addLog(moduleId, level, message) {
-  const r = run('INSERT INTO module_logs (module_id, at, level, message) VALUES (?, ?, ?, ?)', moduleId, Date.now(), level, String(message).slice(0, 2000));
+  const r = run('INSERT INTO module_logs (module_id, at, level, message) VALUES (?, ?, ?, ?)', moduleId, Date.now(), level, scrubbed(moduleId, message).slice(0, 2000));
   run('DELETE FROM module_logs WHERE module_id = ? AND id <= ?', moduleId, Number(r.lastInsertRowid) - LOG_KEEP);
 }
 export const logs = (moduleId, limit, before) => all(`SELECT * FROM module_logs WHERE module_id = ? AND (? IS NULL OR id < ?) ORDER BY id DESC LIMIT ?`,

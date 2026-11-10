@@ -44,7 +44,7 @@ const updaterCalls = []; // a fake updater sidecar on 3406 (solo instance)
 const nodeUpdaterCalls = []; // and one on 3407 (the linked node)
 const recorded = [];
 const pushed = [];
-let hubAdmin, hubBackup, alice, nodeAdmin, nodeBackup, nodeId;
+let hubAdmin, hubBackup, hubEl, alice, nodeAdmin, nodeBackup, nodeId; // hubEl: a 2FA elevation header for the hub admin
 
 const grant = (srv, name) => execFileSync(process.execPath, ['src/admin-cli.js', 'grant', name], { cwd: new URL('..', import.meta.url), env: { ...process.env, DATA_DIR: srv.dataDir }, stdio: 'ignore' });
 const sql = (srv, query, ...args) => { const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sqlite')); try { return db.prepare(query).all(...args); } finally { db.close(); } };
@@ -52,7 +52,7 @@ const listen = (handler, port) => new Promise(resolve => { const s = createServe
 const pkce = () => { const verifier = randomBytes(32).toString('base64url'); return { verifier, challenge: pkceChallenge(verifier) }; };
 
 async function hubCode(token = hubAdmin.token) {
-  const r = await hub.api('POST', '/admin/federation/link-codes', token, { note: 'test' });
+  const r = await hub.api('POST', '/admin/federation/link-codes', token, { note: 'test' }, hubEl);
   assert.equal(r.status, 201);
   return r.body;
 }
@@ -114,6 +114,8 @@ before(async () => {
   grant(hub, 'hubroot');
   const on = await hub.api('POST', '/users/@me/mfa/totp/enable', hubAdmin.token, { password: 'hunter2hunter2', secret: SECRET, code: totp() });
   hubBackup = on.body.backup_codes.map(c => c.code);
+  const ticket = (await hub.api('POST', '/users/@me/mfa/totp/disable', hubAdmin.token, {})).body.mfa.ticket;
+  hubEl = { 'X-Cillhub-MFA-Authorization': (await hub.api('POST', '/mfa/finish', hubAdmin.token, { ticket, mfa_type: 'backup', data: hubBackup.shift() })).body.token };
   alice = await hub.register('alice');
 });
 after(async () => {
@@ -126,6 +128,7 @@ after(async () => {
 
 test('hub link codes: admins create them, users only when allowed and with 2FA, unknown and expired codes are refused', async () => {
   assert.equal((await hub.api('POST', '/admin/federation/link-codes', alice.token, {})).status, 403);
+  assert.equal((await hub.api('POST', '/admin/federation/link-codes', hubAdmin.token, {})).status, 401, '2FA step-up');
   const c = await hubCode();
   assert.match(c.code, /^CCL-[\w-]{24}$/);
   assert.equal(c.status, 'valid');
@@ -270,7 +273,7 @@ test('the hub role needs the network key: another key or env alone starts a node
     const root = await other.register('otherroot');
     grant(other, 'otherroot');
     await other.api('POST', '/users/@me/mfa/totp/enable', root.token, { password: 'hunter2hunter2', secret: SECRET, code: totp() });
-    const code = (await other.api('POST', '/admin/federation/link-codes', root.token, {})).body.code;
+    const code = (await other.api('POST', '/admin/federation/link-codes', root.token, { code: totp(Date.now() + 30_000) })).body.code;
     const admin = (await fresh.api('POST', '/setup/admin', null, { setup_code: 'fresh-setup-code-1', email: 'f@fresh.example', username: 'freshadmin', password: 'hunter2hunter2' })).body;
     await fresh.api('POST', '/users/@me/mfa/totp/enable', admin.token, { password: 'hunter2hunter2', secret: SECRET, code: totp() });
     const r = await fresh.api('POST', '/setup/complete', admin.token, { setup_code: 'fresh-setup-code-1', instance_name: 'Fresh', registration_mode: 'open', mode: 'connected', link_code: code });
@@ -470,7 +473,8 @@ test('NOTIFY: a mention on the node reaches the hub user through the hub\'s Web 
 });
 
 test('suspend: the node\'s servers leave the directory and hub sign-in stops; unsuspend restores both', async () => {
-  const s = await hub.api('POST', `/admin/federation/nodes/${nodeId}/suspend`, hubAdmin.token, { reason: 'test' });
+  assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/suspend`, hubAdmin.token, { reason: 'test' })).status, 401, '2FA step-up');
+  const s = await hub.api('POST', `/admin/federation/nodes/${nodeId}/suspend`, hubAdmin.token, { reason: 'test' }, hubEl);
   assert.equal(s.body.status, 'suspended');
   await until(async () => (await node.api('GET', '/admin/federation', nodeAdmin.token)).body.status === 'suspended');
   assert.deepEqual((await hub.api('GET', '/discoverable-guilds', alice.token)).body.guilds.map(x => x.node), [null]);
@@ -480,7 +484,13 @@ test('suspend: the node\'s servers leave the directory and hub sign-in stops; un
   assert.equal((await node.api('GET', '/users/@me', alice.node)).status, 401, 'sessions of hub accounts ended');
   assert.equal((await node.api('GET', '/users/@me', nodeAdmin.token)).status, 200, 'local accounts keep theirs');
   assert.equal((await hub.api('GET', '/federation/nodes', alice.token)).body.find(n => n.node_id === nodeId).status, 'suspended');
-  assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/unsuspend`, hubAdmin.token)).body.status, 'active');
+  // a suspended node still sends heartbeats, but its record stays as it was
+  const name = (await hub.api('GET', '/federation/nodes', alice.token)).body.find(n => n.node_id === nodeId).name;
+  await node.api('PATCH', '/admin/settings', nodeAdmin.token, { instance_name: 'Renamed While Suspended' });
+  await node.api('POST', '/admin/federation/heartbeat', nodeAdmin.token);
+  assert.equal((await hub.api('GET', '/federation/nodes', alice.token)).body.find(n => n.node_id === nodeId).name, name);
+  await node.api('PATCH', '/admin/settings', nodeAdmin.token, { instance_name: name });
+  assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/unsuspend`, hubAdmin.token, undefined, hubEl)).body.status, 'active');
   await until(async () => (await node.api('GET', '/admin/federation', nodeAdmin.token)).body.status === 'active');
   alice.node = (await nodeSignIn(alice)).get('token');
   assert.equal((await node.api('GET', '/users/@me', alice.node)).status, 200);
@@ -490,7 +500,7 @@ test('suspend: the node\'s servers leave the directory and hub sign-in stops; un
 });
 
 test('a suspension outlasts unlink and a new link code', async () => {
-  assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/suspend`, hubAdmin.token, { reason: 'review' })).body.status, 'suspended');
+  assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/suspend`, hubAdmin.token, { reason: 'review' }, hubEl)).body.status, 'suspended');
   await until(async () => (await node.api('GET', '/admin/federation', nodeAdmin.token)).body.status === 'suspended');
   const u = await node.api('POST', '/admin/federation/unlink', nodeAdmin.token, { code: nodeBackup.shift() });
   assert.equal(u.body.linked, false);
@@ -500,7 +510,7 @@ test('a suspension outlasts unlink and a new link code', async () => {
   assert.equal((await hub.api('GET', `/admin/federation/nodes/${nodeId}`, hubAdmin.token)).body.status, 'suspended');
   assert.equal((await node.api('GET', '/auth/methods')).body.hub, false);
   assert.equal((await hub.api('GET', '/discoverable-guilds', alice.token)).body.guilds.some(g => g.node), false);
-  assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/unsuspend`, hubAdmin.token)).body.status, 'active');
+  assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/unsuspend`, hubAdmin.token, undefined, hubEl)).body.status, 'active');
   await until(async () => (await node.api('GET', '/admin/federation', nodeAdmin.token)).body.status === 'active');
 });
 
@@ -519,7 +529,7 @@ test('unlink from the node, re-link with a new code, then a ban: refused for goo
   assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/ban`, hubAdmin.token, {})).status, 401, 'ban needs 2FA');
   assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/ban`, hubAdmin.token, { code: hubBackup.shift(), reason: 'abuse' })).body.status, 'banned');
   await until(async () => (await node.api('GET', '/admin/federation', nodeAdmin.token)).body.status === 'banned');
-  assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/unsuspend`, hubAdmin.token)).status, 400);
+  assert.equal((await hub.api('POST', `/admin/federation/nodes/${nodeId}/unsuspend`, hubAdmin.token, undefined, hubEl)).status, 400);
   await node.api('POST', '/admin/federation/unlink', nodeAdmin.token, { code: nodeBackup.shift() });
   assert.equal((await hub.api('GET', `/admin/federation/nodes/${nodeId}`, hubAdmin.token)).body.status, 'banned', 'leaving does not lift a ban');
   const refused = await node.api('POST', '/admin/federation/link', nodeAdmin.token, { link_code: (await hubCode()).code });
@@ -544,8 +554,8 @@ test('a standalone node never contacts its configured hub', async () => {
 
 test('hub release channel and node update API without an updater', async () => {
   assert.equal((await hub.api('GET', '/server/releases/latest')).status, 404);
-  assert.equal((await hub.api('PUT', '/admin/federation/release', hubAdmin.token, { version: 'v7' })).status, 400);
-  assert.equal((await hub.api('PUT', '/admin/federation/release', hubAdmin.token, { version: '7.0.0', notes: 'Hub network' })).status, 200);
+  assert.equal((await hub.api('PUT', '/admin/federation/release', hubAdmin.token, { version: 'v7' }, hubEl)).status, 400);
+  assert.equal((await hub.api('PUT', '/admin/federation/release', hubAdmin.token, { version: '7.0.0', notes: 'Hub network' }, hubEl)).status, 200);
   const latest = (await hub.api('GET', '/server/releases/latest')).body;
   assert.deepEqual([latest.version, latest.notes, latest.download_base], ['7.0.0', 'Hub network', `${HUB}/download/server/`]);
   assert.equal((await node.api('GET', '/server/releases/latest')).status, 404, 'nodes have no release channel');

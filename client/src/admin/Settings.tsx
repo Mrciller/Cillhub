@@ -7,7 +7,7 @@ import { t } from '../i18n'
 import * as A from './api'
 import type { InstanceSettings, Registration, SettingsPatch } from './api'
 import { useInstance } from './instance'
-import { useLoad, when } from './util'
+import { askCode, useLoad, when } from './util'
 
 const MB = 1024 * 1024
 const MODES: [Registration, string, string][] = [
@@ -36,18 +36,21 @@ export function InstanceSettingsPage() {
     setSaveError('')
     const { instance_name, motd, registration_mode, max_upload_bytes, gifs_enabled, voice_backend, smtp_port, smtp_security } = form
     const text = (v: string | null) => v?.trim() || null
-    A.saveSettings({
+    const patch = {
       instance_name: instance_name.trim(), motd: text(motd), registration_mode, max_upload_bytes, gifs_enabled, voice_backend,
       ...(mail && !isHub && { public_url: text(form.public_url) }),
       ...(mail && {
         smtp_host: text(form.smtp_host), smtp_port, smtp_security, smtp_user: text(form.smtp_user), smtp_from: text(form.smtp_from),
         captcha_site_key: text(form.captcha_site_key), ...secrets,
       }),
-    }).then((s) => (setForm(s), setSecrets({}), setSaved(true)), (err: Error) => setSaveError(err.message))
+    }
+    A.elevated((mfa) => A.saveSettings(patch, mfa), () => askCode(t('Save Changes'), <p>{t('Confirm with your own two-factor code.')}</p>, t('Save Changes')))
+      .then((s) => s && (setForm(s), setSecrets({}), setSaved(true)), (err: Error) => setSaveError(err.message))
   }
   const sendTest = () => {
     setMailTest({ busy: true })
-    A.testMail().then((r) => setMailTest({ ok: r.ok, text: r.ok ? t('Test mail sent to your address.') : r.error ?? '' }), (err: Error) => setMailTest({ ok: false, text: err.message }))
+    A.elevated((mfa) => A.testMail(mfa), () => askCode(t('Send test mail'), <p>{t('Confirm with your own two-factor code.')}</p>, t('Send test mail')))
+      .then((r) => setMailTest(r ? { ok: r.ok, text: r.ok ? t('Test mail sent to your address.') : r.error ?? '' } : {}), (err: Error) => setMailTest({ ok: false, text: err.message }))
   }
   // a stored secret shows as "saved"; Remove clears it on the next save
   const secret = (key: 'smtp_password' | 'captcha_secret', label: string, isSet: boolean) => (

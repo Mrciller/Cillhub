@@ -9,6 +9,7 @@ import { addJob, schedule } from '../timers.js';
 import { audit, A, diff } from '../audit.js';
 import { getChannel } from '../message.js';
 import { loadGuild } from './guilds.js';
+import { publicUrl } from '../federation.js';
 
 const STAGE = 1, VOICE = 2, EXTERNAL = 3;
 const SCHEDULED = 1, ACTIVE = 2, COMPLETED = 3, CANCELED = 4;
@@ -192,27 +193,21 @@ function ensureCalendarToken(userId) {
   return u.calendar_token;
 }
 
+// links from the instance's configured address (the request's Host only when none is set), never X-Forwarded-Proto
+function feedInfo(ctx, token) {
+  const base = publicUrl(ctx.req);
+  const url = `${base}/api/v9/calendar/feed/${token}.ics`;
+  return { token, url, webcal_url: url.replace(/^https?:/, 'webcal:') };
+}
+
 function getCalendarFeedInfo(ctx) {
-  const token = ensureCalendarToken(ctx.user.id);
-  const host = ctx.req?.headers?.host || 'localhost:3000';
-  const proto = ctx.req?.headers?.['x-forwarded-proto'] || 'http';
-  return {
-    token,
-    url: `${proto}://${host}/api/v9/calendar/feed/${token}.ics`,
-    webcal_url: `webcal://${host}/api/v9/calendar/feed/${token}.ics`,
-  };
+  return feedInfo(ctx, ensureCalendarToken(ctx.user.id));
 }
 
 function resetCalendarFeed(ctx) {
   const token = randomBytes(24).toString('hex');
   run('UPDATE users SET calendar_token = ? WHERE id = ?', token, ctx.user.id);
-  const host = ctx.req?.headers?.host || 'localhost:3000';
-  const proto = ctx.req?.headers?.['x-forwarded-proto'] || 'http';
-  return {
-    token,
-    url: `${proto}://${host}/api/v9/calendar/feed/${token}.ics`,
-    webcal_url: `webcal://${host}/api/v9/calendar/feed/${token}.ics`,
-  };
+  return feedInfo(ctx, token);
 }
 
 function toIcsDate(iso) {

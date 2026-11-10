@@ -164,6 +164,7 @@ function cloneChannel(ctx) {
   const ch = loadChannel(ctx.params.id, ctx.user);
   if (!ch.guild_id || isThread(ch)) throw new HttpError(400, 50024, 'Cannot clone this channel type');
   need(ch.perms, P.MANAGE_CHANNELS);
+  loadGuild(ch.guild_id, ctx.user, P.MANAGE_CHANNELS); // a clone is a new channel: the same server-wide right as creating one
   const srcOverwrites = overwritesOf(ch.id);
   if (srcOverwrites.length > 0) {
     checkOverwrites(ch.guild_id, ctx.user, ch.perms, [], srcOverwrites);
@@ -210,11 +211,14 @@ function patchChannel(ctx) {
     const body = ctx.body ?? {};
     if (body.message_ttl !== undefined) {
       const ttl = body.message_ttl === null ? 0 : int(body, 'message_ttl', 0, 31536000);
-      run('UPDATE channels SET message_ttl = ? WHERE id = ?', ttl, t.id);
+      const other = channelUserIds(t).find(id => id !== ctx.user.id);
+      if (other && (blockedEither(ctx.user.id, other) || userById(other)?.system)) throw new HttpError(403, 50007, 'Cannot change this conversation.');
+      // covers messages from now on only: what either side sent before stays
+      run('UPDATE channels SET message_ttl = ?, message_ttl_since = CASE WHEN ? > 0 THEN COALESCE(message_ttl_since, ?) END WHERE id = ?', ttl, ttl, snowflake(), t.id);
       if (ttl > 0) schedule();
-      const out = channelObj(getChannel(t.id), ctx.user.id);
-      sendToUsers(channelUserIds(t), 'CHANNEL_UPDATE', out);
-      return out;
+      const row = getChannel(t.id);
+      sendToUsers(channelUserIds(t), 'CHANNEL_UPDATE', id => channelObj(row, id)); // each side sees the other as recipient
+      return channelObj(row, ctx.user.id);
     }
     return channelObj(t, ctx.user.id);
   }

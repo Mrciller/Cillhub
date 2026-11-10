@@ -26,7 +26,8 @@ export function Nodes() {
   const hub = useLoad(A.getHubFederation, [])
   const [open, setOpen] = useState<string | null>(null)
   const [fresh, setFresh] = useState<A.LinkCode | null>(null)
-  const create = () => void A.createLinkCode().then((c) => (setFresh(c), void codes.reload()), toastError)
+  const create = () => void A.elevated((mfa) => A.createLinkCode(undefined, mfa), () => askCode(t('Create Link Code'), <p>{t('Confirm with your own two-factor code.')}</p>, t('Create Link Code')))
+    .then((c) => c && (setFresh(c), void codes.reload()), toastError)
   const q = query.toLowerCase()
   const nodes = { ...all, data: all.data?.filter((n) => !q || n.name.toLowerCase().includes(q) || n.url.toLowerCase().includes(q)) ?? null }
   const node = nodes.data?.find((n) => n.node_id === open)
@@ -103,9 +104,9 @@ function NodeDrawer({ node: n, onClose, onChanged }: { node: A.AdminNode; onClos
   const done = (msg: string) => () => (toast(msg), onChanged(), void audit.reload())
   const suspend = () => void askText({ title: t('Suspend {name}?', { name: n.name }), label: t('Reason (shown in the audit log)'), confirm: t('Suspend'), danger: true,
     body: <p>{t('Its servers disappear from the directory and hub accounts can no longer sign in there until you lift the suspension.')}</p> })
-    .then((reason) => void (reason !== null && A.suspendNode(n.node_id, reason).then(done(t('Node suspended.')), toastError)))
+    .then((reason) => void (reason !== null && A.elevated((mfa) => A.suspendNode(n.node_id, reason, mfa), () => askCode(t('Suspend {name}?', { name: n.name }), <p>{t('Confirm with your own two-factor code.')}</p>, t('Suspend'))).then((r) => r && done(t('Node suspended.'))(), toastError)))
   const lift = () => void ask({ title: t('Lift the suspension of {name}?', { name: n.name }), confirm: t('Lift Suspension') })
-    .then((ok) => void (ok && A.unsuspendNode(n.node_id).then(done(t('Suspension lifted.')), toastError)))
+    .then((ok) => void (ok && A.elevated((mfa) => A.unsuspendNode(n.node_id, mfa), () => askCode(t('Lift the suspension of {name}?', { name: n.name }), <p>{t('Confirm with your own two-factor code.')}</p>, t('Lift Suspension'))).then((r) => r && done(t('Suspension lifted.'))(), toastError)))
   const ban = () => void askText({ title: t('Ban {name}?', { name: n.name }), label: t('Reason (shown in the audit log)'), confirm: t('Continue'), danger: true,
     body: <p>{t('The node is unlinked and can never link again from this address. Hub sign-ins there stop at once.')}</p> })
     .then((reason) => reason !== null && askCode(t('Ban {name}?', { name: n.name }), <p>{t('Confirm with your own two-factor code.')}</p>, t('Ban Node'))

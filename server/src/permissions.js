@@ -84,6 +84,12 @@ function overwritten(ch, b, userId, overwrites = all('SELECT * FROM overwrites W
   return perms;
 }
 
+// what someone holding only @everyone sees (a vanity link names only such a channel)
+export function everyoneCanView(ch) {
+  const perms = BigInt(get('SELECT permissions FROM roles WHERE id = ?', ch.guild_id)?.permissions ?? 0);
+  return has(perms, P.ADMINISTRATOR) || has(overwritten(ch, { perms, roles: [] }, null), P.VIEW_CHANNEL);
+}
+
 export const isThreadMember = (threadId, userId) => !!get('SELECT 1 FROM thread_members WHERE channel_id = ? AND user_id = ?', threadId, userId);
 
 export function channelPerms(ch, userId) {

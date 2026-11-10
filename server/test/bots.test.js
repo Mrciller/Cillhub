@@ -312,11 +312,12 @@ test('ATTACHMENT options: multipart Create Interaction, resolved.attachments wit
   const id = i.data.options[0].value;
   const a = i.data.resolved.attachments[id];
   assert.deepEqual([a.id, a.filename, a.content_type, a.size, a.width, a.height, a.ephemeral], [id, 'pic.png', 'image/png', 33, 2, 3, true]);
-  assert.equal(a.url, `/ephemeral-attachments/${app.id}/${id}/pic.png`);
+  assert.match(a.url, new RegExp(`^/ephemeral-attachments/${app.id}/${id}/pic.png\\?key=[\\w-]{24}$`));
   const got = await fetch(srv.origin + a.url);
   assert.deepEqual([got.status, got.headers.get('content-type'), got.headers.get('x-content-type-options')], [200, 'image/png', 'nosniff']);
   assert.deepEqual(Buffer.from(await got.arrayBuffer()), png(2, 3));
   assert.equal((await fetch(`${srv.origin}/ephemeral-attachments/1/${id}/pic.png`)).status, 404);
+  assert.equal((await fetch(`${srv.origin}/ephemeral-attachments/${app.id}/${id}/pic.png`)).status, 404, 'no key, no file');
 
   // a file in the callback (payload_json with data.attachments), referenced from an embed with attachment://
   const cb = await srv.form('POST', `/interactions/${i.id}/${i.token}/callback`, null,
@@ -332,7 +333,7 @@ test('ATTACHMENT options: multipart Create Interaction, resolved.attachments wit
   // an ephemeral follow-up with a file: only the invoker sees it, served from the ephemeral path
   const fu = await srv.form('POST', `/webhooks/${app.id}/${i.token}`, null, { content: 'secret file', flags: 64, attachments: [{ id: 0 }] }, [['files[0]', 'notes.txt', 'hi', 'text/plain']]);
   assert.equal(fu.status, 200);
-  assert.match(fu.body.attachments[0].url, new RegExp(`^/ephemeral-attachments/${app.id}/\\d+/notes.txt$`));
+  assert.match(fu.body.attachments[0].url, new RegExp(`^/ephemeral-attachments/${app.id}/\\d+/notes.txt\\?key=[\\w-]{24}$`));
   const eph = await alice.gw.event('MESSAGE_CREATE', m => m.content === 'secret file');
   assert.equal(eph.attachments[0].content_type, 'text/plain');
   assert.ok(await bob.gw.none(f => f.t === 'MESSAGE_CREATE' && f.d.id === eph.id, 200));
