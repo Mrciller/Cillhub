@@ -15,7 +15,7 @@ RUN npm ci --omit=dev
 COPY server/ ./
 COPY examples/ /app/examples/
 COPY --from=client /app/client/dist /app/client/dist
-ENV PORT=3000 DATA_DIR=/data STATIC_DIR=/app/client/dist NODE_ENV=production CILLCORD_VERSION=7.10.0
+ENV PORT=3000 DATA_DIR=/data STATIC_DIR=/app/client/dist NODE_ENV=production CILLCORD_VERSION=7.10.1
 VOLUME /data
 EXPOSE 3000
 # the server runs as node (uid 1000); see server/docker-entrypoint.sh for installs that still start it as root
