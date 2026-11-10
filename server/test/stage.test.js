@@ -84,6 +84,14 @@ test('stage instances: moderators open, edit and close; the stage closes when it
   const ready = await srv.gateway(carol.token);
   assert.deepEqual(ready.ready.guilds[0].stage_instances.map(i => i.topic), ['Q&A']);
   ready.ws.close();
+  // members who cannot view the stage do not learn its topic (review L-11)
+  await api('PUT', `/channels/${stage.id}/permissions/${carol.id}`, alice.token, { type: 1, allow: '0', deny: '1024' });
+  await api('PATCH', `/stage-instances/${stage.id}`, alice.token, { topic: 'secret' });
+  assert.ok(await carol.gw.none(f => f.t === 'STAGE_INSTANCE_UPDATE'));
+  const hidden = await srv.gateway(carol.token);
+  assert.deepEqual(hidden.ready.guilds[0].stage_instances, []);
+  hidden.ws.close();
+  await api('DELETE', `/channels/${stage.id}/permissions/${carol.id}`, alice.token);
   join(bob, null);
   assert.equal((await carol.gw.event('STAGE_INSTANCE_DELETE')).channel_id, stage.id);
   assert.equal((await api('GET', `/stage-instances/${stage.id}`, carol.token)).body.code, 10067);

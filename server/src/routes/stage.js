@@ -1,7 +1,7 @@
 import { snowflake } from '../snowflake.js';
 import { get, memberIds } from '../db.js';
 import { HttpError, str, int, bool, snowflakeField, notFound, missingPermissions } from '../errors.js';
-import { P, has, need, channelPerms, requireAbove } from '../permissions.js';
+import { P, has, need, channelPerms, requireAbove, viewersOf } from '../permissions.js';
 import { sendToUsers, guildParts } from '../gateway.js';
 import { audit, A, diff } from '../audit.js';
 import { voiceState, voiceStateObj, statesIn, setStageState, leaveHooks } from '../voice.js';
@@ -16,8 +16,14 @@ const instances = new Map();
 // stage moderators, as the contract defines them
 const MODERATOR = P.MUTE_MEMBERS | P.MOVE_MEMBERS;
 // an instance whose channel was deleted is dropped the next time someone looks
-guildParts.push(g => ({
-  stage_instances: [...instances.values()].filter(i => i.guild_id === g.id && (getChannel(i.channel_id) || !instances.delete(i.channel_id))),
+// only members who can view the stage channel learn its topic
+guildParts.push((g, userId) => ({
+  stage_instances: [...instances.values()].filter(i => {
+    if (i.guild_id !== g.id) return false;
+    const ch = getChannel(i.channel_id);
+    if (!ch) return !instances.delete(i.channel_id);
+    return !!userId && has(channelPerms(ch, userId), P.VIEW_CHANNEL);
+  }),
 }));
 
 function loadStage(channelId, user) {
@@ -34,7 +40,7 @@ function loadInstance(ctx) {
 }
 
 const privacy = body => (body.privacy_level === undefined ? 2 : int(body, 'privacy_level', 2, 2));
-const announce = (inst, t) => sendToUsers(memberIds(inst.guild_id), t, inst);
+const announce = (inst, t) => { const ch = getChannel(inst.channel_id); sendToUsers(ch ? viewersOf(ch) : memberIds(inst.guild_id), t, inst); };
 
 function close(ctx, inst) {
   instances.delete(inst.channel_id);
