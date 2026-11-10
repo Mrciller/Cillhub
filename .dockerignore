@@ -6,6 +6,6 @@ data
 **/data
 **/node_modules
 client/dist
-desktop
+desktop-rust
 android
 .git
