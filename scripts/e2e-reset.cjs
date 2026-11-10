@@ -115,8 +115,11 @@ async function main() {
   const dataDir = path.join(tmp, 'data')
   fs.mkdirSync(dataDir)
   const out = fs.openSync(path.join(tmp, 'server.log'), 'w')
-  const env = { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, STATIC_DIR: DIST, CAPTCHA_VERIFY_URL: `http://127.0.0.1:${CAPTCHA_PORT}/verify` }
-  delete env.CILLCORD_PUBLIC_URL
+  // nothing from a sourced .env: a fresh standalone instance
+  const env = {
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('LIVEKIT_') && !k.startsWith('CILLCORD_') && k !== 'VOICE_BACKEND')),
+    PORT: String(PORT), DATA_DIR: dataDir, STATIC_DIR: DIST, CAPTCHA_VERIFY_URL: `http://127.0.0.1:${CAPTCHA_PORT}/verify`,
+  }
   children.push(spawn(process.execPath, ['src/index.js'], { cwd: SERVER_DIR, env, stdio: ['ignore', out, out] }))
   await until('the instance', async () => (await fetch(`${BASE}/api/v9/instance`)).ok, 20000)
   const browser = await chromium.launch()
