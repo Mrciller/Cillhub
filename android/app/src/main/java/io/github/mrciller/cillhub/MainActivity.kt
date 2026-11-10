@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_SETTINGS = "settings"
         const val EXTRA_VOICE = "voice"
         const val EXTRA_RINGING = "ringing"
+        const val EXTRA_ANSWER_TOKEN = "answer_token"
         const val ACTION_ANSWER = "io.github.mrciller.cillhub.ANSWER"
         private val PATH = Regex("^/channels/(@me|\\d{1,19})/(\\d{1,19})(/\\d{1,19})?$")
 
@@ -124,7 +125,7 @@ class MainActivity : ComponentActivity() {
             // a ring shows over the lock screen and turns the screen on, like a phone call; only for the call that is ringing
             // now (this activity is exported, any app can send these extras), and only until the voice screen is left
             if ((i.getBooleanExtra(EXTRA_RINGING, false) || i.action == ACTION_ANSWER) && Calls.rings(Calls.current, id)) overLockScreen(true)
-            if (i.action == ACTION_ANSWER) {
+            if (i.action == ACTION_ANSWER && Calls.answerAllowed(Calls.current, id, i.getStringExtra(EXTRA_ANSWER_TOKEN))) {
                 if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) Calls.answer(this, id, openApp = false)
                 else { answerAfterMic = id; askMic.launch(Manifest.permission.RECORD_AUDIO) }
             }

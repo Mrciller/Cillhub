@@ -15,4 +15,13 @@ class CallsTest {
         assertFalse("already answered", Calls.rings(call(Calls.State.ACTIVE), "100"))
         assertFalse("a voice channel", Calls.rings(call(Calls.State.VOICE), "100"))
     }
+
+    @Test fun answerNeedsTheTokenOfTheRingingCall() {
+        val c = call(Calls.State.RINGING)
+        assertTrue(Calls.answerAllowed(c, "100", c.answerToken))
+        assertFalse("no token (another app)", Calls.answerAllowed(c, "100", null))
+        assertFalse("wrong token", Calls.answerAllowed(c, "100", call(Calls.State.RINGING).answerToken))
+        assertFalse("another channel", Calls.answerAllowed(c, "200", c.answerToken))
+        assertFalse("not ringing", Calls.answerAllowed(call(Calls.State.ACTIVE).let { it.copy(answerToken = c.answerToken) }, "100", c.answerToken))
+    }
 }

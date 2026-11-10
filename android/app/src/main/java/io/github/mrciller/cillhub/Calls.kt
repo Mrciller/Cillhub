@@ -32,6 +32,8 @@ object Calls {
         @Volatile var state: State, val guildId: String? = null,
         /** Run by native voice (not the web client). */
         val native: Boolean = true,
+        /** Secret in our own answer PendingIntent: MainActivity is exported, so the answer action alone proves nothing. */
+        val answerToken: String = java.util.UUID.randomUUID().toString(),
     )
 
     private const val TAG = "CillcordCalls"
@@ -42,6 +44,8 @@ object Calls {
 
     /** [c] is the ringing call of [channelId] (what may show over the lock screen). */
     fun rings(c: Call?, channelId: String) = c != null && c.channelId == channelId && c.state == State.RINGING
+    /** An answer intent counts only with the token of the ringing call (only our notification has it). */
+    fun answerAllowed(c: Call?, channelId: String, token: String?) = rings(c, channelId) && token != null && token == c?.answerToken
 
     fun ring(ctx: Context, channelId: String, name: String, personId: String?, isGroup: Boolean, title: String) {
         synchronized(this) {
@@ -167,7 +171,7 @@ object Calls {
         when (c.state) {
             State.RINGING -> {
                 val answer = PendingIntent.getActivity(
-                    ctx, 12, MainActivity.voiceIntent(ctx, c.channelId).setAction(MainActivity.ACTION_ANSWER),
+                    ctx, 12, MainActivity.voiceIntent(ctx, c.channelId).setAction(MainActivity.ACTION_ANSWER).putExtra(MainActivity.EXTRA_ANSWER_TOKEN, c.answerToken),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
                 val full = PendingIntent.getActivity(ctx, 14, MainActivity.voiceIntent(ctx, c.channelId).putExtra(MainActivity.EXTRA_RINGING, true), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
