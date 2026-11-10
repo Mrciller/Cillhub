@@ -64,12 +64,14 @@ export async function parseMultipart(req, { maxTotal, maxFile, maxFields = 1024 
     const keep = chunk.subarray(0, Math.max(0, maxFile - f.written));
     if (!keep.length) return;
     f.written += keep.length;
+    if (part.out.errored) throw part.out.errored;
     if (!part.out.write(keep)) await once(part.out, 'drain');
   }
 
   async function endPart() {
     if (part.chunks) entries.push([part.name, Buffer.concat(part.chunks).toString('utf8')]);
     else {
+      if (part.out.errored) throw part.out.errored;
       part.out.end();
       await once(part.out, 'finish');
       entries.push([part.name, part.file]);
@@ -89,7 +91,8 @@ export async function parseMultipart(req, { maxTotal, maxFile, maxFields = 1024 
     if (++files > maxFiles) throw new HttpError(400, 0, `At most ${maxFiles} files.`);
     const type = /^content-type:\s*([^\r\n;]*)/im.exec(headers)?.[1].trim() ?? '';
     const file = new Upload(filename, type, join(dir, String(files)));
-    part = { name, file, out: createWriteStream(file.path) };
+    // a write error may come while the next request chunk is awaited: kept on the stream (errored), thrown at the next write
+    part = { name, file, out: createWriteStream(file.path).on('error', () => {}) };
   }
 
   // consumes as much of buf as can be decided now

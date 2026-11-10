@@ -10,7 +10,11 @@ function fire() {
   handle = null;
   const now = Date.now();
   for (const j of jobs) {
-    try { j.run(now); } catch (e) { console.error(`timer ${j.name} failed:`, e); }
+    if (j.busy) continue; // an async run from the last firing is still going
+    try {
+      const r = j.run(now);
+      if (r?.then) (j.busy = true, r.catch(e => console.error(`timer ${j.name} failed:`, e)).finally(() => { j.busy = false; }));
+    } catch (e) { console.error(`timer ${j.name} failed:`, e); }
   }
   schedule();
 }

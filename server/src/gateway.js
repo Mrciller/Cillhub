@@ -314,7 +314,7 @@ function requestMembers(s, d) {
   let list = membersOf(guildId);
   let notFound;
   if (d.user_ids != null) {
-    const ids = [].concat(d.user_ids).map(String).slice(0, 100);
+    const ids = [].concat(d.user_ids).filter(id => typeof id === 'string' || typeof id === 'number').map(String).slice(0, 100);
     list = list.filter(m => ids.includes(m.user.id));
     notFound = ids.filter(id => !list.some(m => m.user.id === id));
   } else {
@@ -353,7 +353,12 @@ export function attachGateway(server) {
     raw(ws, 10, { heartbeat_interval: HEARTBEAT });
 
     ws.on('error', () => {}); // ws closes the socket itself; without a listener the error would crash the process
+    // a failing command closes this socket, never the process (handlers may also return promises)
+    const failed = e => { console.error('gateway command failed:', e); ws.close(4000, 'Unknown error'); };
     ws.on('message', data => {
+      try { Promise.resolve(onCommand(data)).catch(failed); } catch (e) { failed(e); }
+    });
+    const onCommand = data => {
       const now = Date.now();
       conn.sent = conn.sent.filter(t => now - t < 60_000);
       if (conn.sent.push(now) > SEND_LIMIT) return ws.close(4008, 'Rate limited');
@@ -388,7 +393,7 @@ export function attachGateway(server) {
           return cillvoiceSignal(s, msg.d);
         default: return ws.close(4001, 'Unknown opcode');
       }
-    });
+    };
     ws.on('close', () => {
       clearTimeout(identifyTimer);
       clearTimeout(beatTimer);

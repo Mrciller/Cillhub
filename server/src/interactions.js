@@ -3,6 +3,7 @@
 import { createHash, randomBytes, sign as edSign, createPrivateKey } from 'node:crypto';
 import { maxUpload } from './instance.js';
 import { mkdirSync, renameSync, createReadStream } from 'node:fs';
+import { pipeline } from 'node:stream';
 import { join } from 'node:path';
 import { snowflake } from './snowflake.js';
 import { DATA_DIR, get, all, run, tx, userById, userObj, memberRow, memberObj, channelObj } from './db.js';
@@ -94,7 +95,7 @@ export function serveEphemeral(req, res, pathname) {
     'Access-Control-Allow-Origin': '*',
   });
   if (req.method === 'HEAD') return res.end();
-  createReadStream(ephPath(id)).pipe(res);
+  pipeline(createReadStream(ephPath(id)), res, () => {});
 }
 
 // --- HTTP delivery ------------------------------------------------------------------------------------------------

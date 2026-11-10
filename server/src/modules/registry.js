@@ -130,12 +130,10 @@ function interactionHandler(moduleId) {
       if (!r.ok || r.result == null || typeof r.result !== 'object' || r.result.type == null) return;
       const rec = interactionRecord(interaction.id);
       if (!rec) return;
-      try {
-        respond(rec, r.result, false);
-      } catch (e) {
-        if (!(e instanceof HttpError)) throw e;
-        moduleLog(moduleId, 'error', `The interaction response was refused: ${e.body.message}${e.body.errors ? ` ${JSON.stringify(e.body.errors).slice(0, 500)}` : ''}`);
-      }
+      respond(rec, r.result, false);
+    }).catch(e => { // whatever a module returns, a bad answer is logged and never ends the process
+      if (!(e instanceof HttpError)) console.error(`module ${moduleId} interaction answer failed:`, e);
+      moduleLog(moduleId, 'error', `The interaction response was refused: ${e instanceof HttpError ? `${e.body.message}${e.body.errors ? ` ${JSON.stringify(e.body.errors).slice(0, 500)}` : ''}` : 'invalid response'}`);
     });
   };
 }

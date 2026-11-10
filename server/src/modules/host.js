@@ -107,7 +107,7 @@ function onData(rt, proc, chunk) {
     if (line.length > MAX_FRAME) return failure(rt, 'a frame larger than 1 MiB');
     let f;
     try { f = JSON.parse(line); } catch { return failure(rt, 'an invalid frame'); }
-    onFrame(rt, f);
+    try { onFrame(rt, f); } catch (e) { console.error(`module ${rt.id} frame failed:`, e); return failure(rt, 'a frame the server could not handle'); }
     if (rt.dead) return;
   }
   if (rt.buf.length > MAX_FRAME) failure(rt, 'a frame larger than 1 MiB');

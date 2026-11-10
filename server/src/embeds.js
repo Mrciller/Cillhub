@@ -36,7 +36,7 @@ export function richEmbeds(value, attachmentUrl) {
     const fields = e.fields ?? [];
     if (!Array.isArray(fields) || fields.length > 25) throw invalid(`${f}.fields`, 'BASE_TYPE_MAX_LENGTH', 'At most 25 fields.');
     if (e.color != null && !(Number.isInteger(e.color) && e.color >= 0 && e.color <= 0xffffff)) throw invalid(`${f}.color`, 'NUMBER_TYPE_COERCE', 'Must be a color integer.');
-    if (e.timestamp != null && Number.isNaN(Date.parse(e.timestamp))) throw invalid(`${f}.timestamp`, 'DATE_TYPE_PARSE', 'Must be an ISO8601 timestamp.');
+    if (e.timestamp != null && (typeof e.timestamp !== 'string' || Number.isNaN(Date.parse(e.timestamp)))) throw invalid(`${f}.timestamp`, 'DATE_TYPE_PARSE', 'Must be an ISO8601 timestamp.');
     const author = e.author == null ? undefined : drop({
       name: text(e.author.name, `${f}.author.name`, 256, true),
       url: e.author.url == null ? undefined : link(e.author.url, `${f}.author.url`).url,

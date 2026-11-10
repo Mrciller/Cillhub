@@ -335,8 +335,8 @@ async function proxyHubDownload(req, res, pathname) {
 
   res.writeHead(upstreamRes.status, headers);
   if (upstreamRes.body) {
-    const { Readable } = await import('node:stream');
-    Readable.fromWeb(upstreamRes.body).pipe(res);
+    const { Readable, pipeline } = await import('node:stream');
+    pipeline(Readable.fromWeb(upstreamRes.body), res, () => {});
   } else {
     res.end();
   }

@@ -1,4 +1,5 @@
 import { mkdirSync, rmSync, createReadStream } from 'node:fs';
+import { pipeline } from 'node:stream';
 import { writeFile, rename, stat, open } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
@@ -170,7 +171,7 @@ export function sendRanged(req, res, headers, body, size = body.length) {
   });
   if (req.method === 'HEAD' || !size) return res.end();
   if (Buffer.isBuffer(body)) return res.end(body.subarray(start, end + 1));
-  createReadStream(body, { start, end }).pipe(res);
+  pipeline(createReadStream(body, { start, end }), res, () => {}); // a file gone since the stat ends this answer, not the process
 }
 
 export async function serveCdn(req, res, pathname) {
