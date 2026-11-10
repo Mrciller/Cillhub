@@ -126,8 +126,14 @@ function StickerTab({ guildId, perms, onPick }: { guildId?: string; perms: bigin
   )
 }
 
+// shortcut: favorites have no title, search matches words in the GIF link only; store a title when the picker has one if this proves too weak
+const linkWords = (s: string) => { try { s = decodeURIComponent(s) } catch {} return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ') }
+/** Every whitespace-separated word of q appears in the favourite's url or src (decoded, lowercased, punctuation as spaces). */
+const favMatches = (f: FavoriteGif, q: string) => { const hay = `${linkWords(f.url)} ${linkWords(f.src)}`; return q.toLowerCase().split(/\s+/).every((w) => hay.includes(w)) }
+
 function GifTab({ onPick, onMissing }: { onPick: (g: Gif) => void; onMissing: () => void }) {
   const [q, setQ] = useState('')
+  const [favQ, setFavQ] = useState('') // filters favourites locally while that chip is on; q keeps the server search
   const [list, setList] = useState<Gif[] | null>(null)
   const [error, setError] = useState('')
   const [categories, setCategories] = useState<GifCategory[]>(DEFAULT_GIF_CATEGORIES)
@@ -135,7 +141,7 @@ function GifTab({ onPick, onMissing }: { onPick: (g: Gif) => void; onMissing: ()
   const favs = useStore((s) => s.settings.favorite_gifs) ?? []
   const showFavs = activeCategory === 'favorites'
   // favourites are kept as {url, src, width, height, format}; the picker's tiles and onPick speak Gif
-  const shown: Gif[] | null = showFavs ? favs.map((f) => ({ ...f, id: f.url, title: '', preview: f.src })) : list
+  const shown: Gif[] | null = showFavs ? favs.filter((f) => favMatches(f, favQ)).map((f) => ({ ...f, id: f.url, title: '', preview: f.src })) : list
 
   useEffect(() => {
     gifCategories().then((res) => {
@@ -151,6 +157,7 @@ function GifTab({ onPick, onMissing }: { onPick: (g: Gif) => void; onMissing: ()
   const onSelectCategory = (cat: GifCategory) => {
     setActiveCategory(cat.id)
     setQ(cat.q)
+    setFavQ('')
   }
 
   return (
@@ -158,10 +165,11 @@ function GifTab({ onPick, onMissing }: { onPick: (g: Gif) => void; onMissing: ()
       <input
         className="input"
         type="search"
-        aria-label={t('Search GIFs')}
-        placeholder={t('Search for GIFs')}
-        value={q}
+        aria-label={showFavs ? t('Search favorites') : t('Search GIFs')}
+        placeholder={showFavs ? t('Search favorites') : t('Search for GIFs')}
+        value={showFavs ? favQ : q}
         onChange={(e) => {
+          if (showFavs) return setFavQ(e.target.value)
           setQ(e.target.value)
           setActiveCategory('')
         }}
@@ -206,7 +214,7 @@ function GifTab({ onPick, onMissing }: { onPick: (g: Gif) => void; onMissing: ()
             )
           })}
         </div>
-        {shown?.length === 0 && <p className="hint">{showFavs ? t('No favorite GIFs yet. Star a GIF to keep it here.') : t('No GIFs found.')}</p>}
+        {shown?.length === 0 && <p className="hint">{!showFavs ? t('No GIFs found.') : favs.length ? t('No favorites match “{q}”.', { q: favQ }) : t('No favorite GIFs yet. Star a GIF to keep it here.')}</p>}
       </div>
     </>
   )

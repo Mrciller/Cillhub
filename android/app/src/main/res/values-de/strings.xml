@@ -537,10 +537,12 @@
     <string name="gif_favorite">Zu Favoriten hinzufügen</string>
     <string name="gif_favorites">Favoriten</string>
     <string name="gif_no_favorites">Noch keine Lieblings-GIFs. Tippe auf den Stern eines GIFs, um es hier zu behalten.</string>
+    <string name="gif_no_favorites_match">Keine Favoriten passen zu „%1$s“.</string>
     <string name="gif_none">Keine GIFs gefunden</string>
     <string name="gif_open">GIFs</string>
     <string name="gifs">GIFs</string>
     <string name="gif_search">GIFs suchen</string>
+    <string name="gif_search_favorites">Favoriten durchsuchen</string>
     <string name="gif_send">GIF senden</string>
     <string name="gif_unfavorite">Aus Favoriten entfernen</string>
     <string name="group_count">%1$s — %2$d</string>

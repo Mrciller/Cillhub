@@ -543,10 +543,12 @@
     <string name="gif_favorite">Add to favourites</string>
     <string name="gif_favorites">Favourites</string>
     <string name="gif_no_favorites">No favourite GIFs yet. Tap the star on a GIF to keep it here.</string>
+    <string name="gif_no_favorites_match">No favourites match “%1$s”.</string>
     <string name="gif_none">No GIFs found</string>
     <string name="gif_open">GIFs</string>
     <string name="gifs">GIFs</string>
     <string name="gif_search">Search GIFs</string>
+    <string name="gif_search_favorites">Search favourites</string>
     <string name="gif_send">Send GIF</string>
     <string name="gif_unfavorite">Remove from favourites</string>
     <string name="group_count">%1$s — %2$d</string>

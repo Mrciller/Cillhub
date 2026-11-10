@@ -8,6 +8,7 @@ import io.github.mrciller.cillhub.data.Message
 import io.github.mrciller.cillhub.data.User
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Which messages offer "Add to favourites", and the favorite_gifs item they become. */
@@ -34,5 +35,19 @@ class GifsTest {
         assertEquals("/attachments/c/a/funny.gif", gifOf(msg(attachments = listOf(a)))?.src)
         assertNull(gifOf(msg(attachments = listOf(a.copy(filename = "p.png", contentType = "image/png")))))
         assertNull("a plain link card is no GIF", gifOf(msg(listOf(Embed(type = "article", url = "https://example.com", thumbnail = EmbedMedia("https://example.com/t.png"))))))
+    }
+
+    @Test fun favouritesSearchMatchesEveryWordInTheLink() {
+        val cat = FavoriteGif("https://media.example/Happy%20Cat%20Dance.gif", "/external/a", 0, 0, "gif")
+        val sad = FavoriteGif("https://media.example/sad-dog.gif", "/external/b", 0, 0, "gif")
+        val dog = FavoriteGif("https://media.example/x.gif", "/external/Happy_Dog", 0, 0, "gif")
+        val all = listOf(cat, sad, dog)
+        fun find(q: String) = all.filter { gifMatches(it, q) }
+        assertEquals("case", listOf(cat, dog), find("HAPPY"))
+        assertEquals("every word, any order", listOf(dog), find("dog  happy"))
+        assertEquals("%20 decoded", listOf(cat), find("cat dance"))
+        assertEquals("no match", emptyList<FavoriteGif>(), find("zebra"))
+        assertEquals("empty query = all", all, find(""))
+        assertTrue("undecodable link is searched raw", gifMatches(FavoriteGif("https://m.example/100%.gif", "/e", 0, 0, "gif"), "100"))
     }
 }

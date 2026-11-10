@@ -47,6 +47,7 @@ import io.github.mrciller.cillhub.data.Message
 import io.github.mrciller.cillhub.data.Session
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.net.URLDecoder
 
 /** favorite_gifs' format from the media URL. */
 fun gifFormat(src: String) = when (src.substringBefore('?').substringAfterLast('.').lowercase()) {
@@ -67,6 +68,15 @@ fun gifOf(m: Message): FavoriteGif? {
     return Config.cdn(a.url).let { FavoriteGif(it, a.url, a.width ?: 0, a.height ?: 0, "gif") }
 }
 
+// shortcut: favorites have no title, search matches words in the GIF link only; store a title when the picker has one if this proves too weak
+private fun linkWords(s: String) = runCatching { URLDecoder.decode(s, "UTF-8") }.getOrDefault(s).lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+
+/** Every whitespace-separated word of [query] appears in the favourite's url or src (decoded, lowercased, punctuation as spaces); same rule as the web client. */
+fun gifMatches(g: FavoriteGif, query: String): Boolean {
+    val hay = linkWords(g.url) + " " + linkWords(g.src)
+    return query.lowercase().split(Regex("\\s+")).all { hay.contains(it) }
+}
+
 /** GIF picker: trending or search results from the server's GIF route, and the favourites (star on every tile). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,6 +86,7 @@ fun GifPicker(close: () -> Unit, send: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var tab by rememberSaveable { mutableStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
+    var favQuery by rememberSaveable { mutableStateOf("") } // filters favourites locally; query keeps the server search
     var results by remember { mutableStateOf<List<FavoriteGif>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(query) {
@@ -87,16 +98,21 @@ fun GifPicker(close: () -> Unit, send: (String) -> Unit) {
     ModalBottomSheet(close) {
         Column(Modifier.fillMaxWidth().height(560.dp).padding(horizontal = 12.dp)) {
             PrimaryTabRow(tab, containerColor = Color.Transparent) {
-                Tab(tab == 0, { tab = 0 }, text = { Text(s(R.string.gifs)) })
-                Tab(tab == 1, { tab = 1 }, text = { Text(s(R.string.gif_favorites)) })
+                Tab(tab == 0, { tab = 0; favQuery = "" }, text = { Text(s(R.string.gifs)) })
+                Tab(tab == 1, { tab = 1; favQuery = "" }, text = { Text(s(R.string.gif_favorites)) })
             }
-            if (tab == 0) OutlinedTextField(query, { query = it }, placeholder = { Text(s(R.string.gif_search)) }, singleLine = true,
+            OutlinedTextField(if (tab == 1) favQuery else query, { if (tab == 1) favQuery = it else query = it },
+                placeholder = { Text(s(if (tab == 1) R.string.gif_search_favorites else R.string.gif_search)) }, singleLine = true,
                 leadingIcon = { Ic(R.drawable.ms_search, null) }, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
-            val list = if (tab == 1) state.favoriteGifs else results
+            val list = if (tab == 1) state.favoriteGifs.filter { gifMatches(it, favQuery) } else results
             when {
                 tab == 0 && error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
                 list == null -> Loading()
-                list.isEmpty() -> EmptyState(R.drawable.ms_gif, s(if (tab == 1) R.string.gif_no_favorites else R.string.gif_none))
+                list.isEmpty() -> EmptyState(R.drawable.ms_gif, when {
+                    tab == 0 -> s(R.string.gif_none)
+                    state.favoriteGifs.isEmpty() -> s(R.string.gif_no_favorites)
+                    else -> s(R.string.gif_no_favorites_match, favQuery)
+                })
                 else -> LazyVerticalGrid(GridCells.Adaptive(150.dp), Modifier.fillMaxSize().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(list, key = { it.url }) { g ->
                         val fav = state.favoriteGifs.any { it.url == g.url }

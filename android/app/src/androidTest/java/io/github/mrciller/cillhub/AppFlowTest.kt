@@ -25,6 +25,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.core.app.NotificationCompat
@@ -376,5 +377,24 @@ class AppFlowTest {
         button("Notifications").performClick()
         text("through the background connection")
         shot("09-settings")
+    }
+
+    @Test fun m_gifFavouritesSearch() {
+        for (name in listOf("sad-dog", "Happy%20Cat%20Dance", "x"))
+            rest("PUT", "/users/@me/settings/favorite-gifs", alice.first, JSONObject().put("url", "https://media.example/$name.gif")
+                .put("src", "https://media.example/${if (name == "x") "Happy_Dog" else "p"}.gif").put("width", 0).put("height", 0).put("format", "gif"))
+        fun tiles() = ui.onAllNodes(hasContentDescription("GIF")).fetchSemanticsNodes().size
+        node(hasText("general") and hasClickAction()).performClick()
+        desc("GIFs").performClick()
+        button("Favourites").performClick()
+        waitFor("three favourites") { tiles().takeIf { it == 3 } }
+        field("Search favourites").performTextInput("happy CAT")
+        waitFor("one favourite matches every word") { tiles().takeIf { it == 1 } }
+        shot("10-gif-favourites-search")
+        node(hasSetTextAction() and hasText("happy CAT")).performTextClearance()
+        waitFor("cleared: all favourites again") { tiles().takeIf { it == 3 } }
+        field("Search favourites").performTextInput("zebra")
+        node(hasText("No favourites match “zebra”.", ignoreCase = true)) // EmptyState shows its title in capitals
+        device.pressBack()
     }
 }

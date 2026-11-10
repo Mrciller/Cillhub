@@ -206,9 +206,11 @@ async function run(browser, errors) {
 
 /** GIF favourites: a star on a picker tile saves favorite_gifs, the Favorites chip lists it, USER_SETTINGS_UPDATE from another device syncs. */
 async function gifFavorites(browser, errors) {
+  const searches = []
   const gif = { id: 'g1', title: 'wave', url: 'https://media.example/wave.gif', src: '/external/wave', width: 100, height: 80, preview: '/external/wave' }
   const routes = async (r, { pathname }) => {
     if (!pathname.startsWith('/api/v9/gifs/')) return false
+    searches.push(pathname)
     await r.fulfill({ json: pathname.endsWith('/categories') ? [{ id: 'trending', name: 'Trending', q: '' }] : [gif] })
     return true
   }
@@ -230,10 +232,32 @@ async function gifFavorites(browser, errors) {
   await page.waitForTimeout(150)
   await picker.getByRole('tab', { name: 'Favorites' }).click()
   await picker.getByRole('button', { name: `Send GIF ${gif.url}` }).waitFor()
+  // favourites search: local filter over the decoded link words, every query word must appear
+  const fav = (url, src) => ({ url, src, width: 0, height: 0, format: 'gif' })
+  const cat = 'https://media.example/Happy%20Cat%20Dance.gif', sad = 'https://media.example/sad-dog.gif', hd = 'https://media.example/x.gif'
+  dispatch('USER_SETTINGS_UPDATE', { favorite_gifs: [fav(cat, '/external/a'), fav(sad, '/external/b'), fav(hd, '/external/Happy_Dog')] })
+  const field = picker.getByRole('searchbox', { name: 'Search favorites' })
+  const shownNow = async () => (await picker.getByRole('button', { name: /^Send GIF / }).evaluateAll((els) => els.map((e) => e.getAttribute('aria-label').slice(9))))
+  const gifCalls = () => searches.length
+  await picker.getByRole('button', { name: `Send GIF ${sad}` }).waitFor()
+  await page.waitForTimeout(500)
+  const before = gifCalls()
+  for (const [q, want] of [['HAPPY', [cat, hd]], ['dog  happy', [hd]], ['cat dance', [cat]], ['zebra', []], ['', [cat, sad, hd]]]) {
+    await field.fill(q)
+    assert.deepEqual(await shownNow(), want, `favourites for "${q}"`)
+  }
+  await field.fill('zebra')
+  await picker.getByText('No favorites match “zebra”.').waitFor()
+  await page.waitForTimeout(400)
+  assert.equal(gifCalls(), before, 'favourites search makes no request')
+  await picker.getByRole('tab', { name: 'Trending' }).click()
+  assert.equal(await picker.getByRole('searchbox', { name: 'Search GIFs' }).inputValue(), '')
+  await picker.getByRole('tab', { name: 'Favorites' }).click()
+  assert.equal(await field.inputValue(), '')
   dispatch('USER_SETTINGS_UPDATE', { favorite_gifs: [] })
   await picker.getByText('No favorite GIFs yet. Star a GIF to keep it here.').waitFor()
   await ctx.close()
-  console.log('ok v3-core 10b - GIF favorites: star a tile (PUT one item), un-star (DELETE ?url=), Favorites tab, settings sync')
+  console.log('ok v3-core 10b - GIF favorites: star a tile (PUT one item), un-star (DELETE ?url=), Favorites tab, search in favorites (local, every word), settings sync')
 }
 
 /** A newer index.html (different main bundle) shows the update banner; in voice it warns; Reload reloads; dismiss hides it. */
