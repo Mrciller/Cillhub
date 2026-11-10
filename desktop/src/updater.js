@@ -1,9 +1,24 @@
 // Background auto-update via electron-updater (generic feed next to the web client). The UI is bundled since 1.2.0, so
 // web changes reach users through these updates; the page's update banner calls check()/install() through the bridge.
 const { autoUpdater } = require('electron-updater');
-const { Notification } = require('electron');
+const { app, Notification } = require('electron');
+const fs = require('fs');
+const path = require('path');
 const log = require('electron-log/main');
 const { UPDATE_URL, MOVED_TO } = require('./config');
+const { verify } = require('./release-sig');
+
+// The pinned release keys (the self-host release key list, bundled by electron-builder's extraResources).
+const KEYS_FILE = app.isPackaged ? path.join(process.resourcesPath, 'release-public-key.pem') : path.join(__dirname, '..', '..', 'selfhost', 'release-public-key.pem');
+// The sha512 in latest.yml comes from the same server as the installer, so only this signature makes an update trusted.
+// A legacy (MOVED_TO) build looks for the .sig in the default feed too; if its own feed differs, it refuses (fails safe).
+async function checkSignature(info) {
+  const r = await fetch(new URL(encodeURIComponent(path.basename(info.downloadedFile)) + '.sig', UPDATE_URL), { signal: AbortSignal.timeout(30000) });
+  if (!r.ok) throw new Error(`update signature: HTTP ${r.status}`);
+  if (!(await verify(info.downloadedFile, info.version, Buffer.from(await r.arrayBuffer()), fs.readFileSync(KEYS_FILE, 'utf8')))) {
+    throw new Error('update signature does not verify against the pinned release keys');
+  }
+}
 
 const FOUR_HOURS = 4 * 60 * 60 * 1000;
 let last = { state: 'none' };
@@ -40,13 +55,16 @@ function start({ onStatus, onReady }) {
   const status = (s) => { last = s; onStatus(s); };
   autoUpdater.logger = log;
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false; // turned on only once the downloaded installer's signature verified
   // A legacy build (MOVED_TO) keeps the feed it was built with (app-update.yml): never the new app's feed, whose installer
   // has another app id, but still a way to ship it a fix.
   if (!MOVED_TO) autoUpdater.setFeedURL({ provider: 'generic', url: UPDATE_URL });
 
   autoUpdater.on('checking-for-update', () => last.state !== 'ready' && status({ state: 'checking' }));
-  autoUpdater.on('update-available', (i) => status({ state: 'downloading', version: i.version }));
+  autoUpdater.on('update-available', (i) => {
+    autoUpdater.autoInstallOnAppQuit = false; // a new file replaces the verified one: no install on quit until it verifies
+    status({ state: 'downloading', version: i.version });
+  });
   autoUpdater.on('update-not-available', () => {
     clearBusy();
     if (last.state !== 'ready') status({ state: 'none' });
@@ -57,7 +75,18 @@ function start({ onStatus, onReady }) {
     log.warn('update error', err?.message);
     if (last.state !== 'ready') status({ state: 'error' });
   });
-  autoUpdater.on('update-downloaded', (info) => {
+  autoUpdater.on('update-downloaded', async (info) => {
+    autoUpdater.autoInstallOnAppQuit = false;
+    try {
+      await checkSignature(info);
+    } catch (err) {
+      clearBusy();
+      log.warn('update refused', err?.message);
+      if (last.state !== 'ready') status({ state: 'error' });
+      return;
+    }
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.addQuitHandler(); // protected in electron-updater; it skipped this while autoInstallOnAppQuit was off
     status({ state: 'ready', version: info.version });
     onReady(info.version);
     if (installWhenReady) return restart(); // the user already clicked "Update" in the page
@@ -74,6 +103,7 @@ function start({ onStatus, onReady }) {
 }
 
 const restart = () => {
+  if (last.state !== 'ready') return; // 'ready' only after the signature check: never install an unverified download
   setBusySafetyTimeout();
   autoUpdater.quitAndInstall();
 };

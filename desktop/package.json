@@ -1,7 +1,7 @@
 {
   "name": "cillhub",
   "productName": "Cillhub",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "private": true,
   "description": "Cillhub desktop client",
   "homepage": "https://github.com/Mrciller/cillhub",
@@ -40,6 +40,12 @@
       "src/**/*",
       "web/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../selfhost/release-public-key.pem",
+        "to": "release-public-key.pem"
+      }
     ],
     "protocols": [
       {
