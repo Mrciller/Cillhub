@@ -5,7 +5,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { createServer as tcpServer } from 'node:net';
-import { createServer as httpServer } from 'node:http';
+import { createServer as httpServer, request as httpRequest } from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -183,7 +183,14 @@ test('forgot and reset: no account oracle, single use, expiry, sessions end, 2FA
 
   const unknown = await forgot('nobody@example.com');
   assert.equal(unknown.status, 204);
-  const known = await forgot('alex@example.com');
+  // a forged Host header must not reach the link (it would carry the token to someone else's server)
+  forgotCalls++;
+  const known = await new Promise((resolve, reject) => {
+    const req = httpRequest(`${srv.base}/auth/forgot`, { method: 'POST', headers: { Host: 'evil.example.com', 'X-Forwarded-Host': 'evil.example.com', 'Content-Type': 'application/json' } },
+      res => (res.resume(), resolve({ status: res.statusCode })));
+    req.on('error', reject);
+    req.end(JSON.stringify({ login: 'alex@example.com' }));
+  });
   assert.equal(known.status, 204);
   const m = await mailTo('alex@example.com');
   assert.ok(m, 'mail sent to alex');
@@ -192,6 +199,7 @@ test('forgot and reset: no account oracle, single use, expiry, sessions end, 2FA
   assert.match(m.data, /30 minutes/);
   const [, token] = linkIn(m);
   assert.match(linkIn(m)[0], /^https:\/\/chat\.example\.org\/reset\?token=/, 'link on the public URL');
+  assert.ok(!m.data.includes('evil'), 'no forged host in the mail');
 
   const reset = (t, password = 'new-pass-alex') => api('POST', '/auth/reset', null, { token: t, password });
   assert.equal((await reset('wrong-token')).body.message, 'This link is invalid or has expired.');
@@ -243,4 +251,24 @@ test('forgot and reset: no account oracle, single use, expiry, sessions end, 2FA
   const limited = await forgot('sam@example.com');
   assert.equal(limited.status, 429);
   assert.ok(limited.body.retry_after > 0);
+});
+
+test('no configured address: password reset is off (the Host header never builds a link); closed before captcha', async () => {
+  const other = await startServer(); // no CILLCORD_PUBLIC_URL
+  try {
+    const t = (await other.register('taylor')).token;
+    assert.equal((await other.api('POST', '/users/@me/mfa/totp/enable', t, { password: 'hunter2hunter2', secret: SECRET, code: totp() })).status, 200);
+    execFileSync(process.execPath, ['src/admin-cli.js', 'grant', 'taylor'], { cwd: new URL('..', import.meta.url), env: { ...process.env, DATA_DIR: other.dataDir } });
+    await other.api('PATCH', '/admin/settings', t, { smtp_host: '127.0.0.1', smtp_port: SMTP_PORT, smtp_security: 'none', smtp_from: 'no-reply@example.org' });
+    assert.equal((await other.api('GET', '/instance')).body.password_reset, false);
+    assert.equal((await other.api('POST', '/auth/forgot', null, { login: 'taylor@example.com' })).status, 400);
+    await other.api('PATCH', '/admin/settings', t, { public_url: 'https://chat.example.org' });
+    assert.equal((await other.api('GET', '/instance')).body.password_reset, true);
+    // a closed instance says so before asking for a captcha
+    await other.api('PATCH', '/admin/settings', t, { captcha_site_key: 'site-key-kim', captcha_secret: 'captcha-secret-kim', registration_mode: 'closed' });
+    const closed = await other.api('POST', '/auth/register', null, { email: 'kim@example.com', username: 'kim', password: 'hunter2hunter2' });
+    assert.deepEqual([closed.status, closed.body.message], [403, 'Registration is closed on this instance.']);
+  } finally {
+    await other.stop();
+  }
 });

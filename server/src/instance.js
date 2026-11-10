@@ -33,14 +33,16 @@ export function setSetting(key, value) {
 export const maxUpload = () => setting('max_upload_bytes');
 export const mailConfigured = () => !!(setting('smtp_host') && setting('smtp_from'));
 export const captchaOn = () => !!(setting('captcha_site_key') && setting('captcha_secret'));
+// reset links need a configured address: the request's Host header could point them at someone else's server
+export const resetAvailable = () => mailConfigured() && hooks.localLoginOpen() && !!hooks.configuredUrl();
 // federation.js fills this in (it imports this module, so importing it here would be a cycle)
-export const hooks = { localLoginOpen: () => true };
+export const hooks = { localLoginOpen: () => true, configuredUrl: () => null };
 
 // what everyone (also logged-out visitors) may see: GET /instance, READY.instance, INSTANCE_SETTINGS_UPDATE
 export const publicInstance = () => ({
   name: setting('instance_name'), motd: setting('motd'), registration_mode: setting('registration_mode'),
   gifs_enabled: setting('gifs_enabled'), max_upload_bytes: maxUpload(), announcement: setting('announcement'),
-  password_reset: mailConfigured() && hooks.localLoginOpen(),
+  password_reset: resetAvailable(),
   captcha: captchaOn() ? { service: 'recaptcha', sitekey: setting('captcha_site_key') } : null,
 });
 

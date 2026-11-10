@@ -7,11 +7,11 @@ import { closeTokenSessions } from '../gateway.js';
 import { checkLogin, loginFailed, loginSucceeded, limit } from '../ratelimit.js';
 import { newTicket, redeemTicket, requireMfa, elevate } from '../mfa.js';
 import { settingsOf } from '../userdata.js';
-import { setting } from '../instance.js';
-import { mailConfigured, sendMail, mailError } from '../mail.js';
+import { setting, resetAvailable } from '../instance.js';
+import { sendMail, mailError } from '../mail.js';
 import { requireCaptcha } from '../captcha.js';
 import { endSessions } from './admin.js';
-import { localLoginOpen, publicUrl } from '../federation.js';
+import { localLoginOpen, configuredUrl } from '../federation.js';
 import { setupOpen } from './setup.js';
 
 // v6 registration modes: open, invite (an admin-issued registration_code is needed) or closed
@@ -31,6 +31,7 @@ const hubOnlyLogin = () => new HttpError(403, 0, 'This instance only allows sign
 async function register(ctx) {
   if (setupOpen()) throw new HttpError(403, 0, 'This instance is not set up yet.');
   if (!localLoginOpen()) throw hubOnlyLogin(); // v7: a connected node whose admin chose hub sign-in only
+  if (setting('registration_mode') === 'closed') registrationCode({}); // says "closed" before asking for a captcha
   await requireCaptcha(ctx); // before the hash and before any answer about taken names
   registrationCode(ctx.body ?? {});
   const email = str(ctx.body, 'email', 3, 254);
@@ -71,7 +72,7 @@ const RESET_MAIL = {
   }),
 };
 async function forgot(ctx) {
-  if (!mailConfigured() || !localLoginOpen()) throw new HttpError(400, 0, 'Password reset by email is not available on this instance.');
+  if (!resetAvailable()) throw new HttpError(400, 0, 'Password reset by email is not available on this instance.');
   limit('AUTH', 'forgot-ip', {}, netOf(ctx.ip), ctx.headers);
   await requireCaptcha(ctx);
   const email = str(ctx.body, 'login', 3, 254);
@@ -82,7 +83,7 @@ async function forgot(ctx) {
   const token = randomBytes(32).toString('base64url');
   run('DELETE FROM password_resets WHERE user_id = ?', user.id);
   run('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)', resetHash(token), user.id, Date.now() + RESET_MS);
-  const mail = (RESET_MAIL[settingsOf(user.id).locale] ?? RESET_MAIL['en-US'])(setting('instance_name'), `${publicUrl(ctx.req)}/reset?token=${token}`);
+  const mail = (RESET_MAIL[settingsOf(user.id).locale] ?? RESET_MAIL['en-US'])(setting('instance_name'), `${configuredUrl()}/reset?token=${token}`);
   sendMail({ to: user.email, ...mail }).catch(e => console.error(`password reset mail failed: ${mailError(e)}`));
 }
 

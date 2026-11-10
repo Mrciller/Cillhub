@@ -66,7 +66,7 @@ const envUrl = name => {
 export const HUB_URL = isHub ? null : envUrl('CILLCORD_HUB_URL');
 // own public origin: the admin setting public_url, else CILLCORD_PUBLIC_URL, else the request's (behind a proxy: Host +
 // X-Forwarded-Proto)
-const PUBLIC_URL = envUrl('CILLCORD_PUBLIC_URL');
+export const PUBLIC_URL = envUrl('CILLCORD_PUBLIC_URL');
 export const configuredUrl = () => setting('public_url') ?? PUBLIC_URL;
 export const publicUrl = req => configuredUrl() ?? originOf(req).http;
 // where a node may send a browser after hub sign-in. The live Host header is not one of these: an attacker who can
@@ -195,7 +195,7 @@ export const mode = () => (isHub ? 'hub' : fedState() ? 'connected' : 'standalon
 export const signInPolicy = () => setting('sign_in') ?? 'both'; // local | hub | both (only matters while connected)
 export const hubLoginOpen = () => { const f = fedState(); return !!f && f.status === 'active' && signInPolicy() !== 'local'; };
 export const localLoginOpen = () => !(fedState() && signInPolicy() === 'hub');
-hooks.localLoginOpen = localLoginOpen;
+Object.assign(hooks, { localLoginOpen, configuredUrl });
 
 export const humanCount = () => get("SELECT COUNT(*) AS n FROM users WHERE bot = 0 AND system = 0 AND deleted = 0").n;
 

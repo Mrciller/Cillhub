@@ -28,7 +28,7 @@ import { settingsOf } from '../userdata.js';
 import { anonymize } from './account.js';
 import { removeMember, destroyGuild } from './guilds.js';
 import { loadMessage } from './messages.js';
-import { fedState, isHub, publicUrl, publicUrlSetting } from '../federation.js';
+import { fedState, isHub, publicUrl, publicUrlSetting, PUBLIC_URL } from '../federation.js';
 
 // --- the gate ------------------------------------------------------------------------------------------------------------
 const deniedLogged = new Map(); // user id -> last time a refusal was written to the audit log (at most one a minute each)
@@ -359,7 +359,7 @@ const voiceInfo = () => ({ configured: configuredBackends(), default: defaultBac
 const settingsObj = ctx => ({
   ...Object.fromEntries(Object.keys(DEFAULTS).filter(k => !SECRET_SETTINGS.includes(k)).map(k => [k, setting(k)])),
   ...Object.fromEntries(SECRET_SETTINGS.map(k => [`${k}_set`, !!setting(k)])),
-  public_url_effective: publicUrl(ctx.req), voice: voiceInfo(),
+  public_url_effective: publicUrl(ctx.req), public_url_env: PUBLIC_URL, voice: voiceInfo(),
 });
 const masked = (k, v) => (SECRET_SETTINGS.includes(k) ? (v ? '(set)' : '(cleared)') : v);
 // an optional one-line text setting: null or '' clears it; never CR/LF (they would end up in SMTP commands and headers)
