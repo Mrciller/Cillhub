@@ -756,16 +756,22 @@ async function main() {
     })
 
     // ---- 17. Login rate limit ----
-    await step('17. login rate limit: after 10 failed logins the form shows the countdown', async () => {
+    await step('17. login rate limit: two wrong passwords are free, then each further failure waits longer; the form shows the countdown', async () => {
       const ip = `198.51.100.${1 + Math.floor(Math.random() * 250)}`
       const page = await newUser(browser, 'Stranger', { extraHTTPHeaders: { 'X-Forwarded-For': ip } })
       await page.goto(BASE + '/login')
+      // five failures, waiting out each 429 (1 s after the 3rd, 2 s after the 4th); the next try then has to wait 4 s
       const codes = await page.evaluate(async (name) => {
         const out = []
-        for (let i = 0; i < 10; i++) out.push((await fetch('/api/v9/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: name, password: 'wrong password' }) })).status)
+        while (out.filter((c) => c === 401).length < 5 && out.length < 20) {
+          const r = await fetch('/api/v9/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: name, password: 'wrong password' }) })
+          out.push(r.status)
+          if (r.status === 429) await new Promise((res) => setTimeout(res, (r.headers.get('Retry-After') ?? 1) * 1000))
+        }
         return out
       }, `nobody_${SFX}`)
-      check(codes.every((c) => c === 401), `failed logins (401 per contract v1) answered ${codes.join(',')}`)
+      check(codes.slice(0, 4).join() === '401,401,401,429', `the first three failures answer 401, the 4th try waits (429): ${codes.join(',')}`)
+      check(codes.filter((c) => c === 401).length === 5, `failed logins (401 per contract v1) answered ${codes.join(',')}`)
       await loginForm(page, `nobody_${SFX}`, 'wrong password')
       await page.getByText(/Too many attempts\. Try again in \d+ seconds\./).waitFor(LIVE)
       await page.context().close()
