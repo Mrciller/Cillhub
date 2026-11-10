@@ -135,6 +135,8 @@ cd client && npm run build && cd ../server && PORT=3300 DATA_DIR=$(mktemp -d) ST
 | `CILLCORD_HUB_URL` | unset | Origin of the network hub (`https://cillhub.cillerian.org`) for linked mode |
 | `CILLCORD_PUBLIC_URL` | request origin | Public HTTPS origin of this node |
 | `CILLCORD_SETUP_CODE` | unset | Setup code for first-run admin wizard (generated automatically by `install.sh`) |
+| `TENOR_API_KEY` / `GIPHY_API_KEY` | unset | GIF search provider key; without one the picker only offers the built-in curated GIFs |
+| `TRUST_PROXY` | unset | Reverse proxies whose `X-Forwarded-For` is believed (CIDR list; the compose file sets a default) |
 
 ---
 
