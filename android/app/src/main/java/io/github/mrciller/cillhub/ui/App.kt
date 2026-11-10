@@ -1,8 +1,10 @@
 package io.github.mrciller.cillhub.ui
 
 import android.app.Activity
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -39,11 +41,10 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -130,7 +131,6 @@ private fun MainShell() {
     val nav = rememberNavController()
     val state by Session.store.state.collectAsStateWithLifecycle()
     val reduce = LocalReduceMotion.current
-    val slide = with(LocalDensity.current) { 30.dp.roundToPx() }
 
     var guildId by rememberSaveable { mutableStateOf<String?>(null) }
     var serverChannel by rememberSaveable { mutableStateOf<String?>(null) }
@@ -208,15 +208,19 @@ private fun MainShell() {
 
     CompositionLocalProviderNav(shell) {
         val host: @Composable (Modifier) -> Unit = { mod ->
+            val popEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = { if (reduce) EnterTransition.None else if (tabSwitch()) fadeIn(tween(150)) else slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { -it / 4 } }
+            val popExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = { if (reduce) ExitTransition.None else if (tabSwitch()) fadeOut(tween(90)) else slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { it } }
             NavHost(
                 nav, startDestination = ServersRoute, modifier = mod,
-                // M3 shared axis X: both screens move 30 dp the same way (emphasized easing, 300 ms), the leaving one
-                // fades in the first 90 ms, the arriving one fades in over the remaining 210. Back is the mirror image;
-                // predictive back scrubs the pop pair (navigation-compose seeks these transitions).
-                enterTransition = { if (reduce) EnterTransition.None else slideInHorizontally(tween(300, easing = EmphasizedDecelerate)) { slide } + fadeIn(tween(210, 90)) },
-                exitTransition = { if (reduce) ExitTransition.None else slideOutHorizontally(tween(300, easing = EmphasizedAccelerate)) { -slide } + fadeOut(tween(90)) },
-                popEnterTransition = { if (reduce) EnterTransition.None else slideInHorizontally(tween(300, easing = EmphasizedDecelerate)) { -slide } + fadeIn(tween(210, 90)) },
-                popExitTransition = { if (reduce) ExitTransition.None else slideOutHorizontally(tween(300, easing = EmphasizedAccelerate)) { slide } + fadeOut(tween(90)) },
+                // page slide, no fades: push brings the new page in from the right over the old one (old moves 1/4 left),
+                // pop slides the closed page off to the right over the one beneath; tab to tab is a short cross-fade.
+                enterTransition = { if (reduce) EnterTransition.None else if (tabSwitch()) fadeIn(tween(150)) else slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { it } },
+                exitTransition = { if (reduce) ExitTransition.None else if (tabSwitch()) fadeOut(tween(90)) else slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 } },
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+                // the back gesture scrubs the same pair (the library default would be its own shrinking card)
+                predictivePopEnterTransition = { popEnter() },
+                predictivePopExitTransition = { popExit() },
             ) {
                 composable<ServersRoute> {
                     ServersScreen(guildId, { guildId = it }, if (twoPane) serverChannel else null)
@@ -289,6 +293,9 @@ private fun TabIcon(t: Tab, selected: Boolean, badge: Int) {
         Ic(if (selected) t.selectedIcon else t.icon, null)
     }
 }
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabSwitch() =
+    listOf(initialState, targetState).all { e -> TABS.any { e.destination.route == it.route::class.qualifiedName } }
 
 private fun NavHostController.tab(route: Any) = navigate(route) {
     popUpTo(graph.findStartDestination().id) { saveState = true }
