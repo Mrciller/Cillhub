@@ -376,7 +376,8 @@ export default [
   ['GET', '/gifs/categories', () => {
     if (!setting('gifs_enabled')) throw new HttpError(404, 0, '404: Not Found');
     return CATEGORIES;
-  }, { open: true }],
-  ['GET', '/gifs/search', ({ query }) => getGifs('search', query), { open: true }],
-  ['GET', '/gifs/trending', ({ query }) => getGifs('trending', query), { open: true }],
+  }],
+  // logged-in only: a provider key's quota must not be free for anyone on the internet
+  ['GET', '/gifs/search', ({ query }) => getGifs('search', query)],
+  ['GET', '/gifs/trending', ({ query }) => getGifs('trending', query)],
 ];

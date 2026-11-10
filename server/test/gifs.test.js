@@ -64,14 +64,10 @@ test('GIF integration: zero-config fallback, categories, trending and search', a
     assert.equal(blank.status, 200);
     assert.ok(blank.body.length > 0);
 
-    // 7. Unauthenticated calls also succeed (open route)
-    const openRes = await srv.api('GET', '/gifs/categories');
-    assert.equal(openRes.status, 200);
-    assert.ok(Array.isArray(openRes.body));
-
-    const openTrend = await srv.api('GET', '/gifs/trending');
-    assert.equal(openTrend.status, 200);
-    assert.ok(Array.isArray(openTrend.body));
+    // 7. Logged-in only
+    for (const path of ['/gifs/categories', '/gifs/trending', '/gifs/search?q=cat']) {
+      assert.equal((await srv.api('GET', path)).status, 401, path);
+    }
   } finally {
     await srv.stop();
   }
