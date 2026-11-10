@@ -27,7 +27,8 @@ jobs:
     steps:
       - name: Download and check the installer
         run: |
-          Invoke-WebRequest "$env:BASE/staging/$env:SETUP" -OutFile setup.exe
+          # staging is emptied once the build is published; the sha512 check pins the file either way
+          try { Invoke-WebRequest "$env:BASE/staging/$env:SETUP" -OutFile setup.exe } catch { Invoke-WebRequest "$env:BASE/$env:SETUP" -OutFile setup.exe }
           if ((Get-FileHash setup.exe -Algorithm SHA512).Hash.ToLower() -ne $env:SHA512) { throw 'sha512 mismatch' }
       - name: Install the 2.2.2 app first
         if: matrix.mode == 'migrate'
