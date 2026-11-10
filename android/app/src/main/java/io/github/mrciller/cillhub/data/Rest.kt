@@ -20,8 +20,11 @@ import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 
-/** An API error: HTTP status (0 = unreachable), v9 error code, the server's message, and retry_after for 429s. */
-class ApiError(val status: Int, val code: Int, message: String, val retryAfter: Double = 0.0) : IOException(message) {
+/**
+ * An API error: HTTP status (0 = unreachable), v9 error code, the server's message, retry_after for 429s, and captcha:
+ * the server wants a captcha token (sign-up and password reset, 7.10).
+ */
+class ApiError(val status: Int, val code: Int, message: String, val retryAfter: Double = 0.0, val captcha: Boolean = false) : IOException(message) {
     companion object {
         /** The first field message of a 50035 answer ("Username is unavailable."), else the message. */
         fun parse(status: Int, text: String, retryHeader: String?): ApiError {
@@ -29,7 +32,7 @@ class ApiError(val status: Int, val code: Int, message: String, val retryAfter: 
             val code = body?.get("code")?.jsonPrimitive?.intOrNull ?: 0
             val msg = (if (code == 50035) firstFieldError(body?.get("errors")) else null) ?: body?.get("message")?.jsonPrimitive?.contentOrNull ?: "Request failed ($status)"
             val retry = body?.get("retry_after")?.jsonPrimitive?.doubleOrNull ?: retryHeader?.toDoubleOrNull() ?: 0.0
-            return ApiError(status, code, msg, retry)
+            return ApiError(status, code, msg, retry, captcha = body?.containsKey("captcha_key") == true)
         }
 
         private fun firstFieldError(e: JsonElement?): String? {

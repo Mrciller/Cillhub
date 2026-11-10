@@ -2,6 +2,7 @@ package io.github.mrciller.cillhub.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -48,11 +49,21 @@ class ModelsTest {
         val r = ApiError.parse(429, """{"message":"You are being rate limited.","retry_after":1.5,"global":false}""", null)
         assertEquals(1.5, r.retryAfter, 0.0)
         assertEquals(2.0, ApiError.parse(429, "not json", "2").retryAfter, 0.0)
+        assertFalse(e.captcha)
+    }
+
+    @Test fun captchaRequiredIsRecognised() {
+        val c = ApiError.parse(400, """{"message":"Complete the captcha.","captcha_key":["captcha-required"],"captcha_sitekey":"k","captcha_service":"recaptcha"}""", null)
+        assertTrue(c.captcha)
+        assertEquals("Complete the captcha.", c.message)
     }
 
     @Test fun instanceInfo() {
         val i = json.decodeFromString(InstanceInfo.serializer(), """{"name":"N","motd":null,"registration_mode":"invite","gifs_enabled":true,"max_upload_bytes":1048576,"setup_pending":false,"voice":{}}""")
         assertEquals("invite", i.registrationMode)
         assertEquals(1048576L, i.maxUploadBytes)
+        assertFalse(i.passwordReset)
+        val r = json.decodeFromString(InstanceInfo.serializer(), """{"name":"N","password_reset":true,"captcha":{"service":"recaptcha","sitekey":"k"}}""")
+        assertTrue(r.passwordReset)
     }
 }

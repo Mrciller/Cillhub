@@ -137,11 +137,17 @@ object Session {
     suspend fun mfa(ticket: String, code: String, backup: Boolean): LoginAnswer =
         rest.call("POST", if (backup) "/auth/mfa/backup" else "/auth/mfa/totp", buildJsonObject { put("ticket", ticket); put("code", code) })
 
-    suspend fun register(email: String, username: String, password: String, code: String?): LoginAnswer =
+    suspend fun register(email: String, username: String, password: String, code: String?, captcha: String? = null): LoginAnswer =
         rest.call("POST", "/auth/register", buildJsonObject {
             put("email", email); put("username", username); put("password", password)
             if (!code.isNullOrBlank()) put("registration_code", code.trim())
+            if (captcha != null) put("captcha_key", captcha)
         })
+
+    /** Asks for a password reset mail; the server answers the same whether the address has an account. */
+    suspend fun forgot(email: String, captcha: String? = null) {
+        rest.request("POST", "/auth/forgot", buildJsonObject { put("login", email); if (captcha != null) put("captcha_key", captcha) })
+    }
 
     /** A required password change (login answered required_actions: update_password), with the fresh token. */
     suspend fun forcedPassword(token: String, old: String, new: String): String {

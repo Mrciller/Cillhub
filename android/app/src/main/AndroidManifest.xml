@@ -58,6 +58,9 @@
             </intent-filter>
         </activity>
 
+        <!-- the server's captcha page at sign-up and password reset -->
+        <activity android:name=".CaptchaActivity" android:exported="false" />
+
         <!-- the web client in the app (own task): forums and what is not native yet -->
         <activity
             android:name=".WebCallActivity"

@@ -76,6 +76,10 @@
     <string name="login_failed">Wrong login or password.</string>
     <string name="create_account">Create an account</string>
     <string name="have_account">Already have an account? Log in</string>
+    <string name="forgot_password">Forgot password?</string>
+    <string name="forgot_text">Enter the email address of your account. You get a link to choose a new password.</string>
+    <string name="forgot_send">Send link</string>
+    <string name="forgot_sent">If an account with this address exists, a mail with a link is on its way.</string>
     <string name="register_title">Join the roster</string>
     <string name="register">Create account</string>
     <string name="email">Email</string>

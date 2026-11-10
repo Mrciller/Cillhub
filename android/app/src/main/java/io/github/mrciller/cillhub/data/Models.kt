@@ -388,7 +388,9 @@ data class Profile(
 
 /** GET /instance (v6/v7): what the login screen needs. */
 @Serializable
-data class InstanceInfo(val name: String? = null, val motd: String? = null, val registrationMode: String = "open", val maxUploadBytes: Long = 25L * 1024 * 1024, val setupPending: Boolean = false)
+data class InstanceInfo(val name: String? = null, val motd: String? = null, val registrationMode: String = "open", val maxUploadBytes: Long = 25L * 1024 * 1024, val setupPending: Boolean = false,
+    /** 7.10: password reset by email is offered. */
+    val passwordReset: Boolean = false)
 
 /** POST /auth/login: a token, or an MFA ticket (CONTRACT-v4 section 5). */
 @Serializable

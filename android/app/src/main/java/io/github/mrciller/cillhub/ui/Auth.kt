@@ -1,5 +1,9 @@
 package io.github.mrciller.cillhub.ui
 
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -56,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.mrciller.cillhub.BuildConfig
+import io.github.mrciller.cillhub.CaptchaActivity
 import io.github.mrciller.cillhub.Config
 import io.github.mrciller.cillhub.R
 import io.github.mrciller.cillhub.data.ApiError
@@ -66,7 +72,7 @@ import kotlinx.coroutines.launch
 /** Sign in, create an account, two-factor code, required password change, and "Use another server". */
 @Composable
 fun AuthFlow() {
-    // "login" | "register" | "mfa" | "renew"
+    // "login" | "register" | "forgot" | "mfa" | "renew"
     var step by rememberSaveable { mutableStateOf("login") }
     var ticket by rememberSaveable { mutableStateOf("") }
     var renewToken by rememberSaveable { mutableStateOf("") }
@@ -106,9 +112,10 @@ fun AuthFlow() {
                 Spacer(Modifier.height(24.dp))
                 when (step) {
                     "register" -> RegisterForm(info?.registrationMode ?: "open", { step = "login" }) { a, pw -> finish(a, pw) }
+                    "forgot" -> ForgotForm { step = "login" }
                     "mfa" -> MfaForm(ticket, { step = "login" }) { a -> finish(a, "") }
                     "renew" -> RenewForm(renewToken, renewOld) { Session.signedIn(it) }
-                    else -> LoginForm({ step = "register" }) { a, pw -> finish(a, pw) }
+                    else -> LoginForm({ step = "register" }, if (info?.passwordReset == true) ({ step = "forgot" }) else null) { a, pw -> finish(a, pw) }
                 }
             }
         }
@@ -151,8 +158,21 @@ private fun Submit(label: String, busy: Boolean, enabled: Boolean, onClick: () -
     }
 }
 
+/** Opens the server's captcha page; `retry` gets the token (nothing happens when the user backs out). */
 @Composable
-private fun LoginForm(toRegister: () -> Unit, done: (LoginAnswer, String) -> Unit) {
+private fun rememberCaptcha(): ((String) -> Unit) -> Unit {
+    val ctx = LocalContext.current
+    val pending = remember { arrayOfNulls<(String) -> Unit>(1) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val token = r.data?.getStringExtra(CaptchaActivity.EXTRA_TOKEN)
+        if (r.resultCode == Activity.RESULT_OK && token != null) pending[0]?.invoke(token)
+        pending[0] = null
+    }
+    return { retry -> pending[0] = retry; launcher.launch(Intent(ctx, CaptchaActivity::class.java)) }
+}
+
+@Composable
+private fun LoginForm(toRegister: () -> Unit, toForgot: (() -> Unit)?, done: (LoginAnswer, String) -> Unit) {
     var login by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var busy by rememberSaveable { mutableStateOf(false) }
@@ -175,6 +195,38 @@ private fun LoginForm(toRegister: () -> Unit, done: (LoginAnswer, String) -> Uni
     ErrorLine(error)
     Submit(s(R.string.log_in), busy, login.isNotBlank() && password.isNotEmpty()) { submit() }
     TextButton(toRegister, Modifier.padding(top = 8.dp)) { Text(s(R.string.create_account)) }
+    if (toForgot != null) TextButton(toForgot) { Text(s(R.string.forgot_password)) }
+}
+
+/** Password reset by email: the link in the mail opens the web page; the answer never says whether the address exists. */
+@Composable
+private fun ForgotForm(back: () -> Unit) {
+    var email by rememberSaveable { mutableStateOf("") }
+    var busy by rememberSaveable { mutableStateOf(false) }
+    var sent by rememberSaveable { mutableStateOf(false) }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    val captcha = rememberCaptcha()
+    fun attempt(token: String?) {
+        scope.launch {
+            busy = true; error = null
+            try { Session.forgot(email.trim(), token); sent = true } catch (e: ApiError) {
+                if (e.captcha && token == null) captcha { attempt(it) } else error = errorText(ctx, e)
+            }
+            busy = false
+        }
+    }
+    Text(s(R.string.forgot_password), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+    if (sent) {
+        Text(s(R.string.forgot_sent), modifier = Modifier.padding(vertical = 16.dp).semantics { liveRegion = LiveRegionMode.Polite })
+    } else {
+        Text(s(R.string.forgot_text), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
+        Field(email, { email = it }, s(R.string.email), ContentType.EmailAddress, KeyboardType.Email, ime = ImeAction.Go, onDone = { if (email.contains('@') && !busy) attempt(null) })
+        ErrorLine(error)
+        Submit(s(R.string.forgot_send), busy, email.contains('@')) { attempt(null) }
+    }
+    TextButton(back, Modifier.padding(top = 8.dp)) { Text(s(R.string.back)) }
 }
 
 @Composable
@@ -195,13 +247,17 @@ private fun RegisterForm(mode: String, toLogin: () -> Unit, done: (LoginAnswer, 
     }
     Spacer(Modifier.height(16.dp))
     val ok = email.contains('@') && username.trim().length in 2..32 && password.length >= 8 && (mode != "invite" || code.isNotBlank())
-    val submit = {
-        if (ok && !busy) scope.launch {
+    val captcha = rememberCaptcha()
+    fun attempt(token: String?) {
+        scope.launch {
             busy = true; error = null
-            try { done(Session.register(email.trim(), username.trim(), password, code), password) } catch (e: ApiError) { error = errorText(ctx, e) }
+            try { done(Session.register(email.trim(), username.trim(), password, code, token), password) } catch (e: ApiError) {
+                if (e.captcha && token == null) captcha { attempt(it) } else error = errorText(ctx, e)
+            }
             busy = false
         }
     }
+    val submit = { if (ok && !busy) attempt(null) }
     Field(email, { email = it }, s(R.string.email), ContentType.EmailAddress, KeyboardType.Email)
     Field(username, { username = it }, s(R.string.username), ContentType.NewUsername)
     Field(password, { password = it }, s(R.string.password_new_hint), ContentType.NewPassword, password = true, ime = if (mode == "invite") ImeAction.Next else ImeAction.Go, onDone = { submit() })

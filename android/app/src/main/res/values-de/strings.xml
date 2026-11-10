@@ -75,6 +75,10 @@
     <string name="login_failed">Anmeldename oder Passwort ist falsch.</string>
     <string name="create_account">Konto erstellen</string>
     <string name="have_account">Schon ein Konto? Anmelden</string>
+    <string name="forgot_password">Passwort vergessen?</string>
+    <string name="forgot_text">Gib die E-Mail-Adresse deines Kontos ein. Du bekommst einen Link, mit dem du ein neues Passwort wählst.</string>
+    <string name="forgot_send">Link senden</string>
+    <string name="forgot_sent">Wenn es ein Konto mit dieser Adresse gibt, ist eine Mail mit einem Link unterwegs.</string>
     <string name="register_title">Werde Teil des Teams</string>
     <string name="register">Konto erstellen</string>
     <string name="email">E-Mail</string>
