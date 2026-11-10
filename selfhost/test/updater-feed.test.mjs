@@ -36,7 +36,13 @@ test('expiry and minimum version', () => {
 });
 
 test('a key list in the feed must hold valid Ed25519 keys', () => {
-  assert.deepEqual(verifyFeed(...feed(oldKey, { keys: [pem(newKey)] }), keys, null, now).keys, [pem(newKey)]);
+  assert.deepEqual(verifyFeed(...feed(oldKey, { keys: [pem(oldKey), pem(newKey)] }), keys, null, now).keys, [pem(oldKey), pem(newKey)]);
   assert.throws(() => verifyFeed(...feed(oldKey, { keys: ['nope'] }), keys, null, now), /malformed/);
   assert.throws(() => verifyFeed(...feed(oldKey, { keys: [pem(oldKey) + pem(newKey)] }), keys, null, now), /malformed/);
+});
+
+test('a key list cannot drop the key that signed the feed (no permanent lockout)', () => {
+  assert.throws(() => verifyFeed(...feed(oldKey, { keys: [pem(newKey)] }), keys, null, now), /drops the key that signed it/);
+  assert.throws(() => verifyFeed(...feed(oldKey, { keys: [] }), keys, null, now), /drops the key that signed it/);
+  assert.deepEqual(verifyFeed(...feed(newKey, { keys: [pem(newKey)] }), keys, null, now).keys, [pem(newKey)]); // rotation: the new key retires the old
 });

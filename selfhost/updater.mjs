@@ -50,7 +50,8 @@ function save(patch) {
   fs.renameSync(STATE_FILE + '.tmp', STATE_FILE);
 }
 const step = (s) => { console.log(`updater: ${s}`); save({ step: s }); };
-const busy = () => state.state === 'updating' || state.state === 'rolling_back';
+let locked = false; // single-flight: taken before /update's first await, so two requests can't both pass busy()
+const busy = () => locked || state.state === 'updating' || state.state === 'rolling_back';
 if (busy()) save({ state: 'failed', step: null, error: 'the updater restarted during the operation; check `docker compose ps`' });
 
 // ---- Docker Engine API over the unix socket
@@ -121,6 +122,8 @@ export function verifyFeed(body, sig, keys, floor, now = Date.now()) {
     || typeof j.url !== 'string' || !(j.url.startsWith('https://') || j.url.startsWith(`${HUB}/download/server/`)) || (j.min_upgrade_from && !VERSION_RE.test(j.min_upgrade_from))
     || (j.security !== undefined && typeof j.security !== 'boolean') || !Number.isSafeInteger(j.expires)
     || (j.min_version && !VERSION_RE.test(j.min_version)) || (j.keys !== undefined && !(Array.isArray(j.keys) && j.keys.every((k) => parseKeys(k).size === 1)))) throw new Error('latest.json: malformed');
+  // a new key list must keep the key that signed this feed, so no feed can lock its own signer (the owner's key) out for good
+  if (j.keys && !j.keys.some((k) => parseKeys(k).has(j.key_id))) throw new Error('latest.json: the key list drops the key that signed it');
   if (j.expires * 1000 <= now) throw new Error(`latest.json: expired on ${new Date(j.expires * 1000).toISOString()}; the hub has to re-sign it`);
   const min = [floor, j.min_version].filter(Boolean).sort(cmp).pop();
   if (min && cmp(j.version, min) < 0) throw new Error(`latest.json: offers ${j.version}, below the minimum version ${min}`);
@@ -321,16 +324,19 @@ async function handle(req, res) {
   }
   if (route === 'POST /update') {
     if (busy()) return send(409, { error: 'busy', state: state.state });
-    let body = '';
-    for await (const c of req) { body += c; if (body.length > 10000) return send(413, { error: 'body too large' }); }
-    let want, auto;
-    try { ({ version: want, auto } = body ? JSON.parse(body) : {}); } catch { return send(400, { error: 'body must be JSON' }); }
-    const [j, cur] = await Promise.all([latest(), currentVersion()]);
-    if (want && want !== j.version) return send(409, { error: `the hub offers ${j.version}, not ${want}` });
-    if (auto === true && state.skip_version === j.version) return send(409, { error: `${j.version} failed or was rolled back before; update by hand` });
-    if (cmp(j.version, cur) <= 0) return send(409, { error: `already on ${cur}, the hub offers ${j.version}` });
-    if (j.min_upgrade_from && cmp(cur, j.min_upgrade_from) < 0) return send(422, { error: `update to ${j.min_upgrade_from} first` });
-    run('update', j.version, () => update(j));
+    locked = true;
+    try { // run() marks the state busy synchronously, so the lock can go once it is called
+      let body = '';
+      for await (const c of req) { body += c; if (body.length > 10000) return send(413, { error: 'body too large' }); }
+      let want, auto;
+      try { ({ version: want, auto } = body ? JSON.parse(body) : {}); } catch { return send(400, { error: 'body must be JSON' }); }
+      const [j, cur] = await Promise.all([latest(), currentVersion()]);
+      if (want && want !== j.version) return send(409, { error: `the hub offers ${j.version}, not ${want}` });
+      if (auto === true && state.skip_version === j.version) return send(409, { error: `${j.version} failed or was rolled back before; update by hand` });
+      if (cmp(j.version, cur) <= 0) return send(409, { error: `already on ${cur}, the hub offers ${j.version}` });
+      if (j.min_upgrade_from && cmp(cur, j.min_upgrade_from) < 0) return send(422, { error: `update to ${j.min_upgrade_from} first` });
+      run('update', j.version, () => update(j));
+    } finally { locked = false; }
     return send(202, await status());
   }
   if (route === 'POST /rollback') {
