@@ -1,84 +1,70 @@
 # Cillhub
 
-Cillhub is a modern, high-performance, self-hostable community platform designed for real-time text, voice, and video communication. It gives communities, gaming clans, esports organizations, and teams full data sovereignty with zero tracking and seamless cross-platform clients.
+Cillhub is a chat platform you can host yourself: servers with text channels, voice and video channels, direct messages, roles and moderation. One Node.js process and one SQLite file run a whole server. It has a web client, a desktop app for Windows and Linux, and a native Android app. A server can run on its own or link to the hub at https://cillhub.cillerian.org, so people can sign in with their hub account.
 
-Anyone can run a Cillhub server (a **node**) on their own infrastructure in minutes. Nodes can run in complete standalone isolation or link to the central Cillhub Network Hub at https://cillhub.cillerian.org for global directory discovery and single sign-on without ever exposing local server data or passwords.
+![Cillhub in the browser: server list, channels, chat and members grouped by role](docs/screenshots/desktop.png)
 
-![Cillhub in the browser](docs/screenshots/desktop.png)
+<p>
+  <img src="docs/screenshots/phone.png" alt="Chat on Android" width="240">
+  <img src="docs/screenshots/phone-members.png" alt="Channel members grouped by role on Android" width="240">
+  <img src="docs/screenshots/phone-admin.png" alt="Server settings on Android" width="240">
+</p>
 
-<img src="docs/screenshots/phone.png" alt="Cillhub on a phone" width="260">
+**Status:** early public test. Expect rough edges. Feedback is welcome, and bugs go to [GitHub issues](https://github.com/TCCiller/Cillhub/issues).
 
----
+## Try it
 
-## 🌟 Key Features
+- Open the hub in a browser: https://cillhub.cillerian.org
+- Desktop and Android downloads: https://cillhub.cillerian.org/download/
 
-### 💬 Channels & Rich Communication
-* **Text Channels**: Rich Markdown support, code syntax highlighting, inline file uploads, quote replies, spoiler tags, and granular `@mentions`.
-* **Voice & Video Channels**: Low-latency multi-user voice and video channels powered by WebRTC with speaking indicators and individual volume controls.
-* **Screen Sharing**: Crystal-clear 1080p 60 FPS application and screen sharing with system audio capture.
-* **Stage Channels**: Moderated voice stages with designated speakers, a request-to-speak audience queue, and stage moderator controls.
-* **Forum Channels**: Structured thread discussions with customizable tags, search, activity sorting, and pinned posts.
-* **Announcement Channels**: Dedicated broadcast channels to publish news and announcements to all server members.
-* **Discussion Threads**: Keep active sub-topics organized within text channels with automated inactivity archiving.
-* **Direct Messages & Group DMs**: Private 1-on-1 chats, multi-user group conversations, and direct calling.
+## Features
 
-### ⚡ Interactive Community Tools
-* **Interactive Polls**: Create single-choice or multi-choice polls with duration timers, live vote tallies, and real-time result bars.
-* **Scheduled Events**: Plan tournaments, community game nights, or meetings with calendar RSVPs and automatic start notifications.
-* **Custom Emojis & Stickers**: Upload server-specific static and animated emojis with custom shortcut codes and emoji search.
-* **Message Reactions**: Fast emoji reactions and quick-reaction drawers.
-* **Server Templates**: Export existing server channel and role structures or import ready-to-use community server templates.
-* **Server Onboarding & Welcome Guide**: Greet newcomers with welcome screens, channel recommendations, and customizable rule acceptance gates.
+### Chat
+- Text, announcement and forum channels, threads, direct messages and group DMs
+- Markdown, code blocks, spoilers, mentions, replies, reactions and pins
+- File and image uploads, link previews, message search
+- Custom emoji and stickers, a GIF picker with favourites
+- Polls and scheduled events
+- English and German interface
 
-### 🛡️ Moderation & Administration
-* **Granular Role Hierarchy**: Unlimited custom roles with color pickers, hoisted member lists, mention permissions, and permission inheritance.
-* **Channel Permission Overwrites**: Finely tuned channel-level access control, hidden staff channels, and role-based read/write rules.
-* **AutoMod Rule Engine**: Real-time automated message filtering with custom regex patterns, keyword blocklists, mention spam protection, and automated action triggers (block, alert, or timeout).
-* **Audit Logs**: Immutable administration action logs recording role modifications, channel updates, kicks, and bans with actor attribution.
-* **Member Moderation**: One-click member timeout/mute, kick, and ban with configurable message history pruning.
-* **High-Security Authentication**: Scrypt password hashing with 16-byte random salts, TOTP Two-Factor Authentication (2FA), and WebAuthn hardware key support.
+### Voice & video
+- Voice and video channels, stage channels, calls in DMs
+- Screen sharing; the Android app offers 720p or 1080p at up to 60 FPS
+- Noise suppression and a noise gate in the web and desktop client
+- Built-in media server (`cillvoice`) or an external LiveKit server
 
-### 🖥️ Desktop (`desktop-rust`)
-* **Rust + Tauri 2 shell** around the bundled web client: Windows (WebView2) and Linux (WebKitGTK), ~70 MB of RAM instead of an Electron runtime.
-* **Tray, deep links, signed auto-update**: close to tray, start at login, `cillhub://invite/…` links, updates verified against the pinned Ed25519 release key before they install.
-* **Calls in the app**: microphone, camera and screen share are granted to the bundled client only; notifications come through the web Notification API.
-* **Game Presence Detection**: running games (plus your own list in `settings.json`) are shown as your activity.
+### Moderation & admin
+- Roles with colours, hoisted member lists and per-channel permission overwrites
+- Kick, ban with message removal, timeouts, nicknames
+- AutoMod rules (keywords, regex, mention spam) and an audit log
+- Server templates and an onboarding flow for new members
+- Accounts: scrypt password hashes, TOTP two-factor, passkeys (WebAuthn)
+- Server modules: JavaScript bots that run in a QuickJS WebAssembly sandbox with permissions an admin approves
 
-### 📱 Native Android Experience
-* **Pure Jetpack Compose UI**: 100% Kotlin with Material 3 styling and dynamic Material You theme colors.
-* **Native Telecom Calls**: Incoming voice and video calls ring through Android's native call screen just like standard phone calls.
-* **Persistent Background Gateway**: Battery-efficient background service delivering instant push notifications without third-party tracking services.
-* **Interactive Notifications**: Actionable notifications with direct quick-reply support.
-* **In-App Self-Update**: OTA update checks with one-tap installation of signed releases.
+### Self-hosting & federation
+- One Docker Compose stack: server, updater sidecar, optional Caddy (Let's Encrypt) and optional LiveKit
+- Data in one directory with one SQLite database (`cillcord.sqlite`)
+- Standalone, or linked to the hub for sign-in with a hub account (Ed25519-signed ID tokens) and the server directory
+- Optional automatic updates at a chosen hour
 
-### 🧩 Sandboxed Extensible Modules
-* **WebAssembly QuickJS-ng Sandbox**: Custom server modules run in an isolated WebAssembly sandbox with zero host filesystem or raw network socket access.
-* **Rich Interactions**: Register custom slash commands, interactive buttons, modal forms, select menus, and dashboard widgets.
-* **Granular Capability Scopes**: Admins review and approve specific permission scopes (e.g. `messages.send`, `events.guild_member_add`) before modules run.
-* **v9 REST & Gateway API**: Full compatibility with standard bot libraries and automation tooling.
+### Apps
+- Web client, served by every Cillhub server
+- Desktop (`desktop-rust`): Rust + Tauri 2 around the web client, packaged as Windows installer, AppImage and .deb; tray icon, `cillhub://` invite links, game activity, self-update checked against a pinned Ed25519 key
+- Android (Kotlin, Jetpack Compose): the Cillhub palette by default, wallpaper colours as an option; calls through Android's Telecom service with answer and decline from the lock screen; notification quick reply; Android Auto; in-app updates from a signed feed
 
-### 🌐 Federated Linked Mode & Sovereignty
-* **Standalone or Connected**: Operate as an isolated private server or link to the central **Cillhub Hub** (`https://cillhub.cillerian.org`) for unified identity and directory discovery.
-* **Single Sign-On (SSO)**: Hub users can log into linked nodes with one click via Ed25519-signed OIDC tokens (zero password sharing).
-* **Single-File Database**: Runs on a single Node.js process and one SQLite database file (`cillcord.sqlite`) — no Redis, no Postgres, and backups are a simple file copy.
-* **Multilingual UI**: Native support for English and German.
+## Documentation
 
----
+The [GitHub Wiki](https://github.com/TCCiller/Cillhub/wiki) has longer guides:
 
-## 📚 Documentation & Wiki
+- [Self-Hosting Guide](https://github.com/TCCiller/Cillhub/wiki/Self-Hosting-Guide)
+- [Voice & Media Setup](https://github.com/TCCiller/Cillhub/wiki/Voice-&-Media-Setup)
+- [Federation & Linked Mode](https://github.com/TCCiller/Cillhub/wiki/Federation-&-Linked-Mode)
+- [Desktop App](https://github.com/TCCiller/Cillhub/wiki/Desktop-App)
+- [Android App](https://github.com/TCCiller/Cillhub/wiki/Android-App)
+- [Module Development](https://github.com/TCCiller/Cillhub/wiki/Module-Development)
+- [Troubleshooting & FAQ](https://github.com/TCCiller/Cillhub/wiki/Troubleshooting-&-FAQ)
 
-For detailed setup guides, tutorials, and architecture deep dives, visit our **[GitHub Wiki](https://github.com/TCCiller/Cillhub/wiki)**:
-* 🚀 **[Self-Hosting Guide](https://github.com/TCCiller/Cillhub/wiki/Self-Hosting-Guide)** — Installing and running your own node with Docker Compose & Caddy.
-* 🎙️ **[Voice & Media Setup](https://github.com/TCCiller/Cillhub/wiki/Voice-&-Media-Setup)** — Configuring the built-in `cillvoice` SFU vs. LiveKit and NAT traversal.
-* 🔗 **[Federation & Linked Mode](https://github.com/TCCiller/Cillhub/wiki/Federation-&-Linked-Mode)** — Linking your node to the hub, identity exchange, and directory listing.
-* 🖥️ **[Desktop App Setup](https://github.com/TCCiller/Cillhub/wiki/Desktop-App)** — Native Rust client features, audio DSP, and gaming presence.
-* 📱 **[Android App Setup](https://github.com/TCCiller/Cillhub/wiki/Android-App)** — Building and configuring the native Android mobile app.
-* 🧩 **[Module Development](https://github.com/TCCiller/Cillhub/wiki/Module-Development)** — Building custom server bots and UI extensions with the Module SDK.
-* 🔧 **[Troubleshooting & FAQ](https://github.com/TCCiller/Cillhub/wiki/Troubleshooting-&-FAQ)** — Common questions, SSL issues, and maintenance.
-
----
-
-## 🚀 Run your own server (Node)
+## Run your own server
 
 You need a Linux machine with Docker (Compose v2), a domain pointing at it, ports 80/443 and one UDP port for voice.
 
@@ -92,13 +78,13 @@ openssl pkeyutl -verify -rawin -pubin -inkey release-public-key.pem -in SHA256SU
   && sh install.sh       # asks for hostname, mode, voice backend, UDP port; --help lists all flags
 ```
 
-The installer verifies every download against the Cillhub release key (signed by Pascal Oraze), starts the stack (server, updater, optional Caddy with Let's Encrypt and optional LiveKit) in `/opt/cillhub` and prints the address of the first-run wizard. There you create the admin account (2FA required), choose standalone or connected mode and automatic updates.
+The installer checks every download against the Cillhub release key, starts the stack in `/opt/cillhub` and prints the address of the first-run wizard. There you create the admin account (2FA required), choose standalone or linked mode, and set automatic updates.
 
----
+GIF search uses Tenor or Giphy when you set `TENOR_API_KEY` or `GIPHY_API_KEY`; without a key the GIF picker shows a small built-in catalog.
 
-## 💻 Development Quickstart
+## Development
 
-Requirements: Node.js 24, npm. Optional: a LiveKit server for voice (or use `cillvoice`), Android SDK for the Android app, Rust for the native desktop client.
+Requirements: Node.js 24 and npm. Optional: Rust for the desktop app, the Android SDK for the Android app, a LiveKit server if you do not use `cillvoice`.
 
 ```sh
 # server on a fresh temp data dir (voice is off without LiveKit or cillvoice settings)
@@ -111,70 +97,40 @@ cd client && npm ci && VITE_API_BASE=http://localhost:3300 npm run dev
 cd client && npm run build && cd ../server && PORT=3300 DATA_DIR=$(mktemp -d) STATIC_DIR=../client/dist node src/index.js
 ```
 
-### Voice configuration
-- **Built-in SFU (cillvoice)**: Add `VOICE_BACKEND=cillvoice CILLVOICE_UDP_PORT=50270 CILLVOICE_PUBLIC_IP=127.0.0.1`.
-- **LiveKit**: Add `LIVEKIT_URL=http://127.0.0.1:7880 LIVEKIT_PUBLIC_URL=ws://127.0.0.1:7880 LIVEKIT_API_KEY=… LIVEKIT_API_SECRET=…` (keep keys in a local `.env`).
+Voice for local testing: add `VOICE_BACKEND=cillvoice CILLVOICE_UDP_PORT=50270 CILLVOICE_PUBLIC_IP=127.0.0.1` to the server command, or point it at LiveKit with `LIVEKIT_URL`, `LIVEKIT_PUBLIC_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`.
 
----
-
-## ⚙️ Configuration Reference
-
-| Environment Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3000` | HTTP + WebSocket port (`0` = ephemeral) |
-| `DATA_DIR` | `./data` | Directory for SQLite database, file uploads, media proxy cache, and security keys |
-| `STATIC_DIR` | unset | Directory to serve static web client assets from |
-| `LIVEKIT_URL` | unset | LiveKit HTTP API URL (e.g. `http://127.0.0.1:7880`) |
-| `LIVEKIT_PUBLIC_URL` | unset | LiveKit WebSocket URL clients connect to (e.g. `ws://host/livekit`) |
-| `LIVEKIT_API_KEY` | unset | LiveKit API key |
-| `LIVEKIT_API_SECRET` | unset | LiveKit API secret |
-| `VOICE_BACKEND` | `livekit` | Set to `cillvoice` to use the built-in media server |
-| `CILLVOICE_UDP_PORT` | unset | UDP port for media traffic (ICE, DTLS, SRTP) |
-| `CILLVOICE_PUBLIC_IP` | unset | Public IPv4 address for clients to send media to |
-| `CILLCORD_HUB_URL` | unset | Origin of the network hub (`https://cillhub.cillerian.org`) for linked mode |
-| `CILLCORD_PUBLIC_URL` | request origin | Public HTTPS origin of this node |
-| `CILLCORD_SETUP_CODE` | unset | Setup code for first-run admin wizard (generated automatically by `install.sh`) |
-| `TENOR_API_KEY` / `GIPHY_API_KEY` | unset | GIF search provider key; without one the picker only offers the built-in curated GIFs |
-| `TRUST_PROXY` | unset | Reverse proxies whose `X-Forwarded-For` is believed (CIDR list; the compose file sets a default) |
-
----
-
-## 🧪 Tests
+### Tests
 
 ```sh
-# Server tests
-cd server && npm test
-
-# Web Client build & typecheck
-cd client && npx tsc -b && npm run build
-
-# Desktop tests and build (needs Rust; Linux: webkit2gtk-4.1, libayatana-appindicator3)
-cd desktop-rust && cargo test && npm ci && npm run build
-
-# Android Unit tests
-cd android && ./gradlew testDebugUnitTest
+cd server && npm test                                  # server unit and API tests
+cd client && npm run build                             # typecheck and build
+cd desktop-rust && cargo test && npm ci && npm run build   # Linux needs webkit2gtk-4.1, libayatana-appindicator3
+cd android && ./gradlew testDebugUnitTest              # Android unit tests
+NODE_PATH=<dir with playwright> npm run e2e:v8        # one of the browser suites in package.json; needs client/dist
+android/scripts/emulator-test.sh                       # instrumented Android tests against throwaway servers
 ```
 
----
-
-## 📂 Project Layout
+## Repository layout
 
 | Path | What |
 |---|---|
-| `server/` | Node 24, ES modules, plain JavaScript, `node:http`, `node:sqlite`, `ws`. REST, gateway, CDN, voice (LiveKit or cillvoice), hub/node federation, migrations, and test suites. |
-| `client/` | Vite + React 19 + TypeScript, plain CSS, `livekit-client`. |
-| `desktop-rust/` | Desktop client: Rust + Tauri 2 shell bundling the web client (tray, deep links, signed auto-update, game activity). |
-| `android/` | Native Android app (Kotlin, Jetpack Compose): chat, servers, DMs, notifications, Android Auto, calls, self-update. |
-| `selfhost/` | Node deployment package: `install.sh`, compose file, Caddyfile, updater sidecar, release tooling. |
-| `scripts/` | End-to-end integration test suites and measurements. |
-| `examples/modules/` | Example JavaScript modules (welcome roles, twitch sync, scrim boards, chess, etc.). |
+| `server/` | Node 24, plain JavaScript (ES modules), `node:http`, `node:sqlite`, `ws`: REST API, gateway, uploads, voice, federation, modules, tests |
+| `client/` | Web client: Vite, React 19, TypeScript, plain CSS |
+| `desktop-rust/` | Desktop app: Rust + Tauri 2 around the web client |
+| `android/` | Android app: Kotlin, Jetpack Compose |
+| `selfhost/` | `install.sh`, Compose file, Caddyfile, updater sidecar, release public key |
+| `scripts/` | End-to-end test suites and measurements |
+| `examples/modules/` | Example server modules (welcome roles, LFG finder, scrim board, tickets, trivia and more) |
+| `docs/screenshots/` | The pictures in this README; `android/screenshots/` has more from the Android app |
 
----
+## Security
 
-## 📄 License
+Releases are signed with an Ed25519 key held by the maintainer; the public half is `selfhost/release-public-key.pem`. The server installer checks `SHA256SUMS` against that key, the updater sidecar checks the signed release feed and the SHA-256 of each image, the desktop app verifies each update against the pinned key before installing it, and the Android app checks the signature of its update feed and the SHA-256 of each APK.
+
+To report a vulnerability, please [open a private security advisory on GitHub](https://github.com/TCCiller/Cillhub/security/advisories/new) instead of a public issue.
+
+## License
 
 Copyright (C) 2026 Pascal Oraze
 
-Cillhub is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, version 3 (AGPL-3.0-only). It is distributed WITHOUT ANY WARRANTY. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
-If you run a modified version as a network service, the AGPL requires you to offer its source code to its users.
+Cillhub is free software under the GNU Affero General Public License, version 3 only (AGPL-3.0-only), without any warranty. See [LICENSE](LICENSE) and [NOTICE](NOTICE). If you run a modified version as a network service, the AGPL requires you to offer its source code to the users of that service.
