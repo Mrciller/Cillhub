@@ -63,18 +63,28 @@ const recent = key => (failures.get(key) ?? []).filter(t => Date.now() - t < LOG
 
 // acct: keys count every failure on one account from anywhere; higher so one stranger can't lock it for everyone
 const maxOf = key => (key.startsWith('acct:') ? 100 : LOGIN_MAX);
-// login: (account+IP) keys also wait after each failure, doubling from 1 s to 60 s, so guessing is slow before the lockout
+// login: (account+IP) keys also wait from the 3rd failure in a row (since the last success), doubling from 1 s to 60 s,
+// so a typo and a quick retry cost nothing but guessing is slow before the lockout
+const DELAY_FREE = 2;
 const DELAY_BASE = SCALE > 1 ? 0 : 1000;
-const delayAfter = list => (list.length ? list.at(-1) + Math.min(2 ** (list.length - 1), 60) * DELAY_BASE - Date.now() : 0);
+const cleared = new Map(); // login: key -> time of its last successful password check
+const delayAfter = key => {
+  const run = recent(key).filter(t => t > (cleared.get(key) ?? 0));
+  return run.length > DELAY_FREE ? run.at(-1) + Math.min(2 ** (run.length - DELAY_FREE - 1), 60) * DELAY_BASE - Date.now() : 0;
+};
 export function checkLogin(keys, headers = {}) {
   for (const key of keys) {
     const list = recent(key);
     if (list.length >= maxOf(key)) throw rateLimitError((list[0] + LOGIN_WINDOW - Date.now()) / 1000, headers);
-    const wait = key.startsWith('login:') ? delayAfter(list) : 0;
+    const wait = key.startsWith('login:') ? delayAfter(key) : 0;
     if (wait > 0) throw rateLimitError(wait / 1000, headers);
   }
 }
 export function loginFailed(keys) {
-  if (failures.size > 50_000) for (const k of failures.keys()) if (!recent(k).length) failures.delete(k);
+  if (failures.size > 50_000) for (const k of failures.keys()) if (!recent(k).length) { failures.delete(k); cleared.delete(k); }
   for (const key of keys) failures.set(key, [...recent(key), Date.now()]);
+}
+// a correct password ends the run of failures for the delay; the 10/100 lockout counts are kept
+export function loginSucceeded(keys) {
+  for (const key of keys) if (key.startsWith('login:') && failures.has(key)) cleared.set(key, Date.now());
 }

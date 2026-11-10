@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkLogin, loginFailed } from '../src/ratelimit.js';
+import { checkLogin, loginFailed, loginSucceeded } from '../src/ratelimit.js';
 
 test('login lock: per-IP keys stop at 10, the account-wide key only at 100', () => {
   const ipKeys = ['login:x:1.2.3.4', 'ip:1.2.3.4'];
@@ -12,12 +12,27 @@ test('login lock: per-IP keys stop at 10, the account-wide key only at 100', () 
   assert.throws(() => checkLogin(['acct:victim']));
 });
 
-test('login delay: an account+IP pair waits after a failure (doubling, 60 s cap), other keys do not', () => {
+test('login delay: an account+IP pair waits from the 3rd failure in a row (doubling, 60 s cap), other keys do not', () => {
   const pair = 'login:y:1.2.3.4';
   assert.doesNotThrow(() => checkLogin([pair, 'ip:9.9.9.9']));
   loginFailed([pair, 'ip:9.9.9.9']);
+  loginFailed([pair]);
+  assert.doesNotThrow(() => checkLogin([pair]), 'two failures (a typo and a retry) cost nothing');
+  loginFailed([pair]);
   assert.throws(() => checkLogin([pair]), e => e.status === 429 && e.body.retry_after > 0 && e.body.retry_after <= 1);
   assert.doesNotThrow(() => checkLogin(['ip:9.9.9.9']));
-  for (let i = 0; i < 7; i++) loginFailed([pair]);
+  for (let i = 0; i < 6; i++) loginFailed([pair]);
   assert.throws(() => checkLogin([pair]), e => e.body.retry_after > 59 && e.body.retry_after <= 60);
+});
+
+test('login delay: a correct password ends the run, the lockout count stays', () => {
+  const pair = 'login:z:1.2.3.4';
+  for (let i = 0; i < 3; i++) loginFailed([pair]);
+  assert.throws(() => checkLogin([pair]));
+  loginSucceeded([pair]);
+  assert.doesNotThrow(() => checkLogin([pair]));
+  loginFailed([pair]); loginFailed([pair]);
+  assert.doesNotThrow(() => checkLogin([pair]), 'two new failures after a success are free again');
+  for (let i = 0; i < 5; i++) loginFailed([pair]);
+  assert.throws(() => checkLogin([pair]), e => e.body.retry_after > 60, 'the 10-per-pair lockout still counts every failure');
 });

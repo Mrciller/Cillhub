@@ -4,7 +4,7 @@ import { get, all, run } from '../db.js';
 import { hashPassword, checkPassword, issueToken, revokeToken, tokenHash, sessionIdHash } from '../auth.js';
 import { HttpError, str, invalid, unauthorized } from '../errors.js';
 import { closeTokenSessions } from '../gateway.js';
-import { checkLogin, loginFailed } from '../ratelimit.js';
+import { checkLogin, loginFailed, loginSucceeded } from '../ratelimit.js';
 import { newTicket, redeemTicket, requireMfa, elevate } from '../mfa.js';
 import { settingsOf } from '../userdata.js';
 import { setting } from '../instance.js';
@@ -51,7 +51,7 @@ const loginSettings = userId => { const s = settingsOf(userId); return { locale:
 const loginTail = user => ({ user_settings: loginSettings(user.id), ...(user.require_password_change && { required_actions: ['update_password'] }) });
 const disabled = () => new HttpError(400, 20013, 'This account has been disabled.');
 
-// each failure makes that account+IP pair wait longer (1 s doubling to 60 s); 10 failures per account+IP or per IP in
+// from the 3rd failure in a row an account+IP pair waits longer each time (1 s doubling to 60 s); 10 failures per account+IP or per IP in
 // 15 minutes lock that pair / that IP out (429 with retry_after), so a stranger cannot lock an account for everyone;
 // MFA answers with a ticket (docs)
 async function login(ctx) {
@@ -67,6 +67,7 @@ async function login(ctx) {
     loginFailed(keys);
     throw unauthorized();
   }
+  loginSucceeded(keys);
   if (user.disabled) throw disabled();
   if (!localLoginOpen() && !user.instance_admin) throw hubOnlyLogin(); // admins keep local sign-in, so they cannot lock themselves out
   if (user.mfa_secret) {
