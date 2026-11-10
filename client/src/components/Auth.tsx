@@ -4,6 +4,7 @@ import { t } from '../i18n'
 import { Link, navigate, nextPath } from '../router'
 import { setToken } from '../store'
 import { Field, FormError } from './ui'
+import { Captcha } from './Captcha'
 import { useInstance, reloadInstance } from '../admin/instance'
 import { signInHere } from '../instances/nodes'
 
@@ -29,6 +30,9 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
   const [mfa, setMfa] = useState<Mfa | null>(null)
   const [renew, setRenew] = useState<string | null>(null) // token of a login that must set a new password first (v6 admin)
   const [backup, setBackup] = useState(false)
+  const [forgot, setForgot] = useState<'form' | 'sent' | null>(null) // 7.10: password reset by email
+  const [captchaKey, setCaptchaKey] = useState('')
+  const [captchaRound, setCaptchaRound] = useState(0) // a new widget after each failed submit
   const wait = useRetry(error)
   const login = mode === 'login'
   const instance = useInstance()
@@ -82,7 +86,10 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
   const fieldError = (name: string) => error?.errors[name]?._errors?.[0]?.message
   const done = (token: string) => (navigate(nextPath('/channels/@me'), true), setToken(token))
   const finish = (r: LoginAnswer) => (r.required_actions?.includes('update_password') ? (setRenew(r.token), setBusy(false)) : done(r.token))
-  const fail = (err: unknown) => (setError(err instanceof ApiError ? err : new ApiError(0, null)), setBusy(false))
+  const fail = (err: unknown) => (setError(err instanceof ApiError ? err : new ApiError(0, null)), setBusy(false), setCaptchaKey(''), setCaptchaRound((n) => n + 1))
+  const sitekey = instance?.captcha?.sitekey
+  const captcha = sitekey && <Captcha key={captchaRound} sitekey={sitekey} onToken={setCaptchaKey} />
+  const withCaptcha = (body: Record<string, unknown>) => (captchaKey ? { ...body, captcha_key: captchaKey } : body)
   const message = wait ? t('Too many attempts. Try again in {n} seconds.', { n: wait }) : error && Object.keys(error.errors).length === 0 ? error.message : ''
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -90,10 +97,23 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
     setBusy(true)
     setError(null)
     try {
-      const r = await api<Partial<LoginAnswer> & { mfa?: boolean; ticket?: string; totp?: boolean; backup?: boolean }>(`/auth/${mode}`, { method: 'POST', body: Object.fromEntries(new FormData(e.currentTarget)) })
+      const r = await api<Partial<LoginAnswer> & { mfa?: boolean; ticket?: string; totp?: boolean; backup?: boolean }>(`/auth/${mode}`, { method: 'POST', body: withCaptcha(Object.fromEntries(new FormData(e.currentTarget))) })
       // User docs: with 2FA the login answers { mfa: true, ticket } and the code goes to /auth/mfa/totp.
       if (r.mfa && r.ticket) return setMfa({ ticket: r.ticket, totp: r.totp, backup: r.backup }), setBusy(false)
       if (r.token) finish(r as LoginAnswer)
+    } catch (err) {
+      fail(err)
+    }
+  }
+
+  async function sendForgot(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      await api('/auth/forgot', { method: 'POST', body: withCaptcha({ login: new FormData(e.currentTarget).get('login') }) })
+      setForgot('sent')
+      setBusy(false)
     } catch (err) {
       fail(err)
     }
@@ -206,6 +226,32 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
             <FormError error={message} />
             <button className="primary wide" disabled={busy}>{t('Change Password')}</button>
           </form>
+        </main>
+      </div>
+    )
+
+  const backToLogin = () => (setForgot(null), setError(null))
+  if (forgot)
+    return (
+      <div className="auth-bg">
+        <main className="auth-card">
+          {forgot === 'sent' ? (
+            <>
+              <h1>{t('Check your mail')}</h1>
+              <p className="sub" role="status">{t('If an account with this address exists, a mail with a link is on its way.')}</p>
+              <p className="switch"><button type="button" className="link" onClick={backToLogin}>{t('Go back to login')}</button></p>
+            </>
+          ) : (
+            <form onSubmit={sendForgot}>
+              <h1>{t('Forgot password?')}</h1>
+              <p className="sub">{t('Enter the email address of your account. You get a link to choose a new password.')}</p>
+              <Field label={t('Email')} name="login" type="email" autoComplete="email" required autoFocus maxLength={254} error={fieldError('login')} />
+              {captcha}
+              <FormError error={message} />
+              <button className="primary wide" disabled={busy || wait > 0 || (!!sitekey && !captchaKey)}>{t('Send link')}</button>
+              <p className="switch"><button type="button" className="link" onClick={backToLogin}>{t('Go back to login')}</button></p>
+            </form>
+          )}
         </main>
       </div>
     )
@@ -324,8 +370,12 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
           {!login && instance?.registration_mode === 'invite' && (
             <Field label={t('Registration code')} name="registration_code" autoComplete="off" required maxLength={64} error={fieldError('registration_code')} />
           )}
+          {!login && !closed && captcha}
+          {login && instance?.password_reset && (
+            <p className="switch"><button type="button" className="link" onClick={() => (setForgot('form'), setError(null))}>{t('Forgot password?')}</button></p>
+          )}
           <FormError error={message} />
-          <button className="primary wide" disabled={busy || wait > 0 || closed}>{login ? t('Log In') : t('Continue')}</button>
+          <button className="primary wide" disabled={busy || wait > 0 || closed || (!login && !!sitekey && !captchaKey)}>{login ? t('Log In') : t('Continue')}</button>
           {login && (
             <button type="button" className="secondary wide" style={{ marginTop: '0.5rem' }} disabled={busy || wait > 0} onClick={() => void passkeySignIn()}>
               🔑 {t('Sign in with Passkey')}

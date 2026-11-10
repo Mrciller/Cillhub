@@ -1,11 +1,12 @@
-// Instance settings (registration mode, name, message of the day, upload limit, GIFs, default voice backend) and the
-// registration codes used while registration is invite-only.
+// Instance settings (registration mode, name, message of the day, upload limit, GIFs, default voice backend, address,
+// SMTP, captcha) and the registration codes used while registration is invite-only.
 import { useEffect, useState, type FormEvent } from 'react'
 import { ask, toast, toastError } from '../components/dialogs'
 import { Field, FormError } from '../components/ui'
 import { t } from '../i18n'
 import * as A from './api'
-import type { InstanceSettings, Registration } from './api'
+import type { InstanceSettings, Registration, SettingsPatch } from './api'
+import { useInstance } from './instance'
 import { useLoad, when } from './util'
 
 const MB = 1024 * 1024
@@ -20,6 +21,11 @@ export function InstanceSettingsPage() {
   const [form, setForm] = useState<InstanceSettings | null>(null)
   const [saveError, setSaveError] = useState('')
   const [saved, setSaved] = useState(false)
+  // typed secrets; a key left out keeps the stored value, null removes it
+  const [secrets, setSecrets] = useState<Pick<SettingsPatch, 'smtp_password' | 'captcha_secret'>>({})
+  const [mailTest, setMailTest] = useState<{ busy?: boolean; ok?: boolean; text?: string }>({})
+  const isHub = useInstance()?.federation?.role === 'hub'
+  const mail = !!form && 'smtp_port' in form // servers before 7.10 have no address, SMTP or captcha settings
   useEffect(() => void (data && setForm(data)), [data])
   if (error) return <FormError error={error} />
   if (!form) return <p className="hint" aria-busy="true">{t('Loading…')}</p>
@@ -28,10 +34,29 @@ export function InstanceSettingsPage() {
   const submit = (e: FormEvent) => {
     e.preventDefault()
     setSaveError('')
-    const { instance_name, motd, registration_mode, max_upload_bytes, gifs_enabled, voice_backend } = form
-    A.saveSettings({ instance_name: instance_name.trim(), motd: motd?.trim() || null, registration_mode, max_upload_bytes, gifs_enabled, voice_backend })
-      .then((s) => (setForm(s), setSaved(true)), (err: Error) => setSaveError(err.message))
+    const { instance_name, motd, registration_mode, max_upload_bytes, gifs_enabled, voice_backend, smtp_port, smtp_security } = form
+    const text = (v: string | null) => v?.trim() || null
+    A.saveSettings({
+      instance_name: instance_name.trim(), motd: text(motd), registration_mode, max_upload_bytes, gifs_enabled, voice_backend,
+      ...(mail && !isHub && { public_url: text(form.public_url) }),
+      ...(mail && {
+        smtp_host: text(form.smtp_host), smtp_port, smtp_security, smtp_user: text(form.smtp_user), smtp_from: text(form.smtp_from),
+        captcha_site_key: text(form.captcha_site_key), ...secrets,
+      }),
+    }).then((s) => (setForm(s), setSecrets({}), setSaved(true)), (err: Error) => setSaveError(err.message))
   }
+  const sendTest = () => {
+    setMailTest({ busy: true })
+    A.testMail().then((r) => setMailTest({ ok: r.ok, text: r.ok ? t('Test mail sent to your address.') : r.error ?? '' }), (err: Error) => setMailTest({ ok: false, text: err.message }))
+  }
+  // a stored secret shows as "saved"; Remove clears it on the next save
+  const secret = (key: 'smtp_password' | 'captcha_secret', label: string, isSet: boolean) => (
+    <div className="admin-inline">
+      <Field label={label} type="password" autoComplete="new-password" maxLength={255} value={secrets[key] ?? ''}
+        placeholder={isSet && secrets[key] !== null ? t('Saved') : ''} onChange={(e) => (setSecrets({ ...secrets, [key]: e.target.value || undefined }), setSaved(false))} />
+      {isSet && secrets[key] !== null && <button type="button" className="link danger-link" onClick={() => (setSecrets({ ...secrets, [key]: null }), setSaved(false))}>{t('Remove')}</button>}
+    </div>
+  )
   return (
     <>
       <form className="admin-form" onSubmit={submit}>
@@ -60,6 +85,48 @@ export function InstanceSettingsPage() {
             {backends.includes('cillvoice') && <option value="cillvoice">cillvoice</option>}
           </select>
         </div>
+        {mail && !isHub && (
+          <fieldset className="admin-reasons">
+            <legend>{t('Address')}</legend>
+            <Field label={t('Public address')} type="url" maxLength={255} value={form.public_url ?? ''} placeholder={form.public_url_effective}
+              onChange={(e) => set({ public_url: e.target.value })} aria-describedby="admin-url-hint" />
+            <p id="admin-url-hint" className="hint small">
+              {t('Point the DNS of the new name to this server first; the old address keeps working. Passkeys made on the old address only work there, and a hub this server is linked to keeps using the old address until you link again. With the bundled Caddy, installs from before 7.10 need install.sh run again to get certificates for the new name.')}
+            </p>
+          </fieldset>
+        )}
+        {mail && <>
+        <fieldset className="admin-reasons">
+          <legend>{t('Email (SMTP)')}</legend>
+          <p className="hint small">{t('Needed for password reset by email.')}</p>
+          <div className="admin-inline">
+            <Field label={t('Server')} maxLength={255} value={form.smtp_host ?? ''} placeholder="smtp.example.org" onChange={(e) => set({ smtp_host: e.target.value })} />
+            <Field label={t('Port')} type="number" min={1} max={65535} required value={form.smtp_port} onChange={(e) => set({ smtp_port: Math.min(65535, Math.max(1, +e.target.value)) })} />
+            <div className="field">
+              <label htmlFor="admin-smtp-security">{t('Encryption')}</label>
+              <select id="admin-smtp-security" className="input" value={form.smtp_security} onChange={(e) => set({ smtp_security: e.target.value as InstanceSettings['smtp_security'] })}>
+                <option value="starttls">STARTTLS</option>
+                <option value="tls">TLS</option>
+                <option value="none">{t('None')}</option>
+              </select>
+            </div>
+          </div>
+          <Field label={t('User name')} maxLength={255} autoComplete="off" value={form.smtp_user ?? ''} onChange={(e) => set({ smtp_user: e.target.value })} />
+          {secret('smtp_password', t('Password'), form.smtp_password_set)}
+          <Field label={t('Sender')} maxLength={255} value={form.smtp_from ?? ''} placeholder="Cillhub <no-reply@example.org>" onChange={(e) => set({ smtp_from: e.target.value })} />
+          <div className="admin-inline">
+            <button type="button" className="admin-btn" disabled={mailTest.busy} onClick={sendTest}>{t('Send test mail')}</button>
+            <span className="hint small">{t('Uses the saved settings.')}</span>
+          </div>
+          {mailTest.text && <p className={mailTest.ok ? 'success' : 'form-error'} role="status">{mailTest.text}</p>}
+        </fieldset>
+        <fieldset className="admin-reasons">
+          <legend>{t('Captcha')}</legend>
+          <p className="hint small">{t('Asked at sign-up and password reset. reCAPTCHA v2 (checkbox) keys from google.com/recaptcha/admin.')}</p>
+          <Field label={t('Site key')} maxLength={255} autoComplete="off" value={form.captcha_site_key ?? ''} onChange={(e) => set({ captcha_site_key: e.target.value })} />
+          {secret('captcha_secret', t('Secret key'), form.captcha_secret_set)}
+        </fieldset>
+        </>}
         <FormError error={saveError} />
         <div className="save-bar">
           {saved && <span className="success" role="status">{t('Saved.')}</span>}

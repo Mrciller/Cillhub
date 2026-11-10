@@ -15,10 +15,24 @@ export type PublicInstance = {
   voice?: { configured: string[]; default: string | null }
   /** v7: `hub` = the owner's instance (server directory, node admin); `node` = a self-hosted instance (standalone or connected). */
   federation?: { role: 'hub' | 'node'; mode: 'standalone' | 'connected' | null; hub_url: string | null }
+  /** 7.10: email password reset is offered (SMTP set and local sign-in open). */
+  password_reset?: boolean
+  /** 7.10: reCAPTCHA v2 at sign-up and password reset. */
+  captcha?: { service: 'recaptcha'; sitekey: string } | null
 }
 export type InstanceSettings = {
   registration_mode: Registration; instance_name: string; motd: string | null; max_upload_bytes: number; gifs_enabled: boolean
   voice_backend: 'livekit' | 'cillvoice' | null; announcement: Announcement | null; voice: { configured: string[]; default: string | null }
+  /** 7.10: the admin-set address (null = from the server environment) and the one in use now. */
+  public_url: string | null; public_url_effective: string
+  smtp_host: string | null; smtp_port: number; smtp_security: 'starttls' | 'tls' | 'none'; smtp_user: string | null; smtp_from: string | null
+  captcha_site_key: string | null
+  /** The secrets themselves never come back. */
+  smtp_password_set: boolean; captcha_secret_set: boolean
+}
+/** PATCH: a secret left out is kept, null clears it. */
+export type SettingsPatch = Partial<Omit<InstanceSettings, 'announcement' | 'voice' | 'public_url_effective' | 'smtp_password_set' | 'captcha_secret_set'>> & {
+  smtp_password?: string | null; captcha_secret?: string | null
 }
 
 export type Overview = {
@@ -103,8 +117,9 @@ export const listReports = (status: Report['status']) => admin<Report[]>(`/repor
 export const resolveReport = (id: string, action: ReportAction, duration_seconds?: number) => post<Report>(`/reports/${id}/resolve`, { action, duration_seconds })
 
 export const getSettings = () => admin<InstanceSettings>('/settings')
-export const saveSettings = (patch: Partial<Pick<InstanceSettings, 'registration_mode' | 'instance_name' | 'motd' | 'max_upload_bytes' | 'gifs_enabled' | 'voice_backend'>>) =>
-  admin<InstanceSettings>('/settings', { method: 'PATCH', body: patch })
+export const saveSettings = (patch: SettingsPatch) => admin<InstanceSettings>('/settings', { method: 'PATCH', body: patch })
+/** Sends a test mail to the admin's own address; error is the SMTP server's answer. */
+export const testMail = () => post<{ ok: boolean; error: string | null }>('/settings/test-mail', {})
 export const listCodes = () => admin<RegistrationCode[]>('/registration-codes')
 /** max_uses 0 = unlimited, max_age in seconds (0 = never expires). */
 export const createCode = (max_uses: number, max_age: number) => post<RegistrationCode>('/registration-codes', { max_uses, max_age })

@@ -92,4 +92,14 @@ export const admin: Record<string, string> = {
   'Voice health': 'Zustand der Sprachdienste', 'Voice minutes (30 days)': 'Sprachminuten (30 Tage)', 'by {id}': 'von {id}', 'deleted since': 'inzwischen gelöscht', none: 'keiner',
   '{n} channels': '{n} Kanäle', '{n} in voice now': '{n} gerade im Sprachkanal', '{n} online now': '{n} gerade online', '{n} rooms': '{n} Räume',
   '{n} servers shown': '{n} Server angezeigt', '{n} users shown': '{n} Benutzer angezeigt',
+  // 7.10: address, SMTP, captcha
+  Address: 'Adresse', 'Public address': 'Öffentliche Adresse',
+  'Point the DNS of the new name to this server first; the old address keeps working. Passkeys made on the old address only work there, and a hub this server is linked to keeps using the old address until you link again. With the bundled Caddy, installs from before 7.10 need install.sh run again to get certificates for the new name.':
+    'Lass zuerst den DNS-Eintrag des neuen Namens auf diesen Server zeigen; die alte Adresse funktioniert weiter. Passkeys, die auf der alten Adresse angelegt wurden, gehen nur dort, und ein verknüpfter Hub nutzt die alte Adresse, bis du neu verknüpfst. Mit dem mitgelieferten Caddy brauchen Installationen von vor 7.10 einen neuen Lauf von install.sh, damit es Zertifikate für den neuen Namen gibt.',
+  'Email (SMTP)': 'E-Mail (SMTP)', 'Needed for password reset by email.': 'Nötig, um Passwörter per E-Mail zurückzusetzen.', Port: 'Port',
+  Encryption: 'Verschlüsselung', 'User name': 'Benutzername', Sender: 'Absender', 'Send test mail': 'Testmail senden',
+  'Uses the saved settings.': 'Nutzt die gespeicherten Einstellungen.', 'Test mail sent to your address.': 'Testmail an deine Adresse gesendet.',
+  Captcha: 'Captcha', 'Asked at sign-up and password reset. reCAPTCHA v2 (checkbox) keys from google.com/recaptcha/admin.':
+    'Wird bei der Registrierung und beim Zurücksetzen des Passworts abgefragt. reCAPTCHA-v2-Schlüssel (Checkbox) von google.com/recaptcha/admin.',
+  'Site key': 'Websiteschlüssel', 'Secret key': 'Geheimer Schlüssel', Saved: 'Gespeichert',
 }

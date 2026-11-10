@@ -157,4 +157,12 @@ export const shell: Record<string, string> = {
   "Here's a preview of your event.": 'Hier ist eine Vorschau deines Events.', 'Save Event': 'Event speichern', 'Edit Event': 'Event bearbeiten',
   'Upcoming events': 'Kommende Events', 'There are no upcoming events.': 'Es gibt keine kommenden Events.', 'Schedule one so everyone can join in.': 'Plane eins, damit alle mitmachen können.',
   'This event no longer exists.': 'Dieses Event gibt es nicht mehr.',
+  // 7.10: password reset by email, captcha
+  'Forgot password?': 'Passwort vergessen?', 'Check your mail': 'Schau in dein Postfach',
+  'If an account with this address exists, a mail with a link is on its way.': 'Wenn es ein Konto mit dieser Adresse gibt, ist eine Mail mit einem Link unterwegs.',
+  'Enter the email address of your account. You get a link to choose a new password.': 'Gib die E-Mail-Adresse deines Kontos ein. Du bekommst einen Link, mit dem du ein neues Passwort wählst.',
+  'Send link': 'Link senden', 'Password changed': 'Passwort geändert',
+  'Your new password is set. All sessions of your account were signed out.': 'Dein neues Passwort ist gesetzt. Alle Sitzungen deines Kontos wurden abgemeldet.',
+  'This link is invalid or has expired.': 'Dieser Link ist ungültig oder abgelaufen.', 'Too many attempts. Try again later.': 'Zu viele Versuche. Versuch es später noch einmal.',
+  'The captcha could not be loaded. Check your connection and reload the page.': 'Das Captcha konnte nicht geladen werden. Prüf deine Verbindung und lade die Seite neu.',
 }

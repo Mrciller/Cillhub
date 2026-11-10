@@ -4,6 +4,7 @@ import { DialogHost } from './components/dialogs'
 import { useLocale } from './i18n'
 import { InstanceBanner } from './admin/InstanceBanner'
 import { InvitePage } from './components/InvitePage'
+import { ResetPage } from './components/ResetPage'
 import { Shell } from './components/Shell'
 import { UpdateBanner } from './components/UpdateBanner'
 import { AndroidMovedBanner } from './android/MovedBanner'
@@ -44,6 +45,7 @@ function Page() {
   if (section === 'invite' && a) return <InvitePage code={decodeURIComponent(a)} />
   // Template links open "Add a server" with the code (templates/Templates.tsx); after login when needed.
   if (section === 'template' && a) return sessionStorage.setItem('template-code', decodeURIComponent(a)), <Redirect to="/channels/@me" />
+  if (section === 'reset') return <ResetPage />
   if (section === 'download') return <Suspense fallback={null}><DownloadPage /></Suspense>
   if (!token) return section === 'login' || section === 'register' ? <><Auth key={section} mode={section} /><DialogHost /></> : <Redirect to={`/login${section === 'oauth2' || section === 'developers' || section === 'directory' ? `?next=${encodeURIComponent(location.pathname + location.search)}` : ''}`} />
   if (section === 'developers' && a === 'applications') return <Suspense fallback={null}><DeveloperPortal appId={b} tab={path.split('/')[4]} /></Suspense>

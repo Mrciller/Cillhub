@@ -61,6 +61,7 @@ function adminRoutes(calls, { mfa = true } = {}) {
       if (p === '/audit-log') return json([{ id: '7', admin_id: '100', action: 'user.disable', target_type: 'user', target_id: '102', details: { sessions_closed: 2 }, ip_hash: 'x', created_at: h.iso() }])
     }
     if (p === '/settings' && method === 'PATCH') return json((settings = { ...settings, ...body }))
+    if (p === '/settings/test-mail') return json({ ok: false, error: '535 5.7.8 Authentication failed' })
     if (p === '/registration-codes' && method === 'POST') return json({ code: 'NEWCODE234', created_by: '100', created_at: h.iso(), expires_at: null, max_uses: body.max_uses, uses: 0, note: null }, 201)
     if (p === '/announcements' && method === 'POST') return json({ announcement: { id: '2', content: body.content, created_at: h.iso() }, dm_count: 3 }, 201)
     if (/^\/reports\/\d+\/resolve$/.test(p)) return json(report(p.split('/')[2], { status: 'resolved', actions: [{ action: body.action, admin_id: '100', at: h.iso(), note: null }] }))
@@ -258,6 +259,32 @@ async function run(browser, errors) {
   await call(calls, 'DELETE', '/registration-codes/WELCOME123', () => page.getByRole('dialog', { name: 'Revoke code?' }).getByRole('button', { name: 'Revoke' }).click())
   console.log('ok v6-admin 9 - instance settings PATCH body, registration codes create/revoke')
 
+  // 7.10: a server with address, SMTP and captcha settings; secrets are write-only (left out = kept, null = removed)
+  settings = { ...settings, public_url: null, public_url_effective: 'https://chat.example.org', smtp_host: null, smtp_port: 587, smtp_security: 'starttls',
+    smtp_user: null, smtp_from: null, captcha_site_key: 'site-key-kim', smtp_password_set: false, captcha_secret_set: true }
+  await page.reload()
+  await page.getByLabel('Public address').waitFor()
+  assert.equal(await page.getByLabel('Public address').getAttribute('placeholder'), 'https://chat.example.org')
+  assert.equal(await page.getByLabel('Secret key').getAttribute('placeholder'), 'Saved')
+  assert.equal(await page.getByLabel('Password', { exact: true }).getAttribute('placeholder'), '')
+  await page.getByLabel('Public address').fill('https://hub.example.org')
+  await page.getByLabel('Server', { exact: true }).fill('smtp.example.org')
+  await page.getByLabel('Port').fill('465')
+  await page.getByLabel('Encryption').selectOption('tls')
+  await page.getByLabel('User name').fill('alex')
+  await page.getByLabel('Password', { exact: true }).fill('smtp-pass')
+  await page.getByLabel('Sender').fill('Cillhub <no-reply@example.org>')
+  await page.getByRole('button', { name: 'Remove' }).click() // the captcha secret
+  const patch2 = await call(calls, 'PATCH', '/settings', () => page.getByRole('button', { name: 'Save Changes' }).click())
+  assert.deepEqual(patch2.body, {
+    instance_name: 'Cillhub', motd: 'Welcome to Nightfall!', registration_mode: 'invite', max_upload_bytes: 50 * 1024 ** 2, gifs_enabled: false, voice_backend: 'cillvoice',
+    public_url: 'https://hub.example.org', smtp_host: 'smtp.example.org', smtp_port: 465, smtp_security: 'tls', smtp_user: 'alex', smtp_from: 'Cillhub <no-reply@example.org>',
+    captcha_site_key: 'site-key-kim', smtp_password: 'smtp-pass', captcha_secret: null,
+  })
+  await call(calls, 'POST', '/settings/test-mail', () => page.getByRole('button', { name: 'Send test mail' }).click())
+  await page.getByRole('status').filter({ hasText: '535 5.7.8 Authentication failed' }).waitFor()
+  console.log('ok v6-admin 9b - address, SMTP and captcha settings: PATCH body with write-only secrets, test mail shows the SMTP answer')
+
   // Announcements.
   await nav.getByRole('link', { name: 'Announcements' }).click()
   await page.getByText('Maintenance tonight').waitFor()
@@ -350,6 +377,71 @@ async function run(browser, errors) {
   assert.equal(await pp.evaluate(() => localStorage.getItem('token')), 'fresh-token')
   await pc.close()
   console.log('ok v6-admin 15 - required password change after login: PATCH /users/@me, then the app')
+
+  // 7.10: forgot password (neutral answer), the reset page from the mail, and the captcha at sign-up and forgot
+  const fc = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' })
+  const fp = await fc.newPage()
+  fp.on('pageerror', (e) => errors.push(e.message))
+  const sent = {}
+  let captchaLoads = 0
+  // stands in for Google's api.js: the checkbox "ticks" right away
+  await fp.route('https://www.google.com/recaptcha/api.js*', (r) => (captchaLoads++, r.fulfill({ contentType: 'text/javascript', body:
+    `window.grecaptcha = { render(el, o) { el.textContent = 'captcha ' + o.sitekey; setTimeout(() => o.callback('tok-' + (++window.__n || (window.__n = 1))), 50); return 0 } };
+     window[new URL(document.currentScript.src).searchParams.get('onload')]()` })))
+  let instance = { name: 'Cillhub', motd: null, registration_mode: 'open', announcement: null, password_reset: true, captcha: null }
+  await fp.route('**/api/v9/**', (r) => {
+    const { pathname } = new URL(r.request().url())
+    if (pathname === '/api/v9/instance') return r.fulfill({ json: instance })
+    if (pathname === '/api/v9/auth/forgot') return (sent.forgot = r.request().postDataJSON()), r.fulfill({ status: 204 })
+    if (pathname === '/api/v9/auth/reset') return (sent.reset = r.request().postDataJSON()), sent.reset.token === 'bad' ? r.fulfill({ status: 400, json: { code: 0, message: 'This link is invalid or has expired.' } }) : r.fulfill({ status: 204 })
+    if (pathname === '/api/v9/auth/register') return (sent.register = r.request().postDataJSON()), r.fulfill({ status: 400, json: { message: 'Complete the captcha.', captcha_key: ['invalid-response'], captcha_sitekey: 'site-key-kim', captcha_service: 'recaptcha' } })
+    r.abort()
+  })
+  await fp.goto(`${h.ORIGIN}/login`)
+  await fp.getByRole('button', { name: 'Forgot password?' }).click()
+  await fp.getByLabel('Email').fill('alex@example.com')
+  await fp.getByRole('button', { name: 'Send link' }).click()
+  await fp.getByText('If an account with this address exists, a mail with a link is on its way.').waitFor()
+  assert.deepEqual(sent.forgot, { login: 'alex@example.com' })
+  assert.equal(captchaLoads, 0, 'no captcha script while captcha is off')
+  await fp.goto(`${h.ORIGIN}/reset?token=bad`)
+  await fp.getByLabel('New Password', { exact: true }).fill('new-pass-alex')
+  await fp.getByLabel('Confirm New Password').fill('new-pass-alex')
+  await fp.getByRole('button', { name: 'Change Password' }).click()
+  await fp.getByText('This link is invalid or has expired.').waitFor()
+  await fp.goto(`${h.ORIGIN}/reset?token=tok123`)
+  await fp.getByLabel('New Password', { exact: true }).fill('new-pass-alex')
+  await fp.getByLabel('Confirm New Password').fill('other-pass')
+  await fp.getByRole('button', { name: 'Change Password' }).click()
+  await fp.getByText('Passwords do not match.').waitFor()
+  await fp.getByLabel('Confirm New Password').fill('new-pass-alex')
+  await fp.getByRole('button', { name: 'Change Password' }).click()
+  await fp.getByRole('heading', { name: 'Password changed' }).waitFor()
+  assert.deepEqual(sent.reset, { token: 'tok123', password: 'new-pass-alex' })
+  assert.equal(new URL(fp.url()).search, '', 'the used token leaves the address bar')
+  await fp.getByRole('link', { name: 'Log In' }).click()
+  await fp.waitForURL('**/login')
+
+  instance = { ...instance, captcha: { service: 'recaptcha', sitekey: 'site-key-kim' } }
+  await fp.goto(`${h.ORIGIN}/register`)
+  await fp.getByText('captcha site-key-kim').waitFor()
+  await fp.getByLabel('Email').fill('robin@example.com')
+  await fp.getByLabel('Username').fill('robin')
+  await fp.getByLabel('Password').fill('hunter2hunter2')
+  await fp.getByRole('button', { name: 'Continue' }).click()
+  await fp.getByText('Complete the captcha.').waitFor()
+  assert.equal(sent.register.captcha_key, 'tok-1')
+  await fp.getByText('captcha site-key-kim').waitFor() // a fresh widget after the refusal
+  await fp.goto(`${h.ORIGIN}/login`)
+  await fp.getByRole('button', { name: 'Forgot password?' }).click()
+  await fp.getByLabel('Email').fill('sam@example.com')
+  await fp.getByText('captcha site-key-kim').waitFor()
+  await fp.getByRole('button', { name: 'Send link' }).click()
+  await fp.getByText('If an account with this address exists, a mail with a link is on its way.').waitFor()
+  assert.equal(sent.forgot.login, 'sam@example.com')
+  assert.match(sent.forgot.captcha_key, /^tok-/)
+  await fc.close()
+  console.log('ok v6-admin 16 - forgot password (neutral answer), reset page (mismatch, invalid link, success), captcha token on register and forgot')
 }
 
 module.exports = { run }
