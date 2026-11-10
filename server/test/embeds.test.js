@@ -101,12 +101,12 @@ test('no unfurl for <wrapped> links, SUPPRESS_EMBEDS on send, or without EMBED_L
   await api('DELETE', `/channels/${g.general.id}/permissions/${g.guild.id}`, alice.token);
 });
 
-test('unfurling never delays or breaks sending; HTML is read up to 1 MiB only', async () => {
+test('unfurling never delays or breaks sending; HTML is read up to 512 KiB only', async () => {
   const t = Date.now();
   const slow = await post({ content: `${url('/slow')} ${url('/big')} http://10.0.0.1/ http://localhost/og` });
   assert.equal(slow.status, 201);
   assert.ok(Date.now() - t < 1500, 'the response does not wait for the unfurl');
-  // /big has its meta tag past 1 MiB, the private address and localhost:80 are refused: only /slow yields an embed
+  // /big has its meta tag past 512 KiB, the private address and localhost:80 are refused: only /slow yields an embed
   const done = await bob.gw.wait(f => f.t === 'MESSAGE_UPDATE' && f.d.id === slow.body.id, 6000);
   assert.deepEqual(done.d.embeds.map(e => e.title), ['slow']);
 });
@@ -149,4 +149,13 @@ test('media proxy cache: old images go, then the oldest until it fits (audit M9)
   assert.equal(pruneProxyCache(now, 250), 200); // a is too old, b is the oldest left
   const { readdirSync } = await import('node:fs');
   assert.deepEqual(readdirSync(`${dir}/external`).sort(), ['c', 'd']);
+});
+
+test('the meta parser stays linear on a hostile page (one long attribute name)', async () => {
+  const { metaTags } = await import('../src/embeds.js'); // dynamic: proxy.js reads DATA_DIR on import
+  const t = Date.now();
+  assert.deepEqual(metaTags(`<meta ${'a'.repeat(512 * 1024)}>`), {});
+  assert.deepEqual(metaTags(`${'<meta a'.repeat(50_000)}<title>${'b'.repeat(200_000)}`), {});
+  assert.ok(Date.now() - t < 500, `took ${Date.now() - t} ms`);
+  assert.equal(metaTags('<meta property="og:title" content="ok">')['og:title'], 'ok');
 });

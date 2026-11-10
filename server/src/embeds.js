@@ -92,13 +92,14 @@ const decode = s => s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (all, e) => {
 
 export function metaTags(html) {
   const meta = {};
-  for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
+  // bounded and anchored on the preceding whitespace so a long run of name characters cannot backtrack quadratically
+  for (const [tag] of html.matchAll(/<meta\b[^<>]{0,2048}>/gi)) {
     const attrs = {};
-    for (const a of tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) attrs[a[1].toLowerCase()] = decode(a[2] ?? a[3] ?? a[4]);
+    for (const a of tag.matchAll(/\s([\w:-]{1,64})\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) attrs[a[1].toLowerCase()] = decode(a[2] ?? a[3] ?? a[4]);
     const key = (attrs.property ?? attrs.name ?? '').toLowerCase();
     if (key && attrs.content != null && !(key in meta)) meta[key] = attrs.content.trim();
   }
-  const title = /<title[^>]*>([^<]*)<\/title>/i.exec(html);
+  const title = /<title[^<>]{0,1024}>([^<]{0,4096})<\/title>/i.exec(html);
   if (title && !meta['html:title']) meta['html:title'] = decode(title[1]).trim();
   return meta;
 }
@@ -149,7 +150,7 @@ class Transient extends Error {}
 async function unfurlOnce(url, opts) {
   const yt = YOUTUBE.exec(url);
   if (yt) return youtubeEmbed(url, yt[1]);
-  const r = await safeFetch(url, { ...opts, headers: { Accept: 'text/html,application/xhtml+xml,image/*;q=0.8' } });
+  const r = await safeFetch(url, { maxBytes: 512 * 1024, ...opts, headers: { Accept: 'text/html,application/xhtml+xml,image/*;q=0.8' } });
   if (r.status >= 500 || r.status === 429) throw new Transient(`HTTP ${r.status}`);
   if (r.status !== 200) return null;
   if (r.type.startsWith('image/')) {
