@@ -56,7 +56,15 @@ test('GIF integration: zero-config fallback, categories, trending and search', a
     assert.equal(limitRes.status, 200);
     assert.equal(limitRes.body.length, 3);
 
-    // 6. Unauthenticated calls also succeed (open route)
+    // 6. A search without a match is empty, not the trending list; an empty query still gives trending
+    const none = await srv.api('GET', '/gifs/search?q=zzqxnomatch', alice.token);
+    assert.equal(none.status, 200);
+    assert.deepEqual(none.body, []);
+    const blank = await srv.api('GET', '/gifs/search?q=', alice.token);
+    assert.equal(blank.status, 200);
+    assert.ok(blank.body.length > 0);
+
+    // 7. Unauthenticated calls also succeed (open route)
     const openRes = await srv.api('GET', '/gifs/categories');
     assert.equal(openRes.status, 200);
     assert.ok(Array.isArray(openRes.body));

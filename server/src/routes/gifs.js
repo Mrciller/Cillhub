@@ -336,11 +336,7 @@ function curatedSearch(query, limit) {
   }).filter(x => x.score > 0);
 
   scored.sort((a, b) => b.score - a.score);
-  let results = scored.map(x => sanitizeGif(x.item));
-  if (results.length === 0) {
-    results = curatedTrending(limit);
-  }
-  return results.slice(0, limit);
+  return scored.slice(0, limit).map(x => sanitizeGif(x.item));
 }
 
 async function getGifs(mode, query) {
