@@ -14,10 +14,12 @@ function jwt(claims, ttl) {
 // set participant attributes: a viewer without AV1 says `av1: '0'` so sharers leave AV1 out (client voice/engine.ts);
 // nothing reads LiveKit names or metadata, so a participant changing its own is harmless.
 // An empty canPublishSources means every source to LiveKit, so no sources must be canPublish: false.
+// Short-lived: the client connects right away and LiveKit hands connected clients refreshed tokens itself, so a kicked or
+// removed user cannot rejoin the room later with a token they kept.
 export const joinToken = (userId, name, room, sources) => jwt({
   sub: userId, name, metadata: JSON.stringify({ user_id: userId }),
   video: { room, roomJoin: true, canSubscribe: true, canPublish: sources.length > 0, canPublishData: false, canUpdateOwnMetadata: true, canPublishSources: sources },
-}, 6 * 3600);
+}, 60);
 
 function call(method, body) {
   if (!endpoint) return;
@@ -27,10 +29,11 @@ function call(method, body) {
     body: JSON.stringify(body), signal: AbortSignal.timeout(3000),
   }).then(async res => {
     await res.arrayBuffer();
-    if (!res.ok) console.error(`LiveKit ${method} failed: HTTP ${res.status}`);
+    if (!res.ok && res.status !== 404) console.error(`LiveKit ${method} failed: HTTP ${res.status}`);
   }).catch(e => console.error(`LiveKit ${method} failed: ${e.message}`));
 }
 
+// every leave removes; the client has usually gone already (404 participant not found)
 export const removeParticipant = (room, identity) => call('RemoveParticipant', { room, identity });
 // Twirp's protobuf JSON wants the TrackSource enum names, the uppercase form of the token spelling
 export const updateParticipant = (room, identity, sources) => call('UpdateParticipant', {

@@ -27,8 +27,8 @@ const backendFor = (ch, userId) => [...states.values()].find(x => x.channel_id =
 const states = new Map();
 // called with the old state whenever someone leaves a channel (the stage instance closes with its last listener)
 export const leaveHooks = [];
-// cillvoice keeps per-participant media state, so every leave (own leave and moves too) ends it
-leaveHooks.push(v => v.backend === 'cillvoice' && cillvoice.removeParticipant(v.channel_id, v.user_id));
+// every leave (own leave and moves too) drops the backend participant: a client that only says it left must not stay in the room
+leaveHooks.push(v => be(v).removeParticipant(v.channel_id, v.user_id));
 // voice minutes for the admin overview, counted on the day the state ends
 leaveHooks.push(v => {
   const seconds = Math.round((Date.now() - (v.joined_at ?? Date.now())) / 1000);
@@ -94,13 +94,11 @@ function broadcast(v, channelId = v.channel_id) {
 // called with the new state whenever someone enters a channel (DM calls start and update from here)
 export const joinHooks = [];
 
-// removed = by someone or something else than the user's own leave: LiveKit must drop them too
-function leave(userId, removed) {
+function leave(userId) {
   const v = states.get(userId);
   if (!v) return;
   states.delete(userId);
   broadcast(v, null);
-  if (removed) be(v).removeParticipant(v.channel_id, userId);
   leaveHooks.forEach(h => h(v));
 }
 
@@ -108,7 +106,7 @@ function leave(userId, removed) {
 export function voiceStateUpdate(session, d) {
   const userId = session.user.id;
   const cur = states.get(userId);
-  if (d?.channel_id == null) return leave(userId, !!cur && cur.session !== session);
+  if (d?.channel_id == null) return leave(userId);
   if (d.guild_id == null) return privateCall(session, d, cur);
   const ch = get('SELECT * FROM channels WHERE id = ? AND guild_id = ? AND type IN (2, 13)', String(d.channel_id), String(d.guild_id));
   if (!ch) return;
@@ -127,9 +125,7 @@ export function voiceStateUpdate(session, d) {
   }
   const others = [...states.values()].filter(v => v.channel_id === ch.id && v.user_id !== userId).length;
   if (ch.user_limit && others >= ch.user_limit && !has(perms, P.MOVE_MEMBERS)) return;
-  if (cur?.guild_id !== ch.guild_id) leave(userId, !!cur && cur.session !== session);
-  // another session or channel: the old LiveKit connection belongs to someone else's client now
-  else if (cur.session !== session && cur.channel_id !== ch.id) be(cur).removeParticipant(cur.channel_id, userId);
+  if (cur?.guild_id !== ch.guild_id) leave(userId);
   // everyone enters a stage as audience; switching sessions in the same channel keeps the speaker state
   const same = cur?.channel_id === ch.id;
   const v = {
@@ -187,7 +183,7 @@ function privateCall(session, d, cur) {
   const same = cur?.channel_id === ch.id;
   // joining an empty private channel starts a call (a call message for everyone): over the budget the join is ignored
   if (!same && !statesIn(ch.id).length) try { limit('CALL', 'start', {}, userId, {}); } catch { return; }
-  if (cur && !same) leave(userId, cur.session !== session);
+  if (cur && !same) leave(userId);
   const v = {
     guild_id: null, channel_id: ch.id, user_id: userId, session, ...flags, backend, joined_at: same ? cur.joined_at : Date.now(), suppress: false, request_to_speak_timestamp: null,
   };
@@ -210,19 +206,18 @@ export function setStageState(v, changes) {
 }
 
 export function sessionClosed(session) {
-  if (session.user && states.get(session.user.id)?.session === session) leave(session.user.id, true);
+  if (session.user && states.get(session.user.id)?.session === session) leave(session.user.id);
 }
 
 // kick, ban, leaving the guild, PATCH member channel_id: null
-export const disconnect = (guildId, userId) => inVoice(guildId, userId) && leave(userId, true);
-export const disconnectFromChannel = (channelId, userId) => states.get(userId)?.channel_id === channelId && leave(userId, true);
-export const disconnectChannel = channelId => [...states.values()].filter(v => v.channel_id === channelId).forEach(v => leave(v.user_id, true));
+export const disconnect = (guildId, userId) => inVoice(guildId, userId) && leave(userId);
+export const disconnectFromChannel = (channelId, userId) => states.get(userId)?.channel_id === channelId && leave(userId);
+export const disconnectChannel = channelId => [...states.values()].filter(v => v.channel_id === channelId).forEach(v => leave(v.user_id));
 
 export function move(userId, ch) {
   const v = states.get(userId);
   if (v.channel_id === ch.id) return;
   const old = { ...v, joined_at: Date.now() };
-  be(v).removeParticipant(v.channel_id, userId);
   Object.assign(v, { channel_id: ch.id, backend: backendFor(ch, userId), suppress: ch.type === 13, request_to_speak_timestamp: null });
   v.sources = sources(v);
   clampStream(v);
@@ -234,7 +229,7 @@ export function move(userId, ch) {
 // after anything that changes permissions or server mute/deaf: drop who lost CONNECT, re-grant LiveKit sources
 export function recheck(guildId, changedUserId) {
   for (const v of [...states.values()].filter(s => s.guild_id === guildId)) {
-    if (!has(channelPerms(channelOf(v), v.user_id), P.VIEW_CHANNEL | P.CONNECT)) { leave(v.user_id, true); continue; }
+    if (!has(channelPerms(channelOf(v), v.user_id), P.VIEW_CHANNEL | P.CONNECT)) { leave(v.user_id); continue; }
     const next = sources(v);
     const changed = next.join() !== v.sources.join();
     v.sources = next;

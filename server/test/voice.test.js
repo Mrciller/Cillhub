@@ -69,7 +69,7 @@ test('join: VOICE_STATE_UPDATE to the guild, VOICE_SERVER_UPDATE only to the joi
   assert.equal(claims.iss, 'devkey');
   assert.equal(claims.sub, bob.id);
   assert.equal(claims.name, 'bob');
-  assert.equal(claims.exp - claims.nbf, 6 * 3600);
+  assert.equal(claims.exp - claims.nbf, 60); // short-lived: a removed user cannot rejoin with a kept token (review H-3)
   assert.deepEqual(JSON.parse(claims.metadata), { user_id: bob.id });
   assert.deepEqual(claims.video, {
     room: g.voice.id, roomJoin: true, canSubscribe: true, canPublish: true, canPublishData: false, canUpdateOwnMetadata: true,
@@ -132,7 +132,8 @@ test('user_limit; moving between channels; MOVE_MEMBERS bypasses the limit', asy
   assert.equal((await alice.gw.event('VOICE_SERVER_UPDATE')).channel_id, s.duo.id);
 });
 
-test('moderator move and disconnect call LiveKit; disconnect on gateway close; own leave does not', async () => {
+test('moderator move and disconnect call LiveKit; disconnect on gateway close; own leave too (review H-4)', async () => {
+  calls.length = 0; // earlier joins and switches removed participants too
   const member = (who, body) => api('PATCH', `/guilds/${g.guild.id}/members/${who.id}`, alice.token, body);
   assert.equal((await member(bob, { channel_id: s.listen.id })).status, 200);
   await stateOf(carol.gw, bob.id, s.listen.id);
@@ -151,8 +152,7 @@ test('moderator move and disconnect call LiveKit; disconnect on gateway close; o
 
   join(alice.gw, null);
   await stateOf(carol.gw, alice.id, null);
-  await new Promise(r => setTimeout(r, 200));
-  assert.ok(!calls.some(c => c.body.identity === alice.id));
+  assert.deepEqual((await livekitCall('RemoveParticipant', alice.id)).body, { room: s.duo.id, identity: alice.id });
 });
 
 test('voice disabled without LiveKit env: endpoint null, no state', async () => {
