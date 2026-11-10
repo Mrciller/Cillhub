@@ -12,6 +12,7 @@ const SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
 const VIEW = 10, SEND = 11, MANAGE_CHANNELS = 4, MANAGE_WEBHOOKS = 29, MODERATE = 40, ADMIN = 3;
 let srv, api, g, alex, sam, robin, root;
 const dbRun = (sql, ...args) => { const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sqlite')); try { return db.prepare(sql).run(...args); } finally { db.close(); } };
+const dbGet = (sql, ...args) => { const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sqlite'), { readOnly: true }); try { return db.prepare(sql).get(...args); } finally { db.close(); } };
 const deny = (ch, id, b) => api('PUT', `/channels/${ch}/permissions/${id}`, alex.token, { type: id === g.guild.id ? 0 : 1, allow: '0', deny: b });
 const allow = (ch, id, b) => api('PUT', `/channels/${ch}/permissions/${id}`, alex.token, { type: 1, allow: b, deny: '0' });
 const mfaOn = async u => assert.equal((await api('POST', '/users/@me/mfa/totp/enable', u.token, { password: 'hunter2hunter2', secret: SECRET, code: totp() })).status, 200);
@@ -57,7 +58,7 @@ test('recurring messages stop when the recipient blocks the author', async () =>
   assert.equal((await api('PUT', `/users/@me/relationships/${sam.id}`, robin.token, { type: 2 })).status, 204);
   dbRun('UPDATE recurring_messages SET next_run = 1 WHERE id = ?', r.body.id);
   await api('POST', `/channels/${dm.id}/recurring-messages`, sam.token, { content: 'wake', interval_type: 'daily', time_of_day: '23:59' }); // re-arms the timer
-  await until(() => !!(dbRun('UPDATE recurring_messages SET content = content WHERE id = ? AND next_run > 1', r.body.id).changes), 3000);
+  await until(() => !!dbGet('SELECT 1 FROM recurring_messages WHERE id = ? AND next_run > 1', r.body.id), 3000); // the job ran
   const msgs = (await api('GET', `/channels/${dm.id}/messages`, sam.token)).body;
   assert.equal(msgs.filter(m => m.content === 'daily ping').length, 0);
   await api('DELETE', `/users/@me/relationships/${sam.id}`, robin.token);
