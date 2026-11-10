@@ -20,6 +20,7 @@ export function basePerms(mod) {
   if (has(mod, 'messages.read')) p |= P.READ_MESSAGE_HISTORY;
   if (has(mod, 'messages.send')) p |= P.SEND_MESSAGES | P.SEND_MESSAGES_IN_THREADS | P.EMBED_LINKS | P.ATTACH_FILES | P.ADD_REACTIONS | P.USE_EXTERNAL_EMOJIS;
   if (has(mod, 'roles.manage')) p |= P.MANAGE_ROLES;
+  if (has(mod, 'channels.manage')) p |= P.MANAGE_CHANNELS;
   if (has(mod, 'commands')) p |= P.USE_APPLICATION_COMMANDS;
   return p;
 }

@@ -54,7 +54,7 @@ test('manifest: defaults and every field rule', () => {
 
 test('manifest: http_hosts, commands, settings and panels', () => {
   bad({ permissions: ['http.fetch'] }, 'http_hosts'); bad({ http_hosts: ['example.com'] }, 'http_hosts');
-  for (const h of ['1.2.3.4', 'example.com:443', 'https://example.com', '*.*.example.com', 'Example.com', 'a*.example.com', '[::1]']) bad({ permissions: ['http.fetch'], http_hosts: [h] }, 'http_hosts');
+  for (const h of ['1.2.3.4', 'example.com:443', 'https://example.com', '*.*.example.com', '*.com', 'Example.com', 'a*.example.com', '[::1]']) bad({ permissions: ['http.fetch'], http_hosts: [h] }, 'http_hosts');
   bad({ permissions: ['http.fetch'], http_hosts: Array.from({ length: 21 }, (_, i) => `h${i}.example.com`) }, 'http_hosts');
   assert.deepEqual(ok({ permissions: ['http.fetch'], http_hosts: ['api.example.com', '*.twitch.tv'] }).http_hosts, ['api.example.com', '*.twitch.tv']);
 

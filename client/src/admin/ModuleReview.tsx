@@ -14,6 +14,7 @@ export const PERMISSIONS: Record<string, [string, string]> = {
   'messages.send': ['Send messages', 'Sends messages and adds reactions where it may write. It can only edit or delete its own messages.'],
   'members.read': ['See members', 'Sees who joins, changes or leaves a server and can look up members.'],
   'roles.manage': ['Give and remove roles', 'Gives roles to members and takes them away, only roles below its own role.'],
+  'channels.manage': ['Create and delete channels', 'Creates channels in the servers it is enabled on and deletes channels there.'],
   'voice.read': ['See voice activity', 'Sees who is in which voice channel.'],
   storage: ['Store data', 'Keeps its own data on this instance (at most 5 MB).'],
   'http.fetch': ['Contact websites', 'Sends requests to these websites, and only to these:'],

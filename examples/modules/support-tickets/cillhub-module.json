@@ -10,6 +10,7 @@
     "commands",
     "messages.read",
     "messages.send",
+    "channels.manage",
     "storage"
   ],
   "http_hosts": [],

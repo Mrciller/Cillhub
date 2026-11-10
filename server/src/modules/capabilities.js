@@ -210,12 +210,12 @@ const ACTIONS = {
     .filter(g => inScope(mod, g.id)).map(g => ({ id: g.id, name: g.name, icon: g.icon }))],
   'guilds.get': [null, (mod, a) => rest(mod, 'GET', '/guilds/:id', { id: guildOf(mod, a.guild_id) })],
   'channels.list': [null, (mod, a) => rest(mod, 'GET', '/guilds/:id/channels', { id: guildOf(mod, a.guild_id) })],
-  'channels.create': [null, (mod, a) => {
+  'channels.create': ['channels.manage', (mod, a) => {
     const g = guildOf(mod, a.guild_id);
     write(mod, `guild:${g}`);
     return rest(mod, 'POST', '/guilds/:id/channels', { id: g }, { body: a.data ?? a });
   }],
-  'channels.delete': [null, (mod, a) => {
+  'channels.delete': ['channels.manage', (mod, a) => {
     const ch = channelOf(mod, a.channel_id);
     write(mod, ch.id);
     return rest(mod, 'DELETE', '/channels/:id', { id: ch.id });

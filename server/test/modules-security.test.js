@@ -41,7 +41,7 @@ cillhub.on('MESSAGE_CREATE', async m => {
     await attempt('guild elsewhere', () => cillhub.guilds.get(m.guild_id === arg ? '0' : arg));
     await attempt('unknown channel', () => cillhub.messages.send('123', { content: 'x' }));
   }
-  if (cmd === 'undeclared') { await attempt('members', () => cillhub.members.list(m.guild_id)); await attempt('roles', () => cillhub.members.addRole(m.guild_id, m.author.id, m.guild_id)); }
+  if (cmd === 'undeclared') { await attempt('members', () => cillhub.members.list(m.guild_id)); await attempt('roles', () => cillhub.members.addRole(m.guild_id, m.author.id, m.guild_id)); await attempt('channels', () => cillhub.channels.create(m.guild_id, 'made-by-evil')); }
   if (cmd === 'flood') { let ok = 0; for (let i = 0; i < 10; i++) { try { await cillhub.messages.send(m.channel_id, { content: 'spam ' + i }); ok++; } catch (e) { log('flood stopped', ok, e.code, typeof e.retry_after); break; } } }
   if (cmd === 'big') {
     await attempt('big call', () => cillhub.storage.set('k', 'x'.repeat(2e6)));
@@ -119,6 +119,7 @@ test('servers and permissions it was not given: NOT_ENABLED and PERMISSION_DENIE
   await say('undeclared');
   await see(/^members refused PERMISSION_DENIED/);
   await see(/^roles refused PERMISSION_DENIED/);
+  await see(/^channels refused PERMISSION_DENIED/);
   await see(/^Refused members\.add_role: PERMISSION_DENIED \(members\.add_role needs the roles\.manage permission\.\)$/, 'system');
   const msgs = (await api('GET', `/channels/${otherCh.id}/messages`, alice.token)).body;
   assert.equal(msgs.length, 0, 'nothing reached the other server');

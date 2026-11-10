@@ -3,7 +3,7 @@
 import { HttpError, invalid } from '../errors.js';
 import { validateCommand } from '../routes/commands.js';
 
-export const PERMISSIONS = ['commands', 'messages.read', 'messages.send', 'members.read', 'roles.manage', 'voice.read', 'storage', 'http.fetch', 'http.routes', 'ui', 'schedule'];
+export const PERMISSIONS = ['commands', 'messages.read', 'messages.send', 'members.read', 'roles.manage', 'channels.manage', 'voice.read', 'storage', 'http.fetch', 'http.routes', 'ui', 'schedule'];
 export const SLOTS = ['channel_panel', 'guild_sidebar', 'message_accessory'];
 export const SETTING_TYPES = ['text', 'number', 'toggle', 'select', 'channel', 'role', 'user', 'secret'];
 const TOP = ['manifest_version', 'id', 'name', 'version', 'description', 'author', 'homepage', 'main', 'icon', 'permissions', 'http_hosts', 'commands', 'settings', 'ui'];
@@ -124,6 +124,7 @@ export function validateManifest(m, files) {
   if (!Array.isArray(hosts) || hosts.length > 20) throw bad('http_hosts', 'must be a list of at most 20 host names.');
   for (const [i, h] of hosts.entries()) {
     if (typeof h !== 'string' || h.length > 253 || !HOST.test(h) || /^\d+$/.test(h.split('.').pop())) throw bad(`http_hosts.${i}`, 'must be a lowercase host name (optionally *.host), without IP address or port.');
+    if (h.startsWith('*.') && h.split('.').length < 3) throw bad(`http_hosts.${i}`, 'a wildcard needs a domain under it (*.example.com), not a whole top-level domain.'); // shortcut: no public suffix list, *.co.uk passes; add one if a module ever asks for it
   }
   if (new Set(hosts).size !== hosts.length) throw bad('http_hosts', 'must not repeat a host.');
   if (permissions.includes('http.fetch') !== hosts.length > 0) throw bad('http_hosts', 'must be non-empty with the http.fetch permission and empty without it.');
