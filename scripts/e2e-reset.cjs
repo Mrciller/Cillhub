@@ -58,8 +58,8 @@ function totp(secret, at = Date.now()) {
   const h = createHmac('sha1', key).update(counter).digest()
   return String((h.readUInt32BE(h[19] & 15) & 0x7fffffff) % 1e6).padStart(6, '0')
 }
-async function api(method, p, token, body) {
-  const res = await fetch(`${BASE}/api/v9${p}`, { method, headers: { ...(token && { Authorization: token }), 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) })
+async function api(method, p, token, body, headers = {}) {
+  const res = await fetch(`${BASE}/api/v9${p}`, { method, headers: { ...(token && { Authorization: token }), 'Content-Type': 'application/json', ...headers }, body: body && JSON.stringify(body) })
   const text = await res.text()
   if (!res.ok) throw new Error(`${method} ${p} -> ${res.status} ${text}`)
   return text ? JSON.parse(text) : null
@@ -131,13 +131,21 @@ async function main() {
     await page.route('https://www.google.com/recaptcha/api.js*', (r) => r.fulfill({ contentType: 'text/javascript', body: CAPTCHA_JS }))
     let jordan
     let alex
+    let backup // Jordan's backup codes: mail and captcha settings need the 2FA step-up
+    async function stepUp(method, p, body) {
+      const first = await fetch(`${BASE}/api/v9${p}`, { method, headers: { Authorization: jordan, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const err = await first.json().catch(() => null)
+      check(first.status === 401 && err?.code === 60003 && err.mfa?.ticket, `${method} ${p} without 2FA: ${first.status}`)
+      const { token } = await api('POST', '/mfa/finish', jordan, { ticket: err.mfa.ticket, mfa_type: 'backup', data: backup.shift() })
+      return api(method, p, jordan, body, { 'X-Cillhub-MFA-Authorization': token })
+    }
 
     await step('1. Jordan is instance admin and sets SMTP; Alex has an account', async () => {
       jordan = (await api('POST', '/auth/register', null, { email: 'jordan@example.com', username: 'jordan', password: 'hunter2hunter2' })).token
-      await api('POST', '/users/@me/mfa/totp/enable', jordan, { password: 'hunter2hunter2', secret: SECRET, code: totp(SECRET) })
+      backup = (await api('POST', '/users/@me/mfa/totp/enable', jordan, { password: 'hunter2hunter2', secret: SECRET, code: totp(SECRET) })).backup_codes.map((c) => c.code)
       execFileSync(process.execPath, ['src/admin-cli.js', 'grant', 'jordan'], { cwd: SERVER_DIR, env: { ...process.env, DATA_DIR: dataDir } })
       alex = (await api('POST', '/auth/register', null, { email: 'alex@example.com', username: 'alex', password: 'old-pass-alex' })).token
-      await api('PATCH', '/admin/settings', jordan, { smtp_host: '127.0.0.1', smtp_port: SMTP_PORT, smtp_security: 'none', smtp_from: 'Cillhub <no-reply@example.org>', public_url: BASE })
+      await stepUp('PATCH', '/admin/settings', { smtp_host: '127.0.0.1', smtp_port: SMTP_PORT, smtp_security: 'none', smtp_from: 'Cillhub <no-reply@example.org>', public_url: BASE })
       check((await api('GET', '/instance')).password_reset === true, 'password_reset offered')
     })
 
@@ -192,7 +200,7 @@ async function main() {
     })
 
     await step('5. with captcha keys set, Robin signs up through the checkbox (server checks the token)', async () => {
-      await api('PATCH', '/admin/settings', jordan, { captcha_site_key: 'site-jordan', captcha_secret: 'secret-jordan' })
+      await stepUp('PATCH', '/admin/settings', { captcha_site_key: 'site-jordan', captcha_secret: 'secret-jordan' })
       const refused = await fetch(`${BASE}/api/v9/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'kim@example.com', username: 'kim', password: 'hunter2hunter2' }) })
       check(refused.status === 400 && (await refused.json()).captcha_sitekey === 'site-jordan', 'register without a token answers with the site key')
       const fresh = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' })

@@ -159,12 +159,19 @@ async function login(page, base, name) {
 }
 
 // REST as the page's user on the page's own origin. Returns {status, body}.
-const api = (page, method, route, body) =>
-  page.evaluate(async ([method, route, body]) => {
-    const r = await fetch('/api/v9' + route, { method, headers: { Authorization: localStorage.getItem('token'), ...(body && { 'Content-Type': 'application/json' }) }, body: body && JSON.stringify(body) })
+const api = (page, method, route, body, headers = {}) =>
+  page.evaluate(async ([method, route, body, headers]) => {
+    const r = await fetch('/api/v9' + route, { method, headers: { Authorization: localStorage.getItem('token'), ...(body && { 'Content-Type': 'application/json' }), ...headers }, body: body && JSON.stringify(body) })
     return { status: r.status, body: r.status === 204 ? null : await r.json().catch(() => null) }
-  }, [method, route, body])
+  }, [method, route, body, headers])
 const ok = async (p) => { const r = await p; check(r.status < 300, `API answered ${r.status}: ${JSON.stringify(r.body)}`); return r.body }
+// a call that needs the 2FA step-up: refused without it (401 60003 with a ticket), then repeated with an elevation token
+async function stepUp(page, secret, method, route, body) {
+  const first = await api(page, method, route, body)
+  check(first.status === 401 && first.body?.code === 60003 && first.body.mfa?.ticket, `${method} ${route} without 2FA: ${first.status} ${JSON.stringify(first.body)}`)
+  const fin = await ok(api(page, 'POST', '/mfa/finish', { ticket: first.body.mfa.ticket, mfa_type: 'totp', data: await freshCode(secret) }))
+  return api(page, method, route, body, { 'X-Cillhub-MFA-Authorization': fin.token })
+}
 // REST from the test itself.
 async function rest(base, token, method, route, body) {
   const r = await fetch(base + '/api/v9' + route, { method, headers: { ...(token && { Authorization: token }), ...(body && { 'Content-Type': 'application/json' }) }, body: body && JSON.stringify(body) })
@@ -288,10 +295,12 @@ async function main() {
     await step('1. Alice creates a link code on the hub\'s Nodes page; Bob (no admin) cannot', async () => {
       await admin(alice, HUB, 'nodes')
       await alice.getByRole('button', { name: 'Create Link Code' }).click()
+      await codeIn(alice, 'Create Link Code', await freshCode(aliceSecret), 'Create Link Code')
       linkCode = (await alice.locator('.admin-newcode code').innerText()).trim()
       check(/^CCL-[\w-]{24}$/.test(linkCode), `link code ${linkCode}`)
       await alice.getByRole('table', { name: 'Link codes' }).getByText('Valid').first().waitFor()
       check((await api(bob, 'POST', '/admin/federation/link-codes', {})).status === 403, 'Bob cannot create link codes')
+      check((await api(alice, 'POST', '/admin/federation/link-codes', {})).status === 401, 'not even Alice without her 2FA code')
       check((await api(bob, 'POST', '/federation/link-codes', {})).status === 403, 'users cannot create link codes while the switch is off')
     })
 
@@ -570,6 +579,7 @@ async function main() {
       await modal(alice, `Node ${NODE_NAME}`).getByRole('button', { name: 'Suspend' }).click()
       await modal(alice, `Suspend ${NODE_NAME}?`).getByLabel('Reason (shown in the audit log)').fill('investigating spam')
       await confirmIn(alice, `Suspend ${NODE_NAME}?`, 'Suspend')
+      await codeIn(alice, `Suspend ${NODE_NAME}?`, await freshCode(aliceSecret), 'Suspend')
       await alice.getByText('Node suspended.').waitFor()
       await until('the node server to leave Bob\'s rail', async () => (await rail(bob).getByRole('link', { name: re(ARENA) }).count()) === 0, 15000)
       await carol.getByRole('heading', { name: 'Ready up' }).waitFor(LIVE) // her node session ended
@@ -589,6 +599,7 @@ async function main() {
     await step('13. Alice lifts the suspension; Dana unlinks from the node\'s Federation page (2FA): hub shows unlinked, hub sessions end, the node is standalone', async () => {
       await alice.getByRole('button', { name: 'Lift Suspension' }).click()
       await confirmIn(alice, `Lift the suspension of ${NODE_NAME}?`, 'Lift Suspension')
+      await codeIn(alice, `Lift the suspension of ${NODE_NAME}?`, await freshCode(aliceSecret), 'Lift Suspension')
       await alice.getByText('Suspension lifted.').waitFor()
       await until('the node to be active again', async () => (await ok(api(dana, 'GET', '/admin/federation'))).hub_status === 'linked')
       // Bob signs in to the node again from the directory (his old node session was ended)
@@ -611,6 +622,7 @@ async function main() {
     await step('14. re-link with a new code from the hub (same node id), Bob adds the server again; then Alice bans the node with her 2FA code: servers gone, sessions ended, linking refused for good', async () => {
       await admin(alice, HUB, 'nodes')
       await alice.getByRole('button', { name: 'Create Link Code' }).click()
+      await codeIn(alice, 'Create Link Code', await freshCode(aliceSecret), 'Create Link Code')
       const code = (await alice.locator('.admin-newcode code').innerText()).trim()
       await dana.getByLabel('Hub address').fill(HUB)
       await dana.getByLabel('Link code').fill(code)
@@ -640,7 +652,7 @@ async function main() {
       await dana.getByRole('button', { name: 'Unlink from Hub' }).click()
       await codeIn(dana, 'Unlink from the hub?', await freshCode(danaSecret), 'Unlink')
       await dana.getByText('Not linked', { exact: true }).waitFor()
-      const fresh = await ok(api(alice, 'POST', '/admin/federation/link-codes', {}))
+      const fresh = await ok(stepUp(alice, aliceSecret, 'POST', '/admin/federation/link-codes', {}))
       const refused = await api(dana, 'POST', '/admin/federation/link', { hub_url: HUB, link_code: fresh.code })
       check(refused.status === 400 && /banned/.test(refused.body.message), `re-link of a banned node: ${refused.status} ${JSON.stringify(refused.body)}`)
     })
