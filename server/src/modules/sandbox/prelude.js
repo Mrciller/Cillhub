@@ -136,13 +136,15 @@
       const p = pending.get(id);
       if (!p) return;
       pending.delete(id);
-      const v = parse(b);
+      let v;
+      try { v = parse(b); } catch (e) { return p.reject(e); }
       if (a === 'ok') p.resolve(v); else p.reject(toError(v));
       return;
     }
     if (type === 'event') {
       const h = handlers[a];
-      const payload = parse(b);
+      let payload;
+      try { payload = parse(b); } catch (e) { return finish(id, false, e); }
       P.resolve().then(() => (h ? h(payload) : null)).then(v => finish(id, true, v), e => finish(id, false, e));
     }
   };

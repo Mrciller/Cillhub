@@ -30,6 +30,7 @@ const errText = h => {
 
 // the module's own .js files by relative path; node built-ins, bare names and URLs do not exist here
 let refused = '';
+let logWindow = 0, logCount = 0; // log frames this second: the host keeps 100 per 10 s, so more is wasted pipe traffic
 function normalize(base, requested) {
   refused = `Cannot import '${requested.slice(0, 100)}': modules may only import their own .js files by relative path`;
   if (!/^\.\.?\//.test(requested)) return { error: new Error(refused) };
@@ -101,8 +102,11 @@ function load({ files: f, main }) {
     let line;
     if (t === 'call') line = `{"t":"call","id":${id},"action":${JSON.stringify(a)},"args":${b}}`;
     else if (t === 'done') line = `{"t":"done","eid":${id},"ok":${a === 'ok'},"${a === 'ok' ? 'result' : 'error'}":${b}}`;
-    else if (t === 'log') line = JSON.stringify({ t: 'log', level: a, message: b.slice(0, 2000) });
-    else return vm.false;
+    else if (t === 'log') {
+      if (Date.now() - logWindow > 1000) { logWindow = Date.now(); logCount = 0; }
+      if (++logCount > 50) return vm.false;
+      line = JSON.stringify({ t: 'log', level: a, message: b.slice(0, 2000) });
+    } else return vm.false;
     if (Buffer.byteLength(line) > MAX_FRAME) return vm.false;
     if (t === 'done' && a !== 'ok' && isOom(b)) oom = true;
     write(line);

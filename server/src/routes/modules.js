@@ -293,6 +293,9 @@ function restartModule(ctx) {
 }
 
 // --- UI requests from panels (§6.4) ---------------------------------------------------------------------------------
+// JSON.parse accepts nesting far deeper than JSON.stringify (or the sandbox) can handle
+const tooDeep = (v, d = 0) => d > 32 || (v !== null && typeof v === 'object' && Object.values(v).some(x => tooDeep(x, d + 1)));
+
 async function uiRequest(ctx) {
   const { user } = ctx;
   const mod = getModule(ctx.params.module_id);
@@ -300,6 +303,7 @@ async function uiRequest(ctx) {
   const wait = hit(`ui-req:${mod.id}:${user.id}`, 20, 10_000);
   if (wait) throw rateLimited(wait);
   const body = ctx.body ?? {};
+  if (tooDeep(body.data)) throw invalid('data', 'BASE_TYPE_INVALID', 'The data is nested too deeply.');
   const panel = mod.manifest.ui.panels.find(p => p.id === body.panel_id);
   if (!panel) throw invalid('panel_id', 'BASE_TYPE_INVALID', 'Unknown panel.');
   const g = String(body.guild_id ?? '');
@@ -562,9 +566,9 @@ const UI_TYPES = {
 const MODULE_PATH = /^\/modules\/([a-z0-9-]{3,40})\/(ui|http)(\/.*)?$/;
 export const isModulePath = pathname => MODULE_PATH.test(pathname);
 
-export async function serveModulePath(req, res, url) {
+export async function serveModulePath(req, res, url, ip) {
   const [, id, kind, rest = ''] = MODULE_PATH.exec(url.pathname);
-  return kind === 'ui' ? serveUi(req, res, id, rest.slice(1)) : serveHttp(req, res, id, rest || '/', url);
+  return kind === 'ui' ? serveUi(req, res, id, rest.slice(1)) : serveHttp(req, res, id, rest || '/', url, ip);
 }
 
 async function serveUi(req, res, id, raw) {
@@ -598,7 +602,7 @@ async function readLimited(req, max) {
 }
 
 // no session, user or token is resolved here; every answer carries nosniff and the sandbox CSP
-async function serveHttp(req, res, id, path, url) {
+async function serveHttp(req, res, id, path, url, ip) {
   const answer = (status, body = '', headers = {}) => {
     res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', ...headers, ...HTTP_SAFE });
     res.end(req.method === 'HEAD' || status === 204 || status === 304 ? undefined : body);
@@ -608,7 +612,8 @@ async function serveHttp(req, res, id, path, url) {
     if (!mod || !has(mod, 'http.routes')) { req.resume(); return answer(404, 'Not found'); }
     if (!HTTP_METHODS.includes(req.method)) { req.resume(); return answer(405, 'Method not allowed', { Allow: HTTP_METHODS.join(', ') }); }
     if (!host.isRunning(mod.id)) { req.resume(); return answer(503, 'The module is not running'); }
-    const wait = hit(`http:${mod.id}`, 120, 60_000);
+    // per IP first, so one client cannot spend the whole module budget
+    const wait = hit(`http-ip:${mod.id}:${ip}`, 30, 60_000) || hit(`http:${mod.id}`, 120, 60_000);
     if (wait) { req.resume(); return answer(429, 'Too many requests', { 'Retry-After': String(Math.ceil(wait)) }); }
     const raw = await readLimited(req, 256 * 1024);
     if (!raw) return answer(413, 'Request body too large');
@@ -631,6 +636,9 @@ async function serveHttp(req, res, id, path, url) {
       const name = k.toLowerCase();
       if (keptHeader(name) && /^[a-z0-9-]{1,100}$/.test(name) && typeof v === 'string' && v.length <= 8192 && !/[\r\n\0]/.test(v)) headersOut[name] = v;
     }
+    // no script gadget on the hub origin and no open redirect: script types become text, only same-origin paths redirect
+    if (/script/i.test(headersOut['content-type'] ?? '')) headersOut['content-type'] = 'text/plain; charset=utf-8';
+    if (headersOut.location && !/^\/(?![/\\])/.test(headersOut.location)) delete headersOut.location;
     let text = out.body ?? '';
     if (typeof text !== 'string') { text = JSON.stringify(text); headersOut['content-type'] ??= 'application/json'; }
     if (Buffer.byteLength(text) > 1024 * 1024) {

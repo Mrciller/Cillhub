@@ -236,6 +236,10 @@ test('UI requests and ui.publish', async () => {
   assert.equal((await ui(bob, { panel_id: 'acc', channel_id: g.general.id, message_id: mine.id })).status, 404);
   await say(alice, '!publish');
   assert.deepEqual(await gw.event('MODULE_UI_EVENT'), { module_id: 'kit', guild_id: g.guild.id, data: { hello: 'panel' } });
+  // deep JSON (stack overflow in JSON.stringify) is refused and the module keeps answering (review H-2)
+  const deep = `{"panel_id":"side","guild_id":"${g.guild.id}","data":${'['.repeat(5000)}${']'.repeat(5000)}}`;
+  assert.equal((await fetch(`${srv.base}/modules/kit/ui`, { method: 'POST', headers: { Authorization: alice.token, 'Content-Type': 'application/json' }, body: deep })).status, 400);
+  assert.equal((await ui(alice, { data: 1 })).status, 200);
   let limited = 0;
   for (let i = 0; i < 25; i++) if ((await ui(alice, {})).status === 429) limited++;
   assert.ok(limited >= 5, '20 per 10 s per user');
@@ -277,7 +281,7 @@ test('HTTP endpoints: headers in and out, CSP on every answer, limits', async ()
   }
   let throttled;
   for (let i = 0; i < 125 && !throttled; i++) { const r = await fetch(`${base}/none`); if (r.status === 429) throttled = r; }
-  assert.ok(throttled, '120 per minute');
+  assert.ok(throttled, '30 per IP, 120 per module a minute');
   safe(throttled);
 });
 

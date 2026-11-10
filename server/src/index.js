@@ -347,7 +347,7 @@ const server = createServer(async (req, res) => {
     if (allow !== '*') Object.assign(headers, { 'Access-Control-Allow-Origin': allow, Vary: 'Origin' });
     res.setHeader('Access-Control-Allow-Origin', allow);
     if (allow !== '*') res.setHeader('Vary', 'Origin'); // CDN and media answers too (they don't go through reply)
-    if (isModulePath(url.pathname)) return await serveModulePath(req, res, url); // v8: panel files and module HTTP endpoints, no auth
+    if (isModulePath(url.pathname)) return await serveModulePath(req, res, url, clientIp(req)); // v8: panel files and module HTTP endpoints, no auth
     if (req.method === 'OPTIONS') return reply(res, 204, undefined, headers);
     if (API_PREFIX.test(url.pathname)) return reply(res, ...await api(req, url, headers), headers);
     const known = req.method === 'GET' && url.pathname.startsWith('/.well-known/') && wellKnown(req, url.pathname.replace(/\/$/, ''));

@@ -155,10 +155,16 @@ function pump(rt) {
   let ev;
   do ev = rt.queue.shift(); while (ev?.settled);
   if (!ev) return;
+  // encode before taking the busy slot: a payload that cannot be encoded (too deep) must not wedge the queue
+  let json;
+  try { json = JSON.stringify(ev.payload); } catch {
+    settle(ev, { ok: false, error: { code: 'INVALID', message: 'The event could not be encoded.' } });
+    return pump(rt);
+  }
   ev.eid = rt.nextEid++;
   rt.busy = ev;
   statsFor(rt.id).events++;
-  send(rt, { t: 'event', eid: ev.eid, name: ev.name, json: JSON.stringify(ev.payload) });
+  send(rt, { t: 'event', eid: ev.eid, name: ev.name, json });
   ev.deadline = setTimeout(() => {
     if (rt.busy !== ev) return;
     rt.busy = null;
