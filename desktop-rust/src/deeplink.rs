@@ -1,43 +1,23 @@
-//! Deep link parsing for cillhub:// and legacy cillcord:// URLs
+//! cillhub://invite/<code> (or the older cillcord://) → "/invite/<code>"; anything else is ignored. Plus the unread
+//! count the web client puts in its title.
 
 use crate::config::DEEP_LINK_SCHEMES;
 
-/// Parse a deep link URL into an in-app path (e.g. /channels/123/456, /invite/code)
-pub fn deep_link_path(raw_url: &str) -> Option<String> {
-    for scheme in DEEP_LINK_SCHEMES {
-        let prefix = format!("{}://", scheme);
-        if let Some(rest) = raw_url.strip_prefix(&prefix) {
-            let trimmed = rest.trim_start_matches('/');
-            return Some(format!("/{}", trimmed));
-        }
-    }
-    None
+pub fn deep_link_path(raw: &str) -> Option<String> {
+    let rest = DEEP_LINK_SCHEMES.iter().find_map(|s| raw.get(..s.len() + 3).filter(|p| p.eq_ignore_ascii_case(&format!("{s}://"))).map(|_| &raw[s.len() + 3..]))?;
+    let code = rest.strip_prefix("invite/")?.trim_end_matches('/');
+    ((2..=32).contains(&code.len()) && code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')).then(|| format!("/invite/{code}"))
 }
 
-/// Parse unread mentions from window title (e.g. "(3) Cillhub", "● Cillhub")
-#[derive(Debug, PartialEq, Eq)]
-pub enum UnreadState {
-    None,
-    UnreadPill,
-    Mentions(u32),
-}
-
-pub fn parse_unread(title: &str) -> UnreadState {
-    let trimmed = title.trim();
-    if trimmed.starts_with('●') {
-        return UnreadState::UnreadPill;
-    }
-    if trimmed.starts_with('(') {
-        if let Some(close_idx) = trimmed.find(')') {
-            let num_str = &trimmed[1..close_idx];
-            if let Ok(count) = num_str.parse::<u32>() {
-                if count > 0 {
-                    return UnreadState::Mentions(count);
-                }
-            }
+/// "(N) …" = N mentions, "• …" = unread without a count (-1), else 0.
+pub fn parse_unread(title: &str) -> i32 {
+    let t = title.trim_start();
+    if let Some(rest) = t.strip_prefix('(') {
+        if let Some(end) = rest.find(')') {
+            return rest[..end].trim_end_matches('+').parse().unwrap_or(0);
         }
     }
-    UnreadState::None
+    if t.starts_with('•') || t.starts_with('●') { -1 } else { 0 }
 }
 
 #[cfg(test)]
@@ -45,17 +25,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_deep_link_path() {
-        assert_eq!(deep_link_path("cillhub://channels/123/456"), Some("/channels/123/456".into()));
-        assert_eq!(deep_link_path("cillcord://invite/my-server"), Some("/invite/my-server".into()));
-        assert_eq!(deep_link_path("https://example.com"), None);
+    fn deep_links() {
+        assert_eq!(deep_link_path("cillhub://invite/abc-123").as_deref(), Some("/invite/abc-123"));
+        assert_eq!(deep_link_path("CILLCORD://invite/ab/").as_deref(), Some("/invite/ab"));
+        assert_eq!(deep_link_path("cillhub://invite/a"), None);
+        assert_eq!(deep_link_path("cillhub://invite/../x"), None);
+        assert_eq!(deep_link_path("cillhub://channels/1/2"), None);
+        assert_eq!(deep_link_path("https://example.com/invite/abc"), None);
     }
 
     #[test]
-    fn test_parse_unread() {
-        assert_eq!(parse_unread("Cillhub"), UnreadState::None);
-        assert_eq!(parse_unread("● #general — Cillhub"), UnreadState::UnreadPill);
-        assert_eq!(parse_unread("(5) Cillhub"), UnreadState::Mentions(5));
-        assert_eq!(parse_unread("(0) Cillhub"), UnreadState::None);
+    fn unread() {
+        assert_eq!(parse_unread("Cillhub"), 0);
+        assert_eq!(parse_unread("(5) Cillhub"), 5);
+        assert_eq!(parse_unread("(99+) Cillhub"), 99);
+        assert_eq!(parse_unread("● #general — Cillhub"), -1);
+        assert_eq!(parse_unread("(x) Cillhub"), 0);
     }
 }

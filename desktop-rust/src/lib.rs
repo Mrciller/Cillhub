@@ -1,9 +1,7 @@
-//! Cillhub desktop core library
+//! Cillhub desktop: the web client bundled in a Tauri shell. The pure parts live here (tested), main.rs wires them up.
 
-pub mod audio;
 pub mod config;
 pub mod deeplink;
 pub mod games;
-pub mod league;
-pub mod protocol;
 pub mod settings;
+pub mod update;

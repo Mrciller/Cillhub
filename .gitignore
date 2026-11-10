@@ -1,8 +1,7 @@
 # dependencies and build output
 node_modules/
 dist/
-desktop/web/
-desktop/test-shots/
+desktop-rust/web/
 client/test-shots/
 android/test-shots/
 *.tsbuildinfo

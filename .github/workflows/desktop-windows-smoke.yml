@@ -1,0 +1,49 @@
+# Installs the staged Windows desktop installer on a clean runner: fresh install, and the update from the 2.2.x app.
+name: desktop-windows-smoke
+on:
+  push:
+    branches: [ci-desktop-smoke]
+  workflow_dispatch:
+env:
+  BASE: https://cillhub.cillerian.org/download/desktop
+  SETUP: Cillhub-Setup-3.0.0.exe
+  SHA512: a0ee2ba8cad16871b77d47ebc9c73126dc6b906c1dc04f409b6b9d3474bcf4cd086ea9619acbd0d6e5fa529a45165ec4423de024b0c62c544902872e1773cbfd
+  OLD_KEY: HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\59cd2796-830e-5e8c-88dd-c707d7eebc0a
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [fresh, migrate]
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download and check the installer
+        run: |
+          Invoke-WebRequest "$env:BASE/staging/$env:SETUP" -OutFile setup.exe
+          if ((Get-FileHash setup.exe -Algorithm SHA512).Hash.ToLower() -ne $env:SHA512) { throw 'sha512 mismatch' }
+      - name: Install the 2.2.2 app first
+        if: matrix.mode == 'migrate'
+        run: |
+          Invoke-WebRequest "$env:BASE/Cillhub-Setup-2.2.2.exe" -OutFile old.exe
+          (Start-Process .\old.exe -ArgumentList '/S' -PassThru).WaitForExit()
+          if (-not (Test-Path $env:OLD_KEY)) { throw '2.2.2 uninstall entry missing' }
+      - name: Install (fresh) or update the way the 2.2.x updater does (migrate)
+        run: |
+          $installArgs = if ('${{ matrix.mode }}' -eq 'migrate') { '--updated /S --force-run' } else { '/S' }
+          (Start-Process .\setup.exe -ArgumentList $installArgs -PassThru).WaitForExit()
+          $exe = "$env:LOCALAPPDATA\Cillhub\cillhub.exe"
+          if (-not (Test-Path $exe)) { throw "not installed at $exe" }
+          if ('${{ matrix.mode }}' -eq 'fresh') { Start-Process $exe }
+          Start-Sleep 30
+          if ('${{ matrix.mode }}' -eq 'migrate') {
+            if (Test-Path $env:OLD_KEY) { throw '2.2.2 uninstall entry still there' }
+            if (Test-Path "$env:LOCALAPPDATA\Programs\Cillhub\Cillhub.exe") { throw '2.2.2 files still there' }
+          }
+          $p = Get-Process cillhub -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe }
+          if (-not $p) { throw 'cillhub.exe is not running after 30 s' }
+          $p | Format-Table Id, Path, MainWindowTitle
+          if (-not ($p | Where-Object { $_.MainWindowTitle -like '*Cillhub*' })) { throw 'no window titled Cillhub' }

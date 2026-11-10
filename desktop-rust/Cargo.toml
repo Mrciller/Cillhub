@@ -1,44 +1,43 @@
 [package]
-name = "cillhub-desktop"
-version = "2.2.2"
+name = "cillhub"
+version = "3.0.0"
 edition = "2021"
-authors = ["Pascal Oraze", "Cillhub Contributors"]
-description = "Fast, lightweight native desktop client & audio DSP engine for Cillhub"
-license = "AGPL-3.0"
+authors = ["Pascal Oraze"]
+description = "Cillhub desktop client"
+license = "AGPL-3.0-only"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.43", features = ["full"] }
 sysinfo = "0.33"
-biquad = "0.4"
-nnnoiseless = "0.5"
-regex = "1.11"
 url = "2.5"
-percent-encoding = "2.3"
 base64 = "0.22"
-tauri = { version = "2.2", optional = true }
+ed25519-dalek = "2"
+sha2 = "0.10"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-opener = "2"
 
 [target.'cfg(not(windows))'.dependencies]
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "blocking", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
+
 
 [target.'cfg(windows)'.dependencies]
-reqwest = { version = "0.13", default-features = false, features = ["native-tls", "blocking", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "blocking"] }
 
-[features]
-default = []
-gui = ["dep:tauri", "dep:tauri-build"]
+[dev-dependencies]
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
 
 [build-dependencies]
-tauri-build = { version = "2.2", optional = true }
+tauri-build = { version = "2", features = [] }
 
 [[bin]]
-name = "cillhub-desktop"
+name = "cillhub"
 path = "src/main.rs"
-
-[[bin]]
-name = "benchmark"
-path = "src/bin/benchmark.rs"
 
 [lib]
 name = "cillhub_core"

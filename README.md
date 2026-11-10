@@ -38,12 +38,11 @@ Anyone can run a Cillhub server (a **node**) on their own infrastructure in minu
 * **Member Moderation**: One-click member timeout/mute, kick, and ban with configurable message history pruning.
 * **High-Security Authentication**: Scrypt password hashing with 16-byte random salts, TOTP Two-Factor Authentication (2FA), and WebAuthn hardware key support.
 
-### 🖥️ Native Desktop Experience (`desktop-rust`)
-* **Ultra-Lightweight Footprint**: Engineered with Rust and Tauri 2, consuming ~70 MB of RAM (compared to 300+ MB on typical Electron clients).
-* **Audio DSP & Noise Studio**: Built-in RNNoise neural network noise suppression, Acoustic Echo Cancellation (AEC), Auto Gain Control (AGC), and automatic game audio ducking.
-* **Picture-in-Picture (PiP) Overlay**: Resizable, floating voice overlay showing active speakers, webcams, and screen shares on top of full-screen games.
-* **Game Presence Detection**: Real-time game activity detection (including League of Legends LCU client status, Steam games, and active processes).
-* **Native Windows Integration**: Windows Search indexing, App Paths, native Toast Notifications with quick actions, and zero permission prompts (auto-approved media access).
+### 🖥️ Desktop (`desktop-rust`)
+* **Rust + Tauri 2 shell** around the bundled web client: Windows (WebView2) and Linux (WebKitGTK), ~70 MB of RAM instead of an Electron runtime.
+* **Tray, deep links, signed auto-update**: close to tray, start at login, `cillhub://invite/…` links, updates verified against the pinned Ed25519 release key before they install.
+* **Calls in the app**: microphone, camera and screen share are granted to the bundled client only; notifications come through the web Notification API.
+* **Game Presence Detection**: running games (plus your own list in `settings.json`) are shown as your activity.
 
 ### 📱 Native Android Experience
 * **Pure Jetpack Compose UI**: 100% Kotlin with Material 3 styling and dynamic Material You theme colors.
@@ -149,11 +148,8 @@ cd server && npm test
 # Web Client build & typecheck
 cd client && npx tsc -b && npm run build
 
-# Native Rust Desktop tests
-cd desktop-rust && cargo test
-
-# Electron Desktop tests
-cd desktop && npm test
+# Desktop tests and build (needs Rust; Linux: webkit2gtk-4.1, libayatana-appindicator3)
+cd desktop-rust && cargo test && npm ci && npm run build
 
 # Android Unit tests
 cd android && ./gradlew testDebugUnitTest
@@ -167,8 +163,7 @@ cd android && ./gradlew testDebugUnitTest
 |---|---|
 | `server/` | Node 24, ES modules, plain JavaScript, `node:http`, `node:sqlite`, `ws`. REST, gateway, CDN, voice (LiveKit or cillvoice), hub/node federation, migrations, and test suites. |
 | `client/` | Vite + React 19 + TypeScript, plain CSS, `livekit-client`. |
-| `desktop-rust/` | Native Rust desktop client (Tauri 2, DSP audio engine, game tracking, lightweight memory footprint). |
-| `desktop/` | Electron desktop client bundling the web application. |
+| `desktop-rust/` | Desktop client: Rust + Tauri 2 shell bundling the web client (tray, deep links, signed auto-update, game activity). |
 | `android/` | Native Android app (Kotlin, Jetpack Compose): chat, servers, DMs, notifications, Android Auto, calls, self-update. |
 | `selfhost/` | Node deployment package: `install.sh`, compose file, Caddyfile, updater sidecar, release tooling. |
 | `scripts/` | End-to-end integration test suites and measurements. |

@@ -1,37 +1,41 @@
 {
-  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "Cillhub",
-  "version": "2.2.2",
+  "version": "3.0.0",
   "identifier": "io.github.mrciller.cillhub",
+  "mainBinaryName": "cillhub",
   "build": {
-    "beforeDevCommand": "npm --prefix ../client run build",
-    "beforeBuildCommand": "npm --prefix ../client run build",
-    "frontendDist": "../desktop/web"
+    "beforeBuildCommand": "node scripts/build-web.js",
+    "frontendDist": "web"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Cillhub",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 380,
-        "minHeight": 320,
-        "resizable": true,
-        "fullscreen": false,
-        "center": true,
-        "visible": true
-      }
-    ],
+    "withGlobalTauri": false,
     "security": {
-      "csp": "default-src 'self' tauri: https: data: blob:; script-src 'self' tauri: 'wasm-unsafe-eval' https://www.youtube.com https://s.ytimg.com; style-src 'self' tauri: 'unsafe-inline'; img-src 'self' tauri: https: data: blob:; media-src 'self' tauri: https: data: blob:; font-src 'self' tauri: data:; connect-src 'self' tauri: https: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; object-src 'none'; base-uri 'none'; form-action 'none';"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss: data: blob:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "icon": [
-      "icons/icon.png",
-      "icons/icon.ico"
-    ]
+    "targets": ["appimage", "deb", "nsis"],
+    "publisher": "Pascal Oraze",
+    "homepage": "https://github.com/Mrciller/cillhub",
+    "license": "AGPL-3.0-only",
+    "category": "SocialNetworking",
+    "shortDescription": "Cillhub chat desktop client",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png", "icons/icon.ico"],
+    "linux": {
+      "deb": { "section": "net" }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "nsis-hooks.nsh"
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": { "schemes": ["cillhub", "cillcord"] }
+    }
   }
 }
