@@ -16,9 +16,10 @@ function jwt(claims, ttl) {
 // An empty canPublishSources means every source to LiveKit, so no sources must be canPublish: false.
 // Short-lived: the client connects right away and LiveKit hands connected clients refreshed tokens itself, so a kicked or
 // removed user cannot rejoin the room later with a token they kept.
-export const joinToken = (userId, name, room, sources) => jwt({
+// deaf (server deafen): the participant may not subscribe, so the room's audio never reaches it
+export const joinToken = (userId, name, room, sources, _session, deaf = false) => jwt({
   sub: userId, name, metadata: JSON.stringify({ user_id: userId }),
-  video: { room, roomJoin: true, canSubscribe: true, canPublish: sources.length > 0, canPublishData: false, canUpdateOwnMetadata: true, canPublishSources: sources },
+  video: { room, roomJoin: true, canSubscribe: !deaf, canPublish: sources.length > 0, canPublishData: false, canUpdateOwnMetadata: true, canPublishSources: sources },
 }, 60);
 
 function call(method, body) {
@@ -36,7 +37,7 @@ function call(method, body) {
 // every leave removes; the client has usually gone already (404 participant not found)
 export const removeParticipant = (room, identity) => call('RemoveParticipant', { room, identity });
 // Twirp's protobuf JSON wants the TrackSource enum names, the uppercase form of the token spelling
-export const updateParticipant = (room, identity, sources) => call('UpdateParticipant', {
+export const updateParticipant = (room, identity, sources, deaf = false) => call('UpdateParticipant', {
   room, identity,
-  permission: { can_subscribe: true, can_publish: sources.length > 0, can_publish_data: false, can_publish_sources: sources.map(s => s.toUpperCase()) },
+  permission: { can_subscribe: !deaf, can_publish: sources.length > 0, can_publish_data: false, can_publish_sources: sources.map(s => s.toUpperCase()) },
 });

@@ -100,7 +100,8 @@ export function readXorAddress(v, txid) {
 
 /**
  * ICE-lite answer to a Binding request. `lookup(localUfrag)` returns {pwd, remoteUfrag} or null.
- * Returns {response, username, useCandidate, ...} for a valid request, {response: 400/401 error} for a bad one, null to drop.
+ * Returns {response, localUfrag, useCandidate} for a valid request, null to drop: unknown or missing credentials and bad
+ * integrity get no answer, since an error answer would be reflected to a spoofed source.
  */
 export function handleBinding(buf, rinfo, lookup) {
   const msg = parse(buf);
@@ -109,9 +110,7 @@ export function handleBinding(buf, rinfo, lookup) {
   const user = attr(msg, ATTR.USERNAME)?.toString();
   const [local, remote] = (user ?? '').split(':');
   const cred = local && lookup(local);
-  const error = code => ({ response: build(0x0111, msg.txid, [[ATTR.ERROR_CODE, Buffer.concat([Buffer.from([0, 0, code / 100, code % 100]), Buffer.from(code === 401 ? 'Unauthorized' : 'Bad Request')])]]) });
-  if (!cred || (cred.remoteUfrag && remote !== cred.remoteUfrag)) return error(401);
-  if (!checkIntegrity(msg, cred.pwd)) return error(401);
+  if (!cred || (cred.remoteUfrag && remote !== cred.remoteUfrag) || !checkIntegrity(msg, cred.pwd)) return null;
   return {
     response: build(0x0101, msg.txid, [[ATTR.XOR_MAPPED_ADDRESS, xorAddress(rinfo.address, rinfo.port, msg.txid)]], cred.pwd),
     localUfrag: local, useCandidate: !!attr(msg, ATTR.USE_CANDIDATE),

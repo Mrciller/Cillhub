@@ -38,4 +38,6 @@ function mp3Duration(buf) {
   return frames ? seconds : null;
 }
 
-export const audioDuration = (buf, type) => (type === 'audio/ogg' ? oggDuration(buf) : type === 'audio/mpeg' ? mp3Duration(buf) : null);
+export function audioDuration(buf, type) {
+  try { return type === 'audio/ogg' ? oggDuration(buf) : type === 'audio/mpeg' ? mp3Duration(buf) : null; } catch { return null; } // truncated header
+}

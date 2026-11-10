@@ -127,6 +127,7 @@ export class Downstream {
   }
 
   forward(p, l, key, vp8, t, absTime) {
+    if (this.sub.deaf && this.track.kind === 'audio') return;
     if (this.track.kind === 'video') {
       if (this.target === l.rid && this.current !== l.rid && key) { this.current = l.rid; this.sync = true; }
       if (l.rid !== this.current) return;
@@ -198,8 +199,8 @@ export class Downstream {
 
 /** A participant: its transport, what it publishes and what it receives. */
 class Participant {
-  constructor(room, userId, session, sources) {
-    Object.assign(this, { room, userId, session, sources: new Set(sources) });
+  constructor(room, userId, session, sources, deaf = false) {
+    Object.assign(this, { room, userId, session, sources: new Set(sources), deaf }); // deaf: server deafened, gets no audio
     this.rtcpSsrc = rand32();
     this.mids = new Map(); // mid -> {kind, codecs, ext}
     this.extIds = {};
@@ -442,11 +443,11 @@ export class Room {
     this.timers.forEach(t => t.unref());
   }
 
-  join(userId, session, sources) {
+  join(userId, session, sources, deaf = false) {
     const old = this.participants.get(userId);
     if (old && old.session === session) return old;
     old?.close();
-    const p = new Participant(this, userId, session, sources);
+    const p = new Participant(this, userId, session, sources, deaf);
     this.participants.set(userId, p);
     // CILLVOICE_SPEAKING only goes out on changes: a newcomer learns who is speaking already
     if (this.speakers.size) this.dispatch(session, 'CILLVOICE_SPEAKING', { channel_id: this.id, speaking: [...this.speakers] });
@@ -478,10 +479,11 @@ export class Room {
     }
   }
 
-  setSources(userId, sources) {
+  setSources(userId, sources, deaf = false) {
     const p = this.participants.get(userId);
     if (!p) return;
     p.sources = new Set(sources);
+    p.deaf = deaf;
     this.announce();
   }
 

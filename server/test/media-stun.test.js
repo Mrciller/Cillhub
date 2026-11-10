@@ -38,7 +38,7 @@ test('build round-trips and a tampered byte fails both checks', () => {
   assert.ok(!checkIntegrity(parse(b), 'secret') && !checkFingerprint(parse(b)));
 });
 
-test('ICE-lite binding: success with XOR-MAPPED-ADDRESS, 401 for wrong password or unknown ufrag', () => {
+test('ICE-lite binding: success with XOR-MAPPED-ADDRESS; wrong password, unknown ufrag or no credentials are dropped, not answered', () => {
   const txid = Buffer.alloc(12, 3);
   const req = pwd => build(0x0001, txid, [[ATTR.USERNAME, Buffer.from('srv:cli')], [ATTR.USE_CANDIDATE, Buffer.alloc(0)]], pwd);
   const lookup = u => (u === 'srv' ? { pwd: 'serverpassword', remoteUfrag: 'cli' } : null);
@@ -49,6 +49,7 @@ test('ICE-lite binding: success with XOR-MAPPED-ADDRESS, 401 for wrong password 
   assert.equal(r.type, 0x0101);
   assert.ok(checkIntegrity(r, 'serverpassword'));
   assert.deepEqual(readXorAddress(attr(r, ATTR.XOR_MAPPED_ADDRESS), r.txid), rinfo);
-  assert.equal(parse(handleBinding(req('wrong'), rinfo, lookup).response).type, 0x0111);
-  assert.equal(parse(handleBinding(req('serverpassword'), rinfo, () => null).response).type, 0x0111);
+  assert.equal(handleBinding(req('wrong'), rinfo, lookup), null);
+  assert.equal(handleBinding(req('serverpassword'), rinfo, () => null), null);
+  assert.equal(handleBinding(build(0x0001, txid, []), rinfo, lookup), null);
 });

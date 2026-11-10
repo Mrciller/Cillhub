@@ -75,8 +75,8 @@ export class MediaSocket {
     if (!t) return void this.stats.dropped++;
     if (b >= 20 && b <= 63) t.onDtls(buf, rinfo);
     else if (b >= 128 && b <= 191) {
-      if (buf.length >= 2 && buf[1] >= 192 && buf[1] <= 223) t.onSrtcp(buf);
-      else t.onSrtp(buf);
+      if (buf.length >= 2 && buf[1] >= 192 && buf[1] <= 223) t.onSrtcp(buf, rinfo);
+      else t.onSrtp(buf, rinfo);
     }
   }
 }
@@ -102,7 +102,12 @@ export class Transport {
       this.sock.byAddress.get(key)?.forget(key); // the address moved to this peer
       this.sock.byAddress.set(key, this);
     }
-    if (nominated || !this.addr) this.addr = { address: rinfo.address, port: rinfo.port };
+    // before DTLS is up a binding picks the address (the handshake needs one); afterwards only authenticated SRTP from a
+    // bound address moves it (moved), so a binding with a spoofed source cannot redirect the media
+    if (!this.addr || (nominated && !this.connected)) this.addr = { address: rinfo.address, port: rinfo.port };
+  }
+  moved(rinfo) {
+    if (this.addr.address !== rinfo.address || this.addr.port !== rinfo.port) this.addr = { address: rinfo.address, port: rinfo.port };
   }
   forget(key) { this.addresses.delete(key); }
 
@@ -122,16 +127,16 @@ export class Transport {
     this.dtls.handle(buf);
   }
 
-  onSrtp(buf) {
+  onSrtp(buf, rinfo) {
     if (!this.srtpIn) return;
     const p = this.srtpIn.unprotectRtp(buf);
-    if (p) this.onRtp(p);
+    if (p) (this.moved(rinfo), this.onRtp(p));
     else this.sock.stats.dropped++;
   }
-  onSrtcp(buf) {
+  onSrtcp(buf, rinfo) {
     if (!this.srtpIn) return;
     const p = this.srtpIn.unprotectRtcp(buf);
-    if (p) this.onRtcp(p);
+    if (p) (this.moved(rinfo), this.onRtcp(p));
     else this.sock.stats.dropped++;
   }
 

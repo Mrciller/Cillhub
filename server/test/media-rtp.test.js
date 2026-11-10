@@ -216,6 +216,19 @@ test('Downstream: waits for a keyframe, switches layers only on keyframes, keeps
   assert.equal(sent.length, 5, 'packets from before the switch are dropped');
 });
 
+test('Downstream: a server-deafened subscriber gets no audio packets, video still flows', () => {
+  const sent = [];
+  const sub = { deaf: true, ptFor: () => 111, extIds: {}, transport: { sendRtp: p => sent.push(parseRtp(p)) }, sendRtcp() {} };
+  const audio = { kind: 'audio', clock: 48, codec: 'opus', layers: new Map(), owner: { extIds: {} } };
+  const ds = new Downstream(sub, '1', audio);
+  const pkt = { seq: 1, ts: 960, marker: false, payload: Buffer.from([1, 2, 3]), ext: new Map() };
+  ds.forward(pkt, { rid: '', ssrc: 9 }, false, null, 0);
+  assert.equal(sent.length, 0);
+  sub.deaf = false;
+  ds.forward(pkt, { rid: '', ssrc: 9 }, false, null, 0);
+  assert.equal(sent.length, 1);
+});
+
 test('Downstream NACK: answered from the buffer, or passed to the publisher with the original sequence number', () => {
   const { ds, sent, nacks, send } = rig();
   ds.target = 'q';

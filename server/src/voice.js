@@ -57,10 +57,12 @@ const channelOf = v => get('SELECT * FROM channels WHERE id = ?', v.channel_id);
 // on a stage only speakers (suppress false) get any publishing grant
 const ALL_SOURCES = ['microphone', 'camera', 'screen_share', 'screen_share_audio'];
 function sources(v) {
+  v.deaf = false;
   if (!v.guild_id) return ALL_SOURCES; // DM and group calls: every participant may talk and share
+  const m = memberRow(v.guild_id, v.user_id);
+  v.deaf = !!m.deaf; // server deafen: the backend stops delivering audio to them (livekit.js, media/sfu.js)
   if (v.suppress) return [];
   const perms = channelPerms(channelOf(v), v.user_id);
-  const m = memberRow(v.guild_id, v.user_id);
   return [
     ...(has(perms, P.SPEAK) && !m.mute && !m.deaf ? ['microphone'] : []),
     ...(has(perms, P.STREAM) ? ['camera', 'screen_share', 'screen_share_audio'] : []),
@@ -77,7 +79,7 @@ function clampStream(v) {
 
 function sendServerUpdate(v) {
   const m = v.guild_id ? memberRow(v.guild_id, v.user_id) : userById(v.user_id);
-  const token = be(v).joinToken(v.user_id, m.nick ?? m.global_name ?? m.username, v.channel_id, v.sources, v.session);
+  const token = be(v).joinToken(v.user_id, m.nick ?? m.global_name ?? m.username, v.channel_id, v.sources, v.session, v.deaf);
   sendToSession(v.session, 'VOICE_SERVER_UPDATE', { guild_id: v.guild_id, channel_id: v.channel_id, token, endpoint: be(v).endpoint });
 }
 
@@ -202,7 +204,7 @@ export function setStageState(v, changes) {
   v.sources = next;
   clampStream(v);
   broadcast(v);
-  if (changed) be(v).updateParticipant(v.channel_id, v.user_id, next);
+  if (changed) be(v).updateParticipant(v.channel_id, v.user_id, next, v.deaf);
 }
 
 export function sessionClosed(session) {
@@ -230,11 +232,12 @@ export function move(userId, ch) {
 export function recheck(guildId, changedUserId) {
   for (const v of [...states.values()].filter(s => s.guild_id === guildId)) {
     if (!has(channelPerms(channelOf(v), v.user_id), P.VIEW_CHANNEL | P.CONNECT)) { leave(v.user_id); continue; }
+    const wasDeaf = v.deaf;
     const next = sources(v);
-    const changed = next.join() !== v.sources.join();
+    const changed = next.join() !== v.sources.join() || v.deaf !== wasDeaf;
     v.sources = next;
     const clamped = clampStream(v);
     if (v.user_id === changedUserId || clamped) broadcast(v);
-    if (changed) be(v).updateParticipant(v.channel_id, v.user_id, next);
+    if (changed) be(v).updateParticipant(v.channel_id, v.user_id, next, v.deaf);
   }
 }

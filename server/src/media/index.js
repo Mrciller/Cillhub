@@ -26,12 +26,12 @@ function socket() {
 const dispatch = (session, t, d) => sendToSession(session, t, d);
 
 /** A join token for one voice state (a user has one at a time); only the session that got it can use it. */
-export function joinToken(userId, name, room, sources, session) {
+export function joinToken(userId, name, room, sources, session, deaf = false) {
   socket();
   const now = Date.now();
   for (const [k, v] of tokens) if (now - v.at > TOKEN_TTL || v.userId === userId) tokens.delete(k);
   const token = randomBytes(24).toString('base64url');
-  tokens.set(token, { userId, room, session, sources: [...sources], at: now });
+  tokens.set(token, { userId, room, session, sources: [...sources], deaf, at: now });
   return token;
 }
 
@@ -43,9 +43,9 @@ export function removeParticipant(room, userId) {
   if (!r.participants.size) (r.close(), rooms.delete(room));
 }
 
-export function updateParticipant(room, userId, sources) {
-  for (const v of tokens.values()) if (v.userId === userId && v.room === room) v.sources = [...sources];
-  rooms.get(room)?.setSources(userId, sources);
+export function updateParticipant(room, userId, sources, deaf = false) {
+  for (const v of tokens.values()) if (v.userId === userId && v.room === room) Object.assign(v, { sources: [...sources], deaf });
+  rooms.get(room)?.setSources(userId, sources, deaf);
 }
 
 /** Gateway op 50 CILLVOICE_SIGNAL {token, sdp, publish: [{mid, source}], subscribe: [{mid, track_id}]} -> CILLVOICE_ANSWER. */
@@ -56,7 +56,7 @@ export function signal(session, d) {
   }
   let r = rooms.get(entry.room);
   if (!r) rooms.set(entry.room, (r = new Room(entry.room, { sock: socket(), dispatch })));
-  const p = r.join(entry.userId, session, entry.sources);
+  const p = r.join(entry.userId, session, entry.sources, entry.deaf);
   try {
     const answer = p.offer(d, socket());
     sendToSession(session, 'CILLVOICE_ANSWER', { channel_id: entry.room, ...answer, tracks: r.tracksFor(p) });

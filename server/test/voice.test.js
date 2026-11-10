@@ -109,6 +109,17 @@ test('server mute updates the state and calls UpdateParticipant; a muted join ge
 
   await api('PATCH', `/guilds/${g.guild.id}/members/${bob.id}`, alice.token, { mute: false });
   assert.ok((await livekitCall('UpdateParticipant', bob.id)).body.permission.can_publish_sources.includes('MICROPHONE'));
+
+  // server deafen reaches the media layer: no subscribing (L-11), and the next token says so too
+  await api('PATCH', `/guilds/${g.guild.id}/members/${bob.id}`, alice.token, { deaf: true });
+  const deaf = (await livekitCall('UpdateParticipant', bob.id)).body.permission;
+  assert.deepEqual([deaf.can_subscribe, deaf.can_publish_sources], [false, ['CAMERA', 'SCREEN_SHARE', 'SCREEN_SHARE_AUDIO']]);
+  join(bob.gw, g.voice.id);
+  assert.equal(verify((await bob.gw.event('VOICE_SERVER_UPDATE')).token).video.canSubscribe, false);
+  await api('PATCH', `/guilds/${g.guild.id}/members/${bob.id}`, alice.token, { deaf: false });
+  assert.equal((await livekitCall('UpdateParticipant', bob.id)).body.permission.can_subscribe, true);
+  join(bob.gw2, g.voice.id); // back to the session the later tests expect
+  assert.equal(verify((await bob.gw2.event('VOICE_SERVER_UPDATE')).token).video.canSubscribe, true);
 });
 
 test('no microphone without SPEAK, no camera or screen without STREAM', async () => {
