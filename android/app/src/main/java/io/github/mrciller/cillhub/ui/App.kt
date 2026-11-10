@@ -39,6 +39,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -128,6 +130,7 @@ private fun MainShell() {
     val nav = rememberNavController()
     val state by Session.store.state.collectAsStateWithLifecycle()
     val reduce = LocalReduceMotion.current
+    val slide = with(LocalDensity.current) { 30.dp.roundToPx() }
 
     var guildId by rememberSaveable { mutableStateOf<String?>(null) }
     var serverChannel by rememberSaveable { mutableStateOf<String?>(null) }
@@ -207,11 +210,13 @@ private fun MainShell() {
         val host: @Composable (Modifier) -> Unit = { mod ->
             NavHost(
                 nav, startDestination = ServersRoute, modifier = mod,
-                // forward: the new screen slides in from the end over a fading one; back: the reverse
-                enterTransition = { if (reduce) EnterTransition.None else slideInHorizontally(tween(260)) { it / 6 } + fadeIn(tween(200)) },
-                exitTransition = { if (reduce) ExitTransition.None else fadeOut(tween(160)) },
-                popEnterTransition = { if (reduce) EnterTransition.None else fadeIn(tween(200)) },
-                popExitTransition = { if (reduce) ExitTransition.None else slideOutHorizontally(tween(220)) { it / 6 } + fadeOut(tween(160)) },
+                // M3 shared axis X: both screens move 30 dp the same way (emphasized easing, 300 ms), the leaving one
+                // fades in the first 90 ms, the arriving one fades in over the remaining 210. Back is the mirror image;
+                // predictive back scrubs the pop pair (navigation-compose seeks these transitions).
+                enterTransition = { if (reduce) EnterTransition.None else slideInHorizontally(tween(300, easing = EmphasizedDecelerate)) { slide } + fadeIn(tween(210, 90)) },
+                exitTransition = { if (reduce) ExitTransition.None else slideOutHorizontally(tween(300, easing = EmphasizedAccelerate)) { -slide } + fadeOut(tween(90)) },
+                popEnterTransition = { if (reduce) EnterTransition.None else slideInHorizontally(tween(300, easing = EmphasizedDecelerate)) { -slide } + fadeIn(tween(210, 90)) },
+                popExitTransition = { if (reduce) ExitTransition.None else slideOutHorizontally(tween(300, easing = EmphasizedAccelerate)) { slide } + fadeOut(tween(90)) },
             ) {
                 composable<ServersRoute> {
                     ServersScreen(guildId, { guildId = it }, if (twoPane) serverChannel else null)

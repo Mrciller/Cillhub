@@ -134,7 +134,7 @@ private val MUTE_FOR = listOf(900L to R.string.mute_15m, 3600L to R.string.mute_
 /** This channel's override in the user guild settings: notify level (all / mentions / nothing / server default) and mute for a while. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChannelNotifySheet(state: State, gid: String, ch: Channel, close: () -> Unit) {
+internal fun ChannelNotifySheet(state: State, gid: String, ch: Channel, close: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
@@ -195,6 +195,7 @@ private fun ChannelMembers(state: State, gid: String, ch: Channel) {
     LaunchedEffect(gid) { if (gid !in state.membersLoaded) runCatching { Session.loadMembers(gid) } }
     val groups = remember(state.members[gid], state.presences, state.guilds[gid], ch) { Sel.channelMembers(state, gid, ch) }
     val canAccess = !ch.isThread && Perm.has(Sel.perms(state, gid, ch), Perm.MANAGE_ROLES)
+    val clock = rememberRevealClock()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         if (canAccess) item(key = "access") {
             Surface(onClick = { nav.openChannelAccess(ch.id) }, shape = Hud, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
@@ -213,7 +214,7 @@ private fun ChannelMembers(state: State, gid: String, ch: Channel) {
             }
             item(key = "g" + grp.key) {
                 Surface(shape = Hud, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.animateItem()) {
-                    Column { grp.members.forEachIndexed { i, m -> Box(Modifier.reveal(i)) { MemberRow(state, gid, m) { m.user?.let { nav.openProfile(it.id, gid) } } } } }
+                    Column { grp.members.forEachIndexed { i, m -> Box(Modifier.reveal(i, clock)) { MemberRow(state, gid, m) { m.user?.let { nav.openProfile(it.id, gid) } } } } }
                 }
             }
         }

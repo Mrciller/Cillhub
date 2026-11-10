@@ -378,13 +378,14 @@ fun MembersScreen(guildId: String) {
     Scaffold(topBar = {
         TopAppBar(title = { Text(s(R.string.members).uppercase()) }, navigationIcon = { IconButton(nav::back) { Ic(R.drawable.ms_arrow_back, s(R.string.back)) } })
     }) { pad ->
+        val clock = rememberRevealClock()
         PullToRefreshBox(refreshing, { load() }, Modifier.padding(pad).fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize()) {
                 error?.let { item { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) } }
                 for ((label, list) in listOf(R.string.online_count to online.sortedWith(byName), R.string.offline_count to offline.sortedWith(byName))) {
                     if (list.isEmpty()) continue
                     item(key = "h$label") { SectionHeader(ctx.getString(label, list.size), Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)) }
-                    itemsIndexed(list, key = { _, it -> it.user?.id ?: "" }) { i, m -> Box(Modifier.animateItem().reveal(i)) { MemberRow(state, guildId, m) { m.user?.let { nav.openProfile(it.id, guildId) } } } }
+                    itemsIndexed(list, key = { _, it -> it.user?.id ?: "" }) { i, m -> Box(Modifier.animateItem().reveal(i, clock)) { MemberRow(state, guildId, m) { m.user?.let { nav.openProfile(it.id, guildId) } } } }
                 }
             }
         }

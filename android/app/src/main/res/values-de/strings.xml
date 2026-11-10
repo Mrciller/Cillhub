@@ -10,6 +10,7 @@
     <string name="channel_updates">App-Updates</string>
     <string name="reply">Antworten</string>
     <string name="mark_read">Als gelesen markieren</string>
+    <string name="channel_options">Kanaloptionen</string>
     <string name="disconnect">Trennen</string>
     <string name="voice_connected">Mit Sprachkanal verbunden</string>
     <string name="call_from_cillcord">Cillhub-Anruf</string>

@@ -99,6 +99,7 @@ fun MessagesScreen(detail: String?) {
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                     windowInsets = TopAppBarDefaults.windowInsets.only(WindowInsetsSides.Top + if (nav.twoPane) WindowInsetsSides.Start else WindowInsetsSides.Horizontal),
                 )
+                val clock = rememberRevealClock()
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
                     item(key = "search") {
                         OutlinedTextField(
@@ -147,7 +148,7 @@ fun MessagesScreen(detail: String?) {
                             Button(nav::openFriends, shape = Hud) { Ic(R.drawable.ms_group, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.friends)) }
                         }
                     }
-                    itemsIndexed(dms, key = { _, it -> it.id }) { i, c -> Box(Modifier.animateItem().reveal(i)) { DmRow(state, c, c.id == detail) { nav.openChannel(c.id) } } }
+                    itemsIndexed(dms, key = { _, it -> it.id }) { i, c -> Box(Modifier.animateItem().reveal(i, clock)) { DmRow(state, c, c.id == detail) { nav.openChannel(c.id) } } }
                 }
             }
             FloatingActionButton(

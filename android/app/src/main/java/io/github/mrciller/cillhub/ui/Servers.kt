@@ -58,6 +58,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
+import io.github.mrciller.cillhub.Config
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -118,6 +121,7 @@ fun Loading() = Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center)
 private fun ServerRail(state: State, selected: String?, select: (String) -> Unit, add: () -> Unit) {
     val ctx = LocalContext.current
     val nav = LocalNav.current
+    val clock = rememberRevealClock()
     LazyColumn(
         Modifier.width(76.dp).fillMaxHeight().background(if (LocalExtra.current.isDark) MaterialTheme.colorScheme.surfaceContainerLowest else MaterialTheme.colorScheme.surfaceContainerHighest)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Start)),
@@ -133,7 +137,7 @@ private fun ServerRail(state: State, selected: String?, select: (String) -> Unit
                 else if (badge.unread) append(", ").append(ctx.getString(R.string.unread))
             }
             val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-            Box(Modifier.fillMaxWidth().height(60.dp).reveal(index), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().height(60.dp).reveal(index, clock), contentAlignment = Alignment.Center) {
                 // selection / unread mark on the left edge (accent when selected)
                 if (isSel || badge.unread) Box(Modifier.align(Alignment.CenterStart).width(4.dp).height(if (isSel) 36.dp else 10.dp)
                     .background(if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface))
@@ -183,7 +187,10 @@ private fun ChannelList(state: State, g: Guild, selected: String?) {
     val nav = LocalNav.current
     val ctx = LocalContext.current
     val collapsed = remember { mutableStateMapOf<String, Boolean>() }
-    var channelToClone by remember { mutableStateOf<Channel?>(null) }
+    var sheetFor by remember { mutableStateOf<Channel?>(null) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val hold = { c: Channel -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); sheetFor = c }
+    val clock = rememberRevealClock()
     val groups = remember(state.channels, state.guilds[g.id], state.members[g.id], state.readStates, state.guildSettings) { Sel.sidebar(state, g.id) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLow)) {
         TopAppBar(
@@ -206,7 +213,8 @@ private fun ChannelList(state: State, g: Guild, selected: String?) {
                 val closed = cat != null && collapsed[cat.id] == true
                 if (cat != null) item(key = "cat" + cat.id) {
                     Row(
-                        Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClickLabel = s(if (closed) R.string.expand else R.string.collapse)) { collapsed[cat.id] = !closed }
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .combinedClickable(onClickLabel = s(if (closed) R.string.expand else R.string.collapse), onLongClickLabel = s(R.string.channel_options), onLongClick = { hold(cat) }) { collapsed[cat.id] = !closed }
                             .padding(start = 12.dp, end = 16.dp, top = 8.dp)
                             .semantics(mergeDescendants = true) { heading(); stateDescription = ctx.getString(if (closed) R.string.collapsed else R.string.expanded) },
                         verticalAlignment = Alignment.CenterVertically,
@@ -219,14 +227,13 @@ private fun ChannelList(state: State, g: Guild, selected: String?) {
                 // a collapsed category still shows its unread or open channels
                 val shown = if (closed) grp.channels.filter { it.id == selected || Sel.isUnread(state, it) || Sel.mentions(state, it.id) > 0 } else grp.channels
                 itemsIndexed(shown, key = { _, it -> it.id }) { index, c ->
-                    val canManage = Perm.has(Sel.perms(state, g.id, c), Perm.MANAGE_CHANNELS)
-                    Column(Modifier.animateItem().reveal(index)) {
+                    Column(Modifier.animateItem().reveal(index, clock)) {
                         ChannelRow(
                             state,
                             c,
                             c.id == selected,
                             onClick = { nav.openChannel(c.id) },
-                            onLongClick = if (canManage) { { channelToClone = c } } else null,
+                            onLongClick = { hold(c) },
                         )
                         if (c.type in Sel.VOICE_TYPES) VoiceChannelUsers(state, c)
                     }
@@ -234,8 +241,83 @@ private fun ChannelList(state: State, g: Guild, selected: String?) {
             }
         }
     }
-    if (channelToClone != null) {
-        CloneChannelDialog(channelToClone!!) { channelToClone = null }
+    sheetFor?.let { ChannelActionSheet(state, g, it) { sheetFor = null } }
+}
+
+/** What a long-press on a channel or category offers, in sheet order, by the viewer's permissions in it. */
+enum class ChannelAction(@StringRes val label: Int, @DrawableRes val icon: Int) {
+    EDIT(R.string.edit_channel, R.drawable.ms_edit), ACCESS(R.string.manage_channel_access, R.drawable.ms_lock),
+    NOTIFY(R.string.channel_notifications, R.drawable.ms_notifications), MARK_READ(R.string.mark_read, R.drawable.ms_done_all),
+    COPY_LINK(R.string.copy_link, R.drawable.ms_content_copy), CLONE(R.string.clone_channel, R.drawable.ms_forum), DELETE(R.string.delete_channel, R.drawable.ms_delete),
+}
+
+fun channelActions(perms: Long, category: Boolean): List<ChannelAction> = buildList {
+    val manage = Perm.has(perms, Perm.MANAGE_CHANNELS)
+    if (manage) add(ChannelAction.EDIT)
+    if (Perm.has(perms, Perm.MANAGE_ROLES)) add(ChannelAction.ACCESS)
+    add(ChannelAction.NOTIFY); add(ChannelAction.MARK_READ)
+    if (!category) add(ChannelAction.COPY_LINK)
+    if (manage && !category) add(ChannelAction.CLONE)
+    if (manage) add(ChannelAction.DELETE)
+}
+
+/** Long-press sheet for a channel or category; the editors it opens are the ones from channel info and server settings. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChannelActionSheet(state: State, g: Guild, c: Channel, close: () -> Unit) {
+    val nav = LocalNav.current
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val clipboard = androidx.compose.ui.platform.LocalClipboard.current
+    val category = c.type == 4
+    var next by remember { mutableStateOf<ChannelAction?>(null) } // the dialog or sheet opened from here replaces this sheet
+    if (next == null) androidx.compose.material3.ModalBottomSheet(close) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Text((if (category) "" else "#") + (c.name ?: ""), style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { heading() })
+            for (a in channelActions(Sel.perms(state, g.id, c), category)) {
+                val label = when {
+                    category && a == ChannelAction.EDIT -> R.string.edit_category
+                    category && a == ChannelAction.DELETE -> R.string.delete_category
+                    else -> a.label
+                }
+                val color = if (a == ChannelAction.DELETE) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                androidx.compose.material3.ListItem(
+                    headlineContent = { Text(s(label), color = color) },
+                    leadingContent = { Ic(a.icon, null, Modifier.size(24.dp), color) },
+                    colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                    modifier = Modifier.clickable {
+                        when (a) {
+                            ChannelAction.ACCESS -> { close(); nav.openChannelAccess(c.id) }
+                            ChannelAction.MARK_READ -> {
+                                scope.launch { runCatching { Session.ackBulk(if (category) state.channels.values.filter { it.parentId == c.id } else listOf(c)) } }
+                                close()
+                            }
+                            ChannelAction.COPY_LINK -> {
+                                val link = Config.APP_URL.trimEnd('/') + "/channels/${g.id}/${c.id}"
+                                scope.launch { clipboard.setClipEntry(androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText("link", link))) }
+                                if (android.os.Build.VERSION.SDK_INT < 33) android.widget.Toast.makeText(ctx, R.string.copied, android.widget.Toast.LENGTH_SHORT).show() // 13+ confirms on its own
+                                close()
+                            }
+                            else -> next = a
+                        }
+                    },
+                )
+            }
+        }
+    }
+    when (next) {
+        ChannelAction.EDIT -> ChannelEditDialog(c, close)
+        ChannelAction.CLONE -> CloneChannelDialog(c, close)
+        ChannelAction.NOTIFY -> ChannelNotifySheet(state, g.id, c, close)
+        ChannelAction.DELETE -> AlertDialog(
+            onDismissRequest = close,
+            title = { Text(s(if (category) R.string.delete_category else R.string.delete_channel)) },
+            text = { Text(s(R.string.delete_channel_confirm, c.name ?: "")) },
+            confirmButton = { TextButton({ scope.launch { runCatching { Session.rest.request("DELETE", "/channels/${c.id}") }; close() } }) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+        )
+        else -> {}
     }
 }
 
@@ -246,7 +328,7 @@ private fun ChannelRow(
     c: Channel,
     selected: Boolean,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
+    onLongClick: () -> Unit,
 ) {
     val unread = Sel.isUnread(state, c)
     val mentions = Sel.mentions(state, c.id)
@@ -264,7 +346,7 @@ private fun ChannelRow(
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
             // the open channel: bevelled row with an accent edge
             .drawBehind { if (selected) drawRect(accent, size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) }
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick).heightIn(min = 48.dp).padding(horizontal = 12.dp)
+            .combinedClickable(onClick = onClick, onLongClickLabel = s(R.string.channel_options), onLongClick = onLongClick).heightIn(min = 48.dp).padding(horizontal = 12.dp)
             .semantics(mergeDescendants = true) {
                 this.selected = selected
                 stateDescription = listOfNotNull(

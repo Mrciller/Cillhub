@@ -6,8 +6,10 @@ import android.net.Uri
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -145,18 +147,34 @@ fun EmptyState(@DrawableRes icon: Int, title: String, text: String? = null, modi
     }
 }
 
-// Motion. Every helper is a no-op when the system's "Remove animations" is on.
+// Motion. Every helper is a no-op when the system's "Remove animations" is on. Springs (M3 standard spatial
+// motion), never linear tweens; values are only read in the draw phase so a running animation recomposes nothing.
 
-/** Fades and slides a list row in the first time it is shown, staggered by [index] (list item reveal). */
+/** M3 standard spatial spring: settles in ~350 ms without overshoot. */
+val Spatial = spring<Float>(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow)
+/** M3 emphasized easing: enter decelerates, exit accelerates. */
+val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+
+/** Remember once where a list lives and pass to [reveal]: rows only animate while the list is new (its first 400 ms). */
 @Composable
-fun Modifier.reveal(index: Int): Modifier {
-    if (LocalReduceMotion.current) return this
+fun rememberRevealClock(): Long = remember { android.os.SystemClock.uptimeMillis() }
+
+/**
+ * Fades and slides a row in when its list first appears, staggered 25 ms by [index] (the first six rows; the rest come
+ * with the sixth). A row composed later (scrolled back into view, a new message or channel) is shown as-is.
+ */
+@Composable
+fun Modifier.reveal(index: Int, clock: Long): Modifier {
+    val reduce = LocalReduceMotion.current
+    val animate = remember { !reduce && android.os.SystemClock.uptimeMillis() - clock < 400 }
+    if (!animate) return this
     val shown = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        delay((index.coerceAtMost(12) * 28).toLong())
-        shown.animateTo(1f, tween(240, easing = FastOutSlowInEasing))
+        delay((index.coerceAtMost(6) * 25).toLong())
+        shown.animateTo(1f, Spatial)
     }
-    return graphicsLayer { alpha = shown.value; translationY = (1f - shown.value) * 12.dp.toPx() }
+    return graphicsLayer { alpha = shown.value; translationY = (1f - shown.value) * 8.dp.toPx() }
 }
 
 /** Shrinks the element a little while it is pressed (press feedback for icons that have no ripple of their own). */
@@ -164,8 +182,9 @@ fun Modifier.reveal(index: Int): Modifier {
 fun Modifier.pressScale(interaction: MutableInteractionSource): Modifier {
     if (LocalReduceMotion.current) return this
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.92f else 1f, tween(120), label = "press")
-    return graphicsLayer { scaleX = scale; scaleY = scale }
+    // stiff on the way down so the touch answers at once, the standard spring on release
+    val scale = animateFloatAsState(if (pressed) 0.96f else 1f, if (pressed) spring(Spring.DampingRatioNoBouncy, Spring.StiffnessHigh) else Spatial, label = "press")
+    return graphicsLayer { scaleX = scale.value; scaleY = scale.value }
 }
 
 /** A ring in [color] around a round element while [on]: pulsing, or a plain ring with animations off (live / speaking). */
@@ -173,13 +192,15 @@ fun Modifier.pressScale(interaction: MutableInteractionSource): Modifier {
 fun Modifier.speakingRing(on: Boolean, color: Color, width: Dp = 3.dp): Modifier {
     if (!on) return this
     val reduce = LocalReduceMotion.current
-    val pulse = if (reduce) 0f else rememberInfiniteTransition(label = "speaking").animateFloat(
-        0f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "pulse",
-    ).value
+    // a sine-like ease is symmetric, so the reversed repeat has no kink at the turning points
+    val pulse = if (reduce) null else rememberInfiniteTransition(label = "speaking").animateFloat(
+        0f, 1f, infiniteRepeatable(tween(800, easing = CubicBezierEasing(0.45f, 0f, 0.55f, 1f)), RepeatMode.Reverse), label = "pulse",
+    )
     return drawBehind {
+        val p = pulse?.value ?: 0f
         val w = width.toPx()
-        val r = size.minDimension / 2 + w / 2 + pulse * w
-        drawCircle(color, r, alpha = 1f - pulse * 0.5f, style = Stroke(w))
+        val r = size.minDimension / 2 + w / 2 + p * w
+        drawCircle(color, r, alpha = 1f - p * 0.5f, style = Stroke(w))
     }
 }
 

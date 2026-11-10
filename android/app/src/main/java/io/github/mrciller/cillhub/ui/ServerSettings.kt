@@ -175,12 +175,13 @@ fun ServerSettingsScreen(guildId: String) {
         val ctx = LocalContext.current
         // every page reports failures the same way; changes come back through the gateway
         val act: (suspend () -> Unit) -> Unit = { f -> scope.launch { try { f() } catch (e: Exception) { snack.showSnackbar(errorText(ctx, e)) } } }
+        val clock = rememberRevealClock()
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (current) {
                 null -> LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     itemsIndexed(allowed) { i, p ->
                         // one bevelled tile per page, the icon on its own accent plate
-                        Surface(onClick = { page = p.name }, shape = Hud, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().reveal(i)) {
+                        Surface(onClick = { page = p.name }, shape = Hud, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().reveal(i, clock)) {
                             ListItem(
                                 headlineContent = { Text(s(p.label), style = MaterialTheme.typography.titleMedium) },
                                 leadingContent = {
