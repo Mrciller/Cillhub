@@ -236,7 +236,7 @@ async function swap(target, label, restoreFrom) {
   let snapped = false, renamed = false, created = null;
   try {
     step('database snapshot');
-    if (isLink(DB)) throw new Error('data/cillcord.sqlite is a symbolic link; refusing to open it');
+    for (const f of [DB, `${DB}-wal`, `${DB}-shm`]) if (isLink(f)) throw new Error(`data/${path.basename(f)} is a symbolic link; refusing to open it`);
     if (fs.existsSync(DB)) {
       const db = new DatabaseSync(DB);
       try { db.exec(`VACUUM INTO '${snapshot}'`); } finally { db.close(); }

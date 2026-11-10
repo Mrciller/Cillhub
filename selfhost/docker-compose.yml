@@ -12,9 +12,10 @@ services:
     security_opt: [no-new-privileges:true]
     environment:
       CILLVOICE_BIND_IP: 0.0.0.0
-      # Caddy (and a host proxy via the published loopback port) reach the app from the Docker network:
-      # trust their X-Forwarded-For. Nothing else can reach port 3000.
-      TRUST_PROXY: 127.0.0.0/8,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      # Proxies whose X-Forwarded-For the app believes (client IPs for rate limits and login locks). The default covers
+      # the bundled Caddy on the Docker network and a host proxy on the published loopback port; with your own proxy,
+      # set TRUST_PROXY in .env to just its address, e.g. TRUST_PROXY=172.18.0.5/32
+      TRUST_PROXY: ${TRUST_PROXY:-127.0.0.0/8,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
     volumes:
       - ./data:/data
     ports:
@@ -36,7 +37,7 @@ services:
 
   caddy:
     profiles: [caddy]
-    image: caddy:2
+    image: caddy:2.10.2@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb # pinned; bump tag and digest together
     restart: unless-stopped
     environment:
       CILLCORD_HOSTNAME: ${CILLCORD_HOSTNAME}
