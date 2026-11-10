@@ -2,10 +2,14 @@
 // Publishes the signed release APKs into a download folder (served as <hub>/download/):
 //   android/Cillhub-<version>.apk (universal) with the stable alias android/Cillhub.apk (the download page links it),
 //   android/Cillhub-<version>-<abi>.apk per processor family (the app's updater takes the one for its phone) and
-//   android/cillhub.json, the app's update feed (written last).
+//   android/cillhub.json, the app's update feed (written last), with android/cillhub.json.sig, its detached Ed25519
+//   signature by the release key (the selfhost one: RELEASE_KEY, passphrase via PASSIN as in sign-release.sh). The app
+//   only accepts a feed signed by a key pinned in UpdateInfo.KEYS, so the key must be the first in
+//   selfhost/release-public-key.pem.
 // The maintainer decides when to run this. Usage:
-//   DOWNLOAD_DIR=/path/to/download node scripts/publish.js [notes]   (notes default: android/release-notes.txt)
-//   DOWNLOAD_DIR=/path/to/download node scripts/publish.js --bridge  (feed for the old 1.x app, see README)
+//   RELEASE_KEY=/path/to/key.pem [PASSIN=env:VAR|file:/path|pass:x] DOWNLOAD_DIR=/path/to/download node scripts/publish.js [notes]
+//     (notes default: android/release-notes.txt)
+//   DOWNLOAD_DIR=/path/to/download node scripts/publish.js --bridge  (feed for the old 1.x app, see README; unsigned)
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -30,6 +34,19 @@ const bridge = process.argv[2] === '--bridge';
 
 if (!DEST) throw new Error('set DOWNLOAD_DIR to the folder served as /download/');
 if (!fs.existsSync(APK)) throw new Error('no release APK: run ./gradlew assembleRelease first');
+if (!bridge && !process.env.RELEASE_KEY) throw new Error('set RELEASE_KEY to the release private key (and PASSIN for its passphrase) to sign the feed');
+/** Detached Ed25519 signature of the feed by RELEASE_KEY, checked against the first pinned key before anything is published. */
+function signFeed(data) {
+  const passin = process.env.PASSIN ?? 'pass:';
+  const [, kind, rest] = /^(pass|env|file):(.*)$/s.exec(passin) ?? [];
+  if (!kind) throw new Error('PASSIN must be pass:<passphrase>, env:<variable> or file:<path>');
+  const passphrase = kind === 'pass' ? rest : kind === 'env' ? process.env[rest] ?? '' : fs.readFileSync(rest, 'utf8').split('\n')[0];
+  const key = crypto.createPrivateKey({ key: fs.readFileSync(process.env.RELEASE_KEY), passphrase });
+  const pinned = crypto.createPublicKey(fs.readFileSync(path.join(HERE, '../selfhost/release-public-key.pem'), 'utf8').match(/-----BEGIN PUBLIC KEY-----[^-]+-----END PUBLIC KEY-----/)[0]);
+  const sig = crypto.sign(null, data, key);
+  if (!crypto.verify(null, data, pinned, sig)) throw new Error('RELEASE_KEY is not the first key in selfhost/release-public-key.pem, which the app pins');
+  return sig;
+}
 /** Package, version and signing key of an APK; throws unless it is the release package signed with the release key. */
 function check(apk) {
   const badging = execFileSync(AAPT, ['dump', 'badging', apk], { encoding: 'utf8' });
@@ -80,6 +97,8 @@ if (bridge) {
   for (const x of splits) put(`android/${x.file}`, x.data);
   const feed = { versionCode: Number(versionCode), versionName, url: `${ORIGIN}/download/android/${encodeURI(file)}`, sha256, notes };
   if (splits.length) feed.abis = Object.fromEntries(splits.map((x) => [x.abi, { url: `${ORIGIN}/download/android/${encodeURI(x.file)}`, sha256: x.sha256 }]));
-  put('android/cillhub.json', json(feed)); // last: apps only see the version once its file is in place
+  const body = json(feed);
+  put('android/cillhub.json.sig', signFeed(Buffer.from(body)));
+  put('android/cillhub.json', body); // last: apps only see the version once its file and signature are in place
   console.log(`published Android ${versionName} (${versionCode}) to ${DEST}/android\n${json(feed)}`);
 }

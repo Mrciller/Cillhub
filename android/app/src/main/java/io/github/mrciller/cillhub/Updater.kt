@@ -21,9 +21,10 @@ import okhttp3.Request
 import java.io.File
 
 /**
- * Self-update from <origin>/download/android/cillhub.json: checked at start and daily, the APK is downloaded,
- * its SHA-256 checked against the feed, and the user confirms the install (PackageInstaller session;
- * Android also requires the same signing key as the installed app).
+ * Self-update from <origin>/download/android/cillhub.json: checked at start and daily, the feed must carry a valid
+ * cillhub.json.sig from a pinned release key (UpdateInfo.KEYS), the APK is downloaded, its SHA-256 checked against
+ * the feed, and the user confirms the install (PackageInstaller session; Android also requires the same signing key
+ * as the installed app).
  */
 object Updater {
     private const val TAG = "CillcordUpdate"
@@ -38,11 +39,12 @@ object Updater {
 
     /** Blocking. The newer release, or null. */
     fun fetch(): UpdateInfo? {
-        Api.http.newCall(Request.Builder().url(Config.UPDATE_FEED).header("Cache-Control", "no-cache").build()).execute().use { res ->
-            if (!res.isSuccessful) return null
-            val info = UpdateInfo.parse(res.body.string(), Config.DEFAULT_ORIGIN, android.os.Build.SUPPORTED_ABIS.toList()) ?: return null
-            return info.takeIf { it.versionCode > BuildConfig.VERSION_CODE }
-        }
+        val get = { url: String -> Api.http.newCall(Request.Builder().url(url).header("Cache-Control", "no-cache").build()).execute().use { res -> if (res.isSuccessful) res.body.bytes() else null } }
+        val feed = get(Config.UPDATE_FEED) ?: return null
+        val sig = get(Config.UPDATE_FEED + ".sig") ?: return null
+        if (!UpdateInfo.signed(feed, sig)) { Log.w(TAG, "feed signature does not verify"); return null }
+        val info = UpdateInfo.parse(String(feed), Config.DEFAULT_ORIGIN, android.os.Build.SUPPORTED_ABIS.toList()) ?: return null
+        return info.takeIf { it.versionCode > BuildConfig.VERSION_CODE }
     }
 
     /** At app start: ask in a dialog. interactive (settings button): also say when there is nothing new. */

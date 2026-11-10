@@ -13,6 +13,12 @@ import java.security.MessageDigest
 data class UpdateInfo(val versionCode: Int, val versionName: String, val url: String, val sha256: String, val notes: String) {
     companion object {
         private val HEX64 = Regex("^[0-9a-f]{64}$")
+        // the release keys that may sign the feed (SPKI base64 as in selfhost/release-public-key.pem; android/scripts/publish.js signs)
+        val KEYS = listOf("MCowBQYDK2VwAyEAWIwyMJ/ZwpoIVzpQUXOHihDsavz1V5fF8ZhCA2vbBl0=")
+
+        /** True when `sig` (cillhub.json.sig, detached Ed25519) signs the feed bytes under one of the pinned keys. */
+        fun signed(feed: ByteArray, sig: ByteArray, keys: List<String> = KEYS): Boolean =
+            keys.any { Ed25519.verify(java.util.Base64.getDecoder().decode(it).takeLast(32).toByteArray(), feed, sig) }
 
         /** Null unless well-formed and the APK comes from the app's own origin over the same scheme. */
         fun parse(json: String, origin: String, abis: List<String> = emptyList()): UpdateInfo? = try {
