@@ -228,6 +228,7 @@ function renderIcsFeed(ctx) {
   const guilds = all('SELECT guild_id FROM members WHERE user_id = ?', user.id).map(r => r.guild_id);
   const events = guilds.length
     ? all(`SELECT * FROM scheduled_events WHERE guild_id IN (${guilds.map(() => '?').join(',')}) AND status IN (1, 2) ORDER BY scheduled_start_time`, ...guilds)
+      .filter(e => canSee(e, user.id)) // like the event list: channel events only for those who can see the channel
     : [];
 
   const lines = [

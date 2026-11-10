@@ -259,7 +259,8 @@ function patchVanityUrl({ params, body, user }) {
   if (code !== null) {
     if (!/^[a-z0-9_-]{2,32}$/.test(code)) throw invalid('code', 'INVALID_VANITY_CODE', 'Must be 2-32 alphanumeric or dash characters');
     const existing = get('SELECT id FROM guilds WHERE (vanity_url_code = ? OR vanity_code = ?) AND id != ?', code, code, g.id);
-    if (existing) throw new HttpError(400, 50020, 'Vanity URL already in use');
+    // an old lower-case invite link, even expired, must not start leading to another server
+    if (existing || get('SELECT 1 FROM invites WHERE code = ?', code)) throw new HttpError(400, 50020, 'Vanity URL already in use');
   }
   run('UPDATE guilds SET vanity_url_code = ?, vanity_code = ? WHERE id = ?', code, code, g.id);
   return { code, uses: get('SELECT vanity_uses FROM guilds WHERE id = ?', g.id)?.vanity_uses ?? 0 };

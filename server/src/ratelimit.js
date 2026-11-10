@@ -1,6 +1,22 @@
 // In-memory rate limits: per-route buckets with the v9 rate limit headers, and the failed-login guard
 import { createHash } from 'node:crypto';
+import { isIPv6 } from 'node:net';
 import { HttpError } from './errors.js';
+
+// the rate-limit identity of an address: IPv6 by /64 (one client usually holds the whole /64), expanded first so
+// `a:b::5` and `a:b:0:0::6` match; IPv4 and IPv4-mapped (::ffff:1.2.3.4) stay the single IPv4 address
+export function netOf(ip) {
+  ip = String(ip ?? '');
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (mapped) return mapped[1];
+  const bare = ip.split('%')[0];
+  if (!isIPv6(bare)) return ip;
+  const groups = s => (s ? s.split(':') : []).flatMap(g => (g.includes('.') ? ['0', '0'] : [g])); // a dotted tail is 2 groups
+  const [head, tail] = bare.split('::');
+  const h = groups(head), t = groups(tail);
+  const all = tail === undefined ? h : [...h, ...Array(8 - h.length - t.length).fill('0'), ...t];
+  return `${all.slice(0, 4).map(g => parseInt(g, 16).toString(16)).join(':')}::/64`;
+}
 
 // [method, route pattern, limit, window ms]; first match wins, the last entry is the default for every other route
 const RULES = [
@@ -18,6 +34,7 @@ const RULES = [
   ['AUTH', 'forgot-ip', 10, 3_600_000], // password reset mails per IP (IPv6: per /64)
   ['AUTH', 'forgot-email', 3, 3_600_000], // and per address (never answered with a 429)
   ['AUTH', 'reset-ip', 10, 15 * 60_000], // new password with a reset link, per IP
+  ['GET', '/download', 60, 10 * 60_000], // per IP: /download/* files fetched from the hub (an update check and a download take a few)
   ['*', '*', 50, 1000],
 ];
 const buckets = new Map(); // bucket key -> { count, reset (unix ms) }

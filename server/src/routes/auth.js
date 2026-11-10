@@ -4,7 +4,7 @@ import { get, all, run } from '../db.js';
 import { hashPassword, checkPassword, issueToken, revokeToken, tokenHash, sessionIdHash } from '../auth.js';
 import { HttpError, str, invalid, unauthorized } from '../errors.js';
 import { closeTokenSessions } from '../gateway.js';
-import { checkLogin, loginFailed, loginSucceeded, limit } from '../ratelimit.js';
+import { checkLogin, loginFailed, loginSucceeded, limit, netOf } from '../ratelimit.js';
 import { newTicket, redeemTicket, requireMfa, elevate } from '../mfa.js';
 import { settingsOf } from '../userdata.js';
 import { setting, resetAvailable } from '../instance.js';
@@ -50,9 +50,6 @@ async function register(ctx) {
   ctx.status = 201;
   return { token: issueToken(id) };
 }
-
-// IPv6: one /64 is one attacker
-const netOf = ip => (ip.includes(':') && !ip.startsWith('::ffff:') ? ip.split(':').slice(0, 4).join(':') : ip);
 
 // --- password reset by email ---------------------------------------------------------------------------------------------
 // POST /auth/forgot {login: email}: always 204 and the same work whether the account exists, so it tells nobody which

@@ -5,7 +5,7 @@ import { snowflake } from '../snowflake.js';
 import { get, all, run, tx, userObj } from '../db.js';
 import { HttpError, str, invalid, notFound, missingAccess } from '../errors.js';
 import { setting, setSetting, adminAudit, adminAuditObj } from '../instance.js';
-import { checkLogin, loginFailed } from '../ratelimit.js';
+import { checkLogin, loginFailed, netOf } from '../ratelimit.js';
 import { requireMfa } from '../mfa.js';
 import { pushTo } from '../push.js';
 import {
@@ -77,7 +77,7 @@ async function link(ctx) {
   const code = str(b, 'code', 1, 100);
   const url = instanceUrl(b.node_url, 'node_url');
   if (!publicKeyFrom(b.node_public_key)) throw invalid('node_public_key', 'BASE_TYPE_BAD_VALUE', 'Must be a base64url Ed25519 public key.');
-  const guard = [`link:${ctx.ip}`];
+  const guard = [`link:${netOf(ctx.ip)}`];
   checkLogin(guard, ctx.headers);
   const valid = () => get('SELECT * FROM fed_link_codes WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?', hash(code), Date.now());
   const badCode = () => invalid('code', 'FED_LINK_CODE_INVALID', 'Unknown, used or expired link code.');

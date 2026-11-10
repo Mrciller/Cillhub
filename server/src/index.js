@@ -6,14 +6,14 @@ import path from 'node:path';
 import { DATA_DIR } from './db.js';
 import { HttpError, unauthorized } from './errors.js';
 import { authenticate } from './auth.js';
-import { limit } from './ratelimit.js';
+import { limit, netOf } from './ratelimit.js';
 import { attachGateway } from './gateway.js';
 import { isCdnPath, serveCdn } from './files.js';
 import { isProxyPath, serveExternal } from './proxy.js';
 import { isEphemeralPath, serveEphemeral } from './interactions.js';
 import { startTimers } from './timers.js';
 import { parseMultipart } from './multipart.js';
-import { publicInstance, maxUpload, setting } from './instance.js';
+import { publicInstance, maxUpload, setting, captchaOn } from './instance.js';
 import { configuredBackends, defaultBackend } from './voice.js';
 import { requireAdmin, auditAdminRequest } from './routes/admin.js';
 import auth from './routes/auth.js';
@@ -94,8 +94,9 @@ const TYPES = {
 // captcha keys); media, API and voice may live on linked nodes and LiveKit hosts, so those stay open. Nobody else may
 // frame the app (OAuth consent, admin pages).
 const RECAPTCHA_SCRIPTS = 'https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/';
-const CSP = [
-  "default-src 'self'", `script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com ${RECAPTCHA_SCRIPTS}`, "style-src 'self' 'unsafe-inline'",
+// per response, so turning captcha on or off needs no restart
+const csp = () => [
+  "default-src 'self'", `script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com${captchaOn() ? ` ${RECAPTCHA_SCRIPTS}` : ''}`, "style-src 'self' 'unsafe-inline'",
   "img-src 'self' https: http: data: blob:", "media-src 'self' https: http: data: blob:", "font-src 'self' data:",
   "connect-src 'self' https: http: wss: ws: data: blob:", "frame-src 'self' https: http:", "worker-src 'self' blob:",
   "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'self'",
@@ -233,7 +234,7 @@ async function api(req, url, headers) {
         throw e;
       }
     }
-    limit(route.method, route.pattern, ctx.params, ctx.user?.id ?? ctx.ip, headers);
+    limit(route.method, route.pattern, ctx.params, ctx.user?.id ?? netOf(ctx.ip), headers); // anonymous: per IPv4 or IPv6 /64
     if (route.admin) requireAdmin(ctx); // flag and 2FA, re-read from the database on every request
     // a multipart route reads its form itself, after its permission checks, so refused uploads are never read;
     // files stream to temp files (at most maxFile bytes each), removed after the handler unless it moved them
@@ -274,7 +275,7 @@ async function serveStatic(res, pathname) {
   if (!data) data = await readFile(file = path.join(STATIC_DIR, 'index.html')); // SPA fallback
   const headers = { 'Content-Type': TYPES[path.extname(file)] ?? 'application/octet-stream', ...STATIC_HEADERS };
   // the app shell gets the full policy; other pages (offline.html, downloads) may use inline code, so only framing is limited
-  if (file === path.join(STATIC_DIR, 'index.html')) headers['Content-Security-Policy'] = CSP;
+  if (file === path.join(STATIC_DIR, 'index.html')) headers['Content-Security-Policy'] = csp();
   else if (file === path.join(STATIC_DIR, 'captcha.html')) headers['Content-Security-Policy'] = CAPTCHA_CSP;
   else if (path.extname(file) === '.html') headers['Content-Security-Policy'] = "frame-ancestors 'self'";
   // browsers ignore HSTS over plain http, so a spoofed X-Forwarded-Proto cannot do harm
@@ -360,13 +361,13 @@ const server = createServer(async (req, res) => {
     if (allow !== '*') Object.assign(headers, { 'Access-Control-Allow-Origin': allow, Vary: 'Origin' });
     res.setHeader('Access-Control-Allow-Origin', allow);
     if (allow !== '*') res.setHeader('Vary', 'Origin'); // CDN and media answers too (they don't go through reply)
-    if (isModulePath(url.pathname)) return await serveModulePath(req, res, url, clientIp(req)); // v8: panel files and module HTTP endpoints, no auth
+    if (isModulePath(url.pathname)) return await serveModulePath(req, res, url, netOf(clientIp(req))); // v8: panel files and module HTTP endpoints, no auth
     if (req.method === 'OPTIONS') return reply(res, 204, undefined, headers);
     if (API_PREFIX.test(url.pathname)) return reply(res, ...await api(req, url, headers), headers);
     const known = req.method === 'GET' && url.pathname.startsWith('/.well-known/') && wellKnown(req, url.pathname.replace(/\/$/, ''));
     if (known) return reply(res, 200, known);
     if ((req.method === 'GET' || req.method === 'HEAD') && isCdnPath(url.pathname)) return await serveCdn(req, res, url.pathname);
-    if ((req.method === 'GET' || req.method === 'HEAD') && isProxyPath(url.pathname)) return await serveExternal(req, res, url.pathname, clientIp(req), headers);
+    if ((req.method === 'GET' || req.method === 'HEAD') && isProxyPath(url.pathname)) return await serveExternal(req, res, url.pathname, netOf(clientIp(req)), headers);
     if ((req.method === 'GET' || req.method === 'HEAD') && isEphemeralPath(url.pathname)) return serveEphemeral(req, res, url.pathname);
     if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname.startsWith('/download/desktop/') || url.pathname.startsWith('/download/android/') || url.pathname.startsWith('/download/server/'))) {
       let rel;
@@ -374,6 +375,7 @@ const server = createServer(async (req, res) => {
       if (/(^|[/\\])\.\.([/\\]|$)|\0/.test(rel)) throw new HttpError(404, 0, '404: Not Found'); // no existence oracle outside the folders
       const local = [STATIC_DIR && path.join(STATIC_DIR, rel), DATA_DIR && path.join(DATA_DIR, rel)].find(p => p && existsSync(p));
       if (local) return await serveStatic(res, url.pathname);
+      limit('GET', '/download', {}, netOf(clientIp(req)), headers); // every node relays these to the hub
       return await proxyHubDownload(req, res, url.pathname);
     }
     if (STATIC_DIR && (req.method === 'GET' || req.method === 'HEAD')) return await serveStatic(res, url.pathname);

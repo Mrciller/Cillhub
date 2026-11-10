@@ -6,7 +6,7 @@ import { snowflake } from '../snowflake.js';
 import { get, run } from '../db.js';
 import { HttpError, str, invalid } from '../errors.js';
 import { hashPassword, issueToken } from '../auth.js';
-import { checkLogin, loginFailed } from '../ratelimit.js';
+import { checkLogin, loginFailed, netOf } from '../ratelimit.js';
 import { setting, setSetting, publicInstance, adminAudit } from '../instance.js';
 import { configuredBackends, defaultBackend } from '../voice.js';
 import { probe } from '../media/index.js';
@@ -24,7 +24,7 @@ const gone = () => new HttpError(404, 0, '404: Not Found');
 // wrong codes count like failed logins: 10 per IP in 15 minutes
 function checkCode(ctx) {
   if (!setupOpen()) throw gone();
-  const keys = [`setup:${ctx.ip}`];
+  const keys = [`setup:${netOf(ctx.ip)}`];
   checkLogin(keys, ctx.headers);
   if (typeof ctx.body?.setup_code !== 'string' || !sameText(ctx.body.setup_code.trim(), SETUP_CODE)) {
     loginFailed(keys);

@@ -56,7 +56,9 @@ function createInvite(ctx) {
   if (get('SELECT invites_disabled FROM guilds WHERE id = ?', ch.guild_id).invites_disabled) throw invitesPaused();
   const maxAge = ctx.body?.max_age === undefined ? 86400 : int(ctx.body, 'max_age', 0, 604800);
   const maxUses = ctx.body?.max_uses === undefined ? 0 : int(ctx.body, 'max_uses', 0, 100);
-  const code = Array.from({ length: 8 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('');
+  let code;
+  // always one capital letter: custom invite names are lower case, so the two can never be the same link
+  do code = Array.from({ length: 8 }, () => ALPHABET[randomInt(ALPHABET.length)]).join(''); while (!/[A-Z]/.test(code));
   run('INSERT INTO invites (code, guild_id, channel_id, inviter_id, expires_at, max_age, max_uses, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     code, ch.guild_id, ch.id, ctx.user.id, maxAge ? Date.now() + maxAge * 1000 : null, maxAge, maxUses, new Date().toISOString());
   ctx.status = 201;
