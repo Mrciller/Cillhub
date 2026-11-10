@@ -325,7 +325,7 @@ test('ATTACHMENT options: multipart Create Interaction, resolved.attachments wit
   assert.equal(cb.status, 204);
   const reply = await alice.gw.event('MESSAGE_CREATE', m => m.content === 'got it');
   const att = reply.attachments[0];
-  assert.deepEqual([att.filename, att.description, att.url], ['echo.png', 'echo', `/attachments/${g.general.id}/${att.id}/echo.png`]);
+  assert.deepEqual([att.filename, att.description, att.url], ['echo.png', 'echo', `/attachments/${g.general.id}/${att.id}/${att.url.split('/')[4]}/echo.png`]);
   assert.equal(reply.embeds[0].image.url, att.url);
   assert.equal((await fetch(srv.origin + att.url)).status, 200);
 

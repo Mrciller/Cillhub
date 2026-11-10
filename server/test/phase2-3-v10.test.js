@@ -203,6 +203,13 @@ test('View-Once Media Attachments (Contract v10 §7)', async () => {
     const att = r.body.attachments[0];
     assert.equal(att.flags & 16, 16);
 
+    // HEAD and Range requests do not use it up (review M-2)
+    assert.equal((await fetch(srv.origin + att.url, { method: 'HEAD' })).status, 200);
+    const part = await fetch(srv.origin + att.url, { headers: { Range: 'bytes=0-3' } });
+    assert.deepEqual([part.status, part.headers.get('cache-control')], [206, 'no-store']);
+    await part.text();
+    await new Promise(res => setTimeout(res, 50));
+
     // First fetch should succeed
     const firstFetch = await fetch(srv.origin + att.url);
     assert.equal(firstFetch.status, 200);

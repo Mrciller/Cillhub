@@ -8,6 +8,7 @@ import { sendToUsers, isOnline } from './gateway.js';
 import { notifyMessage } from './push.js';
 import { removeAttachment } from './files.js';
 import { linkUrls, unfurl } from './embeds.js';
+import { attachmentSig } from './proxy.js';
 import { addJob, schedule } from './timers.js';
 import { recordGuildMetric } from './analytics.js';
 
@@ -20,7 +21,7 @@ export const IS_SPOILER = 8; // attachment flag
 export const getMessage = id => get('SELECT * FROM messages WHERE id = ?', id);
 export const getChannel = id => get('SELECT * FROM channels WHERE id = ?', id);
 
-export const attachmentUrl = a => `/attachments/${a.channel_id}/${a.id}/${a.filename}`;
+export const attachmentUrl = a => `/attachments/${a.channel_id}/${a.id}/${attachmentSig(a.channel_id, a.id)}/${a.filename}`;
 const attachmentObj = a => ({
   id: a.id, filename: a.filename, size: a.size, content_type: a.content_type, url: attachmentUrl(a), proxy_url: attachmentUrl(a),
   ...(a.width != null && { width: a.width, height: a.height }),

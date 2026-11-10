@@ -25,7 +25,10 @@ function loadKey() {
 }
 const KEY = loadKey();
 
-const sign = url => createHmac('sha256', KEY).update(url).digest('base64url');
+export const sign = url => createHmac('sha256', KEY).update(url).digest('base64url');
+
+// attachment URLs carry a signature of channel and id, so knowing (or guessing) them is not enough (review M-1)
+export const attachmentSig = (channelId, id) => sign(`attachment:${channelId}/${id}`).slice(0, 22);
 
 // root-relative like attachment URLs; only URLs the server signed can be fetched through it
 export const proxyUrl = url => `/external/${Buffer.from(url).toString('base64url')}.${sign(url)}`;

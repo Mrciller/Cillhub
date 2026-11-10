@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { DATA_DIR, get, run } from './db.js';
 import { HttpError, invalid } from './errors.js';
+import { attachmentSig } from './proxy.js';
 
 const IMAGES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const INLINE = new Set([...IMAGES, 'video/mp4', 'video/webm', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm']);
@@ -117,7 +118,8 @@ const IMAGE_PATH = /^\/(avatars|icons|guild-events|banners|channel-icons|app-ico
 const ROLE_ICON_PATH = /^\/roles\/(\d{1,19})\/icons\/([0-9a-f]{32})(?:\.(?:png|jpg|jpeg|webp))?$/; // the user docs' spelling of role-icons
 const DECORATION_PATH = /^\/avatar-decoration-presets\/([0-9a-f]{32})(?:\.(?:png|webp))?$/;
 const MEMBER_IMAGE_PATH = /^\/guilds\/(\d{1,19})\/users\/(\d{1,19})\/(avatars|banners)\/([0-9a-f]{32})(?:\.(?:png|jpg|jpeg|gif|webp))?$/;
-const ATTACHMENT_PATH = /^\/attachments\/(\d{1,19})\/(\d{1,19})\/([^/]+)$/;
+// /attachments/<channel>/<id>/<sig>/<filename>; uploads from before signed URLs (legacy_url) also answer without <sig>
+const ATTACHMENT_PATH = /^\/attachments\/(\d{1,19})\/(\d{1,19})\/(?:([\w-]{22})\/)?([^/]+)$/;
 const ASSET_PATH = /^\/(emojis|stickers|soundboard-sounds|user-sounds)\/(\d{1,19})(?:\.(?:png|gif|webp|jpg|jpeg|json|mp3|ogg))?$/;
 const ASSET_TABLE = { emojis: 'emojis WHERE id', stickers: 'stickers WHERE id', 'soundboard-sounds': 'soundboard_sounds WHERE sound_id', 'user-sounds': 'user_sounds WHERE id' };
 export const isCdnPath = pathname => IMAGE_PATH.test(pathname) || MEMBER_IMAGE_PATH.test(pathname) || ATTACHMENT_PATH.test(pathname) || ASSET_PATH.test(pathname)
@@ -172,7 +174,7 @@ export function sendRanged(req, res, headers, body, size = body.length) {
 }
 
 export async function serveCdn(req, res, pathname) {
-  let file, type, disposition;
+  let file, type, disposition, cache = 'public, max-age=31536000, immutable';
   const roleIcon = ROLE_ICON_PATH.exec(pathname);
   if (roleIcon) pathname = `/role-icons/${roleIcon[1]}/${roleIcon[2]}`;
   const decoration = DECORATION_PATH.exec(pathname);
@@ -204,24 +206,25 @@ export async function serveCdn(req, res, pathname) {
     type = await headType(file);
     disposition = 'inline';
   } else {
-    const [, channelId, id, name] = ATTACHMENT_PATH.exec(pathname);
+    const [, channelId, id, sig, name] = ATTACHMENT_PATH.exec(pathname);
     const a = get('SELECT * FROM attachments WHERE id = ? AND channel_id = ?', id, channelId);
-    if (!a || name !== a.filename) throw new HttpError(404, 0, '404: Not Found');
+    if (!a || name !== a.filename || (sig ? sig !== attachmentSig(channelId, id) : !a.legacy_url)) throw new HttpError(404, 0, '404: Not Found');
     file = join(DATA_DIR, 'attachments', channelId, id);
     type = a.content_type;
     disposition = `${INLINE.has(type) ? 'inline' : 'attachment'}; filename="${a.filename}"`;
+    // shared caches must not keep attachments (they outlive deletion); view-once is never stored and goes on the first full GET
+    cache = 'private, max-age=31536000, immutable';
     if (a.flags & 16) {
-      res.on('finish', () => {
-        try {
-          run('DELETE FROM attachments WHERE id = ?', a.id);
-          removeAttachment(channelId, id);
-        } catch {}
-      });
+      cache = 'no-store';
+      // shortcut: Range reads leave it in place (players seek); a recipient can keep the bytes anyway, view-once is client-honoured
+      if (req.method === 'GET' && !req.headers.range) {
+        if (!run('DELETE FROM attachments WHERE id = ?', a.id).changes) throw new HttpError(404, 0, '404: Not Found');
+        res.on('close', () => removeAttachment(channelId, id));
+      }
     }
   }
   const { size } = await stat(file);
   sendRanged(req, res, {
-    ...SECURITY, 'Content-Type': type, 'Content-Disposition': disposition,
-    'Cache-Control': 'public, max-age=31536000, immutable',
+    ...SECURITY, 'Content-Type': type, 'Content-Disposition': disposition, 'Cache-Control': cache,
   }, file, size);
 }

@@ -1,6 +1,8 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, guildWith } from './helpers.js';
+import { DatabaseSync } from 'node:sqlite';
+import { join } from 'node:path';
 
 let srv, api, g, alice, bob, carol;
 const s = {};
@@ -40,7 +42,8 @@ test('attachments: multipart upload, image size, inline only for proven media, s
   assert.equal(r.status, 201);
   const [img, txt] = r.body.attachments;
   assert.deepEqual([img.filename, img.content_type, img.width, img.height, img.size], ['shot_one.png', 'image/png', 640, 480, 33]);
-  assert.equal(img.url, `/attachments/${g.general.id}/${img.id}/shot_one.png`);
+  // signed: knowing channel and id is not enough (review M-1)
+  assert.match(img.url, new RegExp(`^/attachments/${g.general.id}/${img.id}/[\\w-]{22}/shot_one\\.png$`));
   assert.equal(txt.width, undefined);
   assert.deepEqual((await alice.gw.event('MESSAGE_CREATE', d => d.id === r.body.id)).attachments, r.body.attachments);
 
@@ -53,7 +56,14 @@ test('attachments: multipart upload, image size, inline only for proven media, s
   assert.equal(res.headers.get('content-security-policy'), "default-src 'none'; sandbox");
   assert.deepEqual(Buffer.from(await res.arrayBuffer()), png());
   assert.match((await get(txt.url)).headers.get('content-disposition'), /^attachment; filename="notes.txt"$/);
-  assert.equal((await get(`/attachments/${g.general.id}/${img.id}/other.png`)).status, 404);
+  assert.equal(res.headers.get('cache-control'), 'private, max-age=31536000, immutable');
+  assert.equal((await get(img.url.replace('shot_one.png', 'other.png'))).status, 404);
+  assert.equal((await get(`/attachments/${g.general.id}/${img.id}/shot_one.png`)).status, 404, 'unsigned');
+  assert.equal((await get(img.url.replace(/\/[\w-]{22}\//, `/${'A'.repeat(22)}/`))).status, 404, 'wrong signature');
+  // uploads from before signed URLs still answer at their old URL
+  const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sqlite'));
+  try { db.prepare('UPDATE attachments SET legacy_url = 1 WHERE id = ?').run(img.id); } finally { db.close(); }
+  assert.equal((await get(`/attachments/${g.general.id}/${img.id}/shot_one.png`)).status, 200, 'legacy');
 
   // HTML is never inline, whatever it claims to be
   const html = await srv.upload(g.general.id, bob.token, {}, [['page.html', '<script>alert(1)</script>', 'text/html'], ['fake.png', '<html>', 'image/png']]);
