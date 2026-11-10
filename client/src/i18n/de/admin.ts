@@ -101,5 +101,7 @@ export const admin: Record<string, string> = {
   'Uses the saved settings.': 'Nutzt die gespeicherten Einstellungen.', 'Test mail sent to your address.': 'Testmail an deine Adresse gesendet.',
   Captcha: 'Captcha', 'Asked at sign-up and password reset. reCAPTCHA v2 (checkbox) keys from google.com/recaptcha/admin.':
     'Wird bei der Registrierung und beim Zurücksetzen des Passworts abgefragt. reCAPTCHA-v2-Schlüssel (Checkbox) von google.com/recaptcha/admin.',
+  'Password reset also needs the address above.': 'Für das Zurücksetzen von Passwörtern braucht es auch die Adresse oben.',
+  'Password reset also needs CILLCORD_PUBLIC_URL on the server.': 'Für das Zurücksetzen von Passwörtern braucht es auch CILLCORD_PUBLIC_URL auf dem Server.',
   'Site key': 'Websiteschlüssel', 'Secret key': 'Geheimer Schlüssel', Saved: 'Gespeichert',
 }

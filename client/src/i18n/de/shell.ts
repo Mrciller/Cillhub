@@ -161,6 +161,8 @@ export const shell: Record<string, string> = {
   'Forgot password?': 'Passwort vergessen?', 'Check your mail': 'Schau in dein Postfach',
   'If an account with this address exists, a mail with a link is on its way.': 'Wenn es ein Konto mit dieser Adresse gibt, ist eine Mail mit einem Link unterwegs.',
   'Enter the email address of your account. You get a link to choose a new password.': 'Gib die E-Mail-Adresse deines Kontos ein. Du bekommst einen Link, mit dem du ein neues Passwort wählst.',
+  'This server asks for a captcha, which works only in the browser.': 'Dieser Server fragt nach einem Captcha, das nur im Browser funktioniert.',
+  'Continue in the browser': 'Im Browser weitermachen',
   'Send link': 'Link senden', 'Password changed': 'Passwort geändert',
   'Your new password is set. All sessions of your account were signed out.': 'Dein neues Passwort ist gesetzt. Alle Sitzungen deines Kontos wurden abgemeldet.',
   'This link is invalid or has expired.': 'Dieser Link ist ungültig oder abgelaufen.', 'Too many attempts. Try again later.': 'Zu viele Versuche. Versuch es später noch einmal.',

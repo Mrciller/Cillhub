@@ -24,14 +24,14 @@ export type InstanceSettings = {
   registration_mode: Registration; instance_name: string; motd: string | null; max_upload_bytes: number; gifs_enabled: boolean
   voice_backend: 'livekit' | 'cillvoice' | null; announcement: Announcement | null; voice: { configured: string[]; default: string | null }
   /** 7.10: the admin-set address (null = from the server environment) and the one in use now. */
-  public_url: string | null; public_url_effective: string
+  public_url: string | null; public_url_effective: string; public_url_env?: string | null
   smtp_host: string | null; smtp_port: number; smtp_security: 'starttls' | 'tls' | 'none'; smtp_user: string | null; smtp_from: string | null
   captcha_site_key: string | null
   /** The secrets themselves never come back. */
   smtp_password_set: boolean; captcha_secret_set: boolean
 }
 /** PATCH: a secret left out is kept, null clears it. */
-export type SettingsPatch = Partial<Omit<InstanceSettings, 'announcement' | 'voice' | 'public_url_effective' | 'smtp_password_set' | 'captcha_secret_set'>> & {
+export type SettingsPatch = Partial<Omit<InstanceSettings, 'announcement' | 'voice' | 'public_url_effective' | 'public_url_env' | 'smtp_password_set' | 'captcha_secret_set'>> & {
   smtp_password?: string | null; captcha_secret?: string | null
 }
 

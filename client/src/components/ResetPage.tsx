@@ -1,6 +1,6 @@
 // /reset?token=…: the page the password reset mail links to. Talks to this page's own origin (the instance that sent
 // the mail), never to a server chosen on the login page. No token comes back: the user signs in again, 2FA included.
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { t } from '../i18n'
 import { Link } from '../router'
 import { Field, FormError } from './ui'
@@ -10,6 +10,7 @@ export function ResetPage() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
+  useEffect(() => history.replaceState(null, '', '/reset'), []) // the token leaves the address bar (history, screen shares) at once
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -23,7 +24,6 @@ export function ResetPage() {
         const body = await res.json().catch(() => null)
         throw new Error(res.status === 429 ? t('Too many attempts. Try again later.') : body?.message ? t(body.message) : t('Request failed ({status})', { status: res.status }))
       }
-      history.replaceState(null, '', '/reset') // the used link does not stay in the address bar
       setDone(true)
     } catch (err) {
       setError(err instanceof TypeError ? t("Can't reach the server.") : (err as Error).message)

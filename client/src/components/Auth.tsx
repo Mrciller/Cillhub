@@ -88,7 +88,14 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
   const finish = (r: LoginAnswer) => (r.required_actions?.includes('update_password') ? (setRenew(r.token), setBusy(false)) : done(r.token))
   const fail = (err: unknown) => (setError(err instanceof ApiError ? err : new ApiError(0, null)), setBusy(false), setCaptchaKey(''), setCaptchaRound((n) => n + 1))
   const sitekey = instance?.captcha?.sitekey
-  const captcha = sitekey && <Captcha key={captchaRound} sitekey={sitekey} onToken={setCaptchaKey} />
+  // the desktop app runs bundled pages that Google's widget refuses: the instance's own page in the browser does it
+  const inDesktop = window.location.protocol === 'app:' || 'cillcordDesktop' in window
+  const captcha = sitekey && (inDesktop ? (
+    <div className="field">
+      <p className="hint small">{t('This server asks for a captcha, which works only in the browser.')}</p>
+      <button type="button" className="secondary wide" onClick={() => window.open(`${apiOrigin()}/${login ? 'login' : 'register'}`, '_blank')}>{t('Continue in the browser')}</button>
+    </div>
+  ) : <Captcha key={captchaRound} sitekey={sitekey} onToken={setCaptchaKey} />)
   const withCaptcha = (body: Record<string, unknown>) => (captchaKey ? { ...body, captcha_key: captchaKey } : body)
   const message = wait ? t('Too many attempts. Try again in {n} seconds.', { n: wait }) : error && Object.keys(error.errors).length === 0 ? error.message : ''
 
@@ -127,8 +134,7 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
     const isSecureContext = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname.endsWith('.localhost')
     if (!isSecureContext) {
       const hub = apiOrigin()
-      const isDesktop = window.location.protocol === 'app:' || !!(window as any).cillcordDesktop
-      if (isDesktop) {
+      if (inDesktop) {
         window.open(`${hub}/login`, '_blank')
         setError(new ApiError(0, {
           message: t('Passkeys require a secure HTTPS origin with valid certificates or localhost. We opened the sign-in page in your browser. In the desktop app, please sign in with your email or username and password.')

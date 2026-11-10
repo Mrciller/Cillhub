@@ -20,7 +20,7 @@ const DIST = process.env.E2E_STATIC_DIR ?? path.join(ROOT, 'client', 'dist')
 const PORT = Number(process.env.E2E_PORT ?? 3392)
 const SMTP_PORT = Number(process.env.E2E_SMTP_PORT ?? 3393)
 const CAPTCHA_PORT = Number(process.env.E2E_CAPTCHA_PORT ?? 3394)
-const BASE = `http://localhost:${PORT}` // the reset link is built from the request origin (no public URL set)
+const BASE = `http://localhost:${PORT}` // also the instance's public address (reset links need one)
 const SECRET = 'JBSWY3DPEHPK3PXP'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -137,7 +137,7 @@ async function main() {
       await api('POST', '/users/@me/mfa/totp/enable', jordan, { password: 'hunter2hunter2', secret: SECRET, code: totp(SECRET) })
       execFileSync(process.execPath, ['src/admin-cli.js', 'grant', 'jordan'], { cwd: SERVER_DIR, env: { ...process.env, DATA_DIR: dataDir } })
       alex = (await api('POST', '/auth/register', null, { email: 'alex@example.com', username: 'alex', password: 'old-pass-alex' })).token
-      await api('PATCH', '/admin/settings', jordan, { smtp_host: '127.0.0.1', smtp_port: SMTP_PORT, smtp_security: 'none', smtp_from: 'Cillhub <no-reply@example.org>' })
+      await api('PATCH', '/admin/settings', jordan, { smtp_host: '127.0.0.1', smtp_port: SMTP_PORT, smtp_security: 'none', smtp_from: 'Cillhub <no-reply@example.org>', public_url: BASE })
       check((await api('GET', '/instance')).password_reset === true, 'password_reset offered')
     })
 

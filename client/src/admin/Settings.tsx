@@ -99,6 +99,9 @@ export function InstanceSettingsPage() {
         <fieldset className="admin-reasons">
           <legend>{t('Email (SMTP)')}</legend>
           <p className="hint small">{t('Needed for password reset by email.')}</p>
+          {!form.public_url?.trim() && !form.public_url_env && (
+            <p className="hint small">{isHub ? t('Password reset also needs CILLCORD_PUBLIC_URL on the server.') : t('Password reset also needs the address above.')}</p>
+          )}
           <div className="admin-inline">
             <Field label={t('Server')} maxLength={255} value={form.smtp_host ?? ''} placeholder="smtp.example.org" onChange={(e) => set({ smtp_host: e.target.value })} />
             <Field label={t('Port')} type="number" min={1} max={65535} required value={form.smtp_port} onChange={(e) => set({ smtp_port: Math.min(65535, Math.max(1, +e.target.value)) })} />

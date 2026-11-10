@@ -410,6 +410,8 @@ async function run(browser, errors) {
   await fp.getByRole('button', { name: 'Change Password' }).click()
   await fp.getByText('This link is invalid or has expired.').waitFor()
   await fp.goto(`${h.ORIGIN}/reset?token=tok123`)
+  await fp.getByLabel('Confirm New Password').waitFor()
+  assert.equal(new URL(fp.url()).search, '', 'the token leaves the address bar on load')
   await fp.getByLabel('New Password', { exact: true }).fill('new-pass-alex')
   await fp.getByLabel('Confirm New Password').fill('other-pass')
   await fp.getByRole('button', { name: 'Change Password' }).click()
@@ -441,7 +443,22 @@ async function run(browser, errors) {
   assert.equal(sent.forgot.login, 'sam@example.com')
   assert.match(sent.forgot.captcha_key, /^tok-/)
   await fc.close()
-  console.log('ok v6-admin 16 - forgot password (neutral answer), reset page (mismatch, invalid link, success), captcha token on register and forgot')
+
+  // the desktop app (bundled pages) cannot show Google's widget: a button opens the instance's page in the browser
+  const dc = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' })
+  await dc.addInitScript(() => { window.cillcordDesktop = {}; window.__opened = []; window.open = (u) => (window.__opened.push(u), null) })
+  const dp = await dc.newPage()
+  dp.on('pageerror', (e) => errors.push(e.message))
+  await dp.route('https://www.google.com/recaptcha/api.js*', (r) => (captchaLoads++, r.abort()))
+  await dp.route('**/api/v9/**', (r) => new URL(r.request().url()).pathname === '/api/v9/instance' ? r.fulfill({ json: instance }) : r.abort())
+  const loadsBefore = captchaLoads
+  await dp.goto(`${h.ORIGIN}/register`)
+  await dp.getByText('This server asks for a captcha, which works only in the browser.').waitFor()
+  await dp.getByRole('button', { name: 'Continue in the browser' }).click()
+  assert.deepEqual(await dp.evaluate(() => window.__opened), [`${h.ORIGIN}/register`])
+  assert.equal(captchaLoads, loadsBefore, 'no widget script in the desktop app')
+  await dc.close()
+  console.log('ok v6-admin 16 - forgot password (neutral answer), reset page (mismatch, invalid link, success), captcha token on register and forgot, browser hand-off in the desktop app')
 }
 
 module.exports = { run }
