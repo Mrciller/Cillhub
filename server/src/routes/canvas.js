@@ -52,6 +52,7 @@ function putCanvas(ctx) {
 }
 
 // v10: Interactive Collaborative Whiteboard in Voice Rooms (§10)
+const MAX_STROKE = 32 * 1024, MAX_BOARD = 1024 * 1024;
 function getWhiteboard(ctx) {
   const ch = loadChannel(ctx.params.id, ctx.user);
   const row = get('SELECT * FROM channel_whiteboard WHERE channel_id = ?', ch.id);
@@ -80,7 +81,9 @@ function postWhiteboardStroke(ctx) {
     need(ch.perms, isThread(ch) ? P.SEND_MESSAGES_IN_THREADS : P.SEND_MESSAGES);
   }
   const stroke = ctx.body?.stroke ?? ctx.body;
-  if (!stroke) throw invalid('stroke', 'BASE_TYPE_REQUIRED', 'Stroke data required.');
+  if (!stroke || typeof stroke !== 'object' || Array.isArray(stroke)) throw invalid('stroke', 'BASE_TYPE_REQUIRED', 'Stroke data required.');
+  const size = JSON.stringify(stroke).length;
+  if (size > MAX_STROKE) throw invalid('stroke', 'BASE_TYPE_MAX_LENGTH', `A stroke must be ${MAX_STROKE} bytes or less.`);
   const now = new Date().toISOString();
 
   const cur = get('SELECT strokes FROM channel_whiteboard WHERE channel_id = ?', ch.id);
@@ -90,6 +93,10 @@ function postWhiteboardStroke(ctx) {
   }
   strokes.push(stroke);
   if (strokes.length > 2000) strokes = strokes.slice(-1500);
+  // the board is parsed and rewritten on every stroke: the oldest strokes go once it passes MAX_BOARD
+  let total = strokes.reduce((n, s) => n + JSON.stringify(s).length + 1, 0), drop = 0;
+  while (total > MAX_BOARD) total -= JSON.stringify(strokes[drop++]).length + 1;
+  if (drop) strokes = strokes.slice(drop);
 
   run(`
     INSERT INTO channel_whiteboard (channel_id, strokes, updated_at, updated_by)
@@ -120,6 +127,6 @@ export default [
   ['GET', '/channels/:id/canvas', getCanvas],
   ['PUT', '/channels/:id/canvas', putCanvas],
   ['GET', '/channels/:id/whiteboard', getWhiteboard],
-  ['POST', '/channels/:id/whiteboard/stroke', postWhiteboardStroke],
+  ['POST', '/channels/:id/whiteboard/stroke', postWhiteboardStroke, { maxBody: 64 * 1024, rateLimit: { max: 10, windowMs: 1000 } }],
   ['DELETE', '/channels/:id/whiteboard', clearWhiteboard],
 ];

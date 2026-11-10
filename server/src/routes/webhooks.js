@@ -8,11 +8,12 @@ import { saveImage, removeImage } from '../files.js';
 import { audit, A, diff } from '../audit.js';
 import { proxyUrl } from '../proxy.js';
 import { richEmbeds } from '../embeds.js';
-import { readPayload, prepare, send } from '../compose.js';
+import { readPayload, prepare, send, checkThreadOpen } from '../compose.js';
 import { F, messageObj, getMessage, getChannel, broadcastMessage, deleteMessages, insertMessage, unfurlLater } from '../message.js';
 import { loadChannel } from './channels.js';
 import { loadGuild } from './guilds.js';
 import { insertThread, threadEvent, reopened, tagsField } from './threads.js';
+import { requireUnarchived } from './messages.js';
 
 const HOOKABLE = [0, 2, 5, 13, 15];
 const newToken = () => randomBytes(51).toString('base64url');
@@ -136,6 +137,7 @@ async function execute(ctx) {
   const w = byToken(ctx);
   const { body, files } = await readPayload(ctx);
   let ch = targetChannel(w, ctx.query);
+  checkThreadOpen(ch, 0n); // a webhook holds no MANAGE_THREADS
   const forum = ch.type === 15;
   if (forum && !body.thread_name) throw new HttpError(400, 220001, 'Webhooks posted to forum channels must have a thread_name or thread_id');
   if (body.thread_name != null && ch.id !== w.channel_id) throw new HttpError(400, 220002, 'Webhooks posted to forum channels cannot have both a thread_name and thread_id');
@@ -168,6 +170,8 @@ function loadWebhookMessage(ctx) {
 
 function editMessage(ctx) {
   const [, ch, m] = loadWebhookMessage(ctx);
+  requireUnarchived(ch);
+  checkThreadOpen(ch, 0n);
   const body = ctx.body ?? {};
   const content = body.content === undefined ? m.content : str(body, 'content', 0, 2000, false);
   const embeds = body.embeds === undefined ? m.embeds : JSON.stringify(richEmbeds(body.embeds));
@@ -196,6 +200,7 @@ function follow(ctx) {
   const target = loadChannel(snowflakeField(ctx.body ?? {}, 'webhook_channel_id'), ctx.user);
   if (target.type !== 0 && target.type !== 5) throw new HttpError(400, 50024, 'Cannot execute action on this channel type');
   need(target.perms, P.MANAGE_WEBHOOKS);
+  if (get('SELECT COUNT(*) AS n FROM webhooks WHERE channel_id = ?', target.id).n >= 15) throw new HttpError(400, 30007, 'Maximum number of webhooks reached (15)');
   const sg = get('SELECT * FROM guilds WHERE id = ?', src.guild_id);
   const name = `${sg.name} #${src.name}`.slice(0, 80);
   const id = snowflake();

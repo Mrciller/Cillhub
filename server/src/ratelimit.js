@@ -42,8 +42,21 @@ const buckets = new Map(); // bucket key -> { count, reset (unix ms) }
 const SCALE = Math.max(1, Number(process.env.CILLCORD_RATE_LIMIT_SCALE) || 1);
 
 const bucketId = (method, pattern) => createHash('sha256').update(`${method} ${pattern}`).digest('hex').slice(0, 16);
-// top-level resources (channel, guild, webhook) get their own buckets (docs)
-const resourceOf = (pattern, params) => (/^\/(channels|guilds)\/:id/.test(pattern) ? params.id : params.webhook_id ? `${params.webhook_id}/${params.token ?? ''}` : '');
+// top-level resources (channel, guild, webhook) get their own buckets (docs); never the webhook token, which is unchecked
+// here: a new guess must not mean a new bucket
+const resourceOf = (pattern, params) => (/^\/(channels|guilds)\/:id/.test(pattern) ? params.id : params.webhook_id ?? '');
+
+// hard cap for the in-memory maps: past max, drop stale entries, then the oldest, down to 90% (so this runs rarely)
+// shortcut: oldest by insertion, not by last use; a flood of new keys can reset someone's window early
+export function capMap(map, max, stale, onDrop) {
+  if (map.size < max) return;
+  for (const [k, v] of map) if (stale(v)) { map.delete(k); onDrop?.(k); }
+  for (const k of map.keys()) {
+    if (map.size < max * 0.9) break;
+    map.delete(k);
+    onDrop?.(k);
+  }
+}
 
 function rateLimitError(seconds, headers) {
   const e = new HttpError(429, 0, 'You are being rate limited.');
@@ -61,7 +74,7 @@ export function limit(method, pattern, params, identity, headers, policy) {
   const bucket = bucketId(method, pattern);
   const key = `${bucket}:${resourceOf(pattern, params)}:${identity}`;
   const now = Date.now();
-  if (buckets.size > 50_000) for (const [k, b] of buckets) if (b.reset <= now) buckets.delete(k);
+  capMap(buckets, 50_000, b => b.reset <= now);
   let b = buckets.get(key);
   if (!b || b.reset <= now) buckets.set(key, b = { count: 0, reset: now + windowMs });
   const after = (b.reset - now) / 1000;
@@ -102,7 +115,7 @@ export function checkLogin(keys, headers = {}) {
   }
 }
 export function loginFailed(keys) {
-  if (failures.size > 50_000) for (const k of failures.keys()) if (!recent(k).length) { failures.delete(k); cleared.delete(k); }
+  capMap(failures, 50_000, list => !list.length || Date.now() - list.at(-1) >= LOGIN_WINDOW, k => cleared.delete(k));
   const now = Date.now();
   for (const key of keys) failures.set(key, [...recent(key), now]);
   return now;

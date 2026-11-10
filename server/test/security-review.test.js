@@ -1,7 +1,8 @@
 // Exercises production handlers, migrations, the limiter and export worker without listening sockets.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
@@ -170,6 +171,27 @@ test('exports release capacity on failure, bound concurrency and clean up abando
       assert.equal(existsSync(output.dir), false);
     }
   } finally { await Promise.all(outputs.map(output => output.dispose())); }
+});
+
+test('an export keeps its slot until its download ends; archives live in the data folder, cleared at start', async () => {
+  const user = userObj(userById('103'), true);
+  const outputs = await Promise.all([exportAccount(dir, user), exportAccount(dir, user)]);
+  try {
+    assert.ok(outputs.every(o => o.dir.startsWith(join(dir, 'exports-tmp'))), 'not in the shared temp folder');
+    await assert.rejects(exportAccount(dir, user), e => e.status === 503, 'two archives wait for download');
+    const sink = new Writable({ write(_chunk, _encoding, cb) { cb(); } });
+    sink.writeHead = () => {};
+    await outputs[0].send(sink, {});
+    const third = await exportAccount(dir, user);
+    await third.dispose();
+  } finally { await Promise.all(outputs.map(output => output.dispose())); }
+  // a crash leaves an archive behind: the next start removes it
+  const stale = join(dir, 'exports-tmp', 'export-crashed');
+  mkdirSync(stale, { recursive: true });
+  writeFileSync(join(stale, 'export.json'), '{}');
+  execFileSync(process.execPath, ['--input-type=module', '-e', "await import('./src/account-export.js')"],
+    { cwd: new URL('..', import.meta.url), env: { ...process.env, DATA_DIR: dir } });
+  assert.equal(existsSync(stale), false);
 });
 
 test('passkeys require the exact configured origin, valid signatures, increasing counters and a single-use challenge', async () => {

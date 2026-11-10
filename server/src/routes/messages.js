@@ -66,7 +66,7 @@ async function create(ctx) {
   }
   const { body, files } = await readPayload(ctx);
   const d = await prepare({ ch, perms: ch.perms, userId: ctx.user.id, bot: !!ctx.user.bot }, body, files);
-  if (ch.guild_id && typeof body?.content === 'string') {
+  if (ch.guild_id && has(ch.perms, P.EMBED_LINKS) && typeof body?.content === 'string') { // a snippet posts an embed
     const mTrigger = body.content.trim().match(/^!([a-z0-9_-]{1,32})$/i);
     if (mTrigger) {
       const sn = get('SELECT * FROM guild_snippets WHERE guild_id = ? AND name = ?', ch.guild_id, mTrigger[1].toLowerCase());

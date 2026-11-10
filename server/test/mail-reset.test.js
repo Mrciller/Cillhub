@@ -336,3 +336,11 @@ test('no reset mail to an address list stored before 7.10.1', async () => {
   assert.equal((await ask('sam2@example.com')).status, 204);
   assert.ok(await mailTo('sam2@example.com'), 'a normal account still gets one');
 });
+
+test('a look-alike address does not use up the reset budget of a real one; the reply stays the same', async () => {
+  const ask = addr => api('POST', '/auth/forgot', null, { login: addr }, { 'X-Forwarded-For': '2001:db8:80::1' });
+  for (let i = 0; i < 3; i++) assert.equal((await ask('Kim@example.com')).status, 204); // Kelvin sign: lower-cases to k, but no account matches it
+  assert.equal(await mailTo('kim@example.com', 300), null);
+  assert.equal((await ask('kim@example.com')).status, 204);
+  assert.ok(await mailTo('kim@example.com'), 'the real address still gets its mail');
+});

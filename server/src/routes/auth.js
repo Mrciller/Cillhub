@@ -79,7 +79,8 @@ async function forgot(ctx) {
 }
 function sendReset(email) {
   run('DELETE FROM password_resets WHERE expires_at <= ?', Date.now());
-  try { limit('AUTH', 'forgot-email', {}, email.toLowerCase(), {}); } catch { return; } // silent: a 429 would say the address is known
+  // folded like the lookup (COLLATE NOCASE: A-Z only), so a look-alike address cannot use up the budget of a real one
+  try { limit('AUTH', 'forgot-email', {}, email.replace(/[A-Z]/g, c => c.toLowerCase()), {}); } catch { return; } // silent: a 429 would say the address is known
   const user = get(`SELECT * FROM users WHERE email = ? AND disabled = 0 AND deleted = 0 AND bot = 0 AND system = 0 AND home IS NULL`, email);
   if (!user || !plainEmail(user.email)) return; // rows from before 7.10.1 may hold an address list: no mail to those
   const token = randomBytes(32).toString('base64url');
@@ -118,10 +119,12 @@ async function login(ctx) {
   const login = str(body, 'login', 1, 254);
   const password = str(body, 'password', 1, 72, false);
   const ip = netOf(ctx.ip);
-  const keys = [`login:${login.toLowerCase()}:${ip}`, `ip:${ip}`, `acct:${login.toLowerCase()}`];
+  const user = get(`SELECT * FROM users WHERE ${login.includes('@') ? 'email' : 'username'} = ?`, login);
+  // the account key is the user id, so its name and its email share one budget; an unknown name counts the same way
+  // under its own key ('?' never starts an id), so a lockout does not tell which accounts exist
+  const keys = [`login:${login.toLowerCase()}:${ip}`, `ip:${ip}`, `acct:${user ? user.id : `?${login.toLowerCase()}`}`];
   checkLogin(keys, ctx.headers);
   const attempt = loginFailed(keys); // counted before the hash so parallel requests see each other; taken back on success
-  const user = get(`SELECT * FROM users WHERE ${login.includes('@') ? 'email' : 'username'} = ?`, login);
   if (!(await checkPassword(password, user))) throw unauthorized();
   loginSucceeded(keys, attempt);
   if (user.disabled) throw disabled();

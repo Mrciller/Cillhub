@@ -71,6 +71,7 @@ function putE2eeKeys(ctx) {
   const body = ctx.body ?? {};
   if (!body.public_key && !body.identity_key) throw invalid('public_key', 'BASE_TYPE_REQUIRED', 'E2EE public key is required.');
   const pub = typeof body.public_key === 'string' ? body.public_key : JSON.stringify(body);
+  if (pub.length > 8192) throw invalid('public_key', 'BASE_TYPE_MAX_LENGTH', 'E2EE keys must be 8192 characters or fewer.');
   const now = new Date().toISOString();
   run(`INSERT INTO user_e2ee_keys (user_id, public_key, created_at, updated_at)
        VALUES (?, ?, ?, ?)
