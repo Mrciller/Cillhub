@@ -220,7 +220,7 @@ export function DownloadPage() {
       </main>
 
       <footer className="download-footer">
-        <p>Cillhub{beta ? ' Betacord' : ''} · AGPL-3.0 · © Pascal Oraze</p>
+        <p>Cillhub · AGPL-3.0 · © Pascal Oraze</p>
       </footer>
     </div>
   )
