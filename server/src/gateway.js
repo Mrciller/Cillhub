@@ -374,6 +374,7 @@ export function attachGateway(server) {
           return refreshPresence(s.user.id);
         case 4:
           if (!s) return ws.close(4003, 'Not authenticated');
+          if (!withinBudget('voice', s.user.id)) return;
           return voiceStateUpdate(s, msg.d);
         case 8:
           if (!s) return ws.close(4003, 'Not authenticated');
