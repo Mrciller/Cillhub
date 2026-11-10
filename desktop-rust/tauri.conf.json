@@ -18,7 +18,7 @@
     "active": true,
     "targets": ["appimage", "deb", "nsis"],
     "publisher": "Pascal Oraze",
-    "homepage": "https://github.com/Mrciller/cillhub",
+    "homepage": "https://github.com/TCCiller/Cillhub",
     "license": "AGPL-3.0-only",
     "category": "SocialNetworking",
     "shortDescription": "Cillhub chat desktop client",

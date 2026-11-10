@@ -67,14 +67,14 @@ Anyone can run a Cillhub server (a **node**) on their own infrastructure in minu
 
 ## 📚 Documentation & Wiki
 
-For detailed setup guides, tutorials, and architecture deep dives, visit our **[GitHub Wiki](https://github.com/Mrciller/Cillhub/wiki)**:
-* 🚀 **[Self-Hosting Guide](https://github.com/Mrciller/Cillhub/wiki/Self-Hosting-Guide)** — Installing and running your own node with Docker Compose & Caddy.
-* 🎙️ **[Voice & Media Setup](https://github.com/Mrciller/Cillhub/wiki/Voice-&-Media-Setup)** — Configuring the built-in `cillvoice` SFU vs. LiveKit and NAT traversal.
-* 🔗 **[Federation & Linked Mode](https://github.com/Mrciller/Cillhub/wiki/Federation-&-Linked-Mode)** — Linking your node to the hub, identity exchange, and directory listing.
-* 🖥️ **[Desktop App Setup](https://github.com/Mrciller/Cillhub/wiki/Desktop-App)** — Native Rust client features, audio DSP, and gaming presence.
-* 📱 **[Android App Setup](https://github.com/Mrciller/Cillhub/wiki/Android-App)** — Building and configuring the native Android mobile app.
-* 🧩 **[Module Development](https://github.com/Mrciller/Cillhub/wiki/Module-Development)** — Building custom server bots and UI extensions with the Module SDK.
-* 🔧 **[Troubleshooting & FAQ](https://github.com/Mrciller/Cillhub/wiki/Troubleshooting-&-FAQ)** — Common questions, SSL issues, and maintenance.
+For detailed setup guides, tutorials, and architecture deep dives, visit our **[GitHub Wiki](https://github.com/TCCiller/Cillhub/wiki)**:
+* 🚀 **[Self-Hosting Guide](https://github.com/TCCiller/Cillhub/wiki/Self-Hosting-Guide)** — Installing and running your own node with Docker Compose & Caddy.
+* 🎙️ **[Voice & Media Setup](https://github.com/TCCiller/Cillhub/wiki/Voice-&-Media-Setup)** — Configuring the built-in `cillvoice` SFU vs. LiveKit and NAT traversal.
+* 🔗 **[Federation & Linked Mode](https://github.com/TCCiller/Cillhub/wiki/Federation-&-Linked-Mode)** — Linking your node to the hub, identity exchange, and directory listing.
+* 🖥️ **[Desktop App Setup](https://github.com/TCCiller/Cillhub/wiki/Desktop-App)** — Native Rust client features, audio DSP, and gaming presence.
+* 📱 **[Android App Setup](https://github.com/TCCiller/Cillhub/wiki/Android-App)** — Building and configuring the native Android mobile app.
+* 🧩 **[Module Development](https://github.com/TCCiller/Cillhub/wiki/Module-Development)** — Building custom server bots and UI extensions with the Module SDK.
+* 🔧 **[Troubleshooting & FAQ](https://github.com/TCCiller/Cillhub/wiki/Troubleshooting-&-FAQ)** — Common questions, SSL issues, and maintenance.
 
 ---
 
@@ -84,7 +84,7 @@ You need a Linux machine with Docker (Compose v2), a domain pointing at it, port
 
 ```sh
 # 1. the release key from this repository, the installer and its signed checksum list (https only)
-curl -fsSL --proto '=https' -o release-public-key.pem https://raw.githubusercontent.com/Mrciller/Cillhub/main/selfhost/release-public-key.pem
+curl -fsSL --proto '=https' -o release-public-key.pem https://raw.githubusercontent.com/TCCiller/Cillhub/main/selfhost/release-public-key.pem
 for f in install.sh SHA256SUMS SHA256SUMS.sig; do curl -fsSLO --proto '=https' "https://cillhub.cillerian.org/download/server/$f"; done
 # 2. run nothing unless the signature and the installer's checksum are good
 openssl pkeyutl -verify -rawin -pubin -inkey release-public-key.pem -in SHA256SUMS -sigfile SHA256SUMS.sig \

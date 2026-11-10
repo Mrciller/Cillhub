@@ -445,5 +445,5 @@ private fun AboutSettings() {
     Section(R.string.licenses)
     Text(s(R.string.licenses_text), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
     ListItem(headlineContent = { Text(s(R.string.source_code)) }, leadingContent = { Ic(R.drawable.ms_open_in_new, null) }, colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier.clickable { openUrl(ctx, "https://github.com/Mrciller/cillhub") })
+        modifier = Modifier.clickable { openUrl(ctx, "https://github.com/TCCiller/Cillhub") })
 }

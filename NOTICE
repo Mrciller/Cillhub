@@ -6,7 +6,7 @@ Public License as published by the Free Software Foundation, version 3. This pro
 will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE. See the LICENSE file for details.
 
-Source code: https://github.com/Mrciller/cillhub
+Source code: https://github.com/TCCiller/Cillhub
 
 Third-party components keep their own licenses (see each package's license in node_modules or the Gradle
 dependencies), among them: ws (MIT), web-push (MPL-2.0), React (MIT), livekit-client (Apache-2.0), Electron and
