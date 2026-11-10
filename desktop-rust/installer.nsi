@@ -1,24 +1,24 @@
 !include "MUI2.nsh"
 
 Name "Cillhub"
-OutFile "target/x86_64-pc-windows-msvc/release/Cillhub-Rust-Setup-2.2.1.exe"
+OutFile "target/x86_64-pc-windows-msvc/release/Cillhub-Rust-Setup-2.2.2.exe"
 Unicode True
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 !define PRODUCT_NAME "Cillhub"
-!define PRODUCT_VERSION "2.2.1"
+!define PRODUCT_VERSION "2.2.2"
 !define PRODUCT_PUBLISHER "Cillhub Contributors"
 !define PRODUCT_WEB_SITE "https://cillhub.cillerian.org"
 !define PRODUCT_EXE "Cillhub.exe"
 !define PRODUCT_APP_ID "io.github.mrciller.cillhub"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Cillhub"
 
-VIProductVersion "2.2.1.0"
+VIProductVersion "2.2.2.0"
 VIAddVersionKey "ProductName" "Cillhub"
 VIAddVersionKey "FileDescription" "Cillhub Setup"
-VIAddVersionKey "FileVersion" "2.2.1.0"
-VIAddVersionKey "ProductVersion" "2.2.1.0"
+VIAddVersionKey "FileVersion" "2.2.2.0"
+VIAddVersionKey "ProductVersion" "2.2.2.0"
 VIAddVersionKey "CompanyName" "Cillhub"
 VIAddVersionKey "LegalCopyright" "Cillhub Contributors"
 

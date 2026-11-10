@@ -1,6 +1,6 @@
 [package]
 name = "cillhub-desktop"
-version = "2.2.1"
+version = "2.2.2"
 edition = "2021"
 authors = ["Pascal Oraze", "Cillhub Contributors"]
 description = "Fast, lightweight native desktop client & audio DSP engine for Cillhub"

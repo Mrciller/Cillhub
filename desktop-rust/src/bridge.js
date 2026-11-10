@@ -43,7 +43,7 @@ if (location.protocol === 'app:') {
     writable: false,
     value: Object.freeze({
       platform: window.__CILLHUB_PLATFORM__ || 'linux',
-      version: window.__CILLHUB_VERSION__ || '2.2.1',
+      version: window.__CILLHUB_VERSION__ || '2.2.2',
       bundled: true,
       hwEncode: true,
       onUpdateStatus: (cb) => withCurrent('update-status', cb),

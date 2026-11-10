@@ -26,7 +26,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.iter().any(|a| a == "--version" || a == "-v") {
-        println!("Cillhub Desktop 2.2.1 (Rust native core, id: {})", APP_ID);
+        println!("Cillhub Desktop 2.2.2 (Rust native core, id: {})", APP_ID);
         return;
     }
 
@@ -140,19 +140,30 @@ fn run_tauri_gui(settings: SettingsManager) {
         }
     });
 
-    let hub = url::Url::parse(&settings.get().hub_url).ok();
+    let hub = url::Url::parse(&settings.get().hub_url).ok().filter(|h| h.scheme() == "https");
     let context = tauri::generate_context!();
+    // The bundled app: tauri://localhost, or http(s)://tauri.localhost on Windows.
+    fn is_app(u: &url::Url) -> bool {
+        (u.scheme() == "tauri" && u.host_str() == Some("localhost")) || u.host_str() == Some("tauri.localhost")
+    }
+    // Navigation guard: only the app, the configured (https) hub, and the embed hosts the CSP frames (in case the
+    // platform also asks for iframes) may load; any other page is refused.
+    let nav_guard = tauri::plugin::Builder::<tauri::Wry>::new("nav-guard")
+        .on_navigation(move |_webview, u| {
+            is_app(u)
+                || hub.as_ref().map_or(false, |h| h.origin() == u.origin())
+                || matches!(u.host_str(), Some("www.youtube-nocookie.com" | "www.youtube.com"))
+                || u.as_str() == "about:blank"
+        })
+        .build();
     let res = tauri::Builder::default()
-        // Only the bundled app (tauri://localhost, or http(s)://tauri.localhost on Windows) and the configured hub get
-        // the permissions the client needs; any other page and any other permission is denied.
+        .plugin(nav_guard)
+        // Only the bundled app gets the permissions the client needs (hub pages shown here are sign-in pages and need
+        // none); any other page and any other permission is denied.
         .on_permission_request(move |webview, kind| {
             use tauri::webview::{PermissionKind as K, PermissionResponse as R};
-            let trusted = webview.url().map_or(false, |u| {
-                (u.scheme() == "tauri" && u.host_str() == Some("localhost"))
-                    || u.host_str() == Some("tauri.localhost")
-                    || hub.as_ref().map_or(false, |h| h.origin() == u.origin())
-            });
-            let needed = matches!(kind, K::Microphone | K::Camera | K::Notifications | K::DisplayCapture | K::ClipboardRead);
+            let trusted = webview.url().map_or(false, |u| is_app(&u));
+            let needed = matches!(kind, K::Microphone | K::Camera | K::Notifications | K::DisplayCapture);
             if trusted && needed { R::Allow } else { R::Deny }
         })
         .setup(|_app| {
