@@ -64,6 +64,9 @@ test('calendar feed: no events of channels the member cannot see', async () => {
   assert.ok(samFeed.includes('SUMMARY:Game night'));
   assert.ok(!samFeed.includes('Staff meeting'), 'hidden channel event left out');
   assert.ok((await feed(alex)).includes('SUMMARY:Staff meeting'), 'shown to who can see the channel');
+  const samUrl = (await api('GET', '/users/@me/calendar-feed', sam.token)).body.url;
+  dbRun('UPDATE users SET disabled = 1 WHERE id = ?', sam.id);
+  assert.equal((await fetch(samUrl)).status, 404, 'a disabled account has no feed');
 });
 
 test('invite codes: generated ones always carry a capital, custom names cannot take an old invite link', async () => {

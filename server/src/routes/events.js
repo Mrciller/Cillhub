@@ -222,7 +222,7 @@ function toIcsDate(iso) {
 
 function renderIcsFeed(ctx) {
   const token = ctx.params.token;
-  const user = get('SELECT * FROM users WHERE calendar_token = ?', token);
+  const user = get('SELECT * FROM users WHERE calendar_token = ? AND disabled = 0 AND deleted = 0', token);
   if (!user) throw notFound(10013, 'Calendar feed not found.');
 
   const guilds = all('SELECT guild_id FROM members WHERE user_id = ?', user.id).map(r => r.guild_id);

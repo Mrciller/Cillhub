@@ -22,9 +22,10 @@ export function str(body, field, min, max, trim = true) {
 }
 
 // one plain address: no list separators, quotes, brackets, whitespace or control characters a mailer could split on
+export const plainEmail = v => /^[^@\s,;<>"()\x00-\x1f\x7f-\x9f]+@[^@\s,;<>"()\x00-\x1f\x7f-\x9f]+$/.test(v);
 export function emailField(body, field = 'email') {
   const v = str(body, field, 3, 254);
-  if (!/^[^@\s,;<>"()\x00-\x1f\x7f-\x9f]+@[^@\s,;<>"()\x00-\x1f\x7f-\x9f]+$/.test(v)) throw invalid(field, 'EMAIL_TYPE_INVALID_EMAIL', 'Not a well formed email address.');
+  if (!plainEmail(v)) throw invalid(field, 'EMAIL_TYPE_INVALID_EMAIL', 'Not a well formed email address.');
   return v;
 }
 

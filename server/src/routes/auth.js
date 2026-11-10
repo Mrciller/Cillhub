@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { snowflake } from '../snowflake.js';
 import { get, all, run } from '../db.js';
 import { hashPassword, checkPassword, issueToken, revokeToken, tokenHash, sessionIdHash } from '../auth.js';
-import { HttpError, str, invalid, unauthorized, emailField } from '../errors.js';
+import { HttpError, str, invalid, unauthorized, emailField, plainEmail } from '../errors.js';
 import { closeTokenSessions } from '../gateway.js';
 import { checkLogin, loginFailed, loginSucceeded, limit, netOf } from '../ratelimit.js';
 import { newTicket, redeemTicket, requireMfa, elevate } from '../mfa.js';
@@ -81,7 +81,7 @@ function sendReset(email) {
   run('DELETE FROM password_resets WHERE expires_at <= ?', Date.now());
   try { limit('AUTH', 'forgot-email', {}, email.toLowerCase(), {}); } catch { return; } // silent: a 429 would say the address is known
   const user = get(`SELECT * FROM users WHERE email = ? AND disabled = 0 AND deleted = 0 AND bot = 0 AND system = 0 AND home IS NULL`, email);
-  if (!user) return;
+  if (!user || !plainEmail(user.email)) return; // rows from before 7.10.1 may hold an address list: no mail to those
   const token = randomBytes(32).toString('base64url');
   run('DELETE FROM password_resets WHERE user_id = ?', user.id);
   run('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)', resetHash(token), user.id, Date.now() + RESET_MS);

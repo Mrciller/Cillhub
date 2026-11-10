@@ -79,6 +79,7 @@ let srv, api, root;
 let forgotCalls = 0; // every counted POST /auth/forgot from 127.0.0.1 (10 per hour)
 const forgot = (login, extra = {}) => (forgotCalls++, api('POST', '/auth/forgot', null, { login, ...extra }));
 const reg = (name, extra = {}) => api('POST', '/auth/register', null, { email: `${name}@example.com`, username: name, password: 'hunter2hunter2', ...extra });
+const dbGet = sql => { const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sqlite')); try { return db.prepare(sql).get(); } finally { db.close(); } };
 const dbRun = (sql, ...args) => { const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sqlite')); try { return db.prepare(sql).run(...args); } finally { db.close(); } };
 
 before(async () => {
@@ -315,4 +316,14 @@ test('forgot answers before any lookup or write: same reply and speed for every 
   assert.equal(await mailTo('robin@example.com', 300), null, 'the failed background work sent nothing');
   assert.equal((await api('POST', '/auth/forgot', null, { login: 'robin@example.com' }, { 'X-Forwarded-For': '2001:db8:78::1' })).status, 204);
   assert.ok(await mailTo('robin@example.com'), 'mail once the database is free');
+});
+
+test('no reset mail to an address list stored before 7.10.1', async () => {
+  dbRun("INSERT INTO users (id, email, username, password_hash, salt) VALUES ('900000000000000001', 'kim@x.test,1', 'kim-old', 'x', 'x')");
+  const ask = addr => api('POST', '/auth/forgot', null, { login: addr }, { 'X-Forwarded-For': '2001:db8:79::1' });
+  assert.equal((await ask('kim@x.test,1')).status, 204);
+  assert.equal(await mailTo('kim@x.test', 500), null, 'nothing sent');
+  assert.equal(dbGet("SELECT COUNT(*) AS n FROM password_resets WHERE user_id = '900000000000000001'").n, 0, 'no reset row');
+  assert.equal((await ask('sam2@example.com')).status, 204);
+  assert.ok(await mailTo('sam2@example.com'), 'a normal account still gets one');
 });

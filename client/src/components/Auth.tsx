@@ -88,11 +88,12 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
   const finish = (r: LoginAnswer) => (r.required_actions?.includes('update_password') ? (setRenew(r.token), setBusy(false)) : done(r.token))
   const fail = (err: unknown) => (setError(err instanceof ApiError ? err : new ApiError(0, null)), setBusy(false), setCaptchaKey(''), setCaptchaRound((n) => n + 1))
   const sitekey = instance?.captcha?.sitekey
-  // the desktop app runs bundled pages that Google's widget refuses: the instance's own page in the browser does it
+  // Google's widget works only on the server's own page: the desktop app (bundled pages) and another server's page
+  // (Private Node) hand off to that page in the browser
   const inDesktop = window.location.protocol === 'app:' || 'cillcordDesktop' in window
-  const captcha = sitekey && (inDesktop ? (
+  const captcha = sitekey && (inDesktop || apiOrigin() !== location.origin ? (
     <div className="field">
-      <p className="hint small">{t('This server asks for a captcha, which works only in the browser.')}</p>
+      <p className="hint small">{t("This server asks for a captcha, which works only on the server's own page in the browser.")}</p>
       <button type="button" className="secondary wide" onClick={() => window.open(`${apiOrigin()}/${login ? 'login' : 'register'}`, '_blank')}>{t('Continue in the browser')}</button>
     </div>
   ) : <Captcha key={captchaRound} sitekey={sitekey} onToken={setCaptchaKey} />)

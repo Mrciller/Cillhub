@@ -453,12 +453,29 @@ async function run(browser, errors) {
   await dp.route('**/api/v9/**', (r) => new URL(r.request().url()).pathname === '/api/v9/instance' ? r.fulfill({ json: instance }) : r.abort())
   const loadsBefore = captchaLoads
   await dp.goto(`${h.ORIGIN}/register`)
-  await dp.getByText('This server asks for a captcha, which works only in the browser.').waitFor()
+  await dp.getByText("This server asks for a captcha, which works only on the server's own page in the browser.").waitFor()
   await dp.getByRole('button', { name: 'Continue in the browser' }).click()
   assert.deepEqual(await dp.evaluate(() => window.__opened), [`${h.ORIGIN}/register`])
   assert.equal(captchaLoads, loadsBefore, 'no widget script in the desktop app')
   await dc.close()
-  console.log('ok v6-admin 16 - forgot password (neutral answer), reset page (mismatch, invalid link, success), captcha token on register and forgot, browser hand-off in the desktop app')
+
+  // a browser page talking to another server (Private Node): that server's key works only on its own page
+  const oc = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' })
+  await oc.addInitScript(() => {
+    localStorage.setItem('cillhub_server_target', 'private'); localStorage.setItem('cillhub_custom_node_url', 'http://localhost:3399')
+    window.__opened = []; window.open = (u) => (window.__opened.push(u), null)
+  })
+  const op = await oc.newPage()
+  op.on('pageerror', (e) => errors.push(e.message))
+  await op.route('https://www.google.com/recaptcha/api.js*', (r) => (captchaLoads++, r.abort()))
+  await op.route('**/api/v9/**', (r) => new URL(r.request().url()).pathname === '/api/v9/instance' ? r.fulfill({ json: instance, headers: { 'Access-Control-Allow-Origin': '*' } }) : r.abort())
+  await op.goto(`${h.ORIGIN}/register`)
+  await op.getByText("This server asks for a captcha, which works only on the server's own page in the browser.").waitFor()
+  await op.getByRole('button', { name: 'Continue in the browser' }).click()
+  assert.deepEqual(await op.evaluate(() => window.__opened), ['http://localhost:3399/register'])
+  assert.equal(captchaLoads, loadsBefore, 'no widget script on another server\'s page')
+  await oc.close()
+  console.log('ok v6-admin 16 - forgot password (neutral answer), reset page (mismatch, invalid link, success), captcha token on register and forgot, browser hand-off in the desktop app and on another server\'s page')
 }
 
 module.exports = { run }
