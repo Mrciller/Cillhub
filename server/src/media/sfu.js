@@ -21,6 +21,8 @@ const DEFAULT_BUDGET = 2_500_000; // bit/s per subscriber until its first REMB a
 const rand32 = () => randomInt(1, 2 ** 32 - 1);
 const now = () => performance.now();
 
+const MAX_SSRCS = 32; // per participant: 4 sources x 3 simulcast layers x RTX fits
+
 class Meter { // bytes over a sliding 2 s window, in 250 ms buckets
   constructor() { this.buckets = new Float64Array(8); this.at = 0; }
   roll(t) {
@@ -305,8 +307,10 @@ class Participant {
     let m = this.ssrcMap.get(p.ssrc);
     if (!m) {
       const mid = p.ext.get(this.extIds.mid)?.toString();
-      if (!mid || !this.published.has(mid)) return;
-      m = { mid, rid: p.ext.get(this.extIds.rid)?.toString() ?? '' };
+      const rid = p.ext.get(this.extIds.rid)?.toString() ?? '';
+      // only negotiated rids, and a bounded number of streams: each one allocates a layer (review M-3)
+      if (!mid || !this.published.has(mid) || (rid && !this.published.get(mid).rids.includes(rid)) || this.ssrcMap.size >= MAX_SSRCS) return;
+      m = { mid, rid };
       this.ssrcMap.set(p.ssrc, m);
     }
     const tw = this.extIds.twcc && p.ext.get(this.extIds.twcc);

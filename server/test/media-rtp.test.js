@@ -366,3 +366,20 @@ test('speaking: someone who joins while others speak is told at once', async () 
     room.close();
   }
 });
+
+test('a publisher cannot grow the SSRC map: unknown rids are dropped, at most 32 streams (review M-3)', async () => {
+  const { Room } = await import('../src/media/sfu.js');
+  const room = new Room('r', { sock: {}, dispatch() {} });
+  try {
+    const p = room.join('u', {}, ['camera']);
+    p.extIds = { mid: 1, rid: 2 };
+    p.published.set('0', { rids: ['q', 'h', 'f'], onPacket() {}, downstreams: new Set() });
+    const rtp = (ssrc, rid) => buildRtp({ pt: 96, seq: 1, ts: 0, ssrc }, [[1, Buffer.from('0')], [2, Buffer.from(rid)]], Buffer.alloc(10));
+    p.onRtp(rtp(1, 'zz'));
+    assert.equal(p.ssrcMap.size, 0, 'rid not negotiated');
+    for (let i = 0; i < 100; i++) p.onRtp(rtp(100 + i, 'h'));
+    assert.equal(p.ssrcMap.size, 32);
+  } finally {
+    room.close();
+  }
+});
