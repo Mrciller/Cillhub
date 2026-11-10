@@ -62,12 +62,10 @@ async function login(ctx) {
   const ip = ctx.ip.includes(':') && !ctx.ip.startsWith('::ffff:') ? ctx.ip.split(':').slice(0, 4).join(':') : ctx.ip;
   const keys = [`login:${login.toLowerCase()}:${ip}`, `ip:${ip}`, `acct:${login.toLowerCase()}`];
   checkLogin(keys, ctx.headers);
+  const attempt = loginFailed(keys); // counted before the hash so parallel requests see each other; taken back on success
   const user = get(`SELECT * FROM users WHERE ${login.includes('@') ? 'email' : 'username'} = ?`, login);
-  if (!(await checkPassword(password, user))) {
-    loginFailed(keys);
-    throw unauthorized();
-  }
-  loginSucceeded(keys);
+  if (!(await checkPassword(password, user))) throw unauthorized();
+  loginSucceeded(keys, attempt);
   if (user.disabled) throw disabled();
   if (!localLoginOpen() && !user.instance_admin) throw hubOnlyLogin(); // admins keep local sign-in, so they cannot lock themselves out
   if (user.mfa_secret) {

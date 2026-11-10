@@ -1,7 +1,7 @@
 import { randomBytes, scrypt, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { get, run } from './db.js';
-import { checkLogin, loginFailed } from './ratelimit.js';
+import { checkLogin, loginFailed, loginSucceeded } from './ratelimit.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -20,9 +20,10 @@ export async function checkPassword(password, user) {
 export async function confirmPassword(password, user, headers) {
   const keys = [`pw:${user.id}`];
   checkLogin(keys, headers);
-  if (await checkPassword(password, user)) return true;
-  loginFailed(keys);
-  return false;
+  const attempt = loginFailed(keys); // counted before the hash, like login
+  if (!(await checkPassword(password, user))) return false;
+  loginSucceeded(keys, attempt);
+  return true;
 }
 
 export const tokenHash = token => createHash('sha256').update(token).digest('hex');

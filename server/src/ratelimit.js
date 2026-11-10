@@ -82,9 +82,17 @@ export function checkLogin(keys, headers = {}) {
 }
 export function loginFailed(keys) {
   if (failures.size > 50_000) for (const k of failures.keys()) if (!recent(k).length) { failures.delete(k); cleared.delete(k); }
-  for (const key of keys) failures.set(key, [...recent(key), Date.now()]);
+  const now = Date.now();
+  for (const key of keys) failures.set(key, [...recent(key), now]);
+  return now;
 }
-// a correct password ends the run of failures for the delay; the 10/100 lockout counts are kept
-export function loginSucceeded(keys) {
-  for (const key of keys) if (key.startsWith('login:') && failures.has(key)) cleared.set(key, Date.now());
+// a correct password takes back the attempt counted before the hash (`stamp` from loginFailed) and ends the run of
+// failures for the delay; the 10/100 lockout counts are kept
+export function loginSucceeded(keys, stamp) {
+  for (const key of keys) {
+    const list = failures.get(key);
+    const i = list ? list.lastIndexOf(stamp) : -1;
+    if (i >= 0) list.splice(i, 1);
+    if (key.startsWith('login:') && list?.length) cleared.set(key, Date.now());
+  }
 }

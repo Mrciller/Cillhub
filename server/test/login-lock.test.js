@@ -36,3 +36,17 @@ test('login delay: a correct password ends the run, the lockout count stays', ()
   for (let i = 0; i < 5; i++) loginFailed([pair]);
   assert.throws(() => checkLogin([pair]), e => e.body.retry_after > 60, 'the 10-per-pair lockout still counts every failure');
 });
+
+test('login lock: a parallel burst of wrong passwords from one IP gets no more than 10 tries', async () => {
+  const { startServer } = await import('./helpers.js');
+  const srv = await startServer();
+  try {
+    await srv.register('taylor');
+    const res = await Promise.all(Array.from({ length: 40 }, () => srv.api('POST', '/auth/login', null, { login: 'taylor', password: 'wrong password' })));
+    const tried = res.filter(r => r.status === 401).length;
+    assert.ok(tried <= 10, `${tried} guesses got through`);
+    assert.equal(tried + res.filter(r => r.status === 429).length, 40);
+  } finally {
+    await srv.stop();
+  }
+});
