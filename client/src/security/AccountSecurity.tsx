@@ -208,7 +208,7 @@ function PasskeyManager({ mfa }: { mfa: boolean }) {
           user: { ...opts.user, id: userBytes },
           pubKeyCredParams: opts.pubKeyCredParams,
           timeout: opts.timeout,
-          authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
+          authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
         },
       })) as PublicKeyCredential | null
 
