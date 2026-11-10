@@ -5,6 +5,8 @@ on:
   push:
     branches: [ci-desktop-smoke]
   workflow_dispatch:
+permissions:
+  contents: read
 env:
   BASE: https://cillhub.cillerian.org/download/desktop
   SETUP: Cillhub-Setup-3.0.1.exe
