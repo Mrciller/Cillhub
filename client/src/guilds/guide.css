@@ -76,7 +76,7 @@
   gap: 16px;
   background: var(--bg-secondary, #2b2d31);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 12px;
+  border-radius: var(--radius-l);
   padding: 20px;
   align-items: flex-start;
 }
@@ -133,14 +133,14 @@
   width: 160px;
   height: 8px;
   background: var(--bg-tertiary, #111214);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   overflow: hidden;
 }
 
 .guide-progress-bar-fill {
   height: 100%;
   background: var(--green, #23a55a);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   transition: width 0.25s ease;
 }
 
@@ -159,7 +159,7 @@
   gap: 14px;
   background: var(--bg-secondary, #2b2d31);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 8px;
+  border-radius: var(--radius-m);
   padding: 14px 16px;
   transition: background 0.15s, border-color 0.15s;
 }
@@ -188,7 +188,7 @@
 .guide-custom-checkbox {
   width: 22px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: var(--radius-s);
   border: 2px solid var(--text-muted, #949ba4);
   display: flex;
   align-items: center;
@@ -236,7 +236,7 @@
 .guide-resource-card {
   background: var(--bg-secondary, #2b2d31);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 10px;
+  border-radius: var(--radius-m);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -258,7 +258,7 @@
 .guide-resource-icon {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--radius-m);
   background: rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;

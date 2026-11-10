@@ -1,5 +1,5 @@
 /* v7: linked instances (node marker in the rail, status line, directory and setup share these tokens) */
-.node-marker { position: absolute; left: 8px; bottom: -2px; width: 18px; height: 18px; border-radius: 6px; border: 3px solid var(--rail); box-sizing: content-box;
+.node-marker { position: absolute; left: 8px; bottom: -2px; width: 18px; height: 18px; border-radius: var(--radius-s); border: 3px solid var(--rail); box-sizing: content-box;
   display: grid; place-items: center; background: var(--interactive); color: var(--rail); font-size: 10px; font-weight: 700; line-height: 1; pointer-events: none; }
 .node-marker.ready { background: var(--online); color: #fff; }
 .node-marker.offline, .node-marker.connecting { background: var(--idle); color: #000; }

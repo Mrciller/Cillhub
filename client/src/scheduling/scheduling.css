@@ -3,7 +3,7 @@
 .schedule-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); font-size: 14px; }
 .schedule-icon { color: var(--muted); flex: none; margin-top: 4px; }
 .reminder-due { box-shadow: inset 3px 0 0 var(--idle); }
-.reminder-badge { display: inline-block; padding: 0 6px; border-radius: 8px; background: var(--idle); color: #000; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.reminder-badge { display: inline-block; padding: 0 6px; border-radius: var(--radius-m); background: var(--idle); color: #000; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .inbox-head .tabs { flex-wrap: wrap; }
 .schedule-edit { display: grid; gap: 6px; }
 .schedule-edit .textarea { min-height: 60px; }

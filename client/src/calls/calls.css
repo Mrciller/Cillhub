@@ -45,7 +45,7 @@
 .join-call:hover:not(:disabled) { background: #1a8a4a; }
 
 /* Incoming call: a ringing card in the corner. */
-.incoming-call { position: fixed; z-index: 30; right: 24px; bottom: 24px; width: 240px; display: grid; justify-items: center; align-items: center; gap: 8px; padding: 20px 16px; border-radius: 12px;
+.incoming-call { position: fixed; z-index: 30; right: 24px; bottom: 24px; width: 240px; display: grid; justify-items: center; align-items: center; gap: 8px; padding: 20px 16px; border-radius: var(--radius-l);
   background: var(--menu); color: var(--text); box-shadow: 0 8px 24px rgb(0 0 0 / .4); text-align: center; animation: call-in .2s ease-out; }
 .incoming-call h2 { max-width: 100%; color: var(--header); font-size: 18px; text-align: center; }
 .incoming-avatar .avatar { animation: call-pulse 1.4s ease-in-out infinite; margin: 0 auto; }

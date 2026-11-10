@@ -25,7 +25,7 @@
   gap: 8px;
   background: var(--bg-secondary, #2b2d31);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 8px;
+  border-radius: var(--radius-m);
   padding: 12px 8px;
   cursor: pointer;
   color: var(--text-normal, #dbdee1);
@@ -41,7 +41,7 @@
 .service-icon-box {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--radius-m);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -77,7 +77,7 @@
   justify-content: space-between;
   background: var(--bg-secondary, #2b2d31);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 8px;
+  border-radius: var(--radius-m);
   padding: 12px 16px;
   gap: 12px;
 }
@@ -168,7 +168,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-m);
   color: #fff;
   margin-bottom: 4px;
 }
@@ -182,7 +182,7 @@
 .handle-input {
   background: var(--bg-tertiary, #1e1f22);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
-  border-radius: 6px;
+  border-radius: var(--radius-s);
   padding: 8px 12px;
   color: #fff;
   font-size: 14px;

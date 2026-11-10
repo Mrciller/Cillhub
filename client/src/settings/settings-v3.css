@@ -19,7 +19,7 @@
 .small-check { display: flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap; }
 .vanity-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .vanity-row .input { flex: 1; min-width: 160px; }
-.vanity-link { padding: 8px 10px; border-radius: 4px; background: var(--rail); word-break: break-all; }
+.vanity-link { padding: 8px 10px; border-radius: var(--radius-s); background: var(--rail); word-break: break-all; }
 
 /* Expressions */
 .expr-list { margin-top: 8px; }
@@ -33,14 +33,14 @@
 .expr-form .field { margin-bottom: 0; }
 .expr-form .file-btn, .expr-form .primary { margin-bottom: 1px; }
 .sticker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 8px; }
-.sticker-card { display: grid; justify-items: center; gap: 4px; padding: 12px; border-radius: 8px; background: var(--sidebar); position: relative; text-align: center; }
+.sticker-card { display: grid; justify-items: center; gap: 4px; padding: 12px; border-radius: var(--radius-m); background: var(--sidebar); position: relative; text-align: center; }
 .sticker-card img { width: 96px; height: 96px; object-fit: contain; }
 .sticker-card .icon-btn { position: absolute; top: 4px; right: 4px; }
 
 /* Audit log */
 .audit-filters .field { margin-bottom: 12px; }
 .audit-list { display: grid; gap: 8px; margin: 8px 0 16px; }
-.audit-entry { border-radius: 8px; background: var(--sidebar); border: 1px solid var(--rail); }
+.audit-entry { border-radius: var(--radius-m); background: var(--sidebar); border: 1px solid var(--rail); }
 .audit-head { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; text-align: left; }
 .audit-text { flex: 1; min-width: 0; display: grid; gap: 2px; font-size: 14px; }
 .audit-text strong { color: var(--header); font-weight: 600; }
@@ -55,7 +55,7 @@
 
 /* AutoMod */
 .automod-list { display: grid; gap: 8px; margin-top: 16px; }
-.automod-card { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px; background: var(--sidebar); }
+.automod-card { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--radius-m); background: var(--sidebar); }
 .automod-text { flex: 1; min-width: 0; display: grid; }
 .am-exempt { margin: 16px 0; }
 .am-exempt summary { cursor: pointer; color: var(--header); font-weight: 500; margin-bottom: 8px; }
@@ -64,7 +64,7 @@
 
 /* Webhooks */
 .webhook-list { display: grid; gap: 8px; margin-top: 16px; }
-.webhook { border-radius: 8px; background: var(--sidebar); }
+.webhook { border-radius: var(--radius-m); background: var(--sidebar); }
 .webhook-head { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; text-align: left; flex-wrap: wrap; }
 .webhook-head .hint { flex: 1; }
 .webhook-avatar { background: var(--accent); }
@@ -82,12 +82,12 @@
 .welcome-icon { margin-bottom: 12px; overflow: hidden; }
 .welcome-desc { color: var(--interactive); margin-bottom: 12px; }
 .welcome-channels { display: grid; gap: 8px; }
-.welcome-channel { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 8px; background: var(--sidebar); text-align: left; }
+.welcome-channel { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: var(--radius-m); background: var(--sidebar); text-align: left; }
 .welcome-channel:hover { background: var(--hover); }
 .welcome-emoji { width: 32px; height: 32px; display: grid; place-items: center; font-size: 22px; flex: none; }
 .welcome-emoji .emoji { width: 28px; height: 28px; }
 .welcome-text { display: grid; color: var(--header); font-weight: 500; }
 .rules-desc { margin: 8px 0; }
 .rules-list { list-style: decimal; padding-left: 24px; margin: 12px 0; display: grid; gap: 8px; }
-.rules-list li { padding: 8px 12px; border-radius: 4px; background: var(--sidebar); }
+.rules-list li { padding: 8px 12px; border-radius: var(--radius-s); background: var(--sidebar); }
 .agree { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-weight: 500; }

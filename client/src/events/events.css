@@ -1,6 +1,6 @@
 .events-entry { flex: none; padding: 8px 8px 0; }
 .events-row { color: var(--muted); }
-.event-banner { display: flex; align-items: center; gap: 8px; margin: 4px 0; padding: 8px; border-radius: 6px; background: var(--rail); font-size: 14px; color: var(--header); }
+.event-banner { display: flex; align-items: center; gap: 8px; margin: 4px 0; padding: 8px; border-radius: var(--radius-s); background: var(--rail); font-size: 14px; color: var(--header); }
 .event-banner.live { box-shadow: inset 2px 0 0 var(--online); }
 .event-banner.due { box-shadow: inset 2px 0 0 var(--idle); }
 .event-banner .ellipsis { flex: 1; }
@@ -9,9 +9,9 @@
 .events-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .events-list { display: grid; gap: 12px; }
 .events-empty { padding: 24px 0; text-align: center; }
-.event-card { display: grid; gap: 6px; padding: 16px; border-radius: 8px; background: var(--sidebar); }
+.event-card { display: grid; gap: 6px; padding: 16px; border-radius: var(--radius-m); background: var(--sidebar); }
 .event-card.live { box-shadow: inset 0 0 0 1px var(--online); }
-.event-cover { width: 100%; max-height: 180px; object-fit: cover; border-radius: 6px; }
+.event-cover { width: 100%; max-height: 180px; object-fit: cover; border-radius: var(--radius-s); }
 .event-when { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 600; }
 .event-when.live { color: var(--online); }
 .event-name { color: var(--header); font-size: 18px; margin: 0 !important; }

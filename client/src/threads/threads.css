@@ -36,7 +36,7 @@
 .thread-spine { position: absolute; left: -10px; top: -14px; width: 10px; height: 31px; border-left: 2px solid var(--border); border-bottom: 2px solid var(--border); border-bottom-left-radius: 8px; }
 .thread-row { min-height: 30px; font-size: 14.5px; }
 .thread-row[aria-current] { background: var(--selected); color: var(--strong); }
-.nsfw-tag { margin-left: auto; padding: 0 5px; border-radius: 4px; background: rgb(248 81 73 / .2); color: var(--danger-text); font-size: 10px; font-weight: 700; }
+.nsfw-tag { margin-left: auto; padding: 0 5px; border-radius: var(--radius-s); background: rgb(248 81 73 / .2); color: var(--danger-text); font-size: 10px; font-weight: 700; }
 
 @media (max-width: 899px) {
   /* The thread panel becomes a full-screen sheet. */

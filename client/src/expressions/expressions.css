@@ -1,6 +1,6 @@
 .expr-picker { width: 440px; display: flex; flex-direction: column; max-height: min(520px, calc(100vh / var(--zoom, 1) - 60px)); }
 .expr-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
-.expr-tab { padding: 4px 10px; border-radius: 4px; color: var(--muted); font-weight: 600; font-size: 14px; }
+.expr-tab { padding: 4px 10px; border-radius: var(--radius-s); color: var(--muted); font-weight: 600; font-size: 14px; }
 .expr-tab:hover { color: var(--text); background: var(--hover); }
 .expr-tab.on { color: var(--strong); background: var(--selected); }
 .expr-panel { display: flex; flex-direction: column; min-height: 0; flex: 1; }
@@ -8,12 +8,12 @@
 .expr-nav-btn.rail-icon { width: 28px; height: 28px; font-size: 10px; flex: none; }
 .emoji-btn img { width: 28px; height: 28px; object-fit: contain; }
 .sticker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-.sticker-btn { aspect-ratio: 1; padding: 4px; border-radius: 6px; }
+.sticker-btn { aspect-ratio: 1; padding: 4px; border-radius: var(--radius-s); }
 .sticker-btn:hover, .sticker-btn:focus-visible { background: var(--hover); }
 .sticker-btn img { width: 100%; height: 100%; object-fit: contain; }
 .gif-scroll { height: 360px; max-height: calc(100vh - 200px); overflow-y: auto; overflow-x: hidden; padding: 2px 2px 8px; }
 .gif-masonry { columns: 2 180px; column-gap: 8px; width: 100%; }
-.gif-btn { width: 100%; border-radius: 8px; overflow: hidden; background: var(--rail); border: 1px solid var(--border); cursor: pointer; padding: 0; position: relative; display: block; transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
+.gif-btn { width: 100%; border-radius: var(--radius-m); overflow: hidden; background: var(--rail); border: 1px solid var(--border); cursor: pointer; padding: 0; position: relative; display: block; transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
 .gif-btn:hover, .gif-btn:focus-visible { transform: translateY(-2px); border-color: var(--focus, var(--accent)); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); z-index: 2; }
 .gif-btn img, .gif-btn video { width: 100%; height: auto; display: block; }
 .gif-tile { position: relative; break-inside: avoid; margin-bottom: 8px; }
@@ -25,7 +25,7 @@
 .gif-star[aria-pressed='true'] { color: #f0b232; }
 @media (hover: none) { .gif-star { opacity: 1; } }
 .gif-categories { display: flex; gap: 8px; margin: 8px 0 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; white-space: nowrap; }
-.gif-category-chip { padding: 5px 12px; border-radius: 14px; background: var(--rail, #2b2d31); color: var(--muted, #949ba4); font-size: 13px; font-weight: 500; border: 1px solid transparent; cursor: pointer; flex: none; transition: all 0.15s ease; }
+.gif-category-chip { padding: 5px 12px; border-radius: var(--radius-l); background: var(--rail, #2b2d31); color: var(--muted, #949ba4); font-size: 13px; font-weight: 500; border: 1px solid transparent; cursor: pointer; flex: none; transition: all 0.15s ease; }
 .gif-category-chip:hover { background: var(--hover, rgba(255, 255, 255, 0.08)); color: var(--strong, #fff); border-color: var(--border); }
 .gif-category-chip.active { background: var(--accent, #5865f2); color: #fff; border-color: var(--accent); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2); }
 .empty-expr { padding: 24px 8px; text-align: center; }

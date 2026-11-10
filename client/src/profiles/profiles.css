@@ -1,18 +1,18 @@
 /* Profile card (popout, full profile, settings preview) */
-.popover.profile { width: 340px; padding: 0; border-radius: 8px; overflow: hidden; max-height: calc(100vh / var(--zoom, 1) - 16px); overflow-y: auto; }
-.pcard { --pc-bg: var(--panel); background: var(--pc-bg); border-radius: 8px; overflow: hidden; --dot-bg: var(--pc-bg); }
+.popover.profile { width: 340px; padding: 0; border-radius: var(--radius-m); overflow: hidden; max-height: calc(100vh / var(--zoom, 1) - 16px); overflow-y: auto; }
+.pcard { --pc-bg: var(--panel); background: var(--pc-bg); border-radius: var(--radius-m); overflow: hidden; --dot-bg: var(--pc-bg); }
 .pcard-banner { height: 105px; background-size: cover; background-position: center; }
 .pcard.big .pcard-banner { height: 180px; }
 .pcard-head { display: flex; align-items: flex-end; gap: 8px; padding: 0 16px; margin-top: -44px; min-height: 52px; }
 .pcard.big .pcard-head { margin-top: -64px; }
 .pcard-avatar { width: max-content; padding: 6px; border-radius: 50%; background: var(--pc-bg); flex: none; }
-.status-bubble { position: relative; max-width: 180px; margin-bottom: 18px; padding: 6px 10px; border-radius: 12px; background: var(--chat); font-size: 13px; overflow-wrap: anywhere; box-shadow: 0 2px 8px rgb(0 0 0 / .2); }
+.status-bubble { position: relative; max-width: 180px; margin-bottom: 18px; padding: 6px 10px; border-radius: var(--radius-l); background: var(--chat); font-size: 13px; overflow-wrap: anywhere; box-shadow: 0 2px 8px rgb(0 0 0 / .2); }
 .pcard-body { display: grid; gap: 8px; padding: 4px 16px 16px; }
 .pcard-body .profile-name { display: flex; align-items: center; gap: 6px; }
 .pcard-section .list-heading { padding: 4px 0; }
 .pcard-bio { font-size: 14px; overflow-wrap: anywhere; }
 .pronouns { color: var(--text); }
-.note-field { width: 100%; resize: vertical; min-height: 36px; padding: 6px 8px; border: 1px solid transparent; border-radius: 4px; background: transparent; font-size: 13px; }
+.note-field { width: 100%; resize: vertical; min-height: 36px; padding: 6px 8px; border: 1px solid transparent; border-radius: var(--radius-s); background: transparent; font-size: 13px; }
 .note-field:hover, .note-field:focus { border-color: var(--border); background: var(--rail); outline: none; }
 .mutuals .link { font-size: 13px; color: var(--interactive); }
 .mutuals-box { display: grid; gap: 4px; margin: 4px 0; }
@@ -25,7 +25,7 @@
 .icon-only { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; flex: none; }
 .icon-only > svg { display: block; margin: auto; }
 .activity-cards { display: grid; gap: 8px; }
-.activity-card { padding: 8px 10px; border-radius: 8px; background: var(--rail); }
+.activity-card { padding: 8px 10px; border-radius: var(--radius-m); background: var(--rail); }
 .status-line { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
 .status-line .emoji.custom, .status-emoji { width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px; font-size: 14px; }
 .streaming-dot { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 50%; background: #7b3bff; }
@@ -36,7 +36,7 @@
 .profile-tabs .tab[aria-selected="true"] { background: none; border-color: var(--strong); }
 .profile-tabpanel { min-height: 120px; padding-top: 8px; display: grid; gap: 8px; align-content: start; }
 .mutual-list { display: grid; gap: 2px; }
-.mini-guild { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; background: var(--chat); overflow: hidden; font-size: 12px; flex: none; }
+.mini-guild { width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--radius-m); background: var(--chat); overflow: hidden; font-size: 12px; flex: none; }
 .mini-guild img { width: 100%; height: 100%; }
 /* Settings → Profiles */
 .profile-settings { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 32px; align-items: start; }
@@ -66,7 +66,7 @@
   gap: 6px;
   background: var(--rail, rgba(0, 0, 0, 0.25));
   border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
-  border-radius: 8px;
+  border-radius: var(--radius-m);
   padding: 4px 8px;
   color: var(--text, #fff);
   text-decoration: none;
@@ -84,7 +84,7 @@
 .conn-badge-icon {
   width: 20px;
   height: 20px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   display: flex;
   align-items: center;
   justify-content: center;

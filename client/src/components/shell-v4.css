@@ -10,7 +10,7 @@
 .header-status { margin-left: 8px; min-width: 0; max-width: 40%; }
 .header-status .status-line { font-size: 13.5px; }
 .chat-header .icon-btn.active { color: var(--strong); background: var(--selected); }
-.group-name-btn { font: inherit; color: inherit; text-align: left; border-radius: 6px; padding: 2px 6px; }
+.group-name-btn { font: inherit; color: inherit; text-align: left; border-radius: var(--radius-s); padding: 2px 6px; }
 .group-name-btn:hover { background: var(--rail); }
 .group-rename .input { height: 30px; padding: 2px 8px; }
 .friend-pick { max-height: 320px; overflow-y: auto; margin: 8px 0; }
@@ -25,7 +25,7 @@
 .rail-folder.open .folder-icon { background: var(--chat); }
 .rail-folder.open { padding-bottom: 6px; border-radius: var(--radius-m); background: color-mix(in srgb, var(--folder, var(--accent)) 12%, transparent); }
 .folder-minis { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 36px; height: 36px; }
-.folder-mini { width: 17px; height: 17px; display: grid; place-items: center; border-radius: 5px; background: var(--chat); color: var(--text); font-size: 6px; overflow: hidden; }
+.folder-mini { width: 17px; height: 17px; display: grid; place-items: center; border-radius: var(--radius-s); background: var(--chat); color: var(--text); font-size: 6px; overflow: hidden; }
 .folder-mini img { width: 100%; height: 100%; }
 .folder-guilds { display: contents; }
 /* Quick switcher and shortcut sheet */
@@ -36,7 +36,7 @@
 .qs-item.active { background: var(--hover); color: var(--strong); }
 .qs-item.unread { color: var(--strong); font-weight: 600; }
 .qs-item .badge { margin-left: auto; }
-.qs-guild { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: var(--chat); font-size: 8px; overflow: hidden; }
+.qs-guild { width: 20px; height: 20px; display: grid; place-items: center; border-radius: var(--radius-s); background: var(--chat); font-size: 8px; overflow: hidden; }
 .qs-guild img { width: 100%; height: 100%; }
 .qs-tip { margin-top: 8px; }
 .shortcut-sheet { width: min(640px, calc(100vw / var(--zoom, 1) - 32px)); }
@@ -50,17 +50,17 @@
 .notif-modal .switch-row { margin-bottom: 12px; }
 
 /* Invite User to Server Modal */
-.invite-user-target { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--rail); border-radius: 8px; margin-bottom: 12px; }
+.invite-user-target { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--rail); border-radius: var(--radius-m); margin-bottom: 12px; }
 .invite-user-info { display: flex; flex-direction: column; min-width: 0; }
 .invite-user-name { font-weight: 600; color: var(--header); font-size: 15px; }
 .invite-guilds-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; margin: 12px 0; }
-.invite-guild-item { display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-radius: 6px; background: var(--rail); }
-.invite-guild-item .guild-icon-wrap { width: 36px; height: 36px; border-radius: 18px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--surface); flex-shrink: 0; }
+.invite-guild-item { display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-radius: var(--radius-s); background: var(--rail); }
+.invite-guild-item .guild-icon-wrap { width: 36px; height: 36px; border-radius: var(--radius-l); overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--surface); flex-shrink: 0; }
 .invite-guild-item .guild-name { flex: 1; font-weight: 500; font-size: 14px; }
 .sent-btn { background: var(--online) !important; color: #fff !important; border-color: transparent !important; }
 .empty-hint { text-align: center; padding: 24px 12px; color: var(--muted); }
 .pinned-pin { margin-left: 6px; opacity: 0.7; vertical-align: -2px; color: var(--accent); }
-.dm-drag-over { outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: 4px; }
+.dm-drag-over { outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: var(--radius-s); }
 
 /* Main server column containing RoleSimulatorBanner and channel views */
 .server-main-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
