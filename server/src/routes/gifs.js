@@ -3,12 +3,9 @@ import { proxyUrl } from '../proxy.js';
 import { setting } from '../instance.js';
 
 const GIPHY_KEY = process.env.GIPHY_API_KEY;
-const DEFAULT_TENOR_KEY = 'AIzaSyCZt6SSh5VgVPzD9fhyzG1DprdPRhtoaR4';
-const DEFAULT_TENOR_CLIENT = 'tenor_web';
-const TENOR_KEY = process.env.TENOR_API_KEY !== undefined
-  ? process.env.TENOR_API_KEY
-  : (process.env.NODE_ENV === 'test' ? '' : DEFAULT_TENOR_KEY);
-const TENOR_CLIENT = process.env.TENOR_CLIENT_KEY || DEFAULT_TENOR_CLIENT;
+// no built-in key: without GIPHY_API_KEY or TENOR_API_KEY the picker only offers the curated catalog below
+const TENOR_KEY = process.env.TENOR_API_KEY;
+const TENOR_CLIENT = process.env.TENOR_CLIENT_KEY || 'cillhub';
 const GIPHY_BASE = 'https://api.giphy.com/v1/gifs';
 const TENOR_BASE = 'https://tenor.googleapis.com/v2';
 

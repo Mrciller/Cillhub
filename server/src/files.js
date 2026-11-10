@@ -1,5 +1,5 @@
 import { mkdirSync, rmSync, createReadStream } from 'node:fs';
-import { writeFile, readFile, rename, stat, open } from 'node:fs/promises';
+import { writeFile, rename, stat, open } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { DATA_DIR, get, run } from './db.js';
@@ -99,8 +99,8 @@ export async function saveAttachment(channelId, id, file) {
   await rename(file.path, dest);
   let bytes = await head(dest, 64 * 1024);
   const proven = sniff(bytes);
-  // a JPEG's frame size can sit behind large metadata segments
-  if (proven === 'image/jpeg' && !imageSize(bytes, proven) && file.size > bytes.length) bytes = await readFile(dest);
+  // a JPEG's frame size can sit behind large metadata segments: look at most 1 MiB in, never the whole upload
+  if (proven === 'image/jpeg' && !imageSize(bytes, proven) && file.size > bytes.length) bytes = await head(dest, 1024 * 1024);
   const claimed = /^[\w.+-]+\/[\w.+-]+$/.test(file.type) ? file.type.toLowerCase() : 'application/octet-stream';
   // an inline-capable type is only kept when the bytes prove it; anything else keeps the client's word but downloads
   const content_type = proven ?? (INLINE.has(claimed) ? 'application/octet-stream' : claimed);

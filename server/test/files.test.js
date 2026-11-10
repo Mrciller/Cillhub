@@ -170,6 +170,25 @@ test('streamed uploads: files arrive byte-exact across chunk edges; temp files a
   assert.deepEqual(await tmpFiles(), []);
 });
 
+// a JPEG whose SOF0 frame header (width x height) sits behind `pad` bytes of APP1 segments
+const jpeg = (pad, w, h) => {
+  const parts = [Buffer.from([0xff, 0xd8])];
+  for (let left = pad; left > 0; left -= 65533) { const n = Math.min(left, 65533); parts.push(Buffer.from([0xff, 0xe1, (n + 2) >> 8, (n + 2) & 0xff]), Buffer.alloc(n)); }
+  parts.push(Buffer.from([0xff, 0xc0, 0, 17, 8, h >> 8, h & 0xff, w >> 8, w & 0xff, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]));
+  return Buffer.concat(parts);
+};
+test('JPEG sizing looks at most 1 MiB into the upload: a frame header behind 200 KiB of metadata is found, behind 1.5 MiB it is not', async () => {
+  const r = await rawUpload(`/channels/${g.general.id}/messages`, [
+    ['payload_json', Buffer.from(JSON.stringify({ content: 'jpegs' }))],
+    ['files[0]', jpeg(200 * 1024, 640, 480), 'near.jpg', 'image/jpeg'],
+    ['files[1]', jpeg(1536 * 1024, 640, 480), 'far.jpg', 'image/jpeg'],
+  ]);
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const [near, far] = r.body.attachments;
+  assert.deepEqual([near.content_type, near.width, near.height], ['image/jpeg', 640, 480]);
+  assert.deepEqual([far.content_type, far.width], ['image/jpeg', undefined]);
+});
+
 test('multipart part names count against the field limit, and the number of parts is capped (audit M10)', async () => {
   // refused mid-stream: the 413 may lose the race with the reset of the unread rest
   const names = await rawUpload(`/channels/${g.general.id}/messages`, Array.from({ length: 150 }, (_, i) => [`${'n'.repeat(8000)}${i}`, Buffer.alloc(0)])).catch(e => ({ status: e.code }));
