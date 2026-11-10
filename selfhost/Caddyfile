@@ -1,5 +1,15 @@
-# Cillhub node behind Caddy: automatic HTTPS (Let's Encrypt) for CILLCORD_HOSTNAME.
-{$CILLCORD_HOSTNAME} {
+# Cillhub node behind Caddy: automatic HTTPS (Let's Encrypt). Certificates are fetched on demand, and only for names the
+# app confirms: CILLCORD_HOSTNAME, CILLCORD_PUBLIC_URL and the address set in the admin settings.
+{
+	on_demand_tls {
+		ask http://app:3000/api/v9/instance/tls-allowed
+	}
+}
+
+https:// {
+	tls {
+		on_demand
+	}
 	# LiveKit signalling (only when the livekit profile runs)
 	handle_path /livekit/* {
 		reverse_proxy livekit:7880

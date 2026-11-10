@@ -64,6 +64,10 @@ check "updater feed unit tests (key list, expiry, minimum version)" node --test 
 mkdir -p "$T/c" && cp "$SELFHOST/docker-compose.yml" "$T/c/" &&
   printf 'CILLCORD_IMAGE=x\nCILLCORD_HTTP_PORT=1\nCILLVOICE_UDP_PORT=2\nCILLCORD_HOSTNAME=h\nLIVEKIT_API_KEY=k\nLIVEKIT_API_SECRET=s\n' > "$T/c/.env"
 check "compose file parses (all profiles)" sh -c "cd '$T/c' && docker compose --profile caddy --profile livekit config -q"
+# with the caddy image pinned in docker-compose.yml
+CADDY_IMAGE=$(sed -n 's/^ *image: \(caddy:[^ ]*\).*/\1/p' "$SELFHOST/docker-compose.yml")
+check "Caddyfile is valid ($CADDY_IMAGE)" docker run --rm -v "$SELFHOST/Caddyfile:/etc/caddy/Caddyfile:ro" "$CADDY_IMAGE" caddy validate --config /etc/caddy/Caddyfile
+check "Caddyfile asks the app before an on-demand certificate" grep -q 'ask http://app:3000/api/v9/instance/tls-allowed' "$SELFHOST/Caddyfile"
 check "install.sh carries the real key and its fingerprint" sh -c "
   pub=\$(grep -v -- ----- '$SELFHOST/release-public-key.pem')
   grep -q \"^RELEASE_PUBKEY='\$pub'\" '$SELFHOST/install.sh' &&
