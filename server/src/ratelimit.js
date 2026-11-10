@@ -63,10 +63,15 @@ const recent = key => (failures.get(key) ?? []).filter(t => Date.now() - t < LOG
 
 // acct: keys count every failure on one account from anywhere; higher so one stranger can't lock it for everyone
 const maxOf = key => (key.startsWith('acct:') ? 100 : LOGIN_MAX);
+// login: (account+IP) keys also wait after each failure, doubling from 1 s to 60 s, so guessing is slow before the lockout
+const DELAY_BASE = SCALE > 1 ? 0 : 1000;
+const delayAfter = list => (list.length ? list.at(-1) + Math.min(2 ** (list.length - 1), 60) * DELAY_BASE - Date.now() : 0);
 export function checkLogin(keys, headers = {}) {
   for (const key of keys) {
     const list = recent(key);
     if (list.length >= maxOf(key)) throw rateLimitError((list[0] + LOGIN_WINDOW - Date.now()) / 1000, headers);
+    const wait = key.startsWith('login:') ? delayAfter(list) : 0;
+    if (wait > 0) throw rateLimitError(wait / 1000, headers);
   }
 }
 export function loginFailed(keys) {
