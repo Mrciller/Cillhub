@@ -12,7 +12,12 @@ export const DEFAULTS = {
   gifs_enabled: true,
   voice_backend: null, // null = VOICE_BACKEND from the environment
   announcement: null, // {id, content, created_at}
+  public_url: null, // origin; null = CILLCORD_PUBLIC_URL, else the request's own (federation.js publicUrl)
+  smtp_host: null, smtp_port: 587, smtp_security: 'starttls', smtp_user: null, smtp_password: null, smtp_from: null,
+  captcha_site_key: null, captcha_secret: null, // reCAPTCHA v2 checkbox
 };
+// never sent anywhere: the admin API shows only whether they are set
+export const SECRET_SETTINGS = ['smtp_password', 'captcha_secret'];
 export const UPLOAD_RANGE = [1 * MIB, 100 * MIB];
 
 const cache = new Map();
@@ -26,11 +31,17 @@ export function setSetting(key, value) {
 }
 
 export const maxUpload = () => setting('max_upload_bytes');
+export const mailConfigured = () => !!(setting('smtp_host') && setting('smtp_from'));
+export const captchaOn = () => !!(setting('captcha_site_key') && setting('captcha_secret'));
+// federation.js fills this in (it imports this module, so importing it here would be a cycle)
+export const hooks = { localLoginOpen: () => true };
 
 // what everyone (also logged-out visitors) may see: GET /instance, READY.instance, INSTANCE_SETTINGS_UPDATE
 export const publicInstance = () => ({
   name: setting('instance_name'), motd: setting('motd'), registration_mode: setting('registration_mode'),
   gifs_enabled: setting('gifs_enabled'), max_upload_bytes: maxUpload(), announcement: setting('announcement'),
+  password_reset: mailConfigured() && hooks.localLoginOpen(),
+  captcha: captchaOn() ? { service: 'recaptcha', sitekey: setting('captcha_site_key') } : null,
 });
 
 // the account announcements are DMed from; created on first use, cannot log in (random password, system flag)
@@ -74,7 +85,11 @@ const SECRETS = [
   [/[A-Za-z0-9_-]{32,}/g, '[redacted]'], // tokens, hashes, keys
   [/https?:\/\/[^\s"']+/g, '[url]'], // push endpoints and webhook URLs are capabilities
 ];
-export const scrub = text => SECRETS.reduce((t, [re, to]) => t.replace(re, to), String(text));
+// the SMTP password and captcha secret by value first: an SMTP error may quote a short password the patterns miss
+const secretValues = () => {
+  try { return SECRET_SETTINGS.map(setting).filter(v => typeof v === 'string' && v.length >= 4); } catch { return []; } // database not open
+};
+export const scrub = text => SECRETS.reduce((t, [re, to]) => t.replace(re, to), secretValues().reduce((t, v) => t.split(v).join('[redacted]'), String(text)));
 const original = console.error.bind(console);
 console.error = (...args) => {
   original(...args);

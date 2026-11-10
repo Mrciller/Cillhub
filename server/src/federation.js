@@ -7,7 +7,7 @@ import { isIP } from 'node:net';
 import { DATA_DIR, get, all, run, userById } from './db.js';
 import { HttpError, invalid } from './errors.js';
 import { safeFetch, isPublicAddress } from './ssrf.js';
-import { setting, setSetting } from './instance.js';
+import { setting, setSetting, hooks } from './instance.js';
 import { limit } from './ratelimit.js';
 import { closeTokenSessions, refreshPresence } from './gateway.js';
 import { updateReport } from './updates.js';
@@ -64,14 +64,33 @@ const envUrl = name => {
   try { return instanceUrl(process.env[name]); } catch { console.error(`${name} is not a valid https origin; ignored`); return null; }
 };
 export const HUB_URL = isHub ? null : envUrl('CILLCORD_HUB_URL');
-// own public origin: CILLCORD_PUBLIC_URL, else the request's (behind a proxy: Host + X-Forwarded-Proto)
+// own public origin: the admin setting public_url, else CILLCORD_PUBLIC_URL, else the request's (behind a proxy: Host +
+// X-Forwarded-Proto)
 const PUBLIC_URL = envUrl('CILLCORD_PUBLIC_URL');
-export const publicUrl = req => PUBLIC_URL ?? originOf(req).http;
+export const configuredUrl = () => setting('public_url') ?? PUBLIC_URL;
+export const publicUrl = req => configuredUrl() ?? originOf(req).http;
 // where a node may send a browser after hub sign-in. The live Host header is not one of these: an attacker who can
-// set it would otherwise choose the page that receives the node token. Pinned at link time, plus the configured public URL.
+// set it would otherwise choose the page that receives the node token. Pinned at link time, plus the configured public URLs.
 export function returnOrigins() {
   const f = fedState();
-  return [f?.hub_url, f?.node_url, PUBLIC_URL].filter(Boolean);
+  return [f?.hub_url, f?.node_url, setting('public_url'), PUBLIC_URL].filter(Boolean);
+}
+// an admin-set public URL: an http(s) origin (http only for localhost), stored without path or query
+export function publicUrlSetting(raw) {
+  const bad = () => invalid('public_url', 'URL_TYPE_INVALID_URL', 'Must be an https:// address (http:// only for localhost).');
+  if (typeof raw !== 'string' || raw.length > 255) throw bad();
+  let u;
+  try { u = new URL(raw.trim()); } catch { throw bad(); }
+  const local = ['localhost', '127.0.0.1'].includes(u.hostname);
+  if (!(u.protocol === 'https:' || (u.protocol === 'http:' && local)) || u.username || u.password) throw bad();
+  return u.origin;
+}
+// TLS on demand (selfhost/Caddyfile): a certificate only for this instance's own names, so nobody can make the box
+// request certificates for other names; the old name keeps working after an admin sets a new one
+export function tlsAllowed(domain) {
+  const host = u => { try { return new URL(u).hostname.toLowerCase(); } catch { return null; } };
+  const d = String(domain ?? '').toLowerCase();
+  return !!d && [process.env.CILLCORD_HOSTNAME?.toLowerCase(), host(process.env.CILLCORD_PUBLIC_URL), host(setting('public_url'))].includes(d);
 }
 
 // --- outgoing calls ----------------------------------------------------------------------------------------------------
@@ -176,6 +195,7 @@ export const mode = () => (isHub ? 'hub' : fedState() ? 'connected' : 'standalon
 export const signInPolicy = () => setting('sign_in') ?? 'both'; // local | hub | both (only matters while connected)
 export const hubLoginOpen = () => { const f = fedState(); return !!f && f.status === 'active' && signInPolicy() !== 'local'; };
 export const localLoginOpen = () => !(fedState() && signInPolicy() === 'hub');
+hooks.localLoginOpen = localLoginOpen;
 
 export const humanCount = () => get("SELECT COUNT(*) AS n FROM users WHERE bot = 0 AND system = 0 AND deleted = 0").n;
 

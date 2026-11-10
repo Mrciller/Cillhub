@@ -15,6 +15,9 @@ const RULES = [
   ['GW', 'members', 3, 10_000], // gateway op 8 (loads the guild's whole member list), per user and guild
   ['CALL', '*', 10, 60_000], // per user: DM/group call starts (op 4 into an empty call) and rings (each posts a message or a push)
   ['GET', '/external', 60, 60_000], // per IP: media proxy cache misses (each one an outbound fetch and a disk write)
+  ['AUTH', 'forgot-ip', 10, 3_600_000], // password reset mails per IP (IPv6: per /64)
+  ['AUTH', 'forgot-email', 3, 3_600_000], // and per address (never answered with a 429)
+  ['AUTH', 'reset-ip', 10, 15 * 60_000], // new password with a reset link, per IP
   ['*', '*', 50, 1000],
 ];
 const buckets = new Map(); // bucket key -> { count, reset (unix ms) }

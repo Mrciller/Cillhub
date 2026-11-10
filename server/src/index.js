@@ -72,7 +72,7 @@ import savedFolders from './routes/savedFolders.js';
 import connections from './routes/connections.js';
 import { startModules } from './modules/registry.js';
 import setup, { setupOpen } from './routes/setup.js';
-import { originOf, wellKnownCillcord, fedState, startHeartbeat, corsOrigin, publicUrl, ROLE, isHub, mode, HUB_URL, answerSignature } from './federation.js';
+import { originOf, wellKnownCillcord, fedState, startHeartbeat, corsOrigin, publicUrl, ROLE, isHub, mode, HUB_URL, answerSignature, tlsAllowed } from './federation.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const STATIC_DIR = process.env.STATIC_DIR && path.resolve(process.env.STATIC_DIR);
@@ -90,13 +90,20 @@ const TYPES = {
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon',
   '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.map': 'application/json',
 };
-// web client: scripts only from here (plus the YouTube player API for Watch Together); media, API and voice may live on
-// linked nodes and LiveKit hosts, so those stay open. Nobody else may frame the app (OAuth consent, admin pages).
+// web client: scripts only from here (plus the YouTube player API for Watch Together and reCAPTCHA when an admin set
+// captcha keys); media, API and voice may live on linked nodes and LiveKit hosts, so those stay open. Nobody else may
+// frame the app (OAuth consent, admin pages).
+const RECAPTCHA_SCRIPTS = 'https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/';
 const CSP = [
-  "default-src 'self'", "script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com", "style-src 'self' 'unsafe-inline'",
+  "default-src 'self'", `script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com ${RECAPTCHA_SCRIPTS}`, "style-src 'self' 'unsafe-inline'",
   "img-src 'self' https: http: data: blob:", "media-src 'self' https: http: data: blob:", "font-src 'self' data:",
   "connect-src 'self' https: http: wss: ws: data: blob:", "frame-src 'self' https: http:", "worker-src 'self' blob:",
   "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'self'",
+].join('; ');
+// captcha.html: the reCAPTCHA checkbox for the Android app's WebView, nothing else may load or frame it
+const CAPTCHA_CSP = [
+  "default-src 'none'", `script-src 'self' ${RECAPTCHA_SCRIPTS}`, "frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/",
+  "style-src 'self' 'unsafe-inline'", "connect-src 'self'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'",
 ].join('; ');
 const STATIC_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'SAMEORIGIN' };
 
@@ -160,6 +167,11 @@ export const clientIp = req => {
 const routes = [
   ['GET', '/gateway', gatewayUrl, { open: true }], ['GET', '/gateway/bot', gatewayBot, { botOnly: true }],
   ['GET', '/instance', instanceInfo, { open: true }],
+  // the bundled Caddy asks here before it gets a certificate on demand (selfhost/Caddyfile); 200 only for our own names
+  ['GET', '/instance/tls-allowed', ({ query }) => {
+    if (!tlsAllowed(query.get('domain'))) throw new HttpError(403, 0, 'Not a name of this instance.');
+    return { ok: true };
+  }, { open: true }],
   ['GET', '/policies/instance', spacebarPolicies, { open: true }], ['GET', '/policies/instance/domains', spacebarDomains, { open: true }],
   ...setup, ...hub, ...node, ...directory, ...admin, ...modules, ...canvas, ...onboarding, ...guide, ...analytics, ...webauthn, ...customization, ...templates, ...watch, ...later, ...savedFolders, ...connections, ...cillbot,
   ...auth, ...account, ...relationships, ...profiles, ...settings, ...inbox, ...push, ...users, ...guilds, ...roles, ...community,
@@ -263,6 +275,7 @@ async function serveStatic(res, pathname) {
   const headers = { 'Content-Type': TYPES[path.extname(file)] ?? 'application/octet-stream', ...STATIC_HEADERS };
   // the app shell gets the full policy; other pages (offline.html, downloads) may use inline code, so only framing is limited
   if (file === path.join(STATIC_DIR, 'index.html')) headers['Content-Security-Policy'] = CSP;
+  else if (file === path.join(STATIC_DIR, 'captcha.html')) headers['Content-Security-Policy'] = CAPTCHA_CSP;
   else if (path.extname(file) === '.html') headers['Content-Security-Policy'] = "frame-ancestors 'self'";
   // browsers ignore HSTS over plain http, so a spoofed X-Forwarded-Proto cannot do harm
   if (res.req.socket.encrypted || res.req.headers['x-forwarded-proto'] === 'https') headers['Strict-Transport-Security'] = 'max-age=31536000';

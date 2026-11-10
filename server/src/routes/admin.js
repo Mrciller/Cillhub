@@ -21,12 +21,14 @@ import { recheck, configuredBackends, defaultBackend, voiceStateCount } from '..
 import { mediaStats } from '../media/index.js';
 import { insertMessage, bumpMentions, broadcastMessage, deleteMessages, attachmentUrl } from '../message.js';
 import {
-  setting, setSetting, DEFAULTS, UPLOAD_RANGE, publicInstance, systemUser, adminAudit, adminAuditObj, recentErrors, startedAt,
+  setting, setSetting, DEFAULTS, SECRET_SETTINGS, UPLOAD_RANGE, publicInstance, systemUser, adminAudit, adminAuditObj, recentErrors, startedAt,
 } from '../instance.js';
+import { sendMail, mailError } from '../mail.js';
+import { settingsOf } from '../userdata.js';
 import { anonymize } from './account.js';
 import { removeMember, destroyGuild } from './guilds.js';
 import { loadMessage } from './messages.js';
-import { fedState } from '../federation.js';
+import { fedState, isHub, publicUrl, publicUrlSetting } from '../federation.js';
 
 // --- the gate ------------------------------------------------------------------------------------------------------------
 const deniedLogged = new Map(); // user id -> last time a refusal was written to the audit log (at most one a minute each)
@@ -107,7 +109,7 @@ function targetUser(ctx) {
   return u;
 }
 
-function endSessions(userId) {
+export function endSessions(userId) {
   const hashes = all('SELECT token_hash FROM tokens WHERE user_id = ?', userId).map(t => t.token_hash);
   run('DELETE FROM tokens WHERE user_id = ?', userId);
   run('DELETE FROM webauthn_credentials WHERE user_id = ?', userId); // passkeys would sign straight back in
@@ -353,9 +355,20 @@ function resolveReport(ctx) {
 
 // --- instance settings, registration codes, announcements ------------------------------------------------------------------
 const voiceInfo = () => ({ configured: configuredBackends(), default: defaultBackend() });
-const settingsObj = () => ({
-  ...Object.fromEntries(Object.keys(DEFAULTS).map(k => [k, setting(k)])), voice: voiceInfo(),
+// the SMTP password and captcha secret are write-only: only whether they are set comes back, here and in the audit log
+const settingsObj = ctx => ({
+  ...Object.fromEntries(Object.keys(DEFAULTS).filter(k => !SECRET_SETTINGS.includes(k)).map(k => [k, setting(k)])),
+  ...Object.fromEntries(SECRET_SETTINGS.map(k => [`${k}_set`, !!setting(k)])),
+  public_url_effective: publicUrl(ctx.req), voice: voiceInfo(),
 });
+const masked = (k, v) => (SECRET_SETTINGS.includes(k) ? (v ? '(set)' : '(cleared)') : v);
+// an optional one-line text setting: null or '' clears it; never CR/LF (they would end up in SMTP commands and headers)
+function optLine(body, k, max, trim = true) {
+  const v = body[k];
+  if (v === null || v === '') return null;
+  if (typeof v === 'string' && /[\r\n]/.test(v)) throw invalid(k, 'BASE_TYPE_BAD_CHARACTERS', 'Must be a single line.');
+  return str(body, k, 1, max, trim);
+}
 
 function patchSettings(ctx) {
   const body = ctx.body ?? {};
@@ -371,13 +384,44 @@ function patchSettings(ctx) {
     else if (k === 'voice_backend') {
       if (v !== null && !configuredBackends().includes(v)) throw invalid(k, 'VOICE_BACKEND_UNAVAILABLE', `Configured backends: ${configuredBackends().join(', ') || 'none'}.`);
       next[k] = v;
+    } else if (k === 'public_url') {
+      // the hub's address is pinned by every linked node (and is the issuer of its sign-in tokens)
+      if (isHub && v) throw invalid(k, 'PUBLIC_URL_HUB', "The hub's address is stored by every linked node; it is set with CILLCORD_PUBLIC_URL.");
+      next[k] = v === null || v === '' ? null : publicUrlSetting(v);
+    } else if (['smtp_host', 'smtp_user', 'captcha_site_key', 'captcha_secret'].includes(k)) next[k] = optLine(body, k, 255);
+    else if (k === 'smtp_password') next[k] = optLine(body, k, 255, false);
+    else if (k === 'smtp_port') next[k] = int(body, k, 1, 65535);
+    else if (k === 'smtp_security') {
+      if (!['starttls', 'tls', 'none'].includes(v)) throw invalid(k, 'BASE_TYPE_CHOICES', 'Must be starttls, tls or none.');
+      next[k] = v;
+    } else if (k === 'smtp_from') {
+      next[k] = optLine(body, k, 255);
+      if (next[k] && next[k].split('@').length !== 2) throw invalid(k, 'EMAIL_TYPE_INVALID_EMAIL', 'Must be one address, e.g. Cillhub <no-reply@example.org>.');
     } else throw invalid(k, 'UNKNOWN_SETTING', 'This setting does not exist.');
   }
-  const before = Object.fromEntries(Object.keys(next).map(k => [k, setting(k)]));
+  const before = Object.fromEntries(Object.keys(next).map(k => [k, masked(k, setting(k))]));
   for (const [k, v] of Object.entries(next)) setSetting(k, v);
   sendToAllUsers('INSTANCE_SETTINGS_UPDATE', publicInstance());
-  ctx.audit = { action: 'settings.update', target_type: 'instance', details: { before, after: next } };
-  return settingsObj();
+  const after = Object.fromEntries(Object.entries(next).map(([k, v]) => [k, masked(k, v)]));
+  ctx.audit = { action: 'settings.update', target_type: 'instance', details: { before, after } };
+  return settingsObj(ctx);
+}
+
+// POST /admin/settings/test-mail: a mail to the calling admin's own address; the SMTP error text when it fails
+async function testMail(ctx) {
+  const de = settingsOf(ctx.user.id).locale === 'de';
+  let error = null;
+  try {
+    await sendMail({
+      to: ctx.user.email, subject: de ? `Testmail von ${setting('instance_name')}` : `Test mail from ${setting('instance_name')}`,
+      text: de ? 'Diese Mail kam über die SMTP-Einstellungen deiner Instanz. Der Versand funktioniert.\n'
+        : 'This mail came through the SMTP settings of your instance. Sending works.\n',
+    });
+  } catch (e) {
+    error = mailError(e);
+  }
+  ctx.audit = { action: 'settings.test_mail', target_type: 'instance', details: { ok: !error } };
+  return { ok: !error, error };
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I: codes are typed in
@@ -574,6 +618,7 @@ export default [
   ['POST', '/admin/reports/:report_id/resolve', resolveReport, admin],
   ['GET', '/admin/settings', settingsObj, admin],
   ['PATCH', '/admin/settings', patchSettings, admin],
+  ['POST', '/admin/settings/test-mail', testMail, admin],
   ['GET', '/admin/registration-codes', () => all('SELECT * FROM registration_codes ORDER BY created_at DESC').map(codeObj), admin],
   ['POST', '/admin/registration-codes', createCode, admin],
   ['DELETE', '/admin/registration-codes/:code', deleteCode, admin],

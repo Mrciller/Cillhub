@@ -9,7 +9,7 @@ PARTICULAR PURPOSE. See the LICENSE file for details.
 Source code: https://github.com/TCCiller/Cillhub
 
 Third-party components keep their own licenses (see each package's license in node_modules, the Cargo registry or the
-Gradle dependencies), among them: ws (MIT), web-push (MPL-2.0), React (MIT), livekit-client (Apache-2.0),
+Gradle dependencies), among them: ws (MIT), web-push (MPL-2.0), nodemailer (MIT-0), React (MIT), livekit-client (Apache-2.0),
 quickjs-emscripten-core and the QuickJS-ng WebAssembly build (MIT), AndroidX and OkHttp (Apache-2.0),
 @sapphi-red/web-noise-suppressor (MIT, with RNNoise, BSD-3-Clause), qrcode-generator (MIT). The desktop app uses Tauri
 and its plugins single-instance, deep-link, window-state, autostart and opener (Apache-2.0 OR MIT), serde, serde_json,

@@ -77,10 +77,17 @@ function clampStream(v) {
   return had;
 }
 
+// LiveKit behind the bundled Caddy (wss://<CILLCORD_PUBLIC_URL host>/livekit) answers on every name of this instance,
+// so it follows a domain the admin set in the settings
+const envHost = (() => { try { return new URL(process.env.CILLCORD_PUBLIC_URL).host; } catch { return null; } })();
+const followHost = e => {
+  const next = setting('public_url');
+  try { return next && envHost && new URL(e).host === envHost ? e.replace(`//${envHost}`, `//${new URL(next).host}`) : e; } catch { return e; }
+};
 function sendServerUpdate(v) {
   const m = v.guild_id ? memberRow(v.guild_id, v.user_id) : userById(v.user_id);
   const token = be(v).joinToken(v.user_id, m.nick ?? m.global_name ?? m.username, v.channel_id, v.sources, v.session, v.deaf);
-  sendToSession(v.session, 'VOICE_SERVER_UPDATE', { guild_id: v.guild_id, channel_id: v.channel_id, token, endpoint: be(v).endpoint });
+  sendToSession(v.session, 'VOICE_SERVER_UPDATE', { guild_id: v.guild_id, channel_id: v.channel_id, token, endpoint: v.backend === 'livekit' ? followHost(be(v).endpoint) : be(v).endpoint });
 }
 
 const audience = v => (v.guild_id ? memberIds(v.guild_id) : channelUserIds({ id: v.channel_id }));

@@ -1,14 +1,17 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { snowflake } from '../snowflake.js';
 import { get, all, run } from '../db.js';
 import { hashPassword, checkPassword, issueToken, revokeToken, tokenHash, sessionIdHash } from '../auth.js';
 import { HttpError, str, invalid, unauthorized } from '../errors.js';
 import { closeTokenSessions } from '../gateway.js';
-import { checkLogin, loginFailed, loginSucceeded } from '../ratelimit.js';
+import { checkLogin, loginFailed, loginSucceeded, limit } from '../ratelimit.js';
 import { newTicket, redeemTicket, requireMfa, elevate } from '../mfa.js';
 import { settingsOf } from '../userdata.js';
 import { setting } from '../instance.js';
-import { localLoginOpen } from '../federation.js';
+import { mailConfigured, sendMail, mailError } from '../mail.js';
+import { requireCaptcha } from '../captcha.js';
+import { endSessions } from './admin.js';
+import { localLoginOpen, publicUrl } from '../federation.js';
 import { setupOpen } from './setup.js';
 
 // v6 registration modes: open, invite (an admin-issued registration_code is needed) or closed
@@ -28,6 +31,7 @@ const hubOnlyLogin = () => new HttpError(403, 0, 'This instance only allows sign
 async function register(ctx) {
   if (setupOpen()) throw new HttpError(403, 0, 'This instance is not set up yet.');
   if (!localLoginOpen()) throw hubOnlyLogin(); // v7: a connected node whose admin chose hub sign-in only
+  await requireCaptcha(ctx); // before the hash and before any answer about taken names
   registrationCode(ctx.body ?? {});
   const email = str(ctx.body, 'email', 3, 254);
   if (!/^[^@\s]+@[^@\s]+$/.test(email)) throw invalid('email', 'EMAIL_TYPE_INVALID_EMAIL', 'Not a well formed email address.');
@@ -46,6 +50,57 @@ async function register(ctx) {
   return { token: issueToken(id) };
 }
 
+// IPv6: one /64 is one attacker
+const netOf = ip => (ip.includes(':') && !ip.startsWith('::ffff:') ? ip.split(':').slice(0, 4).join(':') : ip);
+
+// --- password reset by email ---------------------------------------------------------------------------------------------
+// POST /auth/forgot {login: email}: always 204 and the same work whether the account exists, so it tells nobody which
+// addresses have accounts; the mail goes out in the background. Only the token's SHA-256 is stored, 30 minutes.
+const RESET_MS = 30 * 60_000;
+const resetHash = token => createHash('sha256').update(token).digest('hex');
+const RESET_MAIL = {
+  'en-US': (name, link) => ({
+    subject: `Reset your password on ${name}`,
+    text: `Someone asked to reset the password of your account on ${name}.\n\nTo choose a new password, open this link:\n${link}\n\n`
+      + 'The link works for 30 minutes and only once.\n\nIf you did not ask for this, ignore this mail; your password stays as it is.\n',
+  }),
+  de: (name, link) => ({
+    subject: `Passwort für ${name} zurücksetzen`,
+    text: `Jemand möchte das Passwort deines Kontos auf ${name} zurücksetzen.\n\nÜber diesen Link wählst du ein neues Passwort:\n${link}\n\n`
+      + 'Der Link gilt 30 Minuten und nur einmal.\n\nWenn du das nicht angefordert hast, ignoriere diese Mail; dein Passwort bleibt, wie es ist.\n',
+  }),
+};
+async function forgot(ctx) {
+  if (!mailConfigured() || !localLoginOpen()) throw new HttpError(400, 0, 'Password reset by email is not available on this instance.');
+  limit('AUTH', 'forgot-ip', {}, netOf(ctx.ip), ctx.headers);
+  await requireCaptcha(ctx);
+  const email = str(ctx.body, 'login', 3, 254);
+  run('DELETE FROM password_resets WHERE expires_at <= ?', Date.now());
+  try { limit('AUTH', 'forgot-email', {}, email.toLowerCase(), {}); } catch { return; } // silent: a 429 would say the address is known
+  const user = get(`SELECT * FROM users WHERE email = ? AND disabled = 0 AND deleted = 0 AND bot = 0 AND system = 0 AND home IS NULL`, email);
+  if (!user) return;
+  const token = randomBytes(32).toString('base64url');
+  run('DELETE FROM password_resets WHERE user_id = ?', user.id);
+  run('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)', resetHash(token), user.id, Date.now() + RESET_MS);
+  const mail = (RESET_MAIL[settingsOf(user.id).locale] ?? RESET_MAIL['en-US'])(setting('instance_name'), `${publicUrl(ctx.req)}/reset?token=${token}`);
+  sendMail({ to: user.email, ...mail }).catch(e => console.error(`password reset mail failed: ${mailError(e)}`));
+}
+
+// POST /auth/reset {token, password}: single use; ends every session and passkey of the account. It hands out no token,
+// so the user signs in again and two-factor authentication still applies.
+async function reset(ctx) {
+  limit('AUTH', 'reset-ip', {}, netOf(ctx.ip), ctx.headers);
+  const token = str(ctx.body, 'token', 1, 200, false);
+  const password = str(ctx.body, 'password', 8, 72, false);
+  const row = get(`SELECT r.user_id FROM password_resets r JOIN users u ON u.id = r.user_id
+                   WHERE r.token_hash = ? AND r.expires_at > ? AND u.disabled = 0 AND u.deleted = 0`, resetHash(token), Date.now());
+  if (!row) throw new HttpError(400, 0, 'This link is invalid or has expired.');
+  run('DELETE FROM password_resets WHERE user_id = ?', row.user_id); // used up before the await, so it works once
+  const { hash, salt } = await hashPassword(password);
+  run('UPDATE users SET password_hash = ?, salt = ?, require_password_change = 0 WHERE id = ?', hash, salt, row.user_id);
+  endSessions(row.user_id);
+}
+
 const loginSettings = userId => { const s = settingsOf(userId); return { locale: s.locale, theme: s.theme }; };
 // login response tail: settings, and required_actions (docs) when an admin asked for a new password
 const loginTail = user => ({ user_settings: loginSettings(user.id), ...(user.require_password_change && { required_actions: ['update_password'] }) });
@@ -58,8 +113,7 @@ async function login(ctx) {
   const { body } = ctx;
   const login = str(body, 'login', 1, 254);
   const password = str(body, 'password', 1, 72, false);
-  // IPv6: one /64 is one attacker
-  const ip = ctx.ip.includes(':') && !ctx.ip.startsWith('::ffff:') ? ctx.ip.split(':').slice(0, 4).join(':') : ctx.ip;
+  const ip = netOf(ctx.ip);
   const keys = [`login:${login.toLowerCase()}:${ip}`, `ip:${ip}`, `acct:${login.toLowerCase()}`];
   checkLogin(keys, ctx.headers);
   const attempt = loginFailed(keys); // counted before the hash so parallel requests see each other; taken back on success
@@ -156,6 +210,8 @@ const user = { userOnly: true };
 export default [
   ['POST', '/auth/register', register, { open: true }],
   ['POST', '/auth/login', login, { open: true }],
+  ['POST', '/auth/forgot', forgot, { open: true }],
+  ['POST', '/auth/reset', reset, { open: true }],
   ['POST', '/auth/mfa/totp', mfaLogin, { open: true }],
   ['POST', '/auth/mfa/backup', mfaLogin, { open: true }],
   ['POST', '/auth/logout', logout, user],
