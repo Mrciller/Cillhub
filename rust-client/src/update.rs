@@ -69,10 +69,44 @@ pub fn accept(
     Ok(())
 }
 
+/// A downloaded installer and what it was verified against, so it can be checked again right before it runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Staged {
+    pub version: String,
+    pub path: PathBuf,
+    pub sha512_hex: String,
+    pub sig: Vec<u8>,
+}
+
+/// The staged file still has the digest that was verified, and the signature still holds for it.
+pub fn verify_staged(staged: &Staged, keys_pem: &str) -> Result<(), String> {
+    let now = sha512_hex(&staged.path).map_err(|e| e.to_string())?;
+    if now != staged.sha512_hex {
+        return Err("the downloaded installer changed after it was verified".into());
+    }
+    if !verify(&now, &staged.version, &staged.sig, keys_pem) {
+        return Err("update signature does not verify against the pinned release keys".into());
+    }
+    Ok(())
+}
+
+/// A fresh directory only this user can enter (0700 on unix), with a random name: an existing path is never reused.
+pub fn private_dir(parent: &Path) -> std::io::Result<PathBuf> {
+    let mut b = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut b, 0o700);
+    let mut rnd = [0u8; 16];
+    ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut rnd)
+        .map_err(|_| std::io::Error::other("no random source"))?;
+    let dir = parent.join(format!("cillhub-update-{}", hex(&rnd)));
+    b.create(&dir)?; // fails if the path exists
+    Ok(dir)
+}
+
 /// Checks `<base>latest[-linux].yml`; downloads and verifies a newer installer for this package.
 /// Ok(None) = nothing to do (up to date, or a build no updater can replace, e.g. the tarball).
 #[cfg(feature = "native-net")]
-pub fn fetch_update(base: &str, current: &str) -> Result<Option<(String, PathBuf)>, String> {
+pub fn fetch_update(base: &str, current: &str) -> Result<Option<Staged>, String> {
     let Some(pkg) = package() else { return Ok(None) };
     let client = reqwest::blocking::Client::builder()
         .https_only(true)
@@ -97,19 +131,27 @@ pub fn fetch_update(base: &str, current: &str) -> Result<Option<(String, PathBuf
     let file = pick_file(&feed, &pkg)
         .ok_or("feed lists no installer for this package")?
         .to_string();
-    let dest = std::env::temp_dir().join(&file);
-    let sha = download(&client, &format!("{base}{file}"), &dest, |_| {})?;
-    let sig = get(format!("{base}{file}.sig"))?.bytes().map_err(|e| e.to_string())?;
-    if let Err(e) = accept(&feed, &file, &sha, &sig, PINNED_KEYS, current) {
-        let _ = std::fs::remove_file(&dest); // never keep an unverified installer around
-        return Err(e);
+    let dir = private_dir(&std::env::temp_dir()).map_err(|e| e.to_string())?;
+    let dest = dir.join(&file);
+    let sha = download(&client, &format!("{base}{file}"), &dest, |_| {});
+    let sig = sha.and_then(|sha| {
+        let sig = get(format!("{base}{file}.sig"))?.bytes().map_err(|e| e.to_string())?;
+        accept(&feed, &file, &sha, &sig, PINNED_KEYS, current).map(|_| (sha, sig.to_vec()))
+    });
+    match sig {
+        Ok((sha512_hex, sig)) => Ok(Some(Staged { version: feed.version, path: dest, sha512_hex, sig })),
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&dir); // never keep an unverified installer around
+            Err(e)
+        }
     }
-    Ok(Some((feed.version, dest)))
 }
 
-/// Runs a verified installer. The caller exits afterwards (the installer relaunches the app).
-pub fn run_installer(path: &Path) -> std::io::Result<()> {
+/// Runs a staged installer after checking it once more. The caller exits afterwards (the installer relaunches the app).
+pub fn run_installer(staged: &Staged) -> std::io::Result<()> {
     use std::process::Command;
+    verify_staged(staged, PINNED_KEYS).map_err(std::io::Error::other)?;
+    let path = staged.path.as_path();
     match package() {
         Some(Package::Nsis) => Command::new(path).args(["/P", "/R"]).spawn().map(|_| ()),
         Some(Package::AppImage(image)) => {
@@ -194,7 +236,11 @@ pub fn download(
         .and_then(|r| r.error_for_status())
         .map_err(|e| e.to_string())?;
     let total = resp.content_length().unwrap_or(0);
-    let mut file = std::fs::File::create(dest).map_err(|e| e.to_string())?;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true); // never follows or reuses an existing file
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+    let mut file = opts.open(dest).map_err(|e| e.to_string())?;
     let mut h = Sha512::new();
     let mut buf = [0u8; 64 * 1024];
     let (mut done, mut last) = (0u64, u32::MAX);
@@ -327,6 +373,29 @@ mod tests {
         assert!(accept(&feed, file, &sha, &sig, &keys, "4.0.0").unwrap_err().contains("not newer"));
         // a file the feed does not list
         assert!(accept(&feed, "x.deb", &sha, &sig, &keys, "3.0.2").is_err());
+    }
+
+    #[test]
+    fn staged_installer_is_checked_again_before_it_runs() {
+        let mut rng = rand::rngs::OsRng;
+        let key = SigningKey::generate(&mut rng);
+        let dir = private_dir(&std::env::temp_dir()).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+        }
+        assert_ne!(private_dir(&std::env::temp_dir()).map(|d| { let _ = std::fs::remove_dir(&d); d }).unwrap(), dir);
+        let path = dir.join("cillhub-desktop-rust_3.1.0_amd64.deb");
+        std::fs::write(&path, b"installer bytes").unwrap();
+        let sha = sha512_hex(&path).unwrap();
+        let staged = Staged { version: "3.1.0".into(), path: path.clone(), sha512_hex: sha.clone(), sig: key.sign(&message(&sha, "3.1.0")).to_bytes().to_vec() };
+        assert_eq!(verify_staged(&staged, &pem(&key)), Ok(()));
+        assert!(verify_staged(&staged, PINNED_KEYS).is_err());
+        std::fs::write(&path, b"swapped bytes!!").unwrap();
+        assert!(verify_staged(&staged, &pem(&key)).unwrap_err().contains("changed"));
+        assert!(run_installer(&staged).is_err());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

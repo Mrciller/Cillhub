@@ -233,8 +233,8 @@ pub struct CillhubApp {
     pub poll_options_input: String,
     pub schedule_time_input: String,
     /// A downloaded installer that passed update::accept: (version, path).
-    pub update_ready: Option<(String, std::path::PathBuf)>,
-    update_rx: Option<Receiver<Result<Option<(String, std::path::PathBuf)>, String>>>,
+    pub update_ready: Option<crate::update::Staged>,
+    update_rx: Option<Receiver<Result<Option<crate::update::Staged>, String>>>,
     last_update_check: Option<Instant>,
     update_dismissed_until: Option<Instant>,
 
@@ -1817,7 +1817,8 @@ impl CillhubApp {
         let update_shown = self
             .update_dismissed_until
             .is_none_or(|t| Instant::now() >= t);
-        if let (Some((version, path)), true) = (self.update_ready.clone(), update_shown) {
+        if let (Some(staged), true) = (self.update_ready.clone(), update_shown) {
+            let version = staged.version.clone();
             TopBottomPanel::top("update_banner_panel")
                 .frame(Frame::new().fill(ACCENT()).inner_margin(Margin::symmetric(14, 6)))
                 .show(ctx, |ui| {
@@ -1834,7 +1835,7 @@ impl CillhubApp {
                                     Some(Instant::now() + Duration::from_secs(3600));
                             }
                             if ui.button(tr("Restart to Update")).clicked()
-                                && report(&mut self.status_banner, crate::update::run_installer(&path))
+                                && report(&mut self.status_banner, crate::update::run_installer(&staged))
                                     .is_some()
                             {
                                 std::process::exit(0);

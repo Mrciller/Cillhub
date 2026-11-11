@@ -475,7 +475,7 @@ impl CillhubApp {
         }
         ui.add_space(16.0);
         ui.label(RichText::new(trf("Version {v}", &[("v", env!("CARGO_PKG_VERSION"))])).font(ui_font(14.0)).color(TEXT_MUTED()));
-        if let Some((v, _)) = &self.update_ready {
+        if let Some(crate::update::Staged { version: v, .. }) = &self.update_ready {
             ui.label(RichText::new(trf("A new version of Cillhub is available ({version}).", &[("version", v)])).font(ui_font(14.0)).color(GREEN()));
         }
     }
