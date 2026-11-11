@@ -148,10 +148,20 @@ pub struct CillhubApp {
     pub api: Option<ApiClient>,
     pub gateway_rx: Option<Receiver<GatewayEvent>>,
     pub gateway_cmd_tx: Option<Sender<GatewayCommand>>,
-    /// Which connection each request belongs to; shared with the hub ApiClient (api::Routes).
-    pub routes: std::sync::Arc<std::sync::RwLock<crate::api::Routes>>,
     /// Saved private nodes connected next to the hub, by origin (connections.rs).
     pub conns: std::collections::HashMap<String, connections::NodeConn>,
+    /// Whose data is in `state` (None = the hub), the other connections' data, and whose servers the window shows.
+    pub front: connections::Conn,
+    pub parked: std::collections::HashMap<connections::Conn, connections::Front>,
+    pub shown: connections::Conn,
+    /// A node view put aside while User Settings (hub data) is open: (node, server, channel).
+    node_view: Option<(String, Option<String>, Option<String>)>,
+    /// Our hub user id (from the hub's READY): node tokens are kept per hub account.
+    pub hub_user: String,
+    node_gen: u64,
+    revoke_tx: Sender<(String, bool)>,
+    revoke_rx: Receiver<(String, bool)>,
+    revoking: std::collections::HashSet<String>,
     signin_tx: Sender<connections::SignInDone>,
     signin_rx: Receiver<connections::SignInDone>,
     /// session_gen for workers: a sign-in checks it before it posts the consent to the hub
@@ -342,6 +352,7 @@ impl CillhubApp {
         let (image_tx, image_rx) = mpsc::channel();
         let (picked_tx, picked_rx) = mpsc::channel();
         let (signin_tx, signin_rx) = mpsc::channel();
+        let (revoke_tx, revoke_rx) = mpsc::channel();
         let (theme_name, locale) = (settings.theme.clone(), settings.locale.clone());
         let mut app = Self {
             settings,
@@ -349,8 +360,16 @@ impl CillhubApp {
             api: None,
             gateway_rx: None,
             gateway_cmd_tx: None,
-            routes: Default::default(),
             conns: Default::default(),
+            front: None,
+            parked: Default::default(),
+            shown: None,
+            node_view: None,
+            hub_user: String::new(),
+            node_gen: 0,
+            revoke_tx,
+            revoke_rx,
+            revoking: Default::default(),
             signin_tx,
             signin_rx,
             session_live: Default::default(),
@@ -474,6 +493,7 @@ impl CillhubApp {
         };
 
         app.poll_league_lobby();
+        app.retry_revokes(); // node sign-outs not confirmed in an earlier run
         if demo_mode {
             app.enter_demo_arena();
         } else if let Some(token) = app.settings.token() {
@@ -496,6 +516,12 @@ impl CillhubApp {
 
     pub fn handle_deep_link(&mut self, url: &str) {
         if let Some(target) = parse_deep_link(url) {
+            if self.shown.is_some() {
+                // invites and add links are the hub's
+                self.show(&None);
+                self.selected_guild_id = None;
+                self.selected_channel_id = None;
+            }
             match target {
                 DeepLinkTarget::Invite(code) => {
                     self.join_invite_code_input = code;
@@ -514,10 +540,8 @@ impl CillhubApp {
     pub fn complete_login(&mut self, origin: Url, token: String) {
         self.new_session();
         report(&mut self.status_banner, self.settings.set_token(Some(&token)));
-        let mut api = ApiClient::new(origin.clone(), Some(token.clone()));
-        api.routes = Some(self.routes.clone());
-        self.api = Some(api);
-        let (ev_tx, ev_rx) = mpsc::channel();
+        self.api = Some(ApiClient::new(origin.clone(), Some(token.clone())));
+        let (ev_tx, ev_rx) = mpsc::sync_channel(crate::native_gateway::EVENT_QUEUE);
         let (cmd_tx, cmd_rx) = mpsc::channel();
         spawn_with_commands(origin, token, ev_tx, cmd_rx);
         self.gateway_rx = Some(ev_rx);
@@ -546,6 +570,8 @@ impl CillhubApp {
         self.gateway_rx = None;
         self.gateway_cmd_tx = None;
         self.forget_nodes();
+        self.hub_user.clear();
+        self.node_view = None;
         self.api = None;
         self.authenticated = false;
         // nothing of this account may show up in the next session
@@ -979,11 +1005,11 @@ impl CillhubApp {
             return;
         }
         let cid = channel_id.to_string();
-        let key = self.history_key(&cid);
-        let scope = self.scope_now(&key); // only READY (of the channel's connection) starts a new one
+        let key = "history"; // scopes belong to the connection in front
+        let scope = self.scope_now(key); // only READY (of this connection) starts a new one
         self.state.begin_history(&cid);
         let sent = self.api_get(format!("/channels/{cid}/messages?limit=50"), move |app, r| {
-            if !app.in_scope(&key, scope) {
+            if !app.in_scope(key, scope) {
                 return;
             }
             app.loading_history.remove(&cid);
@@ -1020,10 +1046,9 @@ impl CillhubApp {
             return;
         }
         let cid = channel_id.to_string();
-        let key = self.history_key(&cid);
-        let scope = self.scope_now(&key);
+        let scope = self.scope_now("history");
         self.api_get(format!("/channels/{cid}/messages?limit=50&before={before}"), move |app, r| {
-            if !app.in_scope(&key, scope) {
+            if !app.in_scope("history", scope) {
                 return; // a page of the state before READY
             }
             let Some(older) = report(&mut app.status_banner, r).map(|v| parse_messages(&v)) else { return };
@@ -1084,6 +1109,25 @@ impl CillhubApp {
     }
 
     fn process_background_events(&mut self) {
+        // hub events change the hub's data: put it in front meanwhile
+        self.swap_in(&None);
+        self.hub_events();
+        let shown = self.shown.clone();
+        if !self.swap_in(&shown) {
+            self.show(&None);
+        }
+        self.tick_nodes();
+        self.poll_update();
+        self.maybe_check_for_update(self.api.is_none() && self.authenticated);
+        if self.last_game_scan.elapsed() >= Duration::from_secs(5) {
+            self.poll_game_activity(false);
+        }
+        if self.last_league_scan.elapsed() >= Duration::from_secs(4) {
+            self.poll_league_lobby();
+        }
+    }
+
+    fn hub_events(&mut self) {
         let mut events = Vec::new();
         if let Some(rx) = &self.gateway_rx {
             while let Ok(ev) = rx.try_recv() {
@@ -1100,17 +1144,12 @@ impl CillhubApp {
                     let str_of = |k: &str| payload.get(k).and_then(Value::as_str).map(String::from);
                     let vote = name.starts_with("MESSAGE_POLL_VOTE_").then(|| str_of("channel_id").zip(str_of("message_id"))).flatten();
                     let nodes_changed = name == "USER_SETTINGS_UPDATE" && payload.get("private_nodes").is_some();
-                    if let Some(id) = &new_guild {
-                        self.routes.write().unwrap_or_else(|e| e.into_inner()).owner.remove(id); // the hub wins an id a node named first
-                    }
-                    let kept = if is_ready { self.keep_node_guilds() } else { Vec::new() };
                     if let Err(e) = self.state.apply(&name, payload) {
                         eprintln!("cillhub: {name} not applied: {e}");
                         self.status_banner = Some(format!("Could not apply {name}: {e}"));
                     }
                     if is_ready {
-                        self.restore_node_guilds(kept);
-                        self.routes.write().unwrap_or_else(|e| e.into_inner()).hub_me = self.state.me.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+                        self.hub_user = self.state.me.as_ref().map(|u| u.id.clone()).unwrap_or_default();
                     }
                     if is_ready || nodes_changed {
                         self.sync_private_nodes();
@@ -1137,6 +1176,9 @@ impl CillhubApp {
                         self.new_scope("history");
                         self.loading_history.clear();
                         self.poll_pending.clear(); // choices come from the reloaded history now
+                    }
+                    // the selection is the hub's only while the window shows the hub
+                    if is_ready && self.shown.is_none() {
                         // READY replaced the state: keep a selection that still exists and load its history again
                         let gone = |c: &Option<String>, ok: &dyn Fn(&str) -> bool| c.as_deref().is_some_and(|c| !ok(c));
                         if gone(&self.selected_guild_id, &|g| self.state.guilds.contains_key(g))
@@ -1149,7 +1191,7 @@ impl CillhubApp {
                             self.load_channel_history(&cid);
                         }
                     }
-                    if is_ready && self.selected_channel_id.is_none() {
+                    if is_ready && self.shown.is_none() && self.selected_channel_id.is_none() {
                         if let Some(g) = self.state.sorted_guilds().first() {
                             let gid = g.id.clone();
                             let first_ch = g
@@ -1177,16 +1219,6 @@ impl CillhubApp {
                 }
             }
         }
-
-        self.tick_nodes();
-        self.poll_update();
-        self.maybe_check_for_update(self.api.is_none() && self.authenticated);
-        if self.last_game_scan.elapsed() >= Duration::from_secs(5) {
-            self.poll_game_activity(false);
-        }
-        if self.last_league_scan.elapsed() >= Duration::from_secs(4) {
-            self.poll_league_lobby();
-        }
     }
 
     /// `.rail` (GuildRail.tsx): Direct Messages, separator, servers, add a server. No download
@@ -1208,6 +1240,7 @@ impl CillhubApp {
                 draw_icon(painter, Rect::from_center_size(rect.center(), Vec2::splat(26.0)), IconKind::Home, fg);
             });
             if home_resp.on_hover_text(tr("Direct Messages")).clicked() {
+                self.show(&None);
                 self.selected_guild_id = None;
                 self.selected_channel_id = None;
             }
@@ -1216,17 +1249,19 @@ impl CillhubApp {
             let (sep_rect, _) = ui.allocate_exact_size(Vec2::new(32.0, 5.0), Sense::hover());
             ui.painter().hline(sep_rect.x_range(), sep_rect.center().y, Stroke::new(1.0_f32, BORDER()));
 
-            let guilds: Vec<(String, String)> = self
-                .state
-                .sorted_guilds()
-                .into_iter()
-                .map(|g| (g.id.clone(), g.name.clone()))
-                .collect();
-            for (gid, gname) in guilds {
-                let active = self.selected_guild_id.as_deref() == Some(gid.as_str());
+            // the hub's servers, then each saved node's (each from its own data)
+            let mut guilds: Vec<(connections::Conn, String, String)> = Vec::new();
+            let conns = std::iter::once(None).chain(self.settings.private_nodes.iter().map(|n| Some(n.origin.clone())));
+            for conn in conns.collect::<Vec<_>>() {
+                if let Some(st) = self.conn_state(&conn) {
+                    guilds.extend(st.sorted_guilds().into_iter().map(|g| (conn.clone(), g.id.clone(), g.name.clone())));
+                }
+            }
+            for (conn, gid, gname) in guilds {
+                let active = self.shown == conn && self.selected_guild_id.as_deref() == Some(gid.as_str());
                 let abbr = initials(&gname, 2);
-                // `.node-marker`: servers that are not on the hub carry their node's initial; greyed while it is down
-                let mark = self.node_mark(&gid);
+                // `.node-marker`: a node's servers carry its initial; greyed while it is down
+                let mark = conn.as_deref().map(|o| self.node_mark(o));
                 let down = mark.as_ref().is_some_and(|(_, l)| *l != crate::nodes::NodeLink::Ready);
                 let resp = Self::rail_icon_slot(ui, rail_rect.min.x, active, false, |painter, rect, fg| {
                     painter.text(rect.center(), Align2::CENTER_CENTER, &abbr, display_font(20.0), if down { fg.gamma_multiply(0.4) } else { fg });
@@ -1244,6 +1279,7 @@ impl CillhubApp {
                     None => gname.clone(),
                 };
                 if resp.on_hover_text(hover).clicked() {
+                    self.show(&conn);
                     self.open_guild(&gid);
                 }
             }
@@ -1252,6 +1288,10 @@ impl CillhubApp {
                 draw_icon(painter, Rect::from_center_size(rect.center(), Vec2::splat(24.0)), IconKind::Plus, fg);
             });
             if add_resp.on_hover_text(tr("Add a server")).clicked() {
+                // creating or joining a server happens on the hub
+                self.show(&None);
+                self.selected_guild_id = None;
+                self.selected_channel_id = None;
                 self.active_modal = Some(ModalKind::CreateJoinGuild);
             }
 
@@ -1908,8 +1948,7 @@ impl CillhubApp {
         if url.starts_with("https://") || url.starts_with("http://") {
             return url.to_string();
         }
-        self.api
-            .as_ref()
+        self.front_api()
             .and_then(|api| api.origin.join(url).ok())
             .map(|u| u.to_string())
             .unwrap_or_else(|| url.to_string())
@@ -1985,6 +2024,27 @@ impl CillhubApp {
         self.fonts_installed = true;
     }
 
+    /// A node is shown only with one of its servers open; User Settings (account data) shows the hub's data and
+    /// puts the node view aside until it closes.
+    fn keep_view_consistent(&mut self) {
+        let settings_open = self.active_modal == Some(ModalKind::UserSettings);
+        if let Some(o) = self.shown.clone().filter(|_| settings_open) {
+            self.node_view = Some((o, self.selected_guild_id.take(), self.selected_channel_id.take()));
+            self.show(&None);
+        } else if !settings_open {
+            if let Some((o, g, c)) = self.node_view.take() {
+                let conn = Some(o);
+                if self.conn_state(&conn).is_some() {
+                    self.show(&conn);
+                    (self.selected_guild_id, self.selected_channel_id) = (g, c);
+                }
+            }
+        }
+        if self.shown.is_some() && self.selected_guild_id.is_none() {
+            self.show(&None);
+        }
+    }
+
     pub fn headless_tick(&mut self, ctx: &Context) {
         if !self.fonts_installed {
             install_fonts(ctx, self.state.user_settings.dyslexic_font);
@@ -2005,6 +2065,7 @@ impl CillhubApp {
         self.composer_rev(); // last frame's typing counts before upload answers are applied
         self.pump_bg();
         self.process_background_events();
+        self.keep_view_consistent();
         while let Ok(paths) = self.picked_rx.try_recv() {
             self.pending_files.extend(paths.into_iter().map(std::sync::Arc::new));
         }

@@ -1,27 +1,67 @@
-//! Saved private nodes connected next to the hub (stage 2a): per node origin a token (own keyring entry), a
-//! gateway and a link state. Node servers join the one State; their guild and channel ids are recorded in
-//! `routes.owner`, so requests about them go to their node (api::Routes) and only that node's events may touch them.
+//! Saved private nodes connected next to the hub (stage 2a). A node is untrusted input, so each connection keeps
+//! its own State (servers, channels, messages, users, presences) plus its pending poll choices, loading set and
+//! request scopes: nothing a node sends can reach the hub's data or another node's. `self.state` holds the data
+//! of `self.front`; the others wait in `self.parked`. The window shows `self.shown`'s servers. Every request is
+//! sent with the connection whose data is in front when it starts (its origin and token), and its answer is
+//! applied to that connection's data again, only while that connection still exists.
 use super::CillhubApp;
-use crate::api::{inbound, Routes};
 use crate::i18n::tr;
-use crate::native_gateway::{spawn_node, GatewayCommand, GatewayEvent};
+use crate::native_gateway::{spawn_node, GatewayCommand, GatewayEvent, EVENT_QUEUE};
 use crate::nodes::{NodeLink, SignInFail};
+use crate::state::State;
 use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
+
+/// None = the hub, Some(origin) = a private node.
+pub type Conn = Option<String>;
+
+/// One connection's data while another one is in front.
+#[derive(Default)]
+pub struct Front {
+    state: State,
+    poll_pending: HashMap<String, Vec<u32>>,
+    loading_history: HashSet<String>,
+    scopes: HashMap<String, u64>,
+}
+
+/// Node events applied per frame; the rest wait in the bounded queue (the gateway stops reading when it is full).
+const EVENT_BUDGET: usize = 500;
+/// A node with more than this is cut off ("too much data"): it cannot grow this app's memory without bound.
+const MAX_GUILDS: usize = 200;
+const MAX_CHANNELS: usize = 20_000;
+const MAX_USERS: usize = 200_000;
+
+/// Gateway events a node may send: about its own servers only. Account-wide events (settings, relationships,
+/// DMs, read states, sessions, saved messages) come from the hub alone.
+const NODE_EVENTS: &[&str] = &[
+    "GUILD_CREATE", "GUILD_UPDATE", "GUILD_DELETE", "GUILD_ROLE_CREATE", "GUILD_ROLE_UPDATE", "GUILD_ROLE_DELETE",
+    "GUILD_MEMBER_ADD", "GUILD_MEMBER_UPDATE", "GUILD_MEMBER_REMOVE", "CHANNEL_CREATE", "CHANNEL_UPDATE", "CHANNEL_DELETE",
+    "THREAD_CREATE", "THREAD_UPDATE", "THREAD_DELETE", "THREAD_LIST_SYNC", "MESSAGE_CREATE", "MESSAGE_UPDATE", "MESSAGE_DELETE",
+    "MESSAGE_DELETE_BULK", "MESSAGE_REACTION_ADD", "MESSAGE_REACTION_REMOVE", "MESSAGE_REACTION_REMOVE_ALL",
+    "MESSAGE_POLL_VOTE_ADD", "MESSAGE_POLL_VOTE_REMOVE", "PRESENCE_UPDATE", "TYPING_START", "VOICE_STATE_UPDATE",
+    "VOICE_CHANNEL_STATUS_UPDATE", "GUILD_EMOJIS_UPDATE", "GUILD_STICKERS_UPDATE", "GUILD_SCHEDULED_EVENT_CREATE",
+    "GUILD_SCHEDULED_EVENT_UPDATE", "GUILD_SCHEDULED_EVENT_DELETE", "STAGE_INSTANCE_CREATE", "STAGE_INSTANCE_UPDATE",
+    "STAGE_INSTANCE_DELETE", "CHANNEL_CANVAS_UPDATE",
+];
 
 pub struct NodeConn {
     pub link: NodeLink,
     rx: Option<Receiver<GatewayEvent>>,
     cmd: Option<Sender<GatewayCommand>>,
+    /// requests to this node: its origin and token, nothing else
+    api: Option<crate::api::ApiClient>,
     tries: u32,
     retry_at: Option<Instant>,
     busy: bool,
+    /// answers started for an earlier connection (removed, signed out) are dropped
+    pub gen: u64,
 }
 
 impl NodeConn {
-    fn new() -> Self {
-        Self { link: NodeLink::Connecting, rx: None, cmd: None, tries: 0, retry_at: None, busy: false }
+    fn new(gen: u64) -> Self {
+        Self { link: NodeLink::Connecting, rx: None, cmd: None, api: None, tries: 0, retry_at: None, busy: false, gen }
     }
     fn close(&mut self) {
         if let Some(tx) = self.cmd.take() {
@@ -54,18 +94,75 @@ pub fn outcome(started: u64, now: u64, saved: bool, ok: bool) -> Outcome {
 }
 
 impl CillhubApp {
-    fn routes_mut(&self) -> std::sync::RwLockWriteGuard<'_, Routes> {
-        self.routes.write().unwrap_or_else(|e| e.into_inner())
+    /// Puts `conn`'s data in front (the current front's data is parked). False when `conn` has no data.
+    pub fn swap_in(&mut self, conn: &Conn) -> bool {
+        if *conn == self.front {
+            return true;
+        }
+        let Some(next) = self.parked.remove(conn) else { return false };
+        let cur = Front {
+            state: std::mem::replace(&mut self.state, next.state),
+            poll_pending: std::mem::replace(&mut self.poll_pending, next.poll_pending),
+            loading_history: std::mem::replace(&mut self.loading_history, next.loading_history),
+            scopes: std::mem::replace(&mut self.scopes, next.scopes),
+        };
+        self.parked.insert(std::mem::replace(&mut self.front, conn.clone()), cur);
+        true
     }
 
-    /// The node origin that owns a guild or channel id; None = the hub.
-    pub fn owner_of(&self, id: &str) -> Option<String> {
-        self.routes.read().unwrap_or_else(|e| e.into_inner()).owner.get(id).cloned()
+    /// Runs `f` with `conn`'s data in front, then puts the previous front back. None when `conn` has no data.
+    pub fn with_conn<R>(&mut self, conn: &Conn, f: impl FnOnce(&mut Self) -> R) -> Option<R> {
+        let prev = self.front.clone();
+        if !self.swap_in(conn) {
+            return None;
+        }
+        let r = f(self);
+        if !self.swap_in(&prev) {
+            self.swap_in(&None); // the previous one went away meanwhile
+        }
+        Some(r)
     }
 
-    /// History requests are scoped per connection: a node's READY makes only that node's older answers stale.
-    pub fn history_key(&self, channel_id: &str) -> String {
-        self.owner_of(channel_id).map_or_else(|| "history".to_string(), |o| format!("history@{o}"))
+    /// Shows `conn`'s servers (Home and the hub's servers for None).
+    pub fn show(&mut self, conn: &Conn) {
+        if self.swap_in(conn) {
+            self.shown = conn.clone();
+        }
+    }
+
+    /// The data of `conn`, wherever it is.
+    pub fn conn_state(&self, conn: &Conn) -> Option<&State> {
+        if *conn == self.front {
+            Some(&self.state)
+        } else {
+            self.parked.get(conn).map(|f| &f.state)
+        }
+    }
+
+    /// The API client of the connection in front.
+    pub fn front_api(&self) -> Option<&crate::api::ApiClient> {
+        match &self.front {
+            None => self.api.as_ref(),
+            Some(o) => self.conns.get(o).and_then(|c| c.api.as_ref()),
+        }
+    }
+
+    /// Whether an answer started for (`conn`, `gen`) may still be applied.
+    pub fn conn_alive(&self, conn: &Conn, gen: u64) -> bool {
+        conn.as_ref().is_none_or(|o| self.conns.get(o).is_some_and(|c| c.gen == gen))
+    }
+
+    /// The generation of the connection in front (0 for the hub).
+    pub fn front_gen(&self) -> u64 {
+        self.front.as_ref().and_then(|o| self.conns.get(o)).map_or(0, |c| c.gen)
+    }
+
+    /// DMs and friends are the hub's: from a node's view (a node user's id means nothing on the hub) they are refused.
+    pub fn refuse_on_node(&mut self) -> bool {
+        if self.front.is_some() {
+            self.status_banner = Some(tr("Direct messages and friends are not available on private nodes yet.").to_string());
+        }
+        self.front.is_some()
     }
 
     /// The saved node's name for marks and rows.
@@ -74,8 +171,14 @@ impl CillhubApp {
         n.map(|n| n.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| origin.split("://").nth(1).unwrap_or(origin).to_string())
     }
 
+    /// Where a node token is kept: per hub, hub account and node.
+    fn node_key(&self, origin: &str) -> String {
+        let hub = self.api.as_ref().map(|a| a.origin.origin().ascii_serialization()).unwrap_or_default();
+        crate::settings::node_key(&hub, &self.hub_user, origin)
+    }
+
     /// On the hub's READY and USER_SETTINGS_UPDATE: the hub copy of the list wins (removals on another device
-    /// too); an account that never saved one (null) takes this device's. Then every saved node gets a try.
+    /// too); an account that never saved one (null) uploads this device's. Then every saved node gets a try.
     pub fn sync_private_nodes(&mut self) {
         let from_hub = self.state.user_settings.extra.get("private_nodes").filter(|v| v.is_array()).cloned();
         match from_hub {
@@ -87,10 +190,11 @@ impl CillhubApp {
             None => {}
             Some(v) => self.adopt_list(&v),
         }
+        self.retry_revokes();
         self.connect_saved();
     }
 
-    /// Takes a list the hub sent (settings answer or event); nodes no longer in it are signed out and dropped.
+    /// Takes the list the hub sent; nodes no longer in it are signed out and dropped.
     pub fn adopt_list(&mut self, v: &Value) {
         let list = crate::nodes::sanitize(serde_json::from_value(v.clone()).unwrap_or_default());
         let gone: Vec<String> = self.settings.private_nodes.iter().filter(|n| !list.iter().any(|x| x.origin == n.origin)).map(|n| n.origin.clone()).collect();
@@ -103,15 +207,16 @@ impl CillhubApp {
 
     /// Starts every saved node that has no connection yet: its gateway with a stored token, else a sign-in.
     pub fn connect_saved(&mut self) {
-        if self.api.is_none() {
+        if self.api.is_none() || self.hub_user.is_empty() {
             return;
         }
         for n in self.settings.private_nodes.clone() {
             if self.conns.contains_key(&n.origin) {
                 continue;
             }
-            self.conns.insert(n.origin.clone(), NodeConn::new());
-            match self.settings.node_token(&n.origin) {
+            self.node_gen += 1;
+            self.conns.insert(n.origin.clone(), NodeConn::new(self.node_gen));
+            match self.settings.node_token(&self.node_key(&n.origin)) {
                 Some(t) => self.open_node(&n.origin, t),
                 None => self.start_sign_in(&n.origin),
             }
@@ -134,7 +239,7 @@ impl CillhubApp {
             false,
             move || {
                 let alive = || live.load(std::sync::atomic::Ordering::SeqCst) == gen;
-                let r = crate::api::ApiClient::new(api.origin.clone(), api.token.clone())
+                let r = api
                     .get("/federation/nodes")
                     .map_err(|e| SignInFail::Down(if e.status == 0 { tr("Can't reach the server.").to_string() } else { e.to_string() }))
                     .and_then(|records| match crate::nodes::find_record(&records, &origin) {
@@ -148,16 +253,17 @@ impl CillhubApp {
         );
     }
 
-    /// Opens a node's gateway with its token; requests about its servers use the token from now on.
+    /// Opens a node's gateway with its token; its requests use that token from now on.
     fn open_node(&mut self, origin: &str, token: String) {
         let Ok(url) = url::Url::parse(origin) else { return };
-        self.routes_mut().nodes.insert(origin.to_string(), (token.clone(), String::new()));
-        let (ev_tx, ev_rx) = mpsc::channel();
+        self.parked.entry(Some(origin.to_string())).or_default();
+        let (ev_tx, ev_rx) = mpsc::sync_channel(EVENT_QUEUE);
         let (cmd_tx, cmd_rx) = mpsc::channel();
-        spawn_node(url, token, ev_tx, cmd_rx);
-        let c = self.conns.entry(origin.to_string()).or_insert_with(NodeConn::new);
+        spawn_node(url.clone(), token.clone(), ev_tx, cmd_rx);
+        let Some(c) = self.conns.get_mut(origin) else { return };
         c.close();
         (c.rx, c.cmd, c.link) = (Some(ev_rx), Some(cmd_tx), NodeLink::Connecting);
+        c.api = Some(crate::api::ApiClient::new(url, Some(token)));
     }
 
     /// Tries again later, 5 s doubling up to 5 minutes; nothing waits for it.
@@ -169,24 +275,50 @@ impl CillhubApp {
         }
     }
 
-    /// Every frame: finished sign-ins, node gateway events, due retries.
+    /// Ends a node's session there on its own thread; the sign-out stays pending (saved) until the node confirms.
+    fn revoke_async(&mut self, key: String, origin: String, token: String) {
+        if !self.revoking.insert(key.clone()) {
+            return;
+        }
+        let tx = self.revoke_tx.clone();
+        std::thread::spawn(move || {
+            let ok = crate::nodes::revoke(&origin, &token);
+            let _ = tx.send((key, ok));
+        });
+    }
+
+    /// Sign-outs that a node has not confirmed yet (from this run or an earlier one) are tried again.
+    pub fn retry_revokes(&mut self) {
+        for (key, origin, token) in self.settings.pending_revoke_list() {
+            self.revoke_async(key, origin, token);
+        }
+    }
+
+    /// Every frame: finished sign-ins and sign-outs, node gateway events (a budget per node), due retries.
     pub fn tick_nodes(&mut self) {
+        while let Ok((key, ok)) = self.revoke_rx.try_recv() {
+            self.revoking.remove(&key);
+            if ok {
+                super::report(&mut self.status_banner, self.settings.clear_pending_revoke(&key));
+            }
+        }
         while let Ok((gen, origin, r)) = self.signin_rx.try_recv() {
             let saved = self.settings.private_nodes.iter().any(|n| n.origin == origin);
-            let fresh = gen == self.session_gen;
-            if fresh {
+            if gen == self.session_gen {
                 if let Some(c) = self.conns.get_mut(&origin) {
                     c.busy = false;
                 }
             }
             match (outcome(gen, self.session_gen, saved, r.is_ok()), r) {
                 (Outcome::Adopt, Ok(token)) => {
-                    super::report(&mut self.status_banner, self.settings.set_node_token(&origin, Some(&token)));
+                    let key = self.node_key(&origin);
+                    super::report(&mut self.status_banner, self.settings.set_node_token(&key, Some(&token)));
                     self.open_node(&origin, token);
                 }
                 // started for another session, or the node was removed meanwhile: never stored, ended on the node
                 (Outcome::Revoke, Ok(token)) => {
-                    std::thread::spawn(move || crate::nodes::revoke(&origin, &token));
+                    let key = self.settings.add_pending_revoke(&origin, &token);
+                    self.revoke_async(key, origin, token);
                 }
                 (Outcome::Fail, Err(SignInFail::OwnLogin)) => self.set_link(&origin, NodeLink::OwnLogin),
                 (Outcome::Fail, Err(SignInFail::Old)) => self.set_link(&origin, NodeLink::Old),
@@ -196,8 +328,11 @@ impl CillhubApp {
         }
         let origins: Vec<String> = self.conns.keys().cloned().collect();
         for origin in origins {
-            let events: Vec<GatewayEvent> = self.conns.get(&origin).and_then(|c| c.rx.as_ref()).map(|rx| rx.try_iter().collect()).unwrap_or_default();
+            let events: Vec<GatewayEvent> = self.conns.get(&origin).and_then(|c| c.rx.as_ref()).map(|rx| rx.try_iter().take(EVENT_BUDGET).collect()).unwrap_or_default();
             for ev in events {
+                if !self.conns.contains_key(&origin) {
+                    break; // cut off by an earlier event of this batch
+                }
                 self.node_event(&origin, ev);
             }
             let due = self.conns.get(&origin).is_some_and(|c| c.retry_at.is_some_and(|t| t <= Instant::now()));
@@ -214,197 +349,131 @@ impl CillhubApp {
     }
 
     fn node_event(&mut self, origin: &str, ev: GatewayEvent) {
+        let conn = Some(origin.to_string());
         match ev {
-            GatewayEvent::Dispatch(name, d) if name == "READY" => self.node_ready(origin, d),
-            GatewayEvent::Dispatch(name, d) => self.node_dispatch(origin, &name, d),
+            GatewayEvent::Dispatch(name, d) => {
+                if name != "READY" && !NODE_EVENTS.contains(&name.as_str()) {
+                    eprintln!("cillhub: {origin} sent {name}: dropped");
+                    return;
+                }
+                let too_much = self.with_conn(&conn, |app| app.apply_node_event(&conn, &name, d)).unwrap_or(false);
+                if too_much {
+                    eprintln!("cillhub: {origin} sent more than this app keeps: cut off");
+                    if let Some(mut c) = self.conns.remove(origin) {
+                        c.close();
+                    }
+                    self.drop_node_data(origin);
+                    self.node_gen += 1;
+                    let mut c = NodeConn::new(self.node_gen);
+                    c.link = NodeLink::Down(tr("This node sent more data than the app keeps.").to_string());
+                    self.conns.insert(origin.to_string(), c);
+                }
+            }
             // the gateway keeps reconnecting by itself; its servers are greyed meanwhile
             GatewayEvent::ConnectionError(_) => self.set_link(origin, NodeLink::Down(crate::i18n::trf("{name} is not reachable right now.", &[("name", &self.node_name(origin))]))),
             GatewayEvent::RejectedToken => {
                 // the node ended our session there: a new background sign-in
                 if let Some(c) = self.conns.get_mut(origin) {
                     c.close();
+                    c.api = None;
                 }
-                self.routes_mut().nodes.remove(origin);
-                super::report(&mut self.status_banner, self.settings.set_node_token(origin, None));
+                let key = self.node_key(origin);
+                super::report(&mut self.status_banner, self.settings.set_node_token(&key, None));
                 self.retry(origin, tr("Signed out").to_string());
             }
             GatewayEvent::Connected => {}
         }
     }
 
-    fn hub_me(&self) -> String {
-        self.state.me.as_ref().map(|u| u.id.clone()).unwrap_or_default()
-    }
-
-    /// An id for `origin`: its own already, or new and not the hub's (the hub wins an id both name).
-    fn claim(&mut self, origin: &str, id: &str) -> bool {
-        let hub_has = self.state.guilds.contains_key(id) || self.state.channels.contains_key(id);
-        let mut r = self.routes_mut();
-        match r.owner.get(id) {
-            Some(o) => o == origin,
-            None if hub_has => false,
-            None => {
-                r.owner.insert(id.to_string(), origin.to_string());
-                true
-            }
-        }
-    }
-
-    /// A node GUILD_CREATE: the guild and its channels become the node's, unless the hub has them.
-    fn claim_guild(&mut self, origin: &str, g: &Value) -> bool {
-        let Some(id) = g.get("id").and_then(Value::as_str) else { return false };
-        if !self.claim(origin, id) {
-            return false;
-        }
-        for c in ["channels", "threads"].iter().flat_map(|k| g.get(*k).and_then(Value::as_array)).flatten() {
-            if let Some(cid) = c.get("id").and_then(Value::as_str) {
-                self.claim(origin, cid);
-            }
-        }
-        true
-    }
-
-    /// The node's READY replaces its servers wholesale (left ones disappear); hub data stays untouched.
-    fn node_ready(&mut self, origin: &str, mut d: Value) {
-        let node_me = d.pointer("/user/id").and_then(Value::as_str).unwrap_or("").to_string();
-        let hub_me = self.hub_me();
-        if let Some(n) = self.routes_mut().nodes.get_mut(origin) {
-            n.1 = node_me.clone();
-        }
-        inbound(&mut d, origin, &node_me, &hub_me);
-        self.drop_node_guilds(origin);
-        for g in d.get("guilds").and_then(Value::as_array).cloned().unwrap_or_default() {
-            let Some(gid) = g.get("id").and_then(Value::as_str).map(String::from) else { continue };
-            if self.claim_guild(origin, &g) {
-                super::report(&mut self.status_banner, self.state.apply("GUILD_CREATE", g));
-                self.load_members(&gid);
-            }
-        }
-        for u in d.get("users").and_then(Value::as_array).into_iter().flatten() {
-            // shortcut: node user ids share the hub's user map (hub entries win); key users by origin if collisions show up
-            if let Ok(u) = crate::model::parse::<crate::model::User>(u.clone()) {
-                self.state.users.entry(u.id.clone()).or_insert(u);
-            }
-        }
-        // requests started before this READY belong to the replaced servers
-        self.new_scope(&format!("history@{origin}"));
-        let owner = self.routes.read().unwrap_or_else(|e| e.into_inner()).owner.clone();
-        self.loading_history.retain(|c| owner.get(c).map(String::as_str) != Some(origin));
-        if let Some(c) = self.conns.get_mut(origin) {
-            (c.link, c.tries, c.retry_at) = (NodeLink::Ready, 0, None);
-        }
-        if let Some(cid) = self.selected_channel_id.clone().filter(|c| owner.get(c).map(String::as_str) == Some(origin)) {
-            self.load_channel_history(&cid);
-        }
-    }
-
-    /// Only guild-scoped events of this node's own servers apply; DMs, friends and settings stay on the hub.
-    fn node_dispatch(&mut self, origin: &str, name: &str, mut d: Value) {
-        let node_me = self.routes.read().unwrap_or_else(|e| e.into_inner()).nodes.get(origin).map(|n| n.1.clone()).unwrap_or_default();
-        let hub_me = self.hub_me();
-        inbound(&mut d, origin, &node_me, &hub_me);
+    /// Applies one node event to that node's own data (in front now). True when the node is over its limits.
+    fn apply_node_event(&mut self, conn: &Conn, name: &str, d: Value) -> bool {
         let s = |k: &str| d.get(k).and_then(Value::as_str).map(String::from);
-        let own = |app: &Self, id: Option<String>| id.is_some_and(|id| app.owner_of(&id).as_deref() == Some(origin));
-        let ok = match name {
-            "GUILD_CREATE" => self.claim_guild(origin, &d),
-            "GUILD_UPDATE" | "GUILD_DELETE" => own(self, s("id")),
-            "USER_UPDATE" | "READY_SUPPLEMENTAL" => false,
-            "PRESENCE_UPDATE" if d.pointer("/user/id").and_then(Value::as_str) == Some(hub_me.as_str()) => false,
-            _ if d.get("guild_id").is_some_and(|g| !g.is_null()) => own(self, s("guild_id")),
-            _ => own(self, s("channel_id")),
-        };
-        if !ok {
-            return;
-        }
-        if matches!(name, "CHANNEL_CREATE" | "THREAD_CREATE") {
-            if let Some(id) = s("id") {
-                self.claim(origin, &id);
-            }
-        }
         let vote = name.starts_with("MESSAGE_POLL_VOTE_").then(|| s("channel_id").zip(s("message_id"))).flatten();
-        let id = s("id");
+        let new_guild = (name == "GUILD_CREATE").then(|| s("id")).flatten();
         if let Err(e) = self.state.apply(name, d) {
             eprintln!("cillhub: node {name} not applied: {e}");
         }
         if let Some((cid, mid)) = vote {
             self.settle_poll(&cid, &mid);
         }
-        if let Some(id) = id.filter(|_| name == "GUILD_CREATE") {
+        if let Some(id) = new_guild {
             self.load_members(&id);
         }
+        if name == "READY" {
+            // requests and choices from before this READY belong to the replaced data
+            self.new_scope("history");
+            self.loading_history.clear();
+            self.poll_pending.clear();
+            let ids: Vec<String> = self.state.guilds.keys().cloned().collect();
+            ids.iter().for_each(|id| self.load_members(id));
+            if let Some(c) = conn.as_ref().and_then(|o| self.conns.get_mut(o)) {
+                (c.link, c.tries, c.retry_at) = (NodeLink::Ready, 0, None);
+            }
+            if self.shown == *conn {
+                let gone = |c: &Option<String>, ok: &dyn Fn(&str) -> bool| c.as_deref().is_some_and(|c| !ok(c));
+                if gone(&self.selected_guild_id, &|g| self.state.guilds.contains_key(g)) || gone(&self.selected_channel_id, &|c| self.state.channels.contains_key(c)) {
+                    self.selected_guild_id = None; // the window goes back to Home (headless_tick)
+                    self.selected_channel_id = None;
+                } else if let Some(cid) = self.selected_channel_id.clone() {
+                    self.load_channel_history(&cid);
+                }
+            }
+        }
+        self.state.guilds.len() > MAX_GUILDS || self.state.channels.len() > MAX_CHANNELS || self.state.users.len() > MAX_USERS
     }
 
-    /// Removes a node's servers, channels and cached messages from the state (its ids stay recorded as its own).
-    fn drop_node_guilds(&mut self, origin: &str) {
-        let owner = self.routes.read().unwrap_or_else(|e| e.into_inner()).owner.clone();
-        let mine = |id: &str| owner.get(id).map(String::as_str) == Some(origin);
-        let gids: Vec<String> = self.state.guilds.keys().filter(|g| mine(g)).cloned().collect();
-        for g in gids {
-            let _ = self.state.apply("GUILD_DELETE", json!({ "id": g }));
-        }
-        self.state.messages.retain(|c, _| !mine(c));
-        if self.selected_guild_id.as_deref().is_some_and(mine) {
+    /// Forgets a node's data; the window goes back to Home if it showed that node.
+    fn drop_node_data(&mut self, origin: &str) {
+        let conn = Some(origin.to_string());
+        if self.shown == conn || self.front == conn {
+            self.show(&None);
+            self.shown = None;
             self.selected_guild_id = None;
             self.selected_channel_id = None;
         }
+        self.parked.remove(&conn);
     }
 
-    /// Ends a node connection: gateway closed, servers gone, token forgotten (and revoked on the node with `sign_out`).
+    /// Ends a node connection: gateway closed, data gone, token forgotten. With `sign_out` the token (the one in
+    /// memory first) is revoked on the node; until the node confirms, that sign-out stays saved and is retried.
     pub fn drop_node(&mut self, origin: &str, sign_out: bool) {
-        if let Some(mut c) = self.conns.remove(origin) {
+        let key = self.node_key(origin);
+        let live = self.conns.remove(origin).and_then(|mut c| {
             c.close();
-        }
-        self.routes_mut().nodes.remove(origin);
-        self.drop_node_guilds(origin);
-        if let Some(token) = self.settings.node_token(origin) {
-            if sign_out {
-                let o = origin.to_string();
-                std::thread::spawn(move || crate::nodes::revoke(&o, &token));
+            c.api.and_then(|a| a.token)
+        });
+        self.drop_node_data(origin);
+        let stored = self.settings.node_token(&key);
+        if sign_out {
+            for token in live.into_iter().chain(stored.clone()).collect::<HashSet<_>>() {
+                let pending = self.settings.add_pending_revoke(origin, &token);
+                self.revoke_async(pending, origin.to_string(), token);
             }
-            super::report(&mut self.status_banner, self.settings.set_node_token(origin, None));
+        }
+        if stored.is_some() {
+            super::report(&mut self.status_banner, self.settings.set_node_token(&key, None));
         }
     }
 
     /// Hub logout: node sessions and the private node list belong to this hub account.
     pub fn forget_nodes(&mut self) {
+        self.show(&None);
         let mut origins: Vec<String> = self.settings.private_nodes.iter().map(|n| n.origin.clone()).collect();
         origins.extend(self.conns.keys().cloned());
-        origins.extend(self.settings.node_tokens.keys().cloned());
+        origins.sort();
+        origins.dedup();
         for o in origins {
             self.drop_node(&o, true);
         }
         self.settings.private_nodes.clear();
-        *self.routes_mut() = Routes::default();
+        self.parked.clear();
+        (self.front, self.shown) = (None, None);
     }
 
-    /// The hub's READY replaces the whole state: node servers are carried over (their gateways stay connected).
-    pub fn keep_node_guilds(&self) -> Vec<(crate::model::Guild, Vec<crate::model::Channel>)> {
-        let owner = self.routes.read().unwrap_or_else(|e| e.into_inner()).owner.clone();
-        let node = |id: &str| owner.contains_key(id);
-        self.state.guilds.values().filter(|g| node(&g.id)).map(|g| {
-            (g.clone(), self.state.channels.values().filter(|c| c.guild_id.as_deref() == Some(&g.id)).cloned().collect())
-        }).collect()
-    }
-
-    pub fn restore_node_guilds(&mut self, kept: Vec<(crate::model::Guild, Vec<crate::model::Channel>)>) {
-        for (g, channels) in kept {
-            // the hub wins an id it now names itself
-            if self.state.guilds.contains_key(&g.id) {
-                self.routes_mut().owner.remove(&g.id);
-                continue;
-            }
-            for c in channels {
-                self.state.channels.entry(c.id.clone()).or_insert(c);
-            }
-            self.state.guilds.insert(g.id.clone(), g);
-        }
-    }
-
-    /// The node mark on a rail entry: (node name, link) for servers that are not on the hub.
-    pub fn node_mark(&self, gid: &str) -> Option<(String, NodeLink)> {
-        let origin = self.owner_of(gid)?;
-        let link = self.conns.get(&origin).map_or(NodeLink::Down(tr("Not connected").to_string()), |c| c.link.clone());
-        Some((self.node_name(&origin), link))
+    /// The node mark of a node's servers on the rail: (node name, link).
+    pub fn node_mark(&self, origin: &str) -> (String, NodeLink) {
+        let link = self.conns.get(origin).map_or(NodeLink::Down(tr("Not connected").to_string()), |c| c.link.clone());
+        (self.node_name(origin), link)
     }
 
     /// Adds a node to the account's list (one call on the hub); the hub's USER_SETTINGS_UPDATE brings the list and
@@ -416,8 +485,10 @@ impl CillhubApp {
             return;
         }
         let body = json!({ "origin": node.origin, "name": node.name });
-        self.api_bg(true, move |api| api.put("/users/@me/settings/private-nodes", Some(body)), |app, r| {
-            super::report(&mut app.status_banner, r);
+        self.with_conn(&None, |app| {
+            app.api_bg(true, move |api| api.put("/users/@me/settings/private-nodes", Some(body)), |app, r| {
+                super::report(&mut app.status_banner, r);
+            })
         });
     }
 
@@ -432,11 +503,13 @@ impl CillhubApp {
         let path = format!("/users/@me/settings/private-nodes?origin={}", percent_encoding::utf8_percent_encode(origin, percent_encoding::NON_ALPHANUMERIC));
         let o = origin.to_string();
         // only this session's answer arrives here (pump_bg); the list itself comes with USER_SETTINGS_UPDATE
-        self.api_bg(true, move |api| api.delete(&path), move |app, r| {
-            if super::report(&mut app.status_banner, r).is_some() {
-                app.settings.private_nodes.retain(|n| n.origin != o);
-                app.drop_node(&o, true);
-            }
+        self.with_conn(&None, |app| {
+            app.api_bg(true, move |api| api.delete(&path), move |app, r| {
+                if super::report(&mut app.status_banner, r).is_some() {
+                    app.settings.private_nodes.retain(|n| n.origin != o);
+                    app.drop_node(&o, true);
+                }
+            })
         });
     }
 }
@@ -444,21 +517,22 @@ impl CillhubApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc::SyncSender;
 
-    #[cfg(feature = "native-net")]
-    #[test]
-    fn a_late_sign_in_is_revoked_on_the_node_and_never_stored() {
-        let (node, seen) = crate::api::testing::serve(1, |_| (204, String::new()));
-        let mut app = CillhubApp::new(None, true);
-        app.settings.private_nodes = vec![crate::nodes::SavedNode { origin: node.clone(), name: "Robin".into() }];
-        let old = app.session_gen;
-        app.new_session(); // logout, or another account logged in
-        app.signin_tx.send((old, node.clone(), Ok("late-token".into()))).unwrap();
-        app.tick_nodes();
-        assert_eq!(app.settings.node_token(&node), None);
-        assert!(app.routes.read().unwrap().nodes.is_empty());
-        let seen = seen.join().unwrap();
-        assert!(seen[0].starts_with("POST /api/v9/auth/logout ") && seen[0].contains("late-token"), "{seen:?}");
+    /// A connected node without network: its events come from the returned sender, its requests go to `api`.
+    fn fake_node(app: &mut CillhubApp, origin: &str, api: Option<&str>) -> SyncSender<GatewayEvent> {
+        let (tx, rx) = mpsc::sync_channel(EVENT_QUEUE);
+        app.node_gen += 1;
+        let mut c = NodeConn::new(app.node_gen);
+        c.rx = Some(rx);
+        c.api = api.map(|a| crate::api::ApiClient::new(url::Url::parse(a).unwrap(), Some("node-token".into())));
+        app.conns.insert(origin.into(), c);
+        app.parked.insert(Some(origin.into()), Front::default());
+        tx
+    }
+
+    fn send(tx: &SyncSender<GatewayEvent>, name: &str, d: Value) {
+        tx.send(GatewayEvent::Dispatch(name.into(), d)).unwrap();
     }
 
     /// Against a hub, two linked nodes and a standalone node (the rig on control port CILLHUB_TEST_RIG).
@@ -500,16 +574,18 @@ mod tests {
         });
         let hub_token = app.api.as_ref().unwrap().token.clone().unwrap();
         for (p, o) in [("3393", &alpha), ("3394", &beta)] {
-            let t = app.settings.node_token(o).expect("node token stored");
+            let t = app.settings.node_token(&app.node_key(o)).expect("node token stored");
             assert_ne!(t, hub_token);
             assert_eq!(ctl(&format!("me/3390/{t}"))["status"], 401, "a node token is useless on the hub");
             assert_eq!(ctl(&format!("me/{p}/{hub_token}"))["status"], 401, "the hub token is not a node token");
             // Alex joins the node's server (as an invite would); the node's GUILD_CREATE brings it
             crate::api::ApiClient::new(url::Url::parse(o).unwrap(), Some(t)).post(&format!("/invites/{}", node(p, "invite")), json!({})).unwrap();
             let g = node(p, "guild");
-            wait(&mut app, "node server in the rail", &|a| a.state.guilds.contains_key(&g) && a.node_mark(&g).is_some());
+            let conn = Some(o.clone());
+            wait(&mut app, "node server in the rail", &|a| a.conn_state(&conn).is_some_and(|s| s.guilds.contains_key(&g)));
         }
-        let say = |app: &mut CillhubApp, gid: Option<String>, cid: String, text: &str, port: &str| {
+        let say = |app: &mut CillhubApp, conn: Conn, gid: Option<String>, cid: String, text: &str, port: &str| {
+            app.show(&conn);
             app.selected_guild_id = gid;
             app.selected_channel_id = Some(cid.clone());
             app.load_channel_history(&cid);
@@ -519,19 +595,21 @@ mod tests {
             wait(app, "own message echoed", &|a| a.state.messages[&cid].iter().any(|m| m.content == text && m.author.as_ref().is_some_and(|u| u.id == me)));
             assert!(ctl(&format!("messages/{port}")).as_array().unwrap().iter().any(|m| m == text), "{text} stored on {port}");
         };
-        let hub_gid = app.state.guilds.keys().find(|g| app.node_mark(g).is_none()).cloned();
-        say(&mut app, hub_gid.clone(), cfg["hub_channel"].as_str().unwrap().into(), "Hello hub from Alex", "3390");
-        say(&mut app, Some(node("3393", "guild")), node("3393", "channel"), "Hello Alpha from Alex", "3393");
-        say(&mut app, Some(node("3394", "guild")), node("3394", "channel"), "Hello Beta from Alex", "3394");
+        let hub_gid = app.conn_state(&None).unwrap().guilds.keys().next().cloned();
+        let (on_alpha, on_beta) = (Some(alpha.clone()), Some(beta.clone()));
+        say(&mut app, None, hub_gid.clone(), cfg["hub_channel"].as_str().unwrap().into(), "Hello hub from Alex", "3390");
+        say(&mut app, on_alpha.clone(), Some(node("3393", "guild")), node("3393", "channel"), "Hello Alpha from Alex", "3393");
+        say(&mut app, on_beta.clone(), Some(node("3394", "guild")), node("3394", "channel"), "Hello Beta from Alex", "3394");
 
         ctl("stop/3394");
         wait(&mut app, "Beta greyed with a reason", &|a| matches!(link(a, &beta), Some(NodeLink::Down(_))));
-        eprintln!("[real] Beta mark: {:?}", app.node_mark(&node("3394", "guild")));
-        say(&mut app, hub_gid.clone(), cfg["hub_channel"].as_str().unwrap().into(), "Hub still works while Beta is down", "3390");
+        eprintln!("[real] Beta mark: {:?}", app.node_mark(&beta));
+        say(&mut app, None, hub_gid.clone(), cfg["hub_channel"].as_str().unwrap().into(), "Hub still works while Beta is down", "3390");
         ctl("start/3394");
         wait(&mut app, "Beta reconnected", &|a| link(a, &beta) == Some(NodeLink::Ready));
+        app.show(&on_beta);
         app.state.messages.remove(&node("3394", "channel"));
-        say(&mut app, Some(node("3394", "guild")), node("3394", "channel"), "Beta is back", "3394");
+        say(&mut app, on_beta.clone(), Some(node("3394", "guild")), node("3394", "channel"), "Beta is back", "3394");
 
         // a second device with the same account: gets the list from the hub and connects without a click
         let mut other = CillhubApp::new(None, false);
@@ -546,10 +624,10 @@ mod tests {
             link(a, &alpha) == Some(NodeLink::Ready) && link(a, &beta) == Some(NodeLink::Ready) && a.settings.private_nodes.len() == 3
         });
 
-        let alpha_token = app.settings.node_token(&alpha).unwrap();
+        let alpha_token = app.settings.node_token(&app.node_key(&alpha)).unwrap();
         app.remove_saved_node(&alpha);
         wait(&mut app, "Alpha removed", &|a| !a.settings.private_nodes.iter().any(|n| n.origin == alpha) && !a.conns.contains_key(&alpha));
-        wait(&mut other, "second device dropped Alpha too", &|a| !a.conns.contains_key(&alpha) && !a.state.guilds.contains_key(&node("3393", "guild")));
+        wait(&mut other, "second device dropped Alpha too", &|a| !a.conns.contains_key(&alpha) && a.conn_state(&on_alpha).is_none());
         other.logout();
         let t = Instant::now();
         while ctl(&format!("me/3393/{alpha_token}"))["status"] != 401 {
@@ -557,46 +635,118 @@ mod tests {
             app.pump_bg();
             std::thread::sleep(Duration::from_millis(100));
         }
-        assert!(app.settings.node_token(&alpha).is_none() && !app.state.guilds.contains_key(&node("3393", "guild")));
+        assert!(app.settings.node_token(&app.node_key(&alpha)).is_none() && app.conn_state(&on_alpha).is_none());
         let list = app.api.as_ref().unwrap().get("/users/@me/settings").unwrap()["private_nodes"].clone();
         assert_eq!(list.as_array().unwrap().len(), 2, "{list}");
         eprintln!("[real] hub list after remove: {list}");
 
-        let beta_token = app.settings.node_token(&beta).unwrap();
+        let beta_key = app.node_key(&beta);
+        let beta_token = app.settings.node_token(&beta_key).unwrap();
         app.logout();
-        assert!(app.settings.node_token(&beta).is_none() && app.settings.private_nodes.is_empty());
+        assert!(app.settings.node_token(&beta_key).is_none() && app.settings.private_nodes.is_empty() && app.parked.is_empty());
         let t = Instant::now();
         while ctl(&format!("me/3394/{beta_token}"))["status"] != 401 {
             assert!(t.elapsed() < Duration::from_secs(20), "Beta token still valid after logout");
             app.pump_bg();
             std::thread::sleep(Duration::from_millis(100));
         }
+        wait(&mut app, "sign-outs confirmed", &|a| a.settings.pending_revokes.is_empty());
         eprintln!("[real] ALL OK");
     }
 
+    #[cfg(feature = "native-net")]
     #[test]
-    fn node_events_touch_only_that_nodes_servers() {
+    fn a_late_sign_in_is_revoked_on_the_node_and_never_stored() {
+        let (node, seen) = crate::api::testing::serve(1, |_| (204, String::new()));
+        let mut app = CillhubApp::new(None, true);
+        app.settings.private_nodes = vec![crate::nodes::SavedNode { origin: node.clone(), name: "Robin".into() }];
+        let old = app.session_gen;
+        app.new_session(); // logout, or another account logged in
+        app.signin_tx.send((old, node.clone(), Ok("late-token".into()))).unwrap();
+        app.tick_nodes();
+        assert_eq!(app.settings.node_token(&app.node_key(&node)), None);
+        assert!(app.conns.is_empty());
+        let seen = seen.join().unwrap();
+        assert!(seen[0].starts_with("POST /api/v9/auth/logout ") && seen[0].contains("late-token"), "{seen:?}");
+        let t = Instant::now();
+        while !app.settings.pending_revokes.is_empty() {
+            assert!(t.elapsed() < Duration::from_secs(5), "the confirmed sign-out stays pending");
+            app.tick_nodes();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// A node's events change only that node's data, whatever ids they name; account-wide events are dropped.
+    #[test]
+    fn node_events_never_touch_hub_data() {
         let mut app = CillhubApp::new(None, true); // the demo state stands in for the hub's
-        let (a, b) = ("https://a.example", "https://b.example");
-        app.routes_mut().hub_me = "u_me".into();
-        app.routes_mut().nodes.insert(a.into(), ("t".into(), "n9".into()));
-        app.routes_mut().nodes.insert(b.into(), ("t".into(), "n8".into()));
-        app.node_dispatch(a, "GUILD_CREATE", json!({ "id": "g_arena", "name": "Taken" }));
-        assert_eq!(app.state.guilds["g_arena"].name, "Cillhub Arena", "the hub keeps its ids");
-        app.node_dispatch(a, "GUILD_CREATE", json!({ "id": "500", "name": "Alpha Lounge", "channels": [{ "id": "501", "type": 0, "guild_id": "500" }] }));
-        assert_eq!((app.owner_of("500").as_deref(), app.owner_of("501").as_deref()), (Some(a), Some(a)));
-        app.node_dispatch(b, "GUILD_UPDATE", json!({ "id": "500", "name": "Taken by Beta" }));
-        assert_eq!(app.state.guilds["500"].name, "Alpha Lounge");
-        let hub_msgs = app.state.messages["c_general"].len();
-        app.node_dispatch(b, "MESSAGE_CREATE", json!({ "id": "m9", "channel_id": "c_general", "content": "x", "author": { "id": "n8" } }));
-        assert_eq!(app.state.messages["c_general"].len(), hub_msgs, "a node cannot write into hub channels");
-        app.state.messages.insert("501".into(), Vec::new());
-        app.node_dispatch(a, "MESSAGE_CREATE", json!({ "id": "m1", "channel_id": "501", "guild_id": "500", "content": "hi <@n9>", "author": { "id": "n9" } }));
-        let m = &app.state.messages["501"][0];
-        assert_eq!((m.author.as_ref().unwrap().id.as_str(), m.content.as_str()), ("u_me", "hi <@u_me>"), "our node account reads as us");
-        assert_eq!(app.history_key("501"), format!("history@{a}"));
-        app.drop_node(a, false);
-        assert!(!app.state.guilds.contains_key("500") && !app.state.messages.contains_key("501"));
+        let hub_before = (app.state.messages["c_general"].len(), app.state.channels.len(), app.state.users["u_sam"].username.clone());
+        let a = "https://a.example";
+        let tx = fake_node(&mut app, a, None);
+        send(&tx, "READY", json!({ "session_id": "s", "user": { "id": "u_me", "username": "evil-me" }, "guilds": [] }));
+        // a server that carries hub channel ids, and a hub friend's id with another name
+        send(&tx, "GUILD_CREATE", json!({ "id": "g_arena", "name": "Taken", "channels": [{ "id": "c_general", "type": 0, "name": "x" }],
+            "members": [{ "user": { "id": "u_sam", "username": "evil-sam" } }] }));
+        send(&tx, "MESSAGE_DELETE", json!({ "id": "m_1", "channel_id": "c_general", "guild_id": "g_arena" }));
+        send(&tx, "CHANNEL_DELETE", json!({ "id": "c_general", "guild_id": "g_arena" }));
+        send(&tx, "MESSAGE_CREATE", json!({ "id": "m9", "channel_id": "c_general", "guild_id": "g_arena", "content": "x", "author": { "id": "u_sam", "username": "evil-sam" } }));
+        send(&tx, "USER_SETTINGS_UPDATE", json!({ "theme": "light" }));
+        send(&tx, "RELATIONSHIP_ADD", json!({ "id": "u_kim", "type": 1, "user": { "id": "u_kim", "username": "kim" } }));
+        app.tick_nodes();
+        assert_eq!(app.front, None);
+        assert_eq!((app.state.messages["c_general"].len(), app.state.channels.len(), app.state.users["u_sam"].username.clone()), hub_before);
+        assert_eq!(app.state.guilds["g_arena"].name, "Cillhub Arena");
+        assert_eq!(app.state.me.as_ref().unwrap().username, "alex", "the local account stays");
+        let node = app.conn_state(&Some(a.into())).unwrap();
+        assert_eq!(node.guilds["g_arena"].name, "Taken");
+        assert_eq!(node.users["u_sam"].username, "evil-sam", "kept in the node's own users");
+        assert!(node.relationships.is_empty() && node.user_settings.theme.is_none(), "account-wide events are dropped");
+        assert_eq!(app.conns[a].link, NodeLink::Ready);
+    }
+
+    /// Requests go to the connection whose data is in front when they start; an id a node names (even "channels",
+    /// even a hub channel id) never moves a hub request to it. Late answers of a removed node are dropped.
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn requests_follow_the_connection_not_the_ids() {
+        let (hub, hub_seen) = crate::api::testing::serve(2, |_| (200, "[]".into()));
+        let (node, node_seen) = crate::api::testing::serve(1, |_| (200, r#"[{"id":"m9","channel_id":"c_general","content":"from the node","author":{"id":"u_sam","username":"evil"}}]"#.into()));
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(crate::api::ApiClient::new(url::Url::parse(&hub).unwrap(), Some("hub-token".into())));
+        let tx = fake_node(&mut app, &node, Some(&node));
+        send(&tx, "READY", json!({ "session_id": "s", "user": { "id": "n1", "username": "alex" },
+            "guilds": [{ "id": "channels", "name": "odd", "channels": [{ "id": "c_general", "type": 0 }] }] }));
+        app.tick_nodes();
+        app.state.messages.remove("c_general");
+        app.load_channel_history("c_general"); // hub in front: to the hub
+        let conn = Some(node.clone());
+        app.with_conn(&conn, |app| app.load_channel_history("c_general")); // the node's own channel of that id
+        app.drop_node(&node, false); // removed before its answer arrives
+        let t = Instant::now();
+        while app.bg.pending > 0 {
+            assert!(t.elapsed() < Duration::from_secs(5));
+            app.pump_bg();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(app.state.messages["c_general"].is_empty(), "the hub's answer, not the node's");
+        assert!(app.parked.is_empty() && app.state.users["u_sam"].username == "sam");
+        let _ = std::net::TcpStream::connect(hub.trim_start_matches("http://")); // ends the idle hub server
+        let hub_seen = hub_seen.join().unwrap();
+        assert!(hub_seen[0].starts_with("GET /api/v9/channels/c_general/messages") && hub_seen[0].contains("hub-token"));
+        let node_seen = node_seen.join().unwrap();
+        assert!(node_seen[0].contains("node-token") && !node_seen[0].contains("hub-token"));
+    }
+
+    #[test]
+    fn a_node_over_its_limits_is_cut_off() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example";
+        let tx = fake_node(&mut app, a, None);
+        let guilds: Vec<Value> = (0..=MAX_GUILDS).map(|i| json!({ "id": i.to_string(), "name": "g" })).collect();
+        send(&tx, "READY", json!({ "session_id": "s", "user": { "id": "n1", "username": "alex" }, "guilds": guilds }));
+        app.tick_nodes();
+        assert!(app.conn_state(&Some(a.into())).is_none(), "its data is gone");
+        assert!(matches!(app.conns[a].link, NodeLink::Down(_)));
     }
 
     #[test]

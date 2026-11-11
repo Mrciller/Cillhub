@@ -776,6 +776,9 @@ impl State {
             }
         }
         self.paged.remove(&channel_id);
+        if messages.len() > MAX_HISTORY {
+            messages.drain(..messages.len() - MAX_HISTORY); // an answer is untrusted: never more than a channel may hold
+        }
         for m in &messages {
             if let Some(author) = &m.author {
                 self.users.insert(author.id.clone(), author.clone());

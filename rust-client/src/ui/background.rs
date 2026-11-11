@@ -63,15 +63,20 @@ impl CillhubApp {
         req: impl FnOnce(&ApiClient) -> Result<Value, ApiError> + Send + 'static,
         done: impl FnOnce(&mut CillhubApp, Result<Value, ApiError>) + Send + 'static,
     ) -> bool {
-        let Some(api) = self.api.clone() else { return false };
+        // the connection whose data is in front: its origin and token, and its data again for the answer
+        let (conn, gen) = (self.front.clone(), self.front_gen());
+        let Some(api) = self.front_api().cloned() else { return false };
         // runs after the session check in pump_bg, so an old session's answer cannot raise the gate
         self.spawn_bg(ordered, move || req(&api), move |app, r| {
+            if !app.conn_alive(&conn, gen) {
+                return; // that node was removed or signed out meanwhile
+            }
             if let Err(e) = &r {
-                if e.accept_terms() && app.terms_gate.is_none() {
+                if conn.is_none() && e.accept_terms() && app.terms_gate.is_none() {
                     app.terms_gate = Some(e.message.clone());
                 }
             }
-            done(app, r)
+            app.with_conn(&conn, |app| done(app, r));
         });
         true
     }

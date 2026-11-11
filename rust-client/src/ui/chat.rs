@@ -332,7 +332,7 @@ impl CillhubApp {
             .unwrap_or_else(|| "system".to_string());
         let author_game = self.state.user_game(&author_id).map(|g| g.name.clone());
         let game_invite = parse_game_invite(&msg.content);
-        let origin = self.api.as_ref().map(|a| a.origin.to_string()).unwrap_or_default();
+        let origin = self.front_api().map(|a| a.origin.to_string()).unwrap_or_default();
         let server_invites = if origin.is_empty() { Vec::new() } else { invite_codes(&msg.content, &origin, MAX_CARDS) };
         let invite_only = !server_invites.is_empty() && only_invite(&msg.content, &origin);
         let mine = self.state.me.as_ref().is_some_and(|me| me.id == author_id);

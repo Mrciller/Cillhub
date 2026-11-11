@@ -63,9 +63,16 @@ pub struct AppSettings {
     /// Settings › Private Nodes (sanitized on load).
     #[serde(default)]
     pub private_nodes: Vec<crate::nodes::SavedNode>,
-    /// Node tokens by origin, only where the keyring failed (like saved_token).
+    /// Node tokens by node_key, only where the keyring failed (like saved_token); they win over the keyring.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub node_tokens: HashMap<String, String>,
+    /// node_keys whose keyring entry could not be deleted: never loaded again.
+    #[serde(default, skip_serializing_if = "std::collections::HashSet::is_empty")]
+    pub node_tombstones: std::collections::HashSet<String>,
+    /// Sign-outs on nodes not confirmed yet, by node_key: the token sits in the keyring entry `node-revoke:<key>`,
+    /// or here when the keyring failed. Retried at every start until the node confirms.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub pending_revokes: HashMap<String, Option<String>>,
     #[serde(default)]
     pub audio_config: AudioConfig,
     #[serde(default)]
@@ -130,6 +137,8 @@ impl Default for AppSettings {
             custom_node_url: String::new(),
             private_nodes: Vec::new(),
             node_tokens: HashMap::new(),
+            node_tombstones: Default::default(),
+            pending_revokes: HashMap::new(),
             audio_config: AudioConfig::default(),
             drafts: HashMap::new(),
             show_members: true,
@@ -150,6 +159,9 @@ impl AppSettings {
     }
 
     pub fn load() -> Self {
+        if cfg!(test) {
+            return Self::default(); // tests never read or write the developer's settings
+        }
         Self::load_from(&Self::settings_file_path())
     }
 
@@ -173,6 +185,9 @@ impl AppSettings {
     }
 
     pub fn save(&self) -> std::io::Result<()> {
+        if cfg!(test) {
+            return Ok(());
+        }
         self.save_to(&Self::settings_file_path())
     }
 
@@ -231,26 +246,74 @@ impl AppSettings {
         self.save()
     }
 
-    /// A private node's token: its own keyring entry per origin, then the file fallback.
-    pub fn node_token(&self, origin: &str) -> Option<String> {
-        keyring_entry(&node_account(origin))
-            .and_then(|k| k.get_password().ok())
-            .or_else(|| self.node_tokens.get(origin).cloned())
+    /// A private node's token for this hub account (node_key): the file fallback first (it is newer when the
+    /// keyring failed), then the keyring unless its entry is tombstoned.
+    pub fn node_token(&self, key: &str) -> Option<String> {
+        self.node_tokens.get(key).cloned().or_else(|| {
+            if self.node_tombstones.contains(key) {
+                return None;
+            }
+            keyring_entry(&format!("node-token:{key}")).and_then(|k| k.get_password().ok())
+        })
     }
 
-    pub fn set_node_token(&mut self, origin: &str, token: Option<&str>) -> std::io::Result<()> {
-        match keep(&node_account(origin), token) {
-            Some(t) => self.node_tokens.insert(origin.to_string(), t),
-            None => self.node_tokens.remove(origin),
-        };
+    pub fn set_node_token(&mut self, key: &str, token: Option<&str>) -> std::io::Result<()> {
+        let entry = keyring_entry(&format!("node-token:{key}"));
+        self.node_tokens.remove(key);
+        match token {
+            Some(t) if entry.as_ref().is_some_and(|k| k.set_password(t).is_ok()) => {
+                self.node_tombstones.remove(key);
+            }
+            Some(t) => {
+                self.node_tokens.insert(key.to_string(), t.to_string());
+            }
+            None => match entry.map(|k| k.delete_credential()) {
+                Some(Err(e)) if !matches!(e, keyring::Error::NoEntry) => {
+                    self.node_tombstones.insert(key.to_string()); // a stale entry must never come back
+                }
+                _ => {
+                    self.node_tombstones.remove(key);
+                }
+            },
+        }
+        self.save()
+    }
+
+    /// Remembers a sign-out to confirm on the node (see pending_revokes); returns its key "<id>|<node origin>".
+    pub fn add_pending_revoke(&mut self, origin: &str, token: &str) -> String {
+        let id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        let key = format!("{id}-{}|{origin}", self.pending_revokes.len());
+        let kept = keyring_entry(&format!("node-revoke:{key}")).is_some_and(|k| k.set_password(token).is_ok());
+        self.pending_revokes.insert(key.clone(), (!kept).then(|| token.to_string()));
+        if let Err(e) = self.save() {
+            eprintln!("cillhub: could not save a pending sign-out: {e}");
+        }
+        key
+    }
+
+    /// (key, node origin, token) of every sign-out not confirmed yet.
+    pub fn pending_revoke_list(&self) -> Vec<(String, String, String)> {
+        self.pending_revokes.iter().filter_map(|(key, fallback)| {
+            let token = fallback.clone().or_else(|| keyring_entry(&format!("node-revoke:{key}")).and_then(|k| k.get_password().ok()))?;
+            Some((key.clone(), key.rsplit('|').next()?.to_string(), token))
+        }).collect()
+    }
+
+    pub fn clear_pending_revoke(&mut self, key: &str) -> std::io::Result<()> {
+        if let Some(k) = keyring_entry(&format!("node-revoke:{key}")) {
+            let _ = k.delete_credential(); // only read through pending_revokes, which forgets the key now
+        }
+        self.pending_revokes.remove(key);
         self.save()
     }
 }
 
-const SESSION: &str = "session-token";
-fn node_account(origin: &str) -> String {
-    format!("node-token:{origin}")
+/// The key of a node token: one per hub, hub account and node.
+pub fn node_key(hub_origin: &str, hub_user: &str, node_origin: &str) -> String {
+    format!("{hub_origin}|{hub_user}|{node_origin}")
 }
+
+const SESSION: &str = "session-token";
 
 /// Puts `token` into the keyring entry `account` (or deletes it); returns what the settings file must keep instead.
 fn keep(account: &str, token: Option<&str>) -> Option<String> {
@@ -368,6 +431,22 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         let back: AppSettings = serde_json::from_str(&json).unwrap();
         assert_eq!((back.theme.as_str(), back.locale.as_str()), ("nord", "de"));
+    }
+
+    #[test]
+    fn node_tokens_and_pending_sign_outs() {
+        let mut s = AppSettings::default();
+        let key = node_key("https://hub.example.org", "1", "https://node.example.org");
+        s.set_node_token(&key, Some("node-token")).unwrap();
+        assert_eq!(s.node_token(&key).as_deref(), Some("node-token"));
+        assert_eq!(s.node_token(&node_key("https://hub.example.org", "2", "https://node.example.org")), None, "another hub account");
+        s.set_node_token(&key, None).unwrap();
+        assert_eq!(s.node_token(&key), None);
+        let k = s.add_pending_revoke("https://node.example.org", "old-token");
+        let back: AppSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.pending_revoke_list(), vec![(k.clone(), "https://node.example.org".to_string(), "old-token".to_string())]);
+        s.clear_pending_revoke(&k).unwrap();
+        assert!(s.pending_revoke_list().is_empty());
     }
 
     #[test]

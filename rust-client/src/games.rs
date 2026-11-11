@@ -212,7 +212,8 @@ mod tests {
             tracker.scan(&[]);
         }
         assert!(!tracker.last_processes().is_empty());
-        assert_eq!(proc_stat_fds(), 0);
+        // other tests scan in parallel (CillhubApp::new): their files are open only for a moment
+        assert!((0..100).any(|_| proc_stat_fds() == 0 || { std::thread::sleep(std::time::Duration::from_millis(5)); false }));
     }
 
     #[test]

@@ -11,7 +11,7 @@ use crate::{
 use serde_json::Value;
 use std::{
     io,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc::{self, Receiver, SyncSender},
     thread,
     time::{Duration, Instant},
 };
@@ -44,7 +44,10 @@ pub enum GatewayCommand {
     Shutdown,
 }
 
-pub fn spawn(origin: Url, token: String, sender: Sender<GatewayEvent>) -> thread::JoinHandle<()> {
+/// Events wait here for the UI; a full queue stalls the socket reader instead of growing memory.
+pub const EVENT_QUEUE: usize = 10_000;
+
+pub fn spawn(origin: Url, token: String, sender: SyncSender<GatewayEvent>) -> thread::JoinHandle<()> {
     let (_cmd_tx, cmd_rx) = mpsc::channel();
     spawn_with_commands(origin, token, sender, cmd_rx)
 }
@@ -52,21 +55,21 @@ pub fn spawn(origin: Url, token: String, sender: Sender<GatewayEvent>) -> thread
 pub fn spawn_with_commands(
     origin: Url,
     token: String,
-    sender: Sender<GatewayEvent>,
+    sender: SyncSender<GatewayEvent>,
     commands: Receiver<GatewayCommand>,
 ) -> thread::JoinHandle<()> {
     spawn_inner(origin, token, sender, commands, false)
 }
 
 /// A private node's gateway: the node names its gateway URL, and our node token goes only to the node's own host.
-pub fn spawn_node(origin: Url, token: String, sender: Sender<GatewayEvent>, commands: Receiver<GatewayCommand>) -> thread::JoinHandle<()> {
+pub fn spawn_node(origin: Url, token: String, sender: SyncSender<GatewayEvent>, commands: Receiver<GatewayCommand>) -> thread::JoinHandle<()> {
     spawn_inner(origin, token, sender, commands, true)
 }
 
 fn spawn_inner(
     origin: Url,
     token: String,
-    sender: Sender<GatewayEvent>,
+    sender: SyncSender<GatewayEvent>,
     commands: Receiver<GatewayCommand>,
     pin: bool,
 ) -> thread::JoinHandle<()> {
@@ -119,11 +122,12 @@ fn spawn_inner(
     })
 }
 
+#[allow(clippy::too_many_arguments)] // one connection attempt; the loop state lives in spawn_inner
 fn run_once(
     client: &reqwest::blocking::Client,
     origin: &Url,
     token: &str,
-    sender: &Sender<GatewayEvent>,
+    sender: &SyncSender<GatewayEvent>,
     commands: &Receiver<GatewayCommand>,
     last_presence: &mut (String, Option<CustomStatus>, Option<GameActivity>),
     outbox: &mut Outbox,
@@ -144,7 +148,7 @@ fn run_once(
         .and_then(Value::as_str)
         .ok_or_else(|| invalid("Gateway URL missing"))?;
     let address = Url::parse(address).map_err(|_| invalid("Gateway URL invalid"))?;
-    if pin && address.host_str() != origin.host_str() {
+    if pin && !gateway_allowed(origin, &address) {
         return Err(invalid("Gateway on another host"));
     }
     let mut socket = WebSocket::connect(&address)?;
@@ -291,7 +295,7 @@ fn apply_actions(
     socket: &mut WebSocket,
     heartbeat: &mut Option<(Duration, Instant)>,
     actions: Vec<Action>,
-    sender: &Sender<GatewayEvent>,
+    sender: &SyncSender<GatewayEvent>,
 ) -> io::Result<bool> {
     for action in actions {
         match action {
@@ -316,6 +320,19 @@ fn apply_actions(
     Ok(true)
 }
 
+/// A node's gateway must be on the node's own host and port: wss, or ws only for an http loopback node.
+fn gateway_allowed(origin: &Url, gateway: &Url) -> bool {
+    let scheme = match origin.scheme() {
+        "https" => "wss",
+        "http" if matches!(origin.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")) => "ws",
+        _ => return false,
+    };
+    gateway.scheme() == scheme
+        && gateway.host_str() == origin.host_str()
+        && gateway.port_or_known_default() == origin.port_or_known_default()
+        && gateway.username().is_empty()
+}
+
 fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
@@ -323,6 +340,18 @@ fn invalid(message: &'static str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn node_gateway_must_be_on_the_node_itself() {
+        let u = |s: &str| Url::parse(s).unwrap();
+        assert!(gateway_allowed(&u("https://node.example.org"), &u("wss://node.example.org/gateway")));
+        assert!(gateway_allowed(&u("https://node.example.org:8443"), &u("wss://node.example.org:8443/gateway")));
+        assert!(gateway_allowed(&u("http://127.0.0.1:3394"), &u("ws://127.0.0.1:3394/gateway")));
+        for bad in ["wss://node.example.org:9443/gateway", "ws://node.example.org/gateway", "wss://hub.example.org/gateway", "wss://a@node.example.org/gateway"] {
+            assert!(!gateway_allowed(&u("https://node.example.org"), &u(bad)), "{bad}");
+        }
+        assert!(!gateway_allowed(&u("http://127.0.0.1:3394"), &u("ws://127.0.0.1:3390/gateway")), "another port");
+    }
 
     #[test]
     fn nothing_but_identify_before_ready() {

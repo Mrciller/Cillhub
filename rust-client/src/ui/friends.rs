@@ -342,6 +342,9 @@ impl CillhubApp {
     }
 
     pub fn open_or_create_dm(&mut self, target: &User) {
+        if self.refuse_on_node() {
+            return;
+        }
         if let Some(existing) = self
             .state
             .channels
@@ -382,6 +385,9 @@ impl CillhubApp {
     }
 
     pub fn send_friend_request(&mut self) {
+        if self.refuse_on_node() {
+            return;
+        }
         let username = self.add_friend_input.trim().to_string();
         if username.is_empty() {
             return;
@@ -418,6 +424,9 @@ impl CillhubApp {
     }
 
     pub fn accept_friend(&mut self, user_id: &str) {
+        if self.refuse_on_node() {
+            return;
+        }
         let (path, uid) = (format!("/users/@me/relationships/{user_id}"), user_id.to_string());
         self.api_then(move |api| api.put(&path, Some(json!({ "type": 1 }))), move |app| {
             if let Some(rel) = app.state.relationships.get_mut(&uid) {
@@ -427,6 +436,9 @@ impl CillhubApp {
     }
 
     pub fn remove_relationship(&mut self, user_id: &str) {
+        if self.refuse_on_node() {
+            return;
+        }
         let (path, uid) = (format!("/users/@me/relationships/{user_id}"), user_id.to_string());
         self.api_then(move |api| api.delete(&path), move |app| {
             app.state.relationships.remove(&uid);
