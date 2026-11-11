@@ -564,8 +564,13 @@ impl CillhubApp {
             return;
         }
         self.instance_for = url.clone();
-        self.instance_info = normalize_server_url(&url)
-            .and_then(|o| crate::api::ApiClient::new(o, None).get("/instance").ok());
+        self.instance_info = None;
+        let Some(origin) = normalize_server_url(&url) else { return };
+        self.spawn_bg(false, move || crate::api::ApiClient::new(origin, None).get("/instance").ok(), move |app, info| {
+            if app.instance_for == url {
+                app.instance_info = info;
+            }
+        });
     }
 
     /// The server the user picked on the login screen: the hub or their private node.
@@ -602,31 +607,25 @@ impl CillhubApp {
                 return;
             }
             body["email"] = Value::String(email.to_string());
-            api.post("/auth/register", body)
+            ("/auth/register", body)
         } else {
-            api.post("/auth/login", login_body.clone())
+            ("/auth/login", login_body)
         };
-
-        match result {
+        self.spawn_bg(true, move || api.post(result.0, result.1), move |app, result| match result {
             Ok(data) => {
                 if let Some(token) = data.get("token").and_then(Value::as_str) {
-                    self.complete_login(origin, token.to_string());
+                    app.complete_login(origin, token.to_string());
                 } else if data.get("mfa").and_then(Value::as_bool) == Some(true) {
-                    self.auth_mfa_ticket = data
-                        .get("ticket")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    self.auth_mode = AuthMode::Mfa;
-                    self.auth_error = None;
+                    app.auth_mfa_ticket = data.get("ticket").and_then(Value::as_str).unwrap_or("").to_string();
+                    app.auth_password_input.clear(); // the ticket replaces it
+                    app.auth_mode = AuthMode::Mfa;
+                    app.auth_error = None;
                 } else {
-                    self.auth_error = Some("Unexpected login response from server.".to_string());
+                    app.auth_error = Some("Unexpected login response from server.".to_string());
                 }
             }
-            Err(err) => {
-                self.auth_error = Some(err.to_string());
-            }
-        }
+            Err(err) => app.auth_error = Some(err.to_string()),
+        });
     }
 
     pub fn submit_mfa(&mut self) {
@@ -641,22 +640,15 @@ impl CillhubApp {
         } else {
             "/auth/mfa/totp"
         };
-        match api.post(
-            path,
-            json!({
-                "ticket": self.auth_mfa_ticket,
-                "code": code,
-            }),
-        ) {
+        let body = json!({ "ticket": self.auth_mfa_ticket, "code": code });
+        self.spawn_bg(true, move || api.post(path, body), move |app, r| match r {
             Ok(data) => {
                 if let Some(token) = data.get("token").and_then(Value::as_str) {
-                    self.complete_login(origin, token.to_string());
+                    app.complete_login(origin, token.to_string());
                 }
             }
-            Err(err) => {
-                self.auth_error = Some(err.to_string());
-            }
-        }
+            Err(err) => app.auth_error = Some(err.to_string()),
+        });
     }
 
     pub fn submit_password_reset(&mut self) {
@@ -666,33 +658,25 @@ impl CillhubApp {
         };
         let api = crate::api::ApiClient::new(origin, None);
         if self.auth_reset_token.trim().is_empty() {
-            match api.post(
-                "/auth/forgot",
-                json!({ "login": self.auth_login_input.trim() }),
-            ) {
+            let body = json!({ "login": self.auth_login_input.trim() });
+            self.spawn_bg(true, move || api.post("/auth/forgot", body), |app, r| match r {
                 Ok(_) => {
-                    self.status_banner =
+                    app.status_banner =
                         Some(tr("If an account with this address exists, a mail with a link is on its way.").to_string());
                 }
-                Err(e) => self.auth_error = Some(e.to_string()),
-            }
+                Err(e) => app.auth_error = Some(e.to_string()),
+            });
         } else {
-            match api.post(
-                "/auth/reset",
-                json!({
-                    "token": self.auth_reset_token.trim(),
-                    "password": self.auth_password_input,
-                }),
-            ) {
+            let body = json!({ "token": self.auth_reset_token.trim(), "password": self.auth_password_input });
+            self.spawn_bg(true, move || api.post("/auth/reset", body), |app, r| match r {
                 Ok(_) => {
-                    self.auth_reset_token.clear();
-                    self.auth_password_input.clear();
-                    self.auth_mode = AuthMode::Login;
-                    self.status_banner =
-                        Some(tr("Password updated! You can now log in.").to_string());
+                    app.auth_reset_token.clear();
+                    app.auth_password_input.clear();
+                    app.auth_mode = AuthMode::Login;
+                    app.status_banner = Some(tr("Password updated! You can now log in.").to_string());
                 }
-                Err(e) => self.auth_error = Some(e.to_string()),
-            }
+                Err(e) => app.auth_error = Some(e.to_string()),
+            });
         }
     }
 }

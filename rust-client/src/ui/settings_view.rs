@@ -293,14 +293,14 @@ impl CillhubApp {
             }
         });
         if save {
-            if let Some(api) = &self.api {
-                let name = draft.trim();
-                let body = json!({ "global_name": if name.is_empty() { serde_json::Value::Null } else { json!(name) } });
-                if let Some(v) = report(&mut self.status_banner, api.patch("/users/@me", body)) {
-                    report(&mut self.status_banner, self.state.apply("USER_UPDATE", v));
-                    self.account_name_draft = None;
+            let name = draft.trim();
+            let body = json!({ "global_name": if name.is_empty() { serde_json::Value::Null } else { json!(name) } });
+            self.api_bg(true, move |api| api.patch("/users/@me", body), |app, r| {
+                if let Some(v) = report(&mut app.status_banner, r) {
+                    report(&mut app.status_banner, app.state.apply("USER_UPDATE", v));
+                    app.account_name_draft = None;
                 }
-            }
+            });
         }
     }
 
@@ -542,15 +542,14 @@ impl CillhubApp {
                 self.guild_name_draft = None;
             }
         });
-        if save {
-            if let Some(api) = &self.api {
-                if report(&mut self.status_banner, api.patch(&format!("/guilds/{}", guild.id), json!({ "name": name }))).is_some() {
-                    if let Some(g) = self.state.guilds.get_mut(&guild.id) {
-                        g.name = name;
-                    }
-                    self.guild_name_draft = None;
+        if save && self.api.is_some() {
+            let (path, gid, body) = (format!("/guilds/{}", guild.id), guild.id.clone(), json!({ "name": name }));
+            self.api_then(move |api| api.patch(&path, body), move |app| {
+                if let Some(g) = app.state.guilds.get_mut(&gid) {
+                    g.name = name;
                 }
-            }
+                app.guild_name_draft = None;
+            });
         }
     }
 
@@ -627,10 +626,12 @@ impl CillhubApp {
         if let Some(r) = select {
             self.role_draft = Some(r);
         }
-        if let (Some(((a, pa), (b, pb))), Some(api)) = (swap, &self.api) {
+        let (path, gid) = (format!("/guilds/{}/roles", guild.id), guild.id.clone());
+        if let (Some(((a, pa), (b, pb))), true) = (swap, self.api.is_some()) {
             let body = json!([{ "id": a, "position": pa }, { "id": b, "position": pb }]);
-            if report(&mut self.status_banner, api.patch(&format!("/guilds/{}/roles", guild.id), body)).is_some() {
-                if let Some(g) = self.state.guilds.get_mut(&guild.id) {
+            let (path, gid) = (path.clone(), gid.clone());
+            self.api_then(move |api| api.patch(&path, body), move |app| {
+                if let Some(g) = app.state.guilds.get_mut(&gid) {
                     for r in g.roles.iter_mut() {
                         if r.id == a {
                             r.position = pa;
@@ -639,21 +640,20 @@ impl CillhubApp {
                         }
                     }
                 }
-            }
+            });
         }
         if create {
-            if let Some(api) = &self.api {
-                if let Some(v) = report(&mut self.status_banner, api.post(&format!("/guilds/{}/roles", guild.id), json!({}))) {
-                    if let Ok(role) = serde_json::from_value::<Role>(v) {
-                        if let Some(g) = self.state.guilds.get_mut(&guild.id) {
-                            if !g.roles.iter().any(|r| r.id == role.id) {
-                                g.roles.push(role.clone());
-                            }
+            self.api_bg(true, move |api| api.post(&path, json!({})), move |app, r| {
+                let Some(v) = report(&mut app.status_banner, r) else { return };
+                if let Ok(role) = serde_json::from_value::<Role>(v) {
+                    if let Some(g) = app.state.guilds.get_mut(&gid) {
+                        if !g.roles.iter().any(|r| r.id == role.id) {
+                            g.roles.push(role.clone());
                         }
-                        self.role_draft = Some(role);
                     }
+                    app.role_draft = Some(role);
                 }
-            }
+            });
         }
     }
 
@@ -721,25 +721,32 @@ impl CillhubApp {
             });
         });
         self.role_draft = Some(if reset { orig.clone() } else { d.clone() });
-        let Some(api) = &self.api else { return };
-        let path = format!("/guilds/{}/roles/{}", guild.id, d.id);
+        if self.api.is_none() {
+            return;
+        }
+        let (path, gid) = (format!("/guilds/{}/roles/{}", guild.id, d.id), guild.id.clone());
         if save {
             let body = json!({ "name": d.name.trim(), "color": d.color, "hoist": d.hoist, "mentionable": d.mentionable, "permissions": d.permissions });
-            if let Some(v) = report(&mut self.status_banner, api.patch(&path, body)) {
-                let role = serde_json::from_value::<Role>(v).unwrap_or_else(|_| d.clone());
-                if let Some(g) = self.state.guilds.get_mut(&guild.id) {
+            let (path, gid, d) = (path.clone(), gid.clone(), d.clone());
+            self.api_bg(true, move |api| api.patch(&path, body), move |app, r| {
+                let Some(v) = report(&mut app.status_banner, r) else { return };
+                let role = serde_json::from_value::<Role>(v).unwrap_or(d);
+                if let Some(g) = app.state.guilds.get_mut(&gid) {
                     if let Some(r) = g.roles.iter_mut().find(|r| r.id == role.id) {
                         *r = role.clone();
                     }
                 }
-                self.role_draft = Some(role);
-            }
+                app.role_draft = Some(role);
+            });
         }
-        if delete && report(&mut self.status_banner, api.delete(&path)).is_some() {
-            if let Some(g) = self.state.guilds.get_mut(&guild.id) {
-                g.roles.retain(|r| r.id != d.id);
-            }
-            self.role_draft = None;
+        if delete {
+            let rid = d.id.clone();
+            self.api_then(move |api| api.delete(&path), move |app| {
+                if let Some(g) = app.state.guilds.get_mut(&gid) {
+                    g.roles.retain(|r| r.id != rid);
+                }
+                app.role_draft = None;
+            });
         }
     }
 }

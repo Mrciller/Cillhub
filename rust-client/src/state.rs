@@ -35,6 +35,9 @@ pub struct State {
     pub typing: HashMap<String, Vec<(String, u64)>>,
 }
 
+/// Messages kept per channel.
+pub const MAX_WINDOW: usize = 500;
+
 impl State {
     pub fn apply(&mut self, name: &str, payload: Value) -> Result<bool, serde_json::Error> {
         match name {
@@ -247,11 +250,7 @@ impl State {
                 if let Some(ch) = self.channels.get_mut(&message.channel_id) {
                     ch.last_message_id = Some(message.id.clone());
                 }
-                if let Some(history) = self.messages.get_mut(&message.channel_id) {
-                    if !history.iter().any(|m| m.id == message.id) {
-                        history.push(message);
-                    }
-                }
+                self.push_message(message);
             }
             "MESSAGE_UPDATE" => {
                 if let (Some(channel), Some(id)) = (
@@ -661,6 +660,17 @@ impl State {
                 activities,
             },
         );
+    }
+
+    /// Adds a new message to a loaded history (once). The newest MAX_WINDOW stay; "Load older" fetches the rest.
+    pub fn push_message(&mut self, message: Message) {
+        if let Some(history) = self.messages.get_mut(&message.channel_id) {
+            if !history.iter().any(|m| m.id == message.id) {
+                history.push(message);
+                let extra = history.len().saturating_sub(MAX_WINDOW);
+                history.drain(..extra);
+            }
+        }
     }
 
     pub fn set_history(&mut self, channel_id: String, messages: Vec<Message>) {

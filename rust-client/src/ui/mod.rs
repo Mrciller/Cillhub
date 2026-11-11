@@ -2,6 +2,7 @@
 //! No Tauri, no WebView, no JavaScript frontend.
 
 pub mod auth;
+pub mod background;
 pub mod chat;
 pub mod friends;
 pub mod images;
@@ -46,6 +47,18 @@ pub fn open_external(banner: &mut Option<String>, url: &str) {
         }
         None => *banner = Some(tr("Only web links can be opened.").to_string()),
     }
+}
+
+/// Messages of a GET /channels/{id}/messages answer (newest first) in reading order.
+pub fn parse_messages(val: &Value) -> Vec<Message> {
+    let items = val.as_array().map(|a| a.iter().rev()).into_iter().flatten();
+    items
+        .filter_map(|item| {
+            crate::model::parse::<Message>(item.clone())
+                .map_err(|e| eprintln!("cillhub: skipped message: {e}"))
+                .ok()
+        })
+        .collect()
 }
 
 pub fn report<T, E: std::fmt::Display>(banner: &mut Option<String>, r: Result<T, E>) -> Option<T> {
@@ -165,6 +178,11 @@ pub struct CillhubApp {
     image_cache: images::Cache,
     /// Full-size image view: (egui URI, file name, absolute URL).
     pub lightbox: Option<(String, String, String)>,
+    pub bg: background::Workers,
+    /// Bumped by login and logout; background results of an older session are dropped.
+    session_gen: u64,
+    /// Channels whose history request is in flight.
+    loading_history: std::collections::HashSet<String>,
     /// Set by logout: the next frame drops every image egui holds.
     forget_images: bool,
     /// Results of the file dialog, which runs off the UI thread (a stuck portal must not freeze the app).
@@ -216,6 +234,8 @@ pub struct CillhubApp {
     pub last_game_scan: Instant,
     pub league_lobby: Option<LeagueLobbyInfo>,
     pub last_league_scan: Instant,
+    /// A League request is running (started then); it has a 5 s timeout.
+    league_busy_since: Option<Instant>,
     pub lobby_form_game: String,
     pub lobby_form_queue: String,
     pub lobby_form_host: String,
@@ -265,14 +285,6 @@ impl CillhubApp {
         } else {
             None
         };
-        let initial_league = find_lockfile_path(tracker.last_processes())
-            .and_then(|p| read_lockfile(&p))
-            .and_then(|creds| {
-                LeagueClient::new()
-                    .ok()
-                    .and_then(|c| c.fetch_lobby(&creds).ok().flatten())
-            });
-
         let (image_tx, image_rx) = mpsc::channel();
         let (picked_tx, picked_rx) = mpsc::channel();
         let (theme_name, locale) = (settings.theme.clone(), settings.locale.clone());
@@ -318,6 +330,9 @@ impl CillhubApp {
             image_cache: images::Cache::default(),
             lightbox: None,
             forget_images: false,
+            bg: background::Workers::new(),
+            session_gen: 0,
+            loading_history: Default::default(),
             md_cache: (Instant::now(), None, Default::default()),
             show_composer_plus_menu: false,
             plus_anchor: Pos2::ZERO,
@@ -347,7 +362,8 @@ impl CillhubApp {
             game_tracker: tracker,
             current_game: initial_game,
             last_game_scan: Instant::now(),
-            league_lobby: initial_league,
+            league_lobby: None,
+            league_busy_since: None,
             last_league_scan: Instant::now(),
             lobby_form_game: "League of Legends".to_string(),
             lobby_form_queue: "Ranked Solo/Duo".to_string(),
@@ -377,6 +393,7 @@ impl CillhubApp {
             fonts_installed: false,
         };
 
+        app.poll_league_lobby();
         if demo_mode {
             app.enter_demo_arena();
         } else if let Some(token) = app.settings.token() {
@@ -411,6 +428,7 @@ impl CillhubApp {
     }
 
     pub fn complete_login(&mut self, origin: Url, token: String) {
+        self.new_session();
         report(&mut self.status_banner, self.settings.set_token(Some(&token)));
         self.api = Some(ApiClient::new(origin.clone(), Some(token.clone())));
         let (ev_tx, ev_rx) = mpsc::channel();
@@ -433,6 +451,8 @@ impl CillhubApp {
     }
 
     pub fn logout(&mut self) {
+        self.new_session();
+        self.loading_history.clear();
         if let Some(tx) = &self.gateway_cmd_tx {
             let _ = tx.send(GatewayCommand::Shutdown);
         }
@@ -725,17 +745,27 @@ impl CillhubApp {
         }
     }
 
+    /// Asks the local League client for its lobby, in the background.
     pub fn poll_league_lobby(&mut self) {
         self.last_league_scan = Instant::now();
-        if let Some(lock_path) = find_lockfile_path(self.game_tracker.last_processes()) {
-            if let Some(creds) = read_lockfile(&lock_path) {
-                if let Ok(client) = LeagueClient::new() {
-                    if let Ok(lobby) = client.fetch_lobby(&creds) {
-                        self.league_lobby = lobby;
-                    }
-                }
-            }
+        if self.league_busy_since.is_some_and(|t| t.elapsed() < Duration::from_secs(15)) {
+            return;
         }
+        self.league_busy_since = Some(Instant::now());
+        let procs = self.game_tracker.last_processes().to_vec();
+        self.spawn_bg(
+            false,
+            move || {
+                let creds = find_lockfile_path(&procs).and_then(|p| read_lockfile(&p))?;
+                LeagueClient::new().ok()?.fetch_lobby(&creds).ok()
+            },
+            |app, lobby| {
+                app.league_busy_since = None;
+                if let Some(lobby) = lobby {
+                    app.league_lobby = lobby;
+                }
+            },
+        );
     }
 
     pub fn broadcast_presence(&mut self) {
@@ -819,16 +849,22 @@ impl CillhubApp {
     /// web's desktop bridge (acceptLeagueInvite).
     pub fn join_game_party(&mut self, invite: &GameInviteData) {
         self.pending_game_invite = None;
-        let client = find_lockfile_path(self.game_tracker.last_processes())
-            .and_then(|p| read_lockfile(&p))
-            .and_then(|creds| LeagueClient::new().ok().map(|c| (c, creds)));
-        self.status_banner = Some(match client {
-            Some((c, creds)) => match c.accept_invite(&creds, &invite.party_id) {
-                Ok(_) => crate::i18n::trf("Joining {game} lobby...", &[("game", &invite.game)]),
-                Err(e) => e.to_string(),
+        let (procs, party_id, game) = (self.game_tracker.last_processes().to_vec(), invite.party_id.clone(), invite.game.clone());
+        self.spawn_bg(
+            false,
+            move || {
+                let creds = find_lockfile_path(&procs).and_then(|p| read_lockfile(&p));
+                let client = creds.and_then(|creds| LeagueClient::new().ok().map(|c| (c, creds)));
+                client.map(|(c, creds)| c.accept_invite(&creds, &party_id))
             },
-            None => tr("Could not join lobby. Ensure League of Legends is running.").to_string(),
-        });
+            move |app, r| {
+                app.status_banner = Some(match r {
+                    Some(Ok(_)) => crate::i18n::trf("Joining {game} lobby...", &[("game", &game)]),
+                    Some(Err(e)) => e,
+                    None => tr("Could not join lobby. Ensure League of Legends is running.").to_string(),
+                });
+            },
+        );
     }
 
     /// Voice calls need audio I/O and the hub's media transport, which this app does not have
@@ -838,84 +874,61 @@ impl CillhubApp {
     }
 
     pub fn load_channel_history(&mut self, channel_id: &str) {
-        if self.state.messages.contains_key(channel_id) {
+        if self.state.messages.contains_key(channel_id) || !self.loading_history.insert(channel_id.to_string()) {
             return;
         }
-        if let Some(api) = &self.api {
-            if let Some(val) = report(
-                &mut self.status_banner,
-                api.get(&format!("/channels/{channel_id}/messages?limit=50")),
-            ) {
-                if let Some(arr) = val.as_array() {
-                    let mut list = Vec::new();
-                    for item in arr.iter().rev() {
-                        match crate::model::parse::<Message>(item.clone()) {
-                            Ok(msg) => list.push(msg),
-                            Err(e) => eprintln!("cillhub: skipped message: {e}"),
-                        }
-                    }
-                    self.state.set_history(channel_id.to_string(), list);
-                }
+        let cid = channel_id.to_string();
+        let sent = self.api_get(format!("/channels/{cid}/messages?limit=50"), move |app, r| {
+            app.loading_history.remove(&cid);
+            if let Some(list) = report(&mut app.status_banner, r).map(|v| parse_messages(&v)) {
+                app.state.set_history(cid, list);
             }
+        });
+        if !sent {
+            self.loading_history.remove(channel_id);
         }
     }
 
     /// READY has no member lists; fetch them like the web client (GET /guilds/{id}/members).
     pub fn load_members(&mut self, guild_id: &str) {
-        let Some(api) = &self.api else { return };
-        if let Some(list) = report(
-            &mut self.status_banner,
-            api.get(&format!("/guilds/{guild_id}/members?limit=1000")),
-        ) {
-            report(&mut self.status_banner, self.state.set_members(guild_id, list));
-        }
+        let gid = guild_id.to_string();
+        self.api_get(format!("/guilds/{gid}/members?limit=1000"), move |app, r| {
+            if let Some(list) = report(&mut app.status_banner, r) {
+                report(&mut app.status_banner, app.state.set_members(&gid, list));
+            }
+        });
     }
 
     pub fn load_older_messages(&mut self, channel_id: &str) {
-        let oldest = self
-            .state
-            .messages
-            .get(channel_id)
-            .and_then(|l| l.first())
-            .map(|m| m.id.clone());
+        let oldest = self.state.messages.get(channel_id).and_then(|l| l.first()).map(|m| m.id.clone());
         let Some(before) = oldest else { return };
-        if let Some(api) = &self.api {
-            if let Ok(val) =
-                api.get(&format!("/channels/{channel_id}/messages?limit=50&before={before}"))
-            {
-                if let Some(arr) = val.as_array() {
-                    let mut older = Vec::new();
-                    for item in arr.iter().rev() {
-                        match crate::model::parse::<Message>(item.clone()) {
-                            Ok(msg) => older.push(msg),
-                            Err(e) => eprintln!("cillhub: skipped message: {e}"),
-                        }
-                    }
-                    if let Some(existing) = self.state.messages.get_mut(channel_id) {
-                        older.append(existing);
-                        *existing = older;
-                    }
+        let cid = channel_id.to_string();
+        self.api_get(format!("/channels/{cid}/messages?limit=50&before={before}"), move |app, r| {
+            let Some(mut older) = report(&mut app.status_banner, r).map(|v| parse_messages(&v)) else { return };
+            for m in &older {
+                if let Some(a) = &m.author {
+                    app.state.users.entry(a.id.clone()).or_insert_with(|| a.clone());
                 }
             }
-        }
+            // still the same window (no reload in between)
+            if let Some(existing) = app.state.messages.get_mut(&cid).filter(|l| l.first().is_some_and(|m| m.id == before)) {
+                older.append(existing);
+                *existing = older;
+            }
+        });
     }
 
     pub fn load_pins(&mut self, channel_id: &str) {
-        if let Some(api) = &self.api {
-            if let Ok(val) = api.get(&format!("/channels/{channel_id}/pins")) {
-                if let Some(arr) = val.as_array() {
-                    if let Some(list) = self.state.messages.get_mut(channel_id) {
-                        for p in arr {
-                            if let Some(pid) = p.get("id").and_then(Value::as_str) {
-                                if let Some(m) = list.iter_mut().find(|m| m.id == pid) {
-                                    m.pinned = true;
-                                }
-                            }
-                        }
-                    }
+        let cid = channel_id.to_string();
+        self.api_get(format!("/channels/{cid}/pins"), move |app, r| {
+            let Some(val) = report(&mut app.status_banner, r) else { return };
+            let ids: Vec<&str> = val.as_array().into_iter().flatten().filter_map(|p| p.get("id").and_then(Value::as_str)).collect();
+            for m in app.state.messages.get_mut(&cid).into_iter().flatten() {
+                if ids.contains(&m.id.as_str()) {
+                    m.pinned = true;
                 }
             }
-        }
+        });
     }
 
     pub fn run_search(&mut self) {
@@ -1752,8 +1765,10 @@ impl CillhubApp {
             patch.insert("locale".into(), l.into());
         }
         report(&mut self.status_banner, self.settings.save());
-        if let (Some(api), false) = (&self.api, patch.is_empty()) {
-            report(&mut self.status_banner, api.patch("/users/@me/settings", Value::Object(patch)));
+        if !patch.is_empty() {
+            self.api_bg(true, move |api| api.patch("/users/@me/settings", Value::Object(patch)), |app, r| {
+                report(&mut app.status_banner, r);
+            });
         }
     }
 
@@ -1811,6 +1826,7 @@ impl CillhubApp {
         crate::theme::set_custom_families_ready(families_ready);
 
         crate::i18n::set_locale(&self.locale);
+        self.pump_bg();
         self.process_background_events();
         while let Ok(paths) = self.picked_rx.try_recv() {
             self.pending_files.extend(paths);
@@ -2024,6 +2040,7 @@ mod tests {
         app.delete_message("c_general", &id);
         app.selected_channel_id = Some("c_general".into());
         app.send_message_to_selected("not sent");
+        settle(&mut app);
         assert_eq!(app.state.messages["c_general"], before);
         assert_eq!(app.composer_text, "not sent", "the draft stays for a retry");
         assert!(app.status_banner.is_some());
@@ -2127,8 +2144,31 @@ mod tests {
         assert_eq!(app.state.messages["c_general"], before, "a failed request changes nothing");
     }
 
-    /// Runs frames until background requests have answered (no-op while requests are synchronous).
-    fn settle(_app: &mut CillhubApp) {}
+    #[test]
+    fn a_stalled_hub_never_blocks_a_frame() {
+        let mut app = CillhubApp::new(None, true);
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap(); // accepts, never answers
+        app.api = Some(ApiClient::new(Url::parse(&format!("http://localhost:{}/", stalled.local_addr().unwrap().port())).unwrap(), None));
+        let t = Instant::now();
+        app.load_members("g_arena");
+        app.load_channel_history("c_new");
+        app.selected_channel_id = Some("c_general".into());
+        app.send_message_to_selected("hi");
+        app.poll_league_lobby();
+        app.pump_bg();
+        assert!(t.elapsed() < Duration::from_millis(500), "{:?}", t.elapsed());
+        assert!(app.bg.pending >= 3);
+    }
+
+    /// Applies background results until no request is in flight.
+    fn settle(app: &mut CillhubApp) {
+        let t = Instant::now();
+        while app.bg.pending > 0 && t.elapsed() < Duration::from_secs(20) {
+            app.pump_bg();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        app.pump_bg();
+    }
 
     #[test]
     fn logout_forgets_the_session() {

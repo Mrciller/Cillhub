@@ -1471,16 +1471,15 @@ impl CillhubApp {
 
         if let Some(edit_id) = self.editing_message_id.take() {
             self.composer_text.clear();
-            if let Some(api) = &self.api {
+            if self.api.is_some() {
                 // The gateway's MESSAGE_UPDATE shows the edit; on failure keep the draft.
-                let r = api.patch(
-                    &format!("/channels/{cid}/messages/{edit_id}"),
-                    json!({ "content": content }),
-                );
-                if report(&mut self.status_banner, r).is_none() {
-                    self.editing_message_id = Some(edit_id);
-                    self.composer_text = content;
-                }
+                let (path, body) = (format!("/channels/{cid}/messages/{edit_id}"), json!({ "content": content }));
+                self.api_bg(true, move |api| api.patch(&path, body), move |app, r| {
+                    if report(&mut app.status_banner, r).is_none() {
+                        app.editing_message_id = Some(edit_id);
+                        app.composer_text = content;
+                    }
+                });
                 return;
             }
             if let Some(list) = self.state.messages.get_mut(&cid) {
@@ -1503,7 +1502,7 @@ impl CillhubApp {
     /// Multipart upload like the web client: payload_json + files[n]. Pending files and the
     /// text stay in the composer when it fails.
     fn send_files(&mut self, cid: &str, content: &str) {
-        let Some(api) = &self.api else {
+        if self.api.is_none() {
             self.status_banner = Some(tr("Uploads need a connection to a server.").to_string());
             return;
         };
@@ -1524,20 +1523,18 @@ impl CillhubApp {
         let names: Vec<String> = files.iter().map(|(n, _)| n.clone()).collect();
         let reply = self.reply_to_message.as_ref().map(|m| m.id.clone());
         let payload = crate::api::upload_payload(content, &names, reply.as_deref());
-        let Some(val) = report(&mut self.status_banner, api.upload_message(cid, &payload, &files))
-        else {
-            return;
-        };
-        self.pending_files.clear();
-        self.composer_text.clear();
-        self.reply_to_message = None;
-        if let Some(msg) = report(&mut self.status_banner, crate::model::parse::<Message>(val)) {
-            if let Some(list) = self.state.messages.get_mut(cid) {
-                if !list.iter().any(|m| m.id == msg.id) {
-                    list.push(msg);
-                }
+        // the files and text stay in the composer until the upload succeeded
+        let (cid, sent) = (cid.to_string(), self.pending_files.clone());
+        let upload = move |api: &crate::api::ApiClient| api.upload_message(&cid, &payload, &files);
+        self.api_bg(true, upload, move |app, r| {
+            let Some(val) = report(&mut app.status_banner, r) else { return };
+            app.pending_files.retain(|p| !sent.contains(p));
+            app.composer_text.clear();
+            app.reply_to_message = None;
+            if let Some(msg) = report(&mut app.status_banner, crate::model::parse::<Message>(val)) {
+                app.state.push_message(msg);
             }
-        }
+        });
     }
 
     pub fn send_message_to_selected(&mut self, content: &str) {
@@ -1546,29 +1543,28 @@ impl CillhubApp {
         };
         let reply_ref = self.reply_to_message.take();
 
-        if let Some(api) = &self.api {
+        if self.api.is_some() {
             let mut body = json!({ "content": content });
             if let Some(rep) = &reply_ref {
                 body["message_reference"] = json!({ "message_id": rep.id, "channel_id": cid });
             }
-            match api.post(&format!("/channels/{cid}/messages"), body) {
+            let (path, content) = (format!("/channels/{cid}/messages"), content.to_string());
+            self.api_bg(true, move |api| api.post(&path, body), move |app, r| match r {
                 Ok(val) => {
                     if let Ok(msg) = crate::model::parse::<Message>(val) {
-                        let list = self.state.messages.entry(cid).or_default();
-                        if !list.iter().any(|m| m.id == msg.id) {
-                            list.push(msg);
-                        }
+                        app.state.push_message(msg);
                     }
-                    return;
                 }
                 Err(e) => {
                     // Keep the text so the user can retry; never show it as sent.
-                    self.composer_text = content.to_string();
-                    self.reply_to_message = reply_ref;
-                    self.status_banner = Some(e.to_string());
-                    return;
+                    if app.composer_text.is_empty() {
+                        app.composer_text = content;
+                        app.reply_to_message = reply_ref;
+                    }
+                    app.status_banner = Some(e.to_string());
                 }
-            }
+            });
+            return;
         }
 
         // Demo mode (no server): append locally.
@@ -1585,15 +1581,12 @@ impl CillhubApp {
     }
 
     pub fn delete_message(&mut self, channel_id: &str, message_id: &str) {
-        if let Some(api) = &self.api {
-            let r = api.delete(&format!("/channels/{channel_id}/messages/{message_id}"));
-            if report(&mut self.status_banner, r).is_none() {
-                return; // still there on the server
+        let (path, cid, mid) = (format!("/channels/{channel_id}/messages/{message_id}"), channel_id.to_string(), message_id.to_string());
+        self.api_then(move |api| api.delete(&path), move |app| {
+            if let Some(list) = app.state.messages.get_mut(&cid) {
+                list.retain(|m| m.id != mid);
             }
-        }
-        if let Some(list) = self.state.messages.get_mut(channel_id) {
-            list.retain(|m| m.id != message_id);
-        }
+        });
     }
 
     pub fn toggle_reaction(&mut self, channel_id: &str, message_id: &str, emoji_name: &str) {
@@ -1625,7 +1618,7 @@ impl CillhubApp {
                 msg.reactions.retain(|r| r.count > 0);
             }
         }
-        if let Some(api) = &self.api {
+        if self.api.is_some() {
             let encoded = percent_encoding::utf8_percent_encode(
                 emoji_name,
                 percent_encoding::NON_ALPHANUMERIC,
@@ -1633,50 +1626,43 @@ impl CillhubApp {
             .to_string();
             let path =
                 format!("/channels/{channel_id}/messages/{message_id}/reactions/{encoded}/@me");
-            if already_me {
-                report(&mut self.status_banner, api.delete(&path));
-            } else {
-                report(&mut self.status_banner, api.put(&path, None));
-            }
+            self.api_bg(true, move |api| if already_me { api.delete(&path) } else { api.put(&path, None) }, |app, r| {
+                report(&mut app.status_banner, r);
+            });
         }
     }
 
     pub fn toggle_pin_message(&mut self, channel_id: &str, msg: &Message) {
         let new_pinned = !msg.pinned;
-        if let Some(api) = &self.api {
-            let path = format!("/channels/{channel_id}/pins/{}", msg.id);
-            let r = if new_pinned { api.put(&path, None) } else { api.delete(&path) };
-            if report(&mut self.status_banner, r).is_none() {
-                return; // unchanged on the server
-            }
-        }
-        if let Some(list) = self.state.messages.get_mut(channel_id) {
-            if let Some(m) = list.iter_mut().find(|m| m.id == msg.id) {
+        let (path, cid, mid) = (format!("/channels/{channel_id}/pins/{}", msg.id), channel_id.to_string(), msg.id.clone());
+        let req = move |api: &crate::api::ApiClient| if new_pinned { api.put(&path, None) } else { api.delete(&path) };
+        self.api_then(req, move |app| {
+            if let Some(m) = app.state.messages.get_mut(&cid).and_then(|l| l.iter_mut().find(|m| m.id == mid)) {
                 m.pinned = new_pinned;
             }
-        }
+        });
     }
 
     /// The channel canvas text (web getCanvas: GET /channels/{id}/canvas -> { content }).
     pub fn load_canvas(&mut self, cid: &str) {
         self.canvas_doc_input.clear();
-        if let Some(api) = &self.api {
-            if let Ok(v) = api.get(&format!("/channels/{cid}/canvas")) {
-                self.canvas_doc_input = v.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
+        self.api_get(format!("/channels/{cid}/canvas"), |app, r| {
+            if let Ok(v) = r {
+                app.canvas_doc_input = v.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
             }
-        }
+        });
     }
 
     /// Bookmark on/off like the web's toggleBookmark (saved messages without a due date).
     pub fn toggle_bookmark(&mut self, msg: &Message) {
         let path = format!("/users/@me/saved-messages/{}/{}", msg.channel_id, msg.id);
         let on = self.state.saved_messages.iter().any(|s| s.message_id == msg.id && s.due_at.is_none());
-        if let Some(api) = &self.api {
-            let r = if on { api.delete(&path).map(|_| ()) } else { api.put(&path, Some(json!({}))).map(|_| ()) };
-            if report(&mut self.status_banner, r).is_none() {
-                return;
-            }
-        }
+        let msg = msg.clone();
+        let req = move |api: &crate::api::ApiClient| if on { api.delete(&path) } else { api.put(&path, Some(json!({}))) };
+        self.api_then(req, move |app| app.apply_bookmark(on, msg));
+    }
+
+    fn apply_bookmark(&mut self, on: bool, msg: Message) {
         if on {
             self.state.saved_messages.retain(|s| s.message_id != msg.id);
         } else {
@@ -1689,7 +1675,7 @@ impl CillhubApp {
                     note: None,
                     due_at: None,
                     created_at: String::new(),
-                    message: Some(msg.clone()),
+                    message: Some(msg),
                 },
             );
         }
@@ -1701,14 +1687,16 @@ impl CillhubApp {
         } else {
             msg.content.chars().take(32).collect()
         };
-        if let Some(api) = &self.api {
-            let r = api.post(&format!("/channels/{channel_id}/messages/{}/threads", msg.id), json!({ "name": name }));
-            let th = report(&mut self.status_banner, r).map(serde_json::from_value::<Channel>);
-            if let Some(th) = th.and_then(|t| report(&mut self.status_banner, t)) {
-                let tid = th.id.clone();
-                self.state.channels.insert(tid.clone(), th);
-                self.selected_channel_id = Some(tid);
-            }
+        if self.api.is_some() {
+            let (path, body) = (format!("/channels/{channel_id}/messages/{}/threads", msg.id), json!({ "name": name }));
+            self.api_bg(true, move |api| api.post(&path, body), |app, r| {
+                let th = report(&mut app.status_banner, r).map(serde_json::from_value::<Channel>);
+                if let Some(th) = th.and_then(|t| report(&mut app.status_banner, t)) {
+                    let tid = th.id.clone();
+                    app.state.channels.insert(tid.clone(), th);
+                    app.selected_channel_id = Some(tid);
+                }
+            });
             return;
         }
         // demo mode (--demo, no server) only
@@ -1726,12 +1714,14 @@ impl CillhubApp {
     }
 
     pub fn vote_poll(&mut self, channel_id: &str, message_id: &str, answer_id: u32, add: bool) {
-        if let Some(api) = &self.api {
+        if self.api.is_some() {
             let path =
                 format!("/channels/{channel_id}/polls/{message_id}/answers/{answer_id}/@me");
-            let r = if add { api.put(&path, None) } else { api.delete(&path) };
-            report(&mut self.status_banner, r);
-            return; // the gateway's MESSAGE_POLL_VOTE_ADD/REMOVE updates the count (no double count)
+            // the gateway's MESSAGE_POLL_VOTE_ADD/REMOVE updates the count (no double count)
+            self.api_bg(true, move |api| if add { api.put(&path, None) } else { api.delete(&path) }, |app, r| {
+                report(&mut app.status_banner, r);
+            });
+            return;
         }
         let me_id = self
             .state

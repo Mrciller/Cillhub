@@ -354,16 +354,18 @@ impl CillhubApp {
             self.load_channel_history(&existing.id);
             return;
         }
-        if let Some(api) = &self.api {
-            let r = api.post("/users/@me/channels", json!({ "recipient_id": target.id }));
-            let ch = report(&mut self.status_banner, r).map(serde_json::from_value::<Channel>);
-            if let Some(ch) = ch.and_then(|c| report(&mut self.status_banner, c)) {
-                let cid = ch.id.clone();
-                self.state.channels.insert(cid.clone(), ch);
-                self.selected_guild_id = None;
-                self.selected_channel_id = Some(cid.clone());
-                self.load_channel_history(&cid);
-            }
+        if self.api.is_some() {
+            let body = json!({ "recipient_id": target.id });
+            self.api_bg(true, move |api| api.post("/users/@me/channels", body), |app, r| {
+                let ch = report(&mut app.status_banner, r).map(serde_json::from_value::<Channel>);
+                if let Some(ch) = ch.and_then(|c| report(&mut app.status_banner, c)) {
+                    let cid = ch.id.clone();
+                    app.state.channels.insert(cid.clone(), ch);
+                    app.selected_guild_id = None;
+                    app.selected_channel_id = Some(cid.clone());
+                    app.load_channel_history(&cid);
+                }
+            });
             return;
         }
         // demo mode (--demo, no server) only
@@ -384,14 +386,15 @@ impl CillhubApp {
         if username.is_empty() {
             return;
         }
-        if let Some(api) = &self.api {
-            match api.post("/users/@me/relationships", json!({ "username": username })) {
+        if self.api.is_some() {
+            let body = json!({ "username": username });
+            self.api_bg(true, move |api| api.post("/users/@me/relationships", body), move |app, r| match r {
                 Ok(_) => {
-                    self.add_friend_result = Some((true, trf("Success! Your friend request to {name} was sent.", &[("name", &username)])));
-                    self.add_friend_input.clear();
+                    app.add_friend_result = Some((true, trf("Success! Your friend request to {name} was sent.", &[("name", &username)])));
+                    app.add_friend_input.clear();
                 }
-                Err(e) => self.add_friend_result = Some((false, e.to_string())),
-            }
+                Err(e) => app.add_friend_result = Some((false, e.to_string())),
+            });
         } else {
             let id = format!("u_{username}");
             let user = User {
@@ -415,23 +418,18 @@ impl CillhubApp {
     }
 
     pub fn accept_friend(&mut self, user_id: &str) {
-        if let Some(api) = &self.api {
-            let r = api.put(&format!("/users/@me/relationships/{user_id}"), Some(json!({ "type": 1 })));
-            if report(&mut self.status_banner, r).is_none() {
-                return;
+        let (path, uid) = (format!("/users/@me/relationships/{user_id}"), user_id.to_string());
+        self.api_then(move |api| api.put(&path, Some(json!({ "type": 1 }))), move |app| {
+            if let Some(rel) = app.state.relationships.get_mut(&uid) {
+                rel.kind = 1;
             }
-        }
-        if let Some(rel) = self.state.relationships.get_mut(user_id) {
-            rel.kind = 1;
-        }
+        });
     }
 
     pub fn remove_relationship(&mut self, user_id: &str) {
-        if let Some(api) = &self.api {
-            if report(&mut self.status_banner, api.delete(&format!("/users/@me/relationships/{user_id}"))).is_none() {
-                return;
-            }
-        }
-        self.state.relationships.remove(user_id);
+        let (path, uid) = (format!("/users/@me/relationships/{user_id}"), user_id.to_string());
+        self.api_then(move |api| api.delete(&path), move |app| {
+            app.state.relationships.remove(&uid);
+        });
     }
 }

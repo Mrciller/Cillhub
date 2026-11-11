@@ -199,12 +199,15 @@ impl CillhubApp {
                 }
             });
         });
-        if let (true, Some(w), Some(api), Some(cid)) = (send, when, &self.api, &self.selected_channel_id) {
+        if let (true, Some(w), Some(cid)) = (send, when, &self.selected_channel_id) {
             let body = json!({ "content": self.composer_text.trim(), "send_at": w.with_timezone(&chrono::Utc).to_rfc3339() });
-            if report(&mut self.status_banner, api.post(&format!("/channels/{cid}/scheduled-messages"), body)).is_some() {
-                self.composer_text.clear();
-                self.active_modal = None;
-            }
+            let path = format!("/channels/{cid}/scheduled-messages");
+            self.api_bg(true, move |api| api.post(&path, body), |app, r| {
+                if report(&mut app.status_banner, r).is_some() {
+                    app.composer_text.clear();
+                    app.active_modal = None;
+                }
+            });
         }
         if close || dim {
             self.active_modal = None;
@@ -293,14 +296,15 @@ impl CillhubApp {
             if let Some(p) = &self.create_channel_parent {
                 body["parent_id"] = json!(p);
             }
-            if let Some(api) = &self.api {
-                if let Some(v) = report(&mut self.status_banner, api.post(&format!("/guilds/{gid}/channels"), body)) {
+            let path = format!("/guilds/{gid}/channels");
+            self.api_bg(true, move |api| api.post(&path, body), |app, r| {
+                if let Some(v) = report(&mut app.status_banner, r) {
                     if let Ok(ch) = serde_json::from_value::<Channel>(v) {
-                        self.state.channels.insert(ch.id.clone(), ch);
+                        app.state.channels.insert(ch.id.clone(), ch);
                     }
-                    close = true;
+                    app.active_modal = None;
                 }
-            }
+            });
         }
         if close || dim {
             self.active_modal = None;
@@ -335,19 +339,23 @@ impl CillhubApp {
         if let Some(e) = self.edit_channel.as_mut() {
             e.1 = name.clone();
         }
-        if let Some(api) = &self.api {
+        if self.api.is_some() {
+            let path = format!("/channels/{id}");
             if save && !name.trim().is_empty() {
-                let r = api.patch(&format!("/channels/{id}"), json!({ "name": name.trim() }));
-                if report(&mut self.status_banner, r).is_some() {
-                    if let Some(c) = self.state.channels.get_mut(&id) {
-                        c.name = Some(name.trim().to_string());
+                let (path, id, name) = (path.clone(), id.clone(), name.trim().to_string());
+                let body = json!({ "name": name });
+                self.api_then(move |api| api.patch(&path, body), move |app| {
+                    if let Some(c) = app.state.channels.get_mut(&id) {
+                        c.name = Some(name);
                     }
-                    close = true;
-                }
+                    app.edit_channel = None;
+                });
             }
-            if delete && report(&mut self.status_banner, api.delete(&format!("/channels/{id}"))).is_some() {
-                self.state.channels.remove(&id);
-                close = true;
+            if delete {
+                self.api_then(move |api| api.delete(&path), move |app| {
+                    app.state.channels.remove(&id);
+                    app.edit_channel = None;
+                });
             }
         }
         if close || dim {
@@ -357,11 +365,11 @@ impl CillhubApp {
 
     pub fn load_events(&mut self, gid: &str) {
         self.events.clear();
-        if let Some(api) = &self.api {
-            if let Some(v) = report(&mut self.status_banner, api.get(&format!("/guilds/{gid}/scheduled-events?with_user_count=true"))) {
-                self.events = v.as_array().cloned().unwrap_or_default();
+        self.api_get(format!("/guilds/{gid}/scheduled-events?with_user_count=true"), |app, r| {
+            if let Some(v) = report(&mut app.status_banner, r) {
+                app.events = v.as_array().cloned().unwrap_or_default();
             }
-        }
+        });
     }
 
     /// Events list (events/Events.tsx, the list view).
@@ -586,12 +594,12 @@ impl CillhubApp {
                     );
                     ui.add_space(8.0);
                     if primary_btn(ui, tr("Save")).clicked() {
-                        if let (Some(api), Some(cid)) = (&self.api, &self.selected_channel_id) {
+                        if let Some(cid) = &self.selected_channel_id {
                             // the web's saveCanvas: PUT { content }
-                            report(&mut self.status_banner, api.put(
-                                &format!("/channels/{cid}/canvas"),
-                                Some(json!({ "content": self.canvas_doc_input })),
-                            ));
+                            let (path, body) = (format!("/channels/{cid}/canvas"), json!({ "content": self.canvas_doc_input }));
+                            self.api_bg(true, move |api| api.put(&path, Some(body)), |app, r| {
+                                report(&mut app.status_banner, r);
+                            });
                         }
                     }
                 }
@@ -603,14 +611,16 @@ impl CillhubApp {
         if name.is_empty() {
             return;
         }
-        if let Some(api) = &self.api {
-            // a failed request reports why and keeps the name for a retry
-            if let Some(val) = report(&mut self.status_banner, api.post("/guilds", json!({ "name": name }))) {
-                self.new_guild_name_input.clear();
-                report(&mut self.status_banner, self.state.apply("GUILD_CREATE", val));
+        // a failed request reports why and keeps the name for a retry
+        if self.api_bg(true, move |api| api.post("/guilds", json!({ "name": name })), |app, r| {
+            if let Some(val) = report(&mut app.status_banner, r) {
+                app.new_guild_name_input.clear();
+                report(&mut app.status_banner, app.state.apply("GUILD_CREATE", val));
             }
+        }) {
             return;
         }
+        let name = self.new_guild_name_input.trim().to_string();
         // demo mode (--demo, no server) only
         self.new_guild_name_input.clear();
         let gid = format!("g_{}", self.next_local_id());
@@ -656,12 +666,9 @@ impl CillhubApp {
             // like the web: the last path part of an invite link
             _ => raw.split('/').filter(|p| !p.is_empty()).next_back().unwrap_or_default().to_string(),
         };
-        if let Some(api) = &self.api {
-            match api.post(&format!("/invites/{code}"), json!({})) {
-                Ok(_) => {}
-                Err(e) => self.status_banner = Some(e.to_string()),
-            }
-        }
+        self.api_bg(true, move |api| api.post(&format!("/invites/{code}"), json!({})), |app, r| {
+            report(&mut app.status_banner, r);
+        });
     }
 
     fn post_poll(&mut self) {
@@ -681,16 +688,14 @@ impl CillhubApp {
             "allow_multiselect": self.poll_multi,
             "layout_type": 1,
         });
-        let Some(api) = &self.api else { return };
-        let r = api.post(&format!("/channels/{cid}/messages"), json!({ "content": "", "poll": poll }));
-        if let Some(v) = report(&mut self.status_banner, r) {
-            if let Ok(msg) = crate::model::parse::<Message>(v) {
-                let list = self.state.messages.entry(cid).or_default();
-                if !list.iter().any(|m| m.id == msg.id) {
-                    list.push(msg);
+        let path = format!("/channels/{cid}/messages");
+        self.api_bg(true, move |api| api.post(&path, json!({ "content": "", "poll": poll })), |app, r| {
+            if let Some(v) = report(&mut app.status_banner, r) {
+                if let Ok(msg) = crate::model::parse::<Message>(v) {
+                    app.state.push_message(msg);
                 }
             }
-        }
+        });
     }
 }
 
