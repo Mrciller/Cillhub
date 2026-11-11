@@ -208,6 +208,7 @@ export function insertMessage(d) {
       run(`INSERT INTO read_states (user_id, channel_id, last_message_id) VALUES (?, ?, ?)
            ON CONFLICT DO UPDATE SET last_message_id = excluded.last_message_id`, d.authorId, ch.id, id);
     }
+    d.inTx?.();
   });
   if (d.poll) schedule();
   if (ch.message_ttl > 0 || (ch.parent_id && getChannel(ch.parent_id)?.message_ttl > 0)) schedule();

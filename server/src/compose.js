@@ -228,7 +228,8 @@ async function saveFiles(ch, d) {
 }
 
 // stores and announces a prepared message. author: { id } of the user (or the webhook's creator) and optional webhook
-export async function send(d, authorId, { webhook, id, type = 0 } = {}) {
+// inTx: more writes that commit or fail together with the message row
+export async function send(d, authorId, { webhook, id, type = 0, inTx } = {}) {
   const ch = d.ch;
   const attachments = await saveFiles(ch, d);
   let m;
@@ -258,7 +259,7 @@ export async function send(d, authorId, { webhook, id, type = 0 } = {}) {
       referenceId: d.referenceId, mentionEveryone: d.counted.all || d.counted.here, mentionRoles: d.counted.roleIds, embeds,
       stickerItems: d.stickerItems, poll: d.poll, attachments, webhook, components: d.components,
       snapshot, reference: d.forward && { type: 1, message_id: d.forward.src.id, channel_id: d.forward.srcCh.id, guild_id: d.forward.srcCh.guild_id ?? undefined },
-      e2eeEnvelope: d.e2eeEnvelope,
+      e2eeEnvelope: d.e2eeEnvelope, inTx,
     });
   } catch (e) {
     attachments.forEach(a => removeAttachment(ch.id, a.id));

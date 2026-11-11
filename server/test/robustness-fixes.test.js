@@ -70,6 +70,19 @@ test('a scheduled message is sent under the id fixed before the send, and never 
   assert.equal(db(d => d.prepare('SELECT COUNT(*) AS n FROM scheduled_messages WHERE id = ?').get(b.id).n, true), 0);
 });
 
+test('a scheduled message deleted after delivery is not sent again by the recovery', async () => {
+  const gw = await srv.gateway(alex.token);
+  const r = (await api('POST', `/channels/${g.general.id}/scheduled-messages`, alex.token, { content: 'only once', send_at: soon(800) })).body;
+  // the scheduled row cannot be removed (as if the process stopped right after the send)
+  db(d => d.exec(`CREATE TRIGGER keep_row BEFORE DELETE ON scheduled_messages WHEN OLD.id = '${r.id}' BEGIN SELECT RAISE(ABORT, 'kept'); END`));
+  try { await new Promise(res => setTimeout(res, 1500)); } finally { db(d => d.exec('DROP TRIGGER keep_row')); }
+  db(d => d.prepare("DELETE FROM messages WHERE content = 'only once'").run()); // a lifetime removes the delivered message
+  await api('PATCH', `/users/@me/scheduled-messages/${r.id}`, alex.token, { content: 'only once' }); // re-arms the timer
+  await until(() => !db(d => d.prepare('SELECT 1 FROM scheduled_messages WHERE id = ?').get(r.id), true), 3000);
+  await new Promise(res => setTimeout(res, 300));
+  assert.equal(gw.frames.filter(f => f.t === 'MESSAGE_CREATE' && f.d.content === 'only once').length, 1, 'sent exactly once');
+});
+
 test('a group DM lifetime can be set and covers only messages from then on', async () => {
   const grp = (await api('POST', '/users/@me/channels', sam.token, { recipients: [] })).body;
   const old = (await api('POST', `/channels/${grp.id}/messages`, sam.token, { content: 'kept' })).body;

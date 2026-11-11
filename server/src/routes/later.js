@@ -108,7 +108,7 @@ async function deliverScheduled(r) {
     if (!has(ch.perms, P.VIEW_CHANNEL)) throw missingAccess();
     if (!get('SELECT 1 FROM messages WHERE id = ?', r.message_id)) { // there already: sent just before a crash
       const { d, mod } = await checked(ch, user, JSON.parse(r.body));
-      const m = await send(d, user.id, { id: r.message_id });
+      const m = await send(d, user.id, { id: r.message_id, inTx: () => run('DELETE FROM scheduled_messages WHERE id = ?', r.id) });
       if (isThread(ch)) reopened(ch);
       mod?.execute(m.id);
     }
@@ -122,8 +122,8 @@ async function deliverScheduled(r) {
 addJob({
   name: 'scheduled messages',
   next: () => get('SELECT MIN(send_at) AS t FROM scheduled_messages').t,
-  // the message id is fixed before the send and the row removed after it: a crash in between sends it at the next
-  // start under that same id, or finds it already there, so it is neither lost nor sent twice
+  // the row is removed in the transaction that stores the message, so a delivered message is never sent again (even
+  // once a lifetime has deleted it); a refused one is removed after
   run: async now => {
     for (const r of all('SELECT * FROM scheduled_messages WHERE send_at <= ? ORDER BY send_at', now)) {
       if (!r.message_id) run('UPDATE scheduled_messages SET message_id = ? WHERE id = ?', r.message_id = snowflake(), r.id);
