@@ -96,7 +96,8 @@ function deleteScheduled(ctx) {
   sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { id: r.id, channel_id: r.channel_id, guild_id: getChannel(r.channel_id)?.guild_id ?? null });
 }
 
-// at send time the author's current permissions decide; a refused message is dropped and the author told why
+// at send time the author's current permissions decide; a refused message is dropped and the author told why.
+// Any other failure (storage, a rolled-back send) is thrown: the row stays for a later run.
 async function deliverScheduled(r) {
   const gone = { id: r.id, channel_id: r.channel_id, guild_id: null };
   try {
@@ -114,7 +115,7 @@ async function deliverScheduled(r) {
     }
     sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { ...gone, message_id: r.message_id });
   } catch (e) {
-    if (!(e instanceof HttpError)) console.error('scheduled message failed:', e);
+    if (!(e instanceof HttpError)) throw e;
     sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { ...gone, failed: true, code: e.body?.code ?? 0 });
   }
 }
@@ -123,13 +124,18 @@ addJob({
   name: 'scheduled messages',
   next: () => get('SELECT MIN(send_at) AS t FROM scheduled_messages').t,
   // the row is removed in the transaction that stores the message, so a delivered message is never sent again (even
-  // once a lifetime has deleted it); a refused one is removed after
+  // once a lifetime has deleted it); a refused one is removed after; one that failed otherwise stays, and the job
+  // fails so the timer retries it no sooner than 5 s later
   run: async now => {
+    let error;
     for (const r of all('SELECT * FROM scheduled_messages WHERE send_at <= ? ORDER BY send_at', now)) {
       if (!r.message_id) run('UPDATE scheduled_messages SET message_id = ? WHERE id = ?', r.message_id = snowflake(), r.id);
-      await deliverScheduled(r);
-      run('DELETE FROM scheduled_messages WHERE id = ?', r.id);
+      try {
+        await deliverScheduled(r);
+        run('DELETE FROM scheduled_messages WHERE id = ?', r.id);
+      } catch (e) { error = e; }
     }
+    if (error) throw error;
   },
 });
 

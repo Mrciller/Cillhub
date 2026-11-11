@@ -94,9 +94,25 @@ test('a scheduled message deleted after delivery is not sent again by the recove
   try { await new Promise(res => setTimeout(res, 1500)); } finally { db(d => d.exec('DROP TRIGGER keep_row')); }
   db(d => d.prepare("DELETE FROM messages WHERE content = 'only once'").run()); // a lifetime removes the delivered message
   await api('PATCH', `/users/@me/scheduled-messages/${r.id}`, alex.token, { content: 'only once' }); // re-arms the timer
-  await until(() => !db(d => d.prepare('SELECT 1 FROM scheduled_messages WHERE id = ?').get(r.id), true), 3000);
+  await until(() => !db(d => d.prepare('SELECT 1 FROM scheduled_messages WHERE id = ?').get(r.id), true), 8000); // a failed run is retried 5 s later
   await new Promise(res => setTimeout(res, 300));
   assert.equal(gw.frames.filter(f => f.t === 'MESSAGE_CREATE' && f.d.content === 'only once').length, 1, 'sent exactly once');
+});
+
+test('a scheduled message whose send is rolled back stays scheduled and is sent on a later run', { timeout: 20_000 }, async () => {
+  const gw = await srv.gateway(alex.token);
+  const r = (await api('POST', `/channels/${g.general.id}/scheduled-messages`, alex.token, { content: 'rolled back', send_at: soon(500) })).body;
+  // the row cannot be removed while its message exists: the removal inside the send fails and undoes the message
+  db(d => d.exec(`CREATE TRIGGER keep_sent BEFORE DELETE ON scheduled_messages
+    WHEN OLD.id = '${r.id}' AND EXISTS (SELECT 1 FROM messages WHERE id = OLD.message_id) BEGIN SELECT RAISE(ABORT, 'kept'); END`));
+  try {
+    await until(() => db(d => d.prepare('SELECT message_id FROM scheduled_messages WHERE id = ?').get(r.id), true)?.message_id, 3000);
+    await new Promise(res => setTimeout(res, 1000)); // the first attempt has failed by now
+    assert.ok(db(d => d.prepare('SELECT 1 FROM scheduled_messages WHERE id = ?').get(r.id), true), 'still scheduled');
+  } finally { db(d => d.exec('DROP TRIGGER keep_sent')); }
+  const sent = (await gw.wait(f => f.t === 'MESSAGE_CREATE' && f.d.content === 'rolled back', 10_000)).d; // the retry, 5 s later
+  assert.equal(db(d => d.prepare('SELECT COUNT(*) AS n FROM scheduled_messages WHERE id = ?').get(r.id), true).n, 0);
+  assert.ok(sent.id);
 });
 
 test('a group DM lifetime can be set and covers only messages from then on', async () => {
