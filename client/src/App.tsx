@@ -14,6 +14,7 @@ import { useInstance } from './admin/instance'
 import { InstanceCallback } from './instances/InstanceUI'
 import type { LegalDocId } from './legal/api'
 import { AppealPage, LegalDocPage, LegalGate, LicensesPage, NoticeStatusPage, ReportContentPage } from './legal/LegalPages'
+import { AddNodePage } from './settings/PrivateNodes'
 
 const DeveloperPortal = lazy(() => import('./developers/DeveloperPortal').then((m) => ({ default: m.DeveloperPortal })))
 const AdminPage = lazy(() => import('./admin/AdminPage').then((m) => ({ default: m.AdminPage })))
@@ -57,6 +58,7 @@ function Page() {
   if (section === 'licenses') return <LicensesPage />
   if (section === 'report-content') return a === 'status' ? <NoticeStatusPage /> : <ReportContentPage />
   if (section === 'appeal') return <AppealPage />
+  if (section === 'add-node') return <AddNodePage />
   if (section === 'download') return <Suspense fallback={null}><DownloadPage /></Suspense>
   if (!token) return section === 'login' || section === 'register' ? <><Auth key={section} mode={section} /><DialogHost /></> : <Redirect to={`/login${section === 'oauth2' || section === 'developers' || section === 'directory' ? `?next=${encodeURIComponent(location.pathname + location.search)}` : ''}`} />
   if (section === 'developers' && a === 'applications') return <Suspense fallback={null}><DeveloperPortal appId={b} tab={path.split('/')[4]} /></Suspense>

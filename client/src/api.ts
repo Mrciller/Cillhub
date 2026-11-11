@@ -1,6 +1,9 @@
 import { DEFAULT_HUB_URL } from './hub'
 import { t } from './i18n'
 import { inbound, instanceById, outbound, outboundPath, route, tokenOf } from './instances/registry'
+import { cleanName, normalizeServerUrl, parseNodes, type SavedNode } from './privateNodes'
+
+export { normalizeServerUrl }
 
 export const SERVER_TARGET_KEY = 'cillhub_server_target'
 export const CUSTOM_NODE_KEY = 'cillhub_custom_node_url'
@@ -21,29 +24,16 @@ export function getCustomNodeUrl(): string {
   }
 }
 
-/** A typed server address as an origin: https:// added when missing, http only for localhost; null when unusable. */
-export function normalizeServerUrl(raw: string): string | null {
-  const v = raw.trim()
-  if (!v) return null
-  try {
-    const u = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(v) ? v : `https://${v}`)
-    const local = u.hostname === 'localhost' || u.hostname.endsWith('.localhost') || u.hostname === '127.0.0.1' || u.hostname === '[::1]'
-    return u.protocol === 'https:' || (u.protocol === 'http:' && local) ? u.origin : null
-  } catch {
-    return null
-  }
-}
-if (import.meta.env.DEV) {
-  console.assert(normalizeServerUrl('chat.example.org/') === 'https://chat.example.org' && normalizeServerUrl('http://chat.example.org') === null
-    && normalizeServerUrl('http://localhost:3000/x') === 'http://localhost:3000' && normalizeServerUrl('ftp://a.b') === null && normalizeServerUrl(' ') === null, 'normalizeServerUrl')
-}
-
 export const ORIGIN = import.meta.env.VITE_API_BASE ?? ''
 
 /** The server this client talks to (the login page's Main Hub / Private Node choice): REST, media, voice, and every link people share. */
 export function apiOrigin(): string {
   const custom = getServerTarget() === 'private' && normalizeServerUrl(getCustomNodeUrl())
-  if (custom) return custom
+  return custom || hubOrigin()
+}
+
+/** The Main Hub choice: the build's API base, else the server that served this page. */
+export function hubOrigin(): string {
   if (ORIGIN) return ORIGIN.replace(/\/+$/, '')
   if (typeof window !== 'undefined' && /^https?:\/\//.test(window.location?.origin ?? '')) return window.location.origin
   return DEFAULT_HUB_URL
@@ -58,6 +48,21 @@ export function setServerTarget(target: 'hub' | 'private', customUrl?: string): 
     if (url !== undefined) localStorage.setItem(CUSTOM_NODE_KEY, url)
   } catch {}
   return true
+}
+
+export const NODES_KEY = 'cillhub_private_nodes'
+const local = (key: string) => { try { return localStorage.getItem(key) } catch { return null } }
+
+/** This device's saved private nodes (Settings › Private Nodes). */
+export const savedNodes = (): SavedNode[] => parseNodes(local(NODES_KEY))
+export const saveNodes = (list: SavedNode[]) => { try { localStorage.setItem(NODES_KEY, JSON.stringify(list)) } catch {} }
+
+/** Whether a server answers as Cillhub, and its name (GET /instance: no credentials, no redirects, 5 s). */
+export async function testNode(origin: string): Promise<{ name: string }> {
+  const res = await fetch(`${origin}/api/v9/instance`, { credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(5000) })
+  const data = res.ok ? await res.json().catch(() => null) : null
+  if (!data || typeof data !== 'object') throw new Error('Not answering as Cillhub')
+  return { name: cleanName((data as { name?: unknown }).name) }
 }
 
 /** Root-relative CDN paths (avatars, icons, attachments) resolved against the API origin, or the node's origin for node ids (v7). */
