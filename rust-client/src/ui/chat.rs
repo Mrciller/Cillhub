@@ -3,7 +3,7 @@
 //! grouped `.msg.head` message rows with 36px `draw_avatar` and hover `.toolbar`,
 //! notched `GameInviteCard`, and `.composer` bar with `+` popover menu.
 
-use super::report;
+use super::{open_external, report};
 use crate::i18n::{tr, trf};
 use crate::league::{parse_game_invite, GameInviteData};
 use crate::model::{Channel, Emoji, Message, Reaction, SavedMessage};
@@ -484,7 +484,7 @@ impl CillhubApp {
                                             .color(TEXT_MUTED()),
                                         );
                                         if ui.small_button(tr("Open in Browser")).clicked() {
-                                            report(&mut self.status_banner, open::that(&url));
+                                            open_external(&mut self.status_banner, &url);
                                         }
                                     });
                                 });
@@ -1195,7 +1195,7 @@ impl CillhubApp {
                 if *hidden {
                     self.revealed_spoilers.insert((msg_id.to_string(), sp.style.spoiler.unwrap_or(0)));
                 } else if let Some(url) = &sp.link {
-                    report(&mut self.status_banner, open::that(url));
+                    open_external(&mut self.status_banner, url);
                 }
             }
         }

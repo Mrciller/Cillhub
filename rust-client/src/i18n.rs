@@ -54,6 +54,7 @@ const NATIVE_DE: &[(&str, &str)] = &[
     ("Session expired. Please log in again.", "Sitzung abgelaufen. Bitte melde dich erneut an."),
     ("Gateway reconnecting: {error}", "Verbindung wird wiederhergestellt: {error}"),
     ("Game invite", "Spieleinladung"),
+    ("Only web links can be opened.", "Nur Weblinks können geöffnet werden."),
 ];
 
 fn table() -> &'static HashMap<&'static str, &'static str> {

@@ -37,6 +37,16 @@ use std::time::{Duration, Instant};
 use url::Url;
 
 /// Logs a failed action and shows it in the status line instead of dropping it.
+/// The only way a URL reaches the OS opener: http(s) after resolving, never file:, smb: or an app's custom scheme.
+pub fn open_external(banner: &mut Option<String>, url: &str) {
+    match crate::markdown::safe_url(url) {
+        Some(u) => {
+            report(banner, open::that(u));
+        }
+        None => *banner = Some(tr("Only web links can be opened.").to_string()),
+    }
+}
+
 pub fn report<T, E: std::fmt::Display>(banner: &mut Option<String>, r: Result<T, E>) -> Option<T> {
     match r {
         Ok(v) => Some(v),
@@ -1795,7 +1805,7 @@ impl CillhubApp {
                 ui.add(egui::Image::new(uri.as_str()).max_size(max - Vec2::splat(48.0)).shrink_to_fit());
                 ui.add_space(8.0);
                 if ui.add(egui::Label::new(RichText::new(tr("Open in Browser")).color(FOCUS())).sense(Sense::click())).clicked() {
-                    report(banner, open::that(&url));
+                    open_external(banner, &url);
                 }
             });
             if dim {
@@ -1940,6 +1950,16 @@ impl CillhubApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_web_links_reach_the_os_opener() {
+        let app = CillhubApp::new(None, true);
+        for evil in ["file:///C:/Windows/System32/calc.exe", "smb://host/share", "cillhub://invite/x", "javascript:alert(1)", "/relative"] {
+            let mut banner = None;
+            open_external(&mut banner, &app.absolute_url(evil));
+            assert_eq!(banner.as_deref(), Some("Only web links can be opened."), "{evil}");
+        }
+    }
 
     #[test]
     fn failed_actions_change_nothing_locally() {
