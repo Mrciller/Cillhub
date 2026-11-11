@@ -346,6 +346,7 @@ async function main() {
       await alice.getByRole('button', { name: 'Watch Together' }).click()
       await watchPanel(alice).getByLabel('YouTube link').fill(VIDEO1)
       await watchPanel(alice).getByRole('button', { name: 'Start Watching' }).click()
+      for (const p of [alice, bob]) await watchPanel(p).getByRole('button', { name: 'Load player' }).click() // 7.10.3: consent before the YouTube player
       await until('both players to load M7lc1UVf-VE and play', async () => {
         const [a, b] = await players(alice, bob)
         return a?.vid === 'M7lc1UVf-VE' && b?.vid === 'M7lc1UVf-VE' && a.st === 1 && b.st === 1
@@ -436,6 +437,7 @@ async function main() {
 
     await step('2h. Watch Together: Carol joins late and gets the running session at the same position', async () => {
       await joinVoice(carol)
+      await watchPanel(carol).getByRole('button', { name: 'Load player' }).click()
       await until("Carol's player on aqz-KE-bpKQ within 1.5 s of Alice's", async () => {
         const [a, c] = await players(alice, carol)
         return c?.vid === 'aqz-KE-bpKQ' && c.st === 1 && Math.abs(a.t - c.t) <= 1.5

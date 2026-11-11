@@ -375,6 +375,9 @@ async function main() {
     await step('4. disabling Bob closes his session and refuses his login; enabling lets him back in', async () => {
       const drawer = modal(alice, /^User /)
       await drawer.getByRole('button', { name: 'Disable Account' }).click()
+      const reasons = alice.getByRole('dialog', { name: /^Disable / }) // 7.10.3: a statement of reasons for Bob
+      await reasons.getByLabel('Reason').selectOption('spam')
+      await reasons.getByLabel('Explanation for the affected user').fill('Spam links')
       await confirmIn(alice, /^Disable /, 'Disable Account')
       await bob.getByRole('heading', { name: 'Ready up' }).waitFor(LIVE)
       await loginForm(bob, NAME.bob)
