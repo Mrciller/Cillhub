@@ -289,7 +289,7 @@ impl CillhubApp {
 
         if demo_mode {
             app.enter_demo_arena();
-        } else if let Some(token) = app.settings.saved_token.clone() {
+        } else if let Some(token) = app.settings.token() {
             if let Some(origin) = normalize_server_url(&app.auth_server_url) {
                 app.complete_login(origin, token);
             }
@@ -322,8 +322,7 @@ impl CillhubApp {
     }
 
     pub fn complete_login(&mut self, origin: Url, token: String) {
-        self.settings.saved_token = Some(token.clone());
-        report(&mut self.status_banner, self.settings.save());
+        report(&mut self.status_banner, self.settings.set_token(Some(&token)));
         self.api = Some(ApiClient::new(origin.clone(), Some(token.clone())));
         let (ev_tx, ev_rx) = mpsc::channel();
         let (cmd_tx, cmd_rx) = mpsc::channel();
@@ -343,8 +342,7 @@ impl CillhubApp {
         self.gateway_cmd_tx = None;
         self.api = None;
         self.authenticated = false;
-        self.settings.saved_token = None;
-        report(&mut self.status_banner, self.settings.save());
+        report(&mut self.status_banner, self.settings.set_token(None));
         self.active_modal = None;
     }
 

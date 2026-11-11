@@ -609,7 +609,7 @@ impl CillhubApp {
             "betacord" => "https://betacord.cillerian.org",
             _ => HUB_URL,
         };
-        let Some(mut origin) = normalize_server_url(raw_url) else {
+        let Some(origin) = normalize_server_url(raw_url) else {
             self.auth_error =
                 Some("Invalid server URL. Use https:// or http://localhost.".to_string());
             return;
@@ -620,7 +620,8 @@ impl CillhubApp {
             "login": self.auth_login_input.trim(),
             "password": self.auth_password_input,
         });
-        let mut result = if is_reg {
+        // Credentials go only to the server the user picked.
+        let result = if is_reg {
             let mut body = json!({
                 "username": self.auth_login_input.trim(),
                 "password": self.auth_password_input,
@@ -632,29 +633,6 @@ impl CillhubApp {
         } else {
             api.post("/auth/login", login_body.clone())
         };
-
-        // Seamless fallback between Main Hub (cillhub.cillerian.org) and Betacord (betacord.cillerian.org)
-        if !is_reg && result.is_err() && self.settings.server_target != "node" {
-            let alt_url = if self.settings.server_target == "betacord" {
-                HUB_URL
-            } else {
-                "https://betacord.cillerian.org"
-            };
-            if let Some(alt_origin) = normalize_server_url(alt_url) {
-                let alt_api = crate::api::ApiClient::new(alt_origin.clone(), None);
-                if let Ok(alt_data) = alt_api.post("/auth/login", login_body) {
-                    self.settings.server_target = if alt_url == "https://betacord.cillerian.org" {
-                        "betacord".to_string()
-                    } else {
-                        "hub".to_string()
-                    };
-                    self.auth_server_url = alt_url.to_string();
-                    report(&mut self.status_banner, self.settings.save());
-                    origin = alt_origin;
-                    result = Ok(alt_data);
-                }
-            }
-        }
 
         match result {
             Ok(data) => {

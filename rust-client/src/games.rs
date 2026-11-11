@@ -139,6 +139,9 @@ impl Default for GameTracker {
 
 impl GameTracker {
     pub fn new() -> Self {
+        // sysinfo keeps every /proc/N[/task/N]/stat open between refreshes (thousands of fds);
+        // 0 makes it reopen them per scan instead.
+        sysinfo::set_open_files_limit(0);
         Self {
             sys: System::new(),
             current: None,
@@ -193,6 +196,24 @@ impl GameTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn scanning_keeps_no_proc_files_open() {
+        let proc_stat_fds = || {
+            std::fs::read_dir("/proc/self/fd")
+                .unwrap()
+                .filter_map(|e| std::fs::read_link(e.ok()?.path()).ok())
+                .filter(|p| p.starts_with("/proc") && p.ends_with("stat"))
+                .count()
+        };
+        let mut tracker = GameTracker::new();
+        for _ in 0..3 {
+            tracker.scan(&[]);
+        }
+        assert!(!tracker.last_processes().is_empty());
+        assert_eq!(proc_stat_fds(), 0);
+    }
 
     #[test]
     fn test_normalize_key() {

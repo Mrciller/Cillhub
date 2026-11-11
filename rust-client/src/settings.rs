@@ -1,5 +1,7 @@
 //! settings.json in the app's config dir: tray behaviour, activity sharing, added games,
-//! window bounds, audio DSP config, and saved session. Written atomically.
+//! window bounds, audio DSP config. The session token lives in the OS keyring; only when
+//! that is unavailable it is kept here, in a 0600 file inside a 0700 dir (Unix).
+//! Written atomically.
 
 use crate::audio::AudioConfig;
 use serde::{Deserialize, Serialize};
@@ -7,7 +9,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CustomGame {
@@ -48,7 +50,7 @@ pub struct AppSettings {
     pub close_to_tray: bool,
     #[serde(default = "yes")]
     pub share_activity: bool,
-    #[serde(default = "yes")]
+    #[serde(default)]
     pub open_on_startup: bool,
     #[serde(default)]
     pub custom_games: Vec<CustomGame>,
@@ -99,7 +101,7 @@ impl Default for AppSettings {
             hub_url: default_hub(),
             close_to_tray: true,
             share_activity: true,
-            open_on_startup: true,
+            open_on_startup: false,
             custom_games: Vec::new(),
             saved_token: None,
             server_target: default_target(),
@@ -122,23 +124,94 @@ impl AppSettings {
     }
 
     pub fn load() -> Self {
-        let path = Self::settings_file_path();
-        fs::read_to_string(&path)
+        Self::load_from(&Self::settings_file_path())
+    }
+
+    /// Reads the file; a plaintext token from an older version moves to the keyring, or the
+    /// file is at least rewritten with tight permissions.
+    pub fn load_from(path: &Path) -> Self {
+        let mut s: Self = fs::read_to_string(path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if let Some(token) = s.saved_token.clone() {
+            if keyring_entry().is_some_and(|k| k.set_password(&token).is_ok()) {
+                s.saved_token = None;
+            }
+            if let Err(e) = s.save_to(path) {
+                eprintln!("cillhub: could not rewrite settings: {e}");
+            }
+        }
+        s
     }
 
     pub fn save(&self) -> std::io::Result<()> {
-        let path = Self::settings_file_path();
+        self.save_to(&Self::settings_file_path())
+    }
+
+    pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+            }
         }
         let json = serde_json::to_string_pretty(self).unwrap_or_default();
         let tmp = path.with_extension("json.tmp");
-        fs::write(&tmp, json)?;
-        fs::rename(&tmp, &path)
+        // A fresh file, so the mode applies from the first byte.
+        match fs::remove_file(&tmp) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+            _ => {}
+        }
+        let mut opts = fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        std::io::Write::write_all(&mut opts.open(&tmp)?, json.as_bytes())?;
+        fs::rename(&tmp, path)
     }
+
+    /// The saved session token: keyring first, then the settings file fallback.
+    pub fn token(&self) -> Option<String> {
+        keyring_entry()
+            .and_then(|k| k.get_password().ok())
+            .or_else(|| self.saved_token.clone())
+    }
+
+    /// Stores (Some) or forgets (None) the session token and saves the settings.
+    pub fn set_token(&mut self, token: Option<&str>) -> std::io::Result<()> {
+        let keyring = keyring_entry();
+        self.saved_token = match (token, &keyring) {
+            (Some(t), Some(k)) if k.set_password(t).is_ok() => None,
+            (Some(t), _) => {
+                // Keyring failed: drop any older keyring copy so token() does not return it.
+                if let Some(k) = &keyring {
+                    let _ = k.delete_credential();
+                }
+                Some(t.to_string())
+            }
+            (None, k) => {
+                if let Some(k) = k {
+                    let _ = k.delete_credential(); // NoEntry is fine
+                }
+                None
+            }
+        };
+        self.save()
+    }
+}
+
+/// None in tests (they must not touch the developer's keyring) and when no keyring backend exists.
+fn keyring_entry() -> Option<keyring::Entry> {
+    if cfg!(test) {
+        return None;
+    }
+    keyring::Entry::new("Cillhub", "session-token").ok()
 }
 
 pub fn default_config_dir() -> PathBuf {
@@ -150,39 +223,6 @@ pub fn default_config_dir() -> PathBuf {
         PathBuf::from(home).join(".config").join("Cillhub")
     } else {
         PathBuf::from(".").join("data")
-    }
-}
-
-#[derive(Clone)]
-pub struct SettingsManager {
-    path: PathBuf,
-    current: Arc<Mutex<AppSettings>>,
-}
-
-impl SettingsManager {
-    pub fn new(path: PathBuf) -> Self {
-        let loaded = fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
-        Self {
-            path,
-            current: Arc::new(Mutex::new(loaded)),
-        }
-    }
-
-    pub fn get(&self) -> AppSettings {
-        self.current.lock().unwrap().clone()
-    }
-
-    pub fn update(&self, f: impl FnOnce(&mut AppSettings)) {
-        let mut lock = self.current.lock().unwrap();
-        f(&mut lock);
-        let json = serde_json::to_string_pretty(&*lock).unwrap_or_default();
-        drop(lock);
-        let tmp = self.path.with_extension("json.tmp");
-        let _ = self.path.parent().map(fs::create_dir_all);
-        let _ = fs::write(&tmp, json).and_then(|_| fs::rename(&tmp, &self.path));
     }
 }
 
@@ -245,21 +285,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn persists() {
+    fn persists_with_private_modes() {
         let dir = std::env::temp_dir().join(format!("cillhub-settings-{}", std::process::id()));
-        let file = dir.join("settings.json");
-        let mgr = SettingsManager::new(file.clone());
-        assert!(mgr.get().close_to_tray);
-        mgr.update(|s| {
-            s.close_to_tray = false;
-            s.custom_games.push(CustomGame {
-                exe: "factorio.exe".into(),
-                name: "Factorio".into(),
-            });
-        });
-        let again = SettingsManager::new(file).get();
-        assert!(!again.close_to_tray && again.share_activity);
-        assert_eq!(again.custom_games[0].name, "Factorio");
-        let _ = fs::remove_dir_all(dir);
+        let file = dir.join("Cillhub").join("settings.json");
+        let mut s = AppSettings::default();
+        assert!(!s.open_on_startup, "autostart is opt-in");
+        s.close_to_tray = false;
+        s.saved_token = Some("dummy-token".into());
+        s.save_to(&file).unwrap();
+        // An older version left the file world-readable; loading tightens it again.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
+            let again = AppSettings::load_from(&file);
+            assert_eq!(again.token().as_deref(), Some("dummy-token"));
+            assert!(!again.close_to_tray && again.share_activity);
+            let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode(&file), 0o600);
+            assert_eq!(mode(file.parent().unwrap()), 0o700);
+        }
+        fs::remove_dir_all(dir).unwrap();
     }
 }
