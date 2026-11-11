@@ -119,3 +119,29 @@ test('a plaintext alert cannot close a transport once the keys are in place', ()
   srv.handle(alert);
   assert.equal(closed, true, 'during the handshake a plaintext alert still ends it');
 });
+
+test('a malformed plaintext handshake record cannot close an established transport', () => {
+  let closed = false, sent = 0;
+  const srv = new DtlsServer({ cert: makeCertificate(), send: () => sent++, onConnected: () => {}, onClose: () => { closed = true; } });
+  Object.assign(srv, { state: 'done', readKey: Buffer.alloc(16), nextRecv: 4, flight: [{ type: 20, epoch: 0, body: Buffer.from([1]) }] });
+  // 25 bytes: HANDSHAKE, epoch 0, record length 12, a header that claims 1 fragment byte and carries none
+  const bad = Buffer.alloc(25);
+  bad[0] = 22;
+  bad.writeUInt16BE(0xfefd, 1);
+  bad.writeUInt16BE(12, 11);
+  bad.writeUIntBE(1, 22, 3);
+  srv.handle(bad);
+  assert.equal(closed, false, 'dropped, the transport stays up');
+  assert.equal(sent, 0, 'no alert sent');
+  // a retransmitted final flight from the peer (an old message_seq) still gets our last flight again
+  const again = Buffer.alloc(26);
+  again[0] = 22;
+  again.writeUInt16BE(0xfefd, 1);
+  again.writeUInt16BE(13, 11);
+  again.writeUIntBE(1, 14, 3); // length 1
+  again.writeUInt16BE(3, 17); // message_seq 3 < 4
+  again.writeUIntBE(1, 22, 3); // one fragment byte, present
+  srv.handle(again);
+  assert.equal(closed, false);
+  assert.equal(sent, 1, 'last flight resent');
+});

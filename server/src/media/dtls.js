@@ -138,6 +138,7 @@ export class DtlsServer {
           if ((body[0] === 2 || body[1] === 0) && (epoch === 1 || !this.readKey)) return this.close(false);
         }
       } catch (e) {
+        if (this.state === 'done' && epoch === 0) continue; // unauthenticated junk after the handshake: drop it
         return this.fail(`bad handshake: ${e.message}`, 50);
       }
       if (this.state === 'closed') return;
