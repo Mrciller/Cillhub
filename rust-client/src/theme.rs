@@ -4,7 +4,7 @@
 #[cfg(feature = "native-gui")]
 use egui::{
     Align2, Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId,
-    Painter, Pos2, Rect, Response, Sense, Shape, Stroke, StrokeKind, Ui, Vec2, Visuals,
+    Painter, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2, Visuals,
 };
 
 #[cfg(feature = "native-gui")]
@@ -486,11 +486,13 @@ pub enum IconKind {
     Compass,
     ChevronDown,
     ChevronRight,
+    Expand,
     People,
     Hash,
     Speaker,
     Stage,
     Forum,
+    Announcement,
     Mic,
     MicOff,
     Headset,
@@ -507,6 +509,7 @@ pub enum IconKind {
     Check,
     Close,
     Reply,
+    Forward,
     Smile,
     Send,
     Poll,
@@ -515,324 +518,129 @@ pub enum IconKind {
     Lock,
     Globe,
     Edit,
+    Bookmark,
+    More,
+    Trash,
+    Download,
+    Calendar,
+    AddCircle,
+    Gif,
+    Sticker,
+    File,
+    Eye,
+    Logout,
+    Up,
+    Down,
+    Video,
+    Screen,
+    Hangup,
+    OpenFull,
+    PersonAdd,
 }
 
-/// Renders crisp vector icons matching `ICONS` in `client/src/components/ui.tsx`.
+/// Web icon name (ICONS in client/src/components/ui.tsx) and a rotation in degrees.
+#[cfg(feature = "native-gui")]
+fn web_icon(kind: IconKind) -> Option<(&'static str, i32)> {
+    use IconKind::*;
+    Some(match kind {
+        Home => ("home", 0),
+        Plus => ("plus", 0),
+        Compass => ("compass", 0),
+        ChevronDown => ("chevron", 0),
+        ChevronRight => ("expand", -90),
+        Expand => ("expand", 0),
+        People => ("people", 0),
+        Speaker => ("speaker", 0),
+        Stage => ("stage", 0),
+        Forum => ("forum", 0),
+        Announcement => ("announcement", 0),
+        Mic => ("mic", 0),
+        MicOff => ("micOff", 0),
+        Headset => ("headset", 0),
+        HeadsetOff => ("headsetOff", 0),
+        Gear => ("gear", 0),
+        Thread => ("thread", 0),
+        Pin => ("pin", 0),
+        Canvas => ("canvas", 0),
+        Grid => ("grid", 0),
+        Search => ("search", 0),
+        Inbox => ("inbox", 0),
+        Phone => ("phone", 0),
+        ChatBubble => ("chat", 0),
+        Check => ("check", 0),
+        Close => ("close", 0),
+        Reply => ("reply", 0),
+        Forward => ("forward", 0),
+        Smile => ("smile", 0),
+        Send => ("arrowRight", 0),
+        Poll => ("poll", 0),
+        Clock => ("clock", 0),
+        Lock => ("lock", 0),
+        Edit => ("pencil", 0),
+        Bookmark => ("bookmark", 0),
+        More => ("more", 0),
+        Trash => ("trash", 0),
+        Download => ("download", 0),
+        Calendar => ("calendar", 0),
+        AddCircle => ("addCircle", 0),
+        Gif => ("gif", 0),
+        Sticker => ("sticker", 0),
+        File => ("file", 0),
+        Eye => ("eye", 0),
+        Logout => ("logout", 0),
+        Up => ("up", 0),
+        Down => ("down", 0),
+        Video => ("video", 0),
+        Screen => ("screen", 0),
+        Hangup => ("hangup", 0),
+        OpenFull => ("openFull", 0),
+        PersonAdd => ("personAdd", 0),
+        Hash | Gamepad | Globe => return None,
+    })
+}
+
+#[cfg(feature = "native-gui")]
+fn icon_paths() -> &'static std::collections::HashMap<String, String> {
+    static P: std::sync::OnceLock<std::collections::HashMap<String, String>> = std::sync::OnceLock::new();
+    P.get_or_init(|| serde_json::from_str(include_str!("../assets/icons.json")).expect("icons.json"))
+}
+
+/// The web client's 24x24 Material path for an icon, as a white SVG (tinted when drawn).
+#[cfg(feature = "native-gui")]
+pub fn icon_svg(name: &str, rotate: i32) -> Option<String> {
+    let d = icon_paths().get(name)?;
+    Some(format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#ffffff" transform="rotate({rotate} 12 12)" d="{d}"/></svg>"##
+    ))
+}
+
+/// Draws an icon from the web client's SVG set (same paths), tinted with `color`.
 #[cfg(feature = "native-gui")]
 pub fn draw_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32) {
-    let c = rect.center();
-    let r = rect.width().min(rect.height()) * 0.42;
-    let stroke = Stroke::new(1.75_f32, color);
-    let thin = Stroke::new(1.4_f32, color);
-
-    match kind {
-        IconKind::Home => {
-            // Speech-bubble home icon from `ICONS.home`
-            let body = Rect::from_center_size(Pos2::new(c.x, c.y - r * 0.1), Vec2::new(r * 1.7, r * 1.3));
-            painter.rect_stroke(body, 2.5, stroke, StrokeKind::Inside);
-            let tail = vec![
-                Pos2::new(body.min.x + r * 0.3, body.max.y),
-                Pos2::new(body.min.x + r * 0.15, body.max.y + r * 0.42),
-                Pos2::new(body.min.x + r * 0.75, body.max.y),
-            ];
-            painter.add(Shape::line(tail, stroke));
+    let Some((name, rot)) = web_icon(kind) else {
+        // the web shows these as text: "#" for channels, emoji for games and the hub
+        let (glyph, scale) = match kind {
+            IconKind::Gamepad => ("🎮", 0.8),
+            IconKind::Globe => ("🌐", 0.8),
+            _ => ("#", 1.15),
+        };
+        painter.text(rect.center(), Align2::CENTER_CENTER, glyph, FontId::proportional(rect.height() * scale), color);
+        return;
+    };
+    let ctx = painter.ctx();
+    let uri = format!("bytes://icon/{name}{rot}.svg");
+    let id = egui::Id::new(&uri);
+    if !ctx.data(|d| d.get_temp::<bool>(id).unwrap_or(false)) {
+        if let Some(svg) = icon_svg(name, rot) {
+            ctx.include_bytes(uri.clone(), svg.into_bytes());
         }
-        IconKind::Plus => {
-            painter.line_segment([Pos2::new(c.x - r * 0.75, c.y), Pos2::new(c.x + r * 0.75, c.y)], stroke);
-            painter.line_segment([Pos2::new(c.x, c.y - r * 0.75), Pos2::new(c.x, c.y + r * 0.75)], stroke);
-        }
-        IconKind::Compass => {
-            painter.circle_stroke(c, r * 0.9, stroke);
-            let diamond = vec![
-                Pos2::new(c.x + r * 0.45, c.y - r * 0.45),
-                Pos2::new(c.x + r * 0.15, c.y + r * 0.15),
-                Pos2::new(c.x - r * 0.45, c.y + r * 0.45),
-                Pos2::new(c.x - r * 0.15, c.y - r * 0.15),
-                Pos2::new(c.x + r * 0.45, c.y - r * 0.45),
-            ];
-            painter.add(Shape::line(diamond, thin));
-        }
-        IconKind::ChevronDown => {
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.55, c.y - r * 0.22),
-                    Pos2::new(c.x, c.y + r * 0.32),
-                    Pos2::new(c.x + r * 0.55, c.y - r * 0.22),
-                ],
-                stroke,
-            ));
-        }
-        IconKind::ChevronRight => {
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.25, c.y - r * 0.5),
-                    Pos2::new(c.x + r * 0.3, c.y),
-                    Pos2::new(c.x - r * 0.25, c.y + r * 0.5),
-                ],
-                stroke,
-            ));
-        }
-        IconKind::People => {
-            painter.circle_stroke(Pos2::new(c.x - r * 0.25, c.y - r * 0.32), r * 0.34, stroke);
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.85, c.y + r * 0.7),
-                    Pos2::new(c.x - r * 0.65, c.y + r * 0.22),
-                    Pos2::new(c.x + r * 0.15, c.y + r * 0.22),
-                    Pos2::new(c.x + r * 0.35, c.y + r * 0.7),
-                ],
-                stroke,
-            ));
-            painter.circle_stroke(Pos2::new(c.x + r * 0.42, c.y - r * 0.28), r * 0.26, thin);
-        }
-        IconKind::Hash => {
-            let d = r * 0.34;
-            let h = r * 0.78;
-            painter.line_segment([Pos2::new(c.x - d + 1.5, c.y - h), Pos2::new(c.x - d - 1.5, c.y + h)], stroke);
-            painter.line_segment([Pos2::new(c.x + d + 1.5, c.y - h), Pos2::new(c.x + d - 1.5, c.y + h)], stroke);
-            painter.line_segment([Pos2::new(c.x - h, c.y - d), Pos2::new(c.x + h, c.y - d)], stroke);
-            painter.line_segment([Pos2::new(c.x - h, c.y + d), Pos2::new(c.x + h, c.y + d)], stroke);
-        }
-        IconKind::Speaker => {
-            let pts = vec![
-                Pos2::new(c.x - r * 0.75, c.y - r * 0.28),
-                Pos2::new(c.x - r * 0.35, c.y - r * 0.28),
-                Pos2::new(c.x + r * 0.15, c.y - r * 0.72),
-                Pos2::new(c.x + r * 0.15, c.y + r * 0.72),
-                Pos2::new(c.x - r * 0.35, c.y + r * 0.28),
-                Pos2::new(c.x - r * 0.75, c.y + r * 0.28),
-            ];
-            painter.add(Shape::convex_polygon(pts, color, Stroke::NONE));
-            painter.line_segment(
-                [Pos2::new(c.x + r * 0.45, c.y - r * 0.38), Pos2::new(c.x + r * 0.65, c.y)],
-                thin,
-            );
-            painter.line_segment(
-                [Pos2::new(c.x + r * 0.65, c.y), Pos2::new(c.x + r * 0.45, c.y + r * 0.38)],
-                thin,
-            );
-        }
-        IconKind::Stage => {
-            painter.circle_filled(c, r * 0.25, color);
-            painter.circle_stroke(c, r * 0.58, thin);
-            painter.circle_stroke(c, r * 0.88, thin);
-        }
-        IconKind::Forum => {
-            let b1 = Rect::from_center_size(Pos2::new(c.x - r * 0.15, c.y - r * 0.15), Vec2::new(r * 1.3, r * 0.95));
-            painter.rect_stroke(b1, 2.0, stroke, StrokeKind::Inside);
-            let b2 = Rect::from_center_size(Pos2::new(c.x + r * 0.22, c.y + r * 0.25), Vec2::new(r * 1.1, r * 0.8));
-            painter.rect_stroke(b2, 2.0, thin, StrokeKind::Inside);
-        }
-        IconKind::Mic | IconKind::MicOff => {
-            let cap = Rect::from_center_size(Pos2::new(c.x, c.y - r * 0.22), Vec2::new(r * 0.68, r * 1.05));
-            painter.rect_stroke(cap, r * 0.34, stroke, StrokeKind::Inside);
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.62, c.y),
-                    Pos2::new(c.x - r * 0.45, c.y + r * 0.52),
-                    Pos2::new(c.x + r * 0.45, c.y + r * 0.52),
-                    Pos2::new(c.x + r * 0.62, c.y),
-                ],
-                stroke,
-            ));
-            painter.line_segment([Pos2::new(c.x, c.y + r * 0.52), Pos2::new(c.x, c.y + r * 0.88)], stroke);
-            if kind == IconKind::MicOff {
-                painter.line_segment(
-                    [Pos2::new(c.x - r * 0.8, c.y - r * 0.8), Pos2::new(c.x + r * 0.8, c.y + r * 0.8)],
-                    Stroke::new(2.0_f32, color),
-                );
-            }
-        }
-        IconKind::Headset | IconKind::HeadsetOff => {
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.75, c.y + r * 0.2),
-                    Pos2::new(c.x - r * 0.75, c.y - r * 0.35),
-                    Pos2::new(c.x - r * 0.35, c.y - r * 0.78),
-                    Pos2::new(c.x + r * 0.35, c.y - r * 0.78),
-                    Pos2::new(c.x + r * 0.75, c.y - r * 0.35),
-                    Pos2::new(c.x + r * 0.75, c.y + r * 0.2),
-                ],
-                stroke,
-            ));
-            let left_ear = Rect::from_center_size(Pos2::new(c.x - r * 0.62, c.y + r * 0.38), Vec2::new(r * 0.36, r * 0.62));
-            let right_ear = Rect::from_center_size(Pos2::new(c.x + r * 0.62, c.y + r * 0.38), Vec2::new(r * 0.36, r * 0.62));
-            painter.rect_filled(left_ear, 2.0, color);
-            painter.rect_filled(right_ear, 2.0, color);
-            if kind == IconKind::HeadsetOff {
-                painter.line_segment(
-                    [Pos2::new(c.x - r * 0.8, c.y - r * 0.8), Pos2::new(c.x + r * 0.8, c.y + r * 0.8)],
-                    Stroke::new(2.0_f32, color),
-                );
-            }
-        }
-        IconKind::Gear => {
-            painter.circle_stroke(c, r * 0.42, stroke);
-            for i in 0..8 {
-                let a = (i as f32) * std::f32::consts::FRAC_PI_4;
-                let p1 = Pos2::new(c.x + a.cos() * r * 0.52, c.y + a.sin() * r * 0.52);
-                let p2 = Pos2::new(c.x + a.cos() * r * 0.88, c.y + a.sin() * r * 0.88);
-                painter.line_segment([p1, p2], stroke);
-            }
-        }
-        IconKind::Thread | IconKind::ChatBubble => {
-            let box_r = Rect::from_center_size(Pos2::new(c.x, c.y - r * 0.08), Vec2::new(r * 1.65, r * 1.25));
-            painter.rect_stroke(box_r, 2.5, stroke, StrokeKind::Inside);
-            if kind == IconKind::Thread {
-                painter.line_segment([Pos2::new(c.x - r * 0.45, c.y - r * 0.25), Pos2::new(c.x + r * 0.45, c.y - r * 0.25)], thin);
-                painter.line_segment([Pos2::new(c.x - r * 0.45, c.y + r * 0.12), Pos2::new(c.x + r * 0.25, c.y + r * 0.12)], thin);
-            }
-        }
-        IconKind::Pin => {
-            painter.line_segment([Pos2::new(c.x - r * 0.45, c.y - r * 0.72), Pos2::new(c.x + r * 0.45, c.y - r * 0.72)], stroke);
-            let body = Rect::from_center_size(Pos2::new(c.x, c.y - r * 0.25), Vec2::new(r * 0.65, r * 0.8));
-            painter.rect_stroke(body, 1.0, stroke, StrokeKind::Inside);
-            painter.line_segment([Pos2::new(c.x - r * 0.6, c.y + r * 0.15), Pos2::new(c.x + r * 0.6, c.y + r * 0.15)], stroke);
-            painter.line_segment([Pos2::new(c.x, c.y + r * 0.15), Pos2::new(c.x, c.y + r * 0.85)], stroke);
-        }
-        IconKind::Canvas => {
-            let page = Rect::from_center_size(c, Vec2::new(r * 1.35, r * 1.65));
-            painter.rect_stroke(page, 2.0, stroke, StrokeKind::Inside);
-            painter.line_segment([Pos2::new(c.x - r * 0.38, c.y - r * 0.2), Pos2::new(c.x + r * 0.38, c.y - r * 0.2)], thin);
-            painter.line_segment([Pos2::new(c.x - r * 0.38, c.y + r * 0.22), Pos2::new(c.x + r * 0.38, c.y + r * 0.22)], thin);
-        }
-        IconKind::Grid => {
-            let s = r * 0.65;
-            let g = r * 0.16;
-            for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
-                let cell = Rect::from_center_size(
-                    Pos2::new(c.x + dx * (s * 0.5 + g), c.y + dy * (s * 0.5 + g)),
-                    Vec2::splat(s),
-                );
-                painter.rect_stroke(cell, 1.5, thin, StrokeKind::Inside);
-            }
-        }
-        IconKind::Search => {
-            let sc = Pos2::new(c.x - r * 0.15, c.y - r * 0.15);
-            painter.circle_stroke(sc, r * 0.56, stroke);
-            painter.line_segment(
-                [Pos2::new(sc.x + r * 0.38, sc.y + r * 0.38), Pos2::new(c.x + r * 0.78, c.y + r * 0.78)],
-                stroke,
-            );
-        }
-        IconKind::Edit => {
-            // pencil: shaft from top-right to bottom-left plus the tip
-            let a = Pos2::new(c.x + r * 0.7, c.y - r * 0.7);
-            let b = Pos2::new(c.x - r * 0.45, c.y + r * 0.45);
-            painter.line_segment([a, b], Stroke::new(3.0_f32, color));
-            painter.line_segment([b, Pos2::new(c.x - r * 0.75, c.y + r * 0.75)], thin);
-        }
-        IconKind::Inbox => {
-            let box_r = Rect::from_center_size(c, Vec2::new(r * 1.6, r * 1.45));
-            painter.rect_stroke(box_r, 2.0, stroke, StrokeKind::Inside);
-            painter.line_segment([Pos2::new(box_r.min.x, c.y + r * 0.15), Pos2::new(box_r.max.x, c.y + r * 0.15)], thin);
-        }
-        IconKind::Phone => {
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.65, c.y - r * 0.45),
-                    Pos2::new(c.x - r * 0.35, c.y - r * 0.75),
-                    Pos2::new(c.x - r * 0.1, c.y - r * 0.25),
-                    Pos2::new(c.x + r * 0.25, c.y + r * 0.1),
-                    Pos2::new(c.x + r * 0.75, c.y + r * 0.35),
-                    Pos2::new(c.x + r * 0.45, c.y + r * 0.65),
-                    Pos2::new(c.x - r * 0.2, c.y + r * 0.2),
-                    Pos2::new(c.x - r * 0.65, c.y - r * 0.45),
-                ],
-                stroke,
-            ));
-        }
-        IconKind::Check => {
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.65, c.y + r * 0.05),
-                    Pos2::new(c.x - r * 0.18, c.y + r * 0.55),
-                    Pos2::new(c.x + r * 0.72, c.y - r * 0.48),
-                ],
-                Stroke::new(2.1_f32, color),
-            ));
-        }
-        IconKind::Close => {
-            painter.line_segment([Pos2::new(c.x - r * 0.6, c.y - r * 0.6), Pos2::new(c.x + r * 0.6, c.y + r * 0.6)], stroke);
-            painter.line_segment([Pos2::new(c.x + r * 0.6, c.y - r * 0.6), Pos2::new(c.x - r * 0.6, c.y + r * 0.6)], stroke);
-        }
-        IconKind::Reply => {
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.2, c.y - r * 0.55),
-                    Pos2::new(c.x - r * 0.75, c.y),
-                    Pos2::new(c.x - r * 0.2, c.y + r * 0.55),
-                ],
-                stroke,
-            ));
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.7, c.y),
-                    Pos2::new(c.x + r * 0.35, c.y),
-                    Pos2::new(c.x + r * 0.72, c.y + r * 0.55),
-                ],
-                stroke,
-            ));
-        }
-        IconKind::Smile => {
-            painter.circle_stroke(c, r * 0.85, stroke);
-            painter.circle_filled(Pos2::new(c.x - r * 0.3, c.y - r * 0.2), 1.6, color);
-            painter.circle_filled(Pos2::new(c.x + r * 0.3, c.y - r * 0.2), 1.6, color);
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.38, c.y + r * 0.2),
-                    Pos2::new(c.x, c.y + r * 0.42),
-                    Pos2::new(c.x + r * 0.38, c.y + r * 0.2),
-                ],
-                thin,
-            ));
-        }
-        IconKind::Send => {
-            let pts = vec![
-                Pos2::new(c.x - r * 0.7, c.y - r * 0.65),
-                Pos2::new(c.x + r * 0.8, c.y),
-                Pos2::new(c.x - r * 0.7, c.y + r * 0.65),
-                Pos2::new(c.x - r * 0.35, c.y),
-                Pos2::new(c.x - r * 0.7, c.y - r * 0.65),
-            ];
-            painter.add(Shape::line(pts, stroke));
-        }
-        IconKind::Poll => {
-            painter.line_segment([Pos2::new(c.x - r * 0.5, c.y + r * 0.7), Pos2::new(c.x - r * 0.5, c.y - r * 0.1)], Stroke::new(2.5_f32, color));
-            painter.line_segment([Pos2::new(c.x, c.y + r * 0.7), Pos2::new(c.x, c.y - r * 0.65)], Stroke::new(2.5_f32, color));
-            painter.line_segment([Pos2::new(c.x + r * 0.5, c.y + r * 0.7), Pos2::new(c.x + r * 0.5, c.y + r * 0.2)], Stroke::new(2.5_f32, color));
-        }
-        IconKind::Clock => {
-            painter.circle_stroke(c, r * 0.85, stroke);
-            painter.line_segment([c, Pos2::new(c.x, c.y - r * 0.48)], stroke);
-            painter.line_segment([c, Pos2::new(c.x + r * 0.38, c.y + r * 0.2)], stroke);
-        }
-        IconKind::Gamepad => {
-            let pad = Rect::from_center_size(c, Vec2::new(r * 1.75, r * 1.05));
-            painter.rect_stroke(pad, 4.0, stroke, StrokeKind::Inside);
-            painter.line_segment([Pos2::new(c.x - r * 0.52, c.y), Pos2::new(c.x - r * 0.18, c.y)], thin);
-            painter.line_segment([Pos2::new(c.x - r * 0.35, c.y - r * 0.17), Pos2::new(c.x - r * 0.35, c.y + r * 0.17)], thin);
-            painter.circle_filled(Pos2::new(c.x + r * 0.32, c.y - r * 0.12), 1.6, color);
-            painter.circle_filled(Pos2::new(c.x + r * 0.52, c.y + r * 0.12), 1.6, color);
-        }
-        IconKind::Lock => {
-            let body = Rect::from_center_size(Pos2::new(c.x, c.y + r * 0.22), Vec2::new(r * 1.25, r * 1.0));
-            painter.rect_stroke(body, 2.0, stroke, StrokeKind::Inside);
-            painter.add(Shape::line(
-                vec![
-                    Pos2::new(c.x - r * 0.35, c.y - r * 0.28),
-                    Pos2::new(c.x - r * 0.35, c.y - r * 0.65),
-                    Pos2::new(c.x + r * 0.35, c.y - r * 0.65),
-                    Pos2::new(c.x + r * 0.35, c.y - r * 0.28),
-                ],
-                stroke,
-            ));
-        }
-        IconKind::Globe => {
-            painter.circle_stroke(c, r * 0.85, stroke);
-            painter.line_segment([Pos2::new(c.x - r * 0.82, c.y), Pos2::new(c.x + r * 0.82, c.y)], thin);
-            painter.line_segment([Pos2::new(c.x, c.y - r * 0.82), Pos2::new(c.x, c.y + r * 0.82)], thin);
-        }
+        ctx.data_mut(|d| d.insert_temp(id, true));
+    }
+    let px = (rect.size() * ctx.pixels_per_point()).round();
+    let hint = egui::load::SizeHint::Size(px.x.max(1.0) as u32, px.y.max(1.0) as u32);
+    if let Ok(egui::load::TexturePoll::Ready { texture }) = ctx.try_load_texture(&uri, egui::TextureOptions::LINEAR, hint) {
+        let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+        painter.image(texture.id, rect, uv, color);
     }
 }
 
