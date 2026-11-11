@@ -364,9 +364,11 @@ impl CillhubApp {
                 if let Some(ch) = ch.and_then(|c| report(&mut app.status_banner, c)) {
                     let cid = ch.id.clone();
                     app.state.channels.insert(cid.clone(), ch);
-                    app.selected_guild_id = None;
-                    app.selected_channel_id = Some(cid.clone());
-                    app.load_channel_history(&cid);
+                    if app.shown == app.front {
+                        app.selected_guild_id = None;
+                        app.selected_channel_id = Some(cid.clone());
+                        app.load_channel_history(&cid);
+                    }
                 }
             });
             return;

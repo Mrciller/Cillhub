@@ -134,15 +134,14 @@ fn run_once(
     pin: bool,
 ) -> io::Result<bool> {
     let endpoint = api_url(origin, "/gateway").ok_or_else(|| invalid("Invalid gateway API URL"))?;
-    let data: Value = client
+    let resp = client
         .get(endpoint)
         .header("Authorization", token)
         .send()
         .map_err(io::Error::other)?
         .error_for_status()
-        .map_err(io::Error::other)?
-        .json()
         .map_err(io::Error::other)?;
+    let data: Value = crate::api::read_json(resp).map_err(|e| io::Error::other(e.message))?; // bounded: a node is untrusted
     let address = data
         .get("url")
         .and_then(Value::as_str)

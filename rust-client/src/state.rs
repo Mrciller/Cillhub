@@ -344,7 +344,7 @@ impl State {
                                 r.emoji.id == emoji.id && r.emoji.name == emoji.name
                             }) {
                                 if add {
-                                    r.count += 1;
+                                    r.count = r.count.saturating_add(1);
                                     if is_me {
                                         r.me = true;
                                     }
@@ -394,7 +394,7 @@ impl State {
                                     results.answer_counts.iter_mut().find(|a| a.id == aid)
                                 {
                                     if add {
-                                        ac.count += 1;
+                                        ac.count = ac.count.saturating_add(1);
                                         if is_me {
                                             ac.me_voted = true;
                                         }
@@ -890,6 +890,16 @@ mod tests {
         st.set_history("c".into(), snapshot);
         assert_eq!(st.messages["c"].iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), ["1", "2", "3"]);
         assert!(st.pending_history.is_empty());
+    }
+
+    /// Finding 9: counts from a server never overflow.
+    #[test]
+    fn counters_saturate() {
+        let mut st = State::default();
+        st.messages.insert("c".into(), vec![parse(serde_json::json!({ "id": "m", "channel_id": "c",
+            "reactions": [{ "emoji": { "name": "x" }, "count": u32::MAX }] })).unwrap()]);
+        st.apply("MESSAGE_REACTION_ADD", serde_json::json!({ "channel_id": "c", "message_id": "m", "user_id": "u", "emoji": { "name": "x" } })).unwrap();
+        assert_eq!(st.messages["c"][0].reactions[0].count, u32::MAX);
     }
 
     #[test]

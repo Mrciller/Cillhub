@@ -192,7 +192,7 @@ pub const MAX_BODY: u64 = 16 << 20;
 
 /// The answer as JSON (Null when it is not JSON), or an error when it is larger than MAX_BODY.
 #[cfg(feature = "native-net")]
-fn read_json(resp: reqwest::blocking::Response) -> Result<Value, ApiError> {
+pub fn read_json(resp: reqwest::blocking::Response) -> Result<Value, ApiError> {
     use std::io::Read;
     let mut buf = Vec::new();
     let too_big = || ApiError { status: 0, code: 0, message: "The answer is too large.".into(), fields: HashMap::new(), retry_after: None, raw: Value::Null };

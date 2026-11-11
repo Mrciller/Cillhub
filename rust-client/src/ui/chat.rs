@@ -332,7 +332,8 @@ impl CillhubApp {
             .unwrap_or_else(|| "system".to_string());
         let author_game = self.state.user_game(&author_id).map(|g| g.name.clone());
         let game_invite = parse_game_invite(&msg.content);
-        let origin = self.front_api().map(|a| a.origin.to_string()).unwrap_or_default();
+        // invite cards are the hub's links (also inside a node's messages); they are looked up and joined on the hub
+        let origin = self.api.as_ref().map(|a| a.origin.to_string()).unwrap_or_default();
         let server_invites = if origin.is_empty() { Vec::new() } else { invite_codes(&msg.content, &origin, MAX_CARDS) };
         let invite_only = !server_invites.is_empty() && only_invite(&msg.content, &origin);
         let mine = self.state.me.as_ref().is_some_and(|me| me.id == author_id);
@@ -462,7 +463,7 @@ impl CillhubApp {
                             ui.add_space(4.0);
                             let url = self.absolute_url(&att.url);
                             if let Some(size) = inline_image_size(att) {
-                                let uri = format!("bytes://attachment/{}/{}", att.id, att.filename);
+                                let uri = self.attachment_uri(&att.id, &att.filename);
                                 self.request_image(&uri, url.clone());
                                 if self.images.get(&uri) == Some(&super::ImageLoad::Ready) {
                                     // `.att-image`: 1px border, sidebar behind transparent pixels
@@ -1038,9 +1039,10 @@ impl CillhubApp {
     /// `.invite-card` (chat/ServerInvite.tsx): a server invite link of this hub as a card with the server's
     /// initials, name, member count and Join (Joined opens the server). Looked up once per code, off the UI thread.
     pub fn render_server_invite_card(&mut self, ui: &mut Ui, code: &str, mine: bool) {
-        self.lookup_invite(code);
+        self.with_conn(&None, |app| app.lookup_invite(code));
         let card = self.invite_cards.get(code).cloned().unwrap_or_else(InviteCard::loading);
-        let button = invite_button(&card.lookup, |g| self.state.guilds.contains_key(g));
+        let hub = self.conn_state(&None);
+        let button = invite_button(&card.lookup, |g| hub.is_some_and(|h| h.guilds.contains_key(g)));
         let width = ui.available_width().min(420.0);
         show_notched_card(ui, BG_PANEL(), BORDER(), 8.0, None, None, Margin::symmetric(16, 12), |ui| {
             ui.set_width(width - 32.0);
@@ -1065,7 +1067,11 @@ impl CillhubApp {
                         let resp = ui.add_enabled_ui(!card.joining, |ui| if joined { secondary_btn(ui, label) } else { primary_btn(ui, label) }).inner;
                         if resp.clicked() {
                             match &card.lookup {
-                                InviteLookup::Found { guild_id, .. } if joined => self.open_guild(&guild_id.clone()),
+                                InviteLookup::Found { guild_id, .. } if joined => {
+                                    let gid = guild_id.clone();
+                                    self.show(&None);
+                                    self.open_guild(&gid);
+                                }
                                 _ => self.join_invite(code.to_string()),
                             }
                         }
@@ -1835,7 +1841,9 @@ impl CillhubApp {
                 if let Some(th) = th.and_then(|t| report(&mut app.status_banner, t)) {
                     let tid = th.id.clone();
                     app.state.channels.insert(tid.clone(), th);
-                    app.selected_channel_id = Some(tid);
+                    if app.shown == app.front {
+                        app.selected_channel_id = Some(tid); // only in the view it was started from
+                    }
                 }
             });
             return;
@@ -1864,7 +1872,11 @@ impl CillhubApp {
             self.poll_pending.insert(message_id.to_string(), ids.clone());
             let (path, cid, mid, sent) = (format!("/channels/{channel_id}/polls/{message_id}/answers/@me"), channel_id.to_string(), message_id.to_string(), ids.clone());
             // the gateway's MESSAGE_POLL_VOTE_ADD/REMOVE updates the count (no double count)
+            let epoch = self.scope_now("history"); // a READY in between replaced the choices this one knew
             self.api_bg(true, move |api| api.put(&path, Some(json!({ "answer_ids": ids }))), move |app, r| {
+                if !app.in_scope("history", epoch) {
+                    return;
+                }
                 match report(&mut app.status_banner, r) {
                     Some(_) => app.settle_poll(&cid, &mid), // the gateway may have confirmed it already
                     None if app.poll_pending.get(&mid) == Some(&sent) => drop(app.poll_pending.remove(&mid)),

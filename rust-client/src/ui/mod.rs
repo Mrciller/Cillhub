@@ -154,14 +154,17 @@ pub struct CillhubApp {
     pub front: connections::Conn,
     pub parked: std::collections::HashMap<connections::Conn, connections::Front>,
     pub shown: connections::Conn,
-    /// A node view put aside while User Settings (hub data) is open: (node, server, channel).
-    node_view: Option<(String, Option<String>, Option<String>)>,
+    /// A node view put aside while User Settings (hub data) is open.
+    node_view: Option<String>,
     /// Our hub user id (from the hub's READY): node tokens are kept per hub account.
     pub hub_user: String,
     node_gen: u64,
     revoke_tx: Sender<(String, bool)>,
     revoke_rx: Receiver<(String, bool)>,
     revoking: std::collections::HashSet<String>,
+    /// Nodes found over their limits while their data was in front; cut off in tick_nodes.
+    cut_off: Vec<String>,
+    last_revoke_retry: Instant,
     signin_tx: Sender<connections::SignInDone>,
     signin_rx: Receiver<connections::SignInDone>,
     /// session_gen for workers: a sign-in checks it before it posts the consent to the hub
@@ -223,6 +226,8 @@ pub struct CillhubApp {
     session_gen: u64,
     /// Channels whose history request is in flight.
     loading_history: std::collections::HashSet<String>,
+    /// Servers whose member list request is in flight (one at a time per server).
+    loading_members: std::collections::HashSet<String>,
     /// newest request per key (new_scope / in_scope)
     scopes: std::collections::HashMap<String, u64>,
     /// the channel the canvas editor holds
@@ -370,6 +375,8 @@ impl CillhubApp {
             revoke_tx,
             revoke_rx,
             revoking: Default::default(),
+            cut_off: Vec::new(),
+            last_revoke_retry: Instant::now(),
             signin_tx,
             signin_rx,
             session_live: Default::default(),
@@ -419,6 +426,7 @@ impl CillhubApp {
             bg: background::Workers::new(),
             session_gen: 0,
             loading_history: Default::default(),
+            loading_members: Default::default(),
             scopes: Default::default(),
             canvas_cid: None,
             row_heights: Default::default(),
@@ -1030,12 +1038,25 @@ impl CillhubApp {
 
     /// READY has no member lists; fetch them like the web client (GET /guilds/{id}/members).
     pub fn load_members(&mut self, guild_id: &str) {
+        // one request per server at a time; answers from before the last READY are dropped
+        if !self.state.guilds.contains_key(guild_id) || !self.loading_members.insert(guild_id.to_string()) {
+            return;
+        }
         let gid = guild_id.to_string();
-        self.api_get(format!("/guilds/{gid}/members?limit=1000"), move |app, r| {
+        let scope = self.scope_now("history");
+        let sent = self.api_get(format!("/guilds/{gid}/members?limit=1000"), move |app, r| {
+            app.loading_members.remove(&gid);
+            if !app.in_scope("history", scope) || !app.state.guilds.contains_key(&gid) {
+                return;
+            }
             if let Some(list) = report(&mut app.status_banner, r) {
                 report(&mut app.status_banner, app.state.set_members(&gid, list));
             }
+            app.check_node_limits();
         });
+        if !sent {
+            self.loading_members.remove(guild_id);
+        }
     }
 
     pub fn load_older_messages(&mut self, channel_id: &str) {
@@ -1165,6 +1186,11 @@ impl CillhubApp {
                         report(&mut self.status_banner, self.settings.save());
                     }
                     if is_ready {
+                        // requests started before READY belong to the replaced state
+                        self.new_scope("history");
+                        self.loading_history.clear();
+                        self.loading_members.clear();
+                        self.poll_pending.clear(); // choices come from the reloaded history now
                         let ids: Vec<String> = self.state.guilds.keys().cloned().collect();
                         ids.iter().for_each(|id| self.load_members(id));
                     }
@@ -1172,13 +1198,6 @@ impl CillhubApp {
                         self.load_members(&id);
                     }
                     if is_ready {
-                        // requests started before READY belong to the replaced state
-                        self.new_scope("history");
-                        self.loading_history.clear();
-                        self.poll_pending.clear(); // choices come from the reloaded history now
-                    }
-                    // the selection is the hub's only while the window shows the hub
-                    if is_ready && self.shown.is_none() {
                         // READY replaced the state: keep a selection that still exists and load its history again
                         let gone = |c: &Option<String>, ok: &dyn Fn(&str) -> bool| c.as_deref().is_some_and(|c| !ok(c));
                         if gone(&self.selected_guild_id, &|g| self.state.guilds.contains_key(g))
@@ -1191,7 +1210,7 @@ impl CillhubApp {
                             self.load_channel_history(&cid);
                         }
                     }
-                    if is_ready && self.shown.is_none() && self.selected_channel_id.is_none() {
+                    if is_ready && self.selected_channel_id.is_none() {
                         if let Some(g) = self.state.sorted_guilds().first() {
                             let gid = g.id.clone();
                             let first_ch = g
@@ -2029,16 +2048,10 @@ impl CillhubApp {
     fn keep_view_consistent(&mut self) {
         let settings_open = self.active_modal == Some(ModalKind::UserSettings);
         if let Some(o) = self.shown.clone().filter(|_| settings_open) {
-            self.node_view = Some((o, self.selected_guild_id.take(), self.selected_channel_id.take()));
+            self.node_view = Some(o);
             self.show(&None);
-        } else if !settings_open {
-            if let Some((o, g, c)) = self.node_view.take() {
-                let conn = Some(o);
-                if self.conn_state(&conn).is_some() {
-                    self.show(&conn);
-                    (self.selected_guild_id, self.selected_channel_id) = (g, c);
-                }
-            }
+        } else if let Some(o) = self.node_view.take().filter(|_| !settings_open) {
+            self.show(&Some(o)); // its selection waited with its data
         }
         if self.shown.is_some() && self.selected_guild_id.is_none() {
             self.show(&None);

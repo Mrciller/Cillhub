@@ -262,33 +262,34 @@ impl AppSettings {
         self.node_tokens.remove(key);
         match token {
             Some(t) if entry.as_ref().is_some_and(|k| k.set_password(t).is_ok()) => {
-                self.node_tombstones.remove(key);
+                self.node_tombstones.remove(key); // replaced: the entry holds the new token
             }
             Some(t) => {
                 self.node_tokens.insert(key.to_string(), t.to_string());
             }
-            None => match entry.map(|k| k.delete_credential()) {
-                Some(Err(e)) if !matches!(e, keyring::Error::NoEntry) => {
-                    self.node_tombstones.insert(key.to_string()); // a stale entry must never come back
-                }
-                _ => {
+            None => {
+                // tombstone first (saved), lifted only when the keyring confirms the entry is gone
+                self.node_tombstones.insert(key.to_string());
+                self.save()?;
+                if entry.is_some_and(|k| matches!(k.delete_credential(), Ok(()) | Err(keyring::Error::NoEntry))) {
                     self.node_tombstones.remove(key);
                 }
-            },
+            }
         }
         self.save()
     }
 
     /// Remembers a sign-out to confirm on the node (see pending_revokes); returns its key "<id>|<node origin>".
-    pub fn add_pending_revoke(&mut self, origin: &str, token: &str) -> String {
+    pub fn add_pending_revoke(&mut self, origin: &str, token: &str) -> std::io::Result<String> {
         let id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         let key = format!("{id}-{}|{origin}", self.pending_revokes.len());
         let kept = keyring_entry(&format!("node-revoke:{key}")).is_some_and(|k| k.set_password(token).is_ok());
         self.pending_revokes.insert(key.clone(), (!kept).then(|| token.to_string()));
         if let Err(e) = self.save() {
-            eprintln!("cillhub: could not save a pending sign-out: {e}");
+            self.pending_revokes.remove(&key); // not durable: the caller keeps the credential
+            return Err(e);
         }
-        key
+        Ok(key)
     }
 
     /// (key, node origin, token) of every sign-out not confirmed yet.
@@ -442,7 +443,10 @@ mod tests {
         assert_eq!(s.node_token(&node_key("https://hub.example.org", "2", "https://node.example.org")), None, "another hub account");
         s.set_node_token(&key, None).unwrap();
         assert_eq!(s.node_token(&key), None);
-        let k = s.add_pending_revoke("https://node.example.org", "old-token");
+        assert!(s.node_tombstones.contains(&key), "no keyring to confirm the delete: the entry stays tombstoned");
+        s.set_node_token(&key, Some("newer")).unwrap();
+        assert_eq!(s.node_token(&key).as_deref(), Some("newer"), "a replacement wins over the tombstone");
+        let k = s.add_pending_revoke("https://node.example.org", "old-token").unwrap();
         let back: AppSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back.pending_revoke_list(), vec![(k.clone(), "https://node.example.org".to_string(), "old-token".to_string())]);
         s.clear_pending_revoke(&k).unwrap();

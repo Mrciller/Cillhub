@@ -175,7 +175,7 @@ pub fn sign_in(hub: &url::Url, hub_token: &str, origin: &str, node_id: &str, ali
         }
         let status = res.status().as_u16();
         let failed = || SignInFail::Down(trf("Request failed ({status})", &[("status", &status.to_string())]));
-        match res.json::<Value>() {
+        match crate::api::read_json(res) {
             Ok(Value::Object(m)) if m.get("error").and_then(Value::as_str) == Some("unavailable") => Err(SignInFail::OwnLogin),
             Ok(Value::Object(_)) if !(200..300).contains(&status) => Err(failed()),
             Ok(Value::Object(m)) => Ok(m),

@@ -17,18 +17,59 @@ use std::time::{Duration, Instant};
 /// None = the hub, Some(origin) = a private node.
 pub type Conn = Option<String>;
 
-/// One connection's data while another one is in front.
-#[derive(Default)]
-pub struct Front {
-    state: State,
+/// Everything that names a server, channel or message of one connection or holds content typed for it: parked
+/// together with that connection's State. One list, so nothing of one connection is ever used with another.
+macro_rules! per_connection {
+    ($($f:ident: $t:ty),* $(,)?) => {
+        /// One connection's data while another one is in front.
+        #[derive(Default)]
+        pub struct Front { state: State, $($f: $t),* }
+        impl CillhubApp {
+            fn swap_front(&mut self, other: &mut Front) {
+                std::mem::swap(&mut self.state, &mut other.state);
+                $(std::mem::swap(&mut self.$f, &mut other.$f);)*
+            }
+        }
+    };
+}
+per_connection! {
     poll_pending: HashMap<String, Vec<u32>>,
     loading_history: HashSet<String>,
+    loading_members: HashSet<String>,
     scopes: HashMap<String, u64>,
+    selected_guild_id: Option<String>,
+    selected_channel_id: Option<String>,
+    composer_text: String,
+    composer_seen: String,
+    composer_rev: u64,
+    pending_files: Vec<std::sync::Arc<std::path::PathBuf>>,
+    failed_drafts: HashMap<String, Vec<super::chat::FailedDraft>>,
+    reply_to_message: Option<crate::model::Message>,
+    editing_message_id: Option<String>,
+    canvas_cid: Option<String>,
+    canvas_doc_input: String,
+    search_query: String,
+    search: Option<super::SearchResults>,
+    events: Vec<Value>,
+    active_drawer: Option<super::DrawerKind>,
+    toolbar_msg: Option<String>,
+    msg_menu: Option<(String, egui::Pos2)>,
+    emoji_picker: Option<(super::chat::EmojiTarget, egui::Pos2)>,
+    confirm_delete: Option<crate::model::Message>,
+    edit_channel: Option<(String, String)>,
+    create_channel_parent: Option<String>,
+    revealed_spoilers: HashSet<(String, u16)>,
+    row_heights: super::chat::RowHeights,
+    collapsed_categories: HashSet<String>,
+    role_draft: Option<crate::model::Role>,
+    guild_name_draft: Option<String>,
 }
+
+/// Over these a node is cut off ("too much data"): it cannot grow this app's memory without bound.
+const MAX_MEMBERS: usize = 200_000;
 
 /// Node events applied per frame; the rest wait in the bounded queue (the gateway stops reading when it is full).
 const EVENT_BUDGET: usize = 500;
-/// A node with more than this is cut off ("too much data"): it cannot grow this app's memory without bound.
 const MAX_GUILDS: usize = 200;
 const MAX_CHANNELS: usize = 20_000;
 const MAX_USERS: usize = 200_000;
@@ -71,8 +112,8 @@ impl NodeConn {
     }
 }
 
-/// A finished background sign-in: (session it was started in, origin, result).
-pub type SignInDone = (u64, String, Result<String, SignInFail>);
+/// A finished background sign-in: (session it was started in, origin, node connection generation, result).
+pub type SignInDone = (u64, String, u64, Result<String, SignInFail>);
 
 /// What happens to a sign-in result: adopt the token, revoke it on the node (the session ended or the node was
 /// removed meanwhile), or only record why it failed.
@@ -99,14 +140,9 @@ impl CillhubApp {
         if *conn == self.front {
             return true;
         }
-        let Some(next) = self.parked.remove(conn) else { return false };
-        let cur = Front {
-            state: std::mem::replace(&mut self.state, next.state),
-            poll_pending: std::mem::replace(&mut self.poll_pending, next.poll_pending),
-            loading_history: std::mem::replace(&mut self.loading_history, next.loading_history),
-            scopes: std::mem::replace(&mut self.scopes, next.scopes),
-        };
-        self.parked.insert(std::mem::replace(&mut self.front, conn.clone()), cur);
+        let Some(mut data) = self.parked.remove(conn) else { return false };
+        self.swap_front(&mut data); // `data` now holds the previous front's
+        self.parked.insert(std::mem::replace(&mut self.front, conn.clone()), data);
         true
     }
 
@@ -163,6 +199,12 @@ impl CillhubApp {
             self.status_banner = Some(tr("Direct messages and friends are not available on private nodes yet.").to_string());
         }
         self.front.is_some()
+    }
+
+    /// The image key of an attachment: per connection, so a node naming a hub attachment's id gets its own image.
+    pub fn attachment_uri(&self, id: &str, filename: &str) -> String {
+        let conn = self.front.as_deref().map_or_else(|| "hub".to_string(), |o| o.replace("://", "_").replace(':', "_"));
+        format!("bytes://attachment/{conn}/{id}/{filename}")
     }
 
     /// The saved node's name for marks and rows.
@@ -233,6 +275,7 @@ impl CillhubApp {
         }
         c.busy = true;
         c.retry_at = None;
+        let node_gen = c.gen;
         let (gen, live, tx, origin) = (self.session_gen, self.session_live.clone(), self.signin_tx.clone(), origin.to_string());
         let hub_token = api.token.clone().unwrap_or_default();
         self.spawn_bg(
@@ -247,7 +290,7 @@ impl CillhubApp {
                         Some((_, _, false)) => Err(SignInFail::Down(tr("Suspended by the hub").to_string())),
                         Some((id, _, true)) => crate::nodes::sign_in(&api.origin, &hub_token, &origin, &id, &alive),
                     });
-                let _ = tx.send((gen, origin, r));
+                let _ = tx.send((gen, origin, node_gen, r));
             },
             |_, ()| {},
         );
@@ -260,9 +303,11 @@ impl CillhubApp {
         let (ev_tx, ev_rx) = mpsc::sync_channel(EVENT_QUEUE);
         let (cmd_tx, cmd_rx) = mpsc::channel();
         spawn_node(url.clone(), token.clone(), ev_tx, cmd_rx);
+        self.node_gen += 1; // answers for the earlier credentials are dropped
+        let gen = self.node_gen;
         let Some(c) = self.conns.get_mut(origin) else { return };
         c.close();
-        (c.rx, c.cmd, c.link) = (Some(ev_rx), Some(cmd_tx), NodeLink::Connecting);
+        (c.rx, c.cmd, c.link, c.gen) = (Some(ev_rx), Some(cmd_tx), NodeLink::Connecting, gen);
         c.api = Some(crate::api::ApiClient::new(url, Some(token)));
     }
 
@@ -277,7 +322,7 @@ impl CillhubApp {
 
     /// Ends a node's session there on its own thread; the sign-out stays pending (saved) until the node confirms.
     fn revoke_async(&mut self, key: String, origin: String, token: String) {
-        if !self.revoking.insert(key.clone()) {
+        if !key.is_empty() && !self.revoking.insert(key.clone()) {
             return;
         }
         let tx = self.revoke_tx.clone();
@@ -296,15 +341,24 @@ impl CillhubApp {
 
     /// Every frame: finished sign-ins and sign-outs, node gateway events (a budget per node), due retries.
     pub fn tick_nodes(&mut self) {
+        for o in std::mem::take(&mut self.cut_off) {
+            self.cut_off_node(&o); // found by a member-list answer
+        }
+        if !self.settings.pending_revokes.is_empty() && self.last_revoke_retry.elapsed() >= Duration::from_secs(60) {
+            self.last_revoke_retry = Instant::now();
+            self.retry_revokes(); // a node that was down may be back; each try is bounded (nodes::revoke)
+        }
         while let Ok((key, ok)) = self.revoke_rx.try_recv() {
             self.revoking.remove(&key);
-            if ok {
+            if ok && !key.is_empty() {
                 super::report(&mut self.status_banner, self.settings.clear_pending_revoke(&key));
             }
         }
-        while let Ok((gen, origin, r)) = self.signin_rx.try_recv() {
-            let saved = self.settings.private_nodes.iter().any(|n| n.origin == origin);
-            if gen == self.session_gen {
+        while let Ok((gen, origin, node_gen, r)) = self.signin_rx.try_recv() {
+            // the same connection still waits for it (not removed and added again, not signed in meanwhile)
+            let current = self.conns.get(&origin).is_some_and(|c| c.gen == node_gen);
+            let saved = current && self.settings.private_nodes.iter().any(|n| n.origin == origin);
+            if gen == self.session_gen && current {
                 if let Some(c) = self.conns.get_mut(&origin) {
                     c.busy = false;
                 }
@@ -316,10 +370,13 @@ impl CillhubApp {
                     self.open_node(&origin, token);
                 }
                 // started for another session, or the node was removed meanwhile: never stored, ended on the node
-                (Outcome::Revoke, Ok(token)) => {
-                    let key = self.settings.add_pending_revoke(&origin, &token);
-                    self.revoke_async(key, origin, token);
-                }
+                (Outcome::Revoke, Ok(token)) => match self.settings.add_pending_revoke(&origin, &token) {
+                    Ok(key) => self.revoke_async(key, origin, token),
+                    Err(e) => {
+                        eprintln!("cillhub: could not save a pending sign-out: {e}");
+                        self.revoke_async(String::new(), origin, token); // still tried once now
+                    }
+                },
                 (Outcome::Fail, Err(SignInFail::OwnLogin)) => self.set_link(&origin, NodeLink::OwnLogin),
                 (Outcome::Fail, Err(SignInFail::Old)) => self.set_link(&origin, NodeLink::Old),
                 (Outcome::Fail, Err(SignInFail::Down(why))) => self.retry(&origin, why),
@@ -356,26 +413,21 @@ impl CillhubApp {
                     eprintln!("cillhub: {origin} sent {name}: dropped");
                     return;
                 }
-                let too_much = self.with_conn(&conn, |app| app.apply_node_event(&conn, &name, d)).unwrap_or(false);
-                if too_much {
-                    eprintln!("cillhub: {origin} sent more than this app keeps: cut off");
-                    if let Some(mut c) = self.conns.remove(origin) {
-                        c.close();
-                    }
-                    self.drop_node_data(origin);
-                    self.node_gen += 1;
-                    let mut c = NodeConn::new(self.node_gen);
-                    c.link = NodeLink::Down(tr("This node sent more data than the app keeps.").to_string());
-                    self.conns.insert(origin.to_string(), c);
+                self.with_conn(&conn, |app| app.apply_node_event(&conn, &name, d));
+                if self.cut_off.contains(&origin.to_string()) {
+                    self.cut_off.retain(|o| o != origin);
+                    self.cut_off_node(origin);
                 }
             }
             // the gateway keeps reconnecting by itself; its servers are greyed meanwhile
             GatewayEvent::ConnectionError(_) => self.set_link(origin, NodeLink::Down(crate::i18n::trf("{name} is not reachable right now.", &[("name", &self.node_name(origin))]))),
             GatewayEvent::RejectedToken => {
                 // the node ended our session there: a new background sign-in
+                self.node_gen += 1;
+                let gen = self.node_gen;
                 if let Some(c) = self.conns.get_mut(origin) {
                     c.close();
-                    c.api = None;
+                    (c.api, c.gen) = (None, gen);
                 }
                 let key = self.node_key(origin);
                 super::report(&mut self.status_banner, self.settings.set_node_token(&key, None));
@@ -385,9 +437,13 @@ impl CillhubApp {
         }
     }
 
-    /// Applies one node event to that node's own data (in front now). True when the node is over its limits.
-    fn apply_node_event(&mut self, conn: &Conn, name: &str, d: Value) -> bool {
+    /// Applies one node event to that node's own data (in front now).
+    fn apply_node_event(&mut self, conn: &Conn, name: &str, d: Value) {
         let s = |k: &str| d.get(k).and_then(Value::as_str).map(String::from);
+        // a server event must name a server of this node (no member lists for made-up servers)
+        if !matches!(name, "READY" | "GUILD_CREATE") && s("guild_id").is_some_and(|g| !self.state.guilds.contains_key(&g)) {
+            return;
+        }
         let vote = name.starts_with("MESSAGE_POLL_VOTE_").then(|| s("channel_id").zip(s("message_id"))).flatten();
         let new_guild = (name == "GUILD_CREATE").then(|| s("id")).flatten();
         if let Err(e) = self.state.apply(name, d) {
@@ -403,6 +459,7 @@ impl CillhubApp {
             // requests and choices from before this READY belong to the replaced data
             self.new_scope("history");
             self.loading_history.clear();
+            self.loading_members.clear();
             self.poll_pending.clear();
             let ids: Vec<String> = self.state.guilds.keys().cloned().collect();
             ids.iter().for_each(|id| self.load_members(id));
@@ -419,7 +476,32 @@ impl CillhubApp {
                 }
             }
         }
-        self.state.guilds.len() > MAX_GUILDS || self.state.channels.len() > MAX_CHANNELS || self.state.users.len() > MAX_USERS
+        self.check_node_limits();
+    }
+
+    /// With a node's data in front: marks the node for cutting off when it is over its limits.
+    pub fn check_node_limits(&mut self) {
+        let st = &self.state;
+        let members: usize = st.members.values().map(|m| m.len()).sum();
+        let over = st.guilds.len() > MAX_GUILDS || st.channels.len() > MAX_CHANNELS || st.users.len() > MAX_USERS || members > MAX_MEMBERS;
+        if let Some(o) = self.front.clone().filter(|_| over) {
+            if !self.cut_off.contains(&o) {
+                self.cut_off.push(o);
+            }
+        }
+    }
+
+    /// Cuts off a node that sent more than this app keeps: its data is dropped, it is not retried.
+    fn cut_off_node(&mut self, origin: &str) {
+        eprintln!("cillhub: {origin} sent more than this app keeps: cut off");
+        if let Some(mut c) = self.conns.remove(origin) {
+            c.close();
+        }
+        self.drop_node_data(origin);
+        self.node_gen += 1;
+        let mut c = NodeConn::new(self.node_gen);
+        c.link = NodeLink::Down(tr("This node sent more data than the app keeps.").to_string());
+        self.conns.insert(origin.to_string(), c);
     }
 
     /// Forgets a node's data; the window goes back to Home if it showed that node.
@@ -444,13 +526,22 @@ impl CillhubApp {
         });
         self.drop_node_data(origin);
         let stored = self.settings.node_token(&key);
+        let mut keep_credential = false;
         if sign_out {
-            for token in live.into_iter().chain(stored.clone()).collect::<HashSet<_>>() {
-                let pending = self.settings.add_pending_revoke(origin, &token);
-                self.revoke_async(pending, origin.to_string(), token);
+            for token in live.into_iter().chain(stored).collect::<HashSet<_>>() {
+                match self.settings.add_pending_revoke(origin, &token) {
+                    Ok(pending) => self.revoke_async(pending, origin.to_string(), token),
+                    Err(e) => {
+                        // the stored token is the only way left to sign out there later: it is not deleted
+                        self.status_banner = Some(e.to_string());
+                        keep_credential = true;
+                        self.revoke_async(String::new(), origin.to_string(), token);
+                    }
+                }
             }
         }
-        if stored.is_some() {
+        if !keep_credential {
+            // also when the keyring could not be read: the entry is tombstoned before it is deleted
             super::report(&mut self.status_banner, self.settings.set_node_token(&key, None));
         }
     }
@@ -662,7 +753,7 @@ mod tests {
         app.settings.private_nodes = vec![crate::nodes::SavedNode { origin: node.clone(), name: "Robin".into() }];
         let old = app.session_gen;
         app.new_session(); // logout, or another account logged in
-        app.signin_tx.send((old, node.clone(), Ok("late-token".into()))).unwrap();
+        app.signin_tx.send((old, node.clone(), 0, Ok("late-token".into()))).unwrap();
         app.tick_nodes();
         assert_eq!(app.settings.node_token(&app.node_key(&node)), None);
         assert!(app.conns.is_empty());
@@ -735,6 +826,157 @@ mod tests {
         assert!(hub_seen[0].starts_with("GET /api/v9/channels/c_general/messages") && hub_seen[0].contains("hub-token"));
         let node_seen = node_seen.join().unwrap();
         assert!(node_seen[0].contains("node-token") && !node_seen[0].contains("hub-token"));
+    }
+
+    fn settle(app: &mut CillhubApp) {
+        let t = Instant::now();
+        while app.bg.pending > 0 && t.elapsed() < Duration::from_secs(10) {
+            app.pump_bg();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        app.pump_bg();
+    }
+
+    /// Finding 1: search and canvas belong to the connection they were opened in; a switch shows the other's.
+    #[test]
+    fn search_and_canvas_stay_with_their_connection() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example";
+        fake_node(&mut app, a, None);
+        app.search = Some(crate::ui::SearchResults { query: "hub secret".into(), scope: "/guilds/g_arena".into(), ..Default::default() });
+        (app.canvas_cid, app.canvas_doc_input) = (Some("c_general".into()), "hub notes".into());
+        app.show(&Some(a.into()));
+        assert!(app.search.is_none() && app.canvas_cid.is_none() && app.canvas_doc_input.is_empty(), "nothing of the hub's in the node's view");
+        app.show(&None);
+        assert_eq!(app.search.as_ref().map(|s| s.query.as_str()), Some("hub secret"));
+        assert_eq!(app.canvas_doc_input, "hub notes");
+    }
+
+    /// Finding 2: a failed hub send comes back into the hub's composer only, never a node channel of the same id.
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn a_failed_hub_draft_never_lands_in_a_node_composer() {
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(crate::api::ApiClient::new(url::Url::parse("http://localhost:9/").unwrap(), None)); // refuses
+        let a = "https://a.example";
+        let tx = fake_node(&mut app, a, None);
+        send(&tx, "READY", json!({ "session_id": "s", "user": { "id": "n1", "username": "alex" },
+            "guilds": [{ "id": "g_arena", "name": "Node", "channels": [{ "id": "c_general", "type": 0, "guild_id": "g_arena" }] }] }));
+        app.tick_nodes();
+        app.selected_channel_id = Some("c_general".into());
+        app.send_message_to_selected("for the hub only");
+        app.show(&Some(a.into()));
+        (app.selected_guild_id, app.selected_channel_id) = (Some("g_arena".into()), Some("c_general".into()));
+        settle(&mut app);
+        app.restore_failed_draft();
+        assert!(app.composer_text.is_empty() && app.failed_drafts.is_empty(), "the node view got nothing");
+        app.show(&None);
+        app.restore_failed_draft();
+        assert_eq!(app.composer_text, "for the hub only");
+    }
+
+    /// Finding 3: an answer that would open a server changes the view only if the window still shows its connection.
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn a_late_join_never_moves_the_view() {
+        let (hub, seen) = crate::api::testing::serve(1, |_| (200, r#"{"id":"g_new","name":"New","channels":[{"id":"c_new","type":0,"guild_id":"g_new"}]}"#.into()));
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(crate::api::ApiClient::new(url::Url::parse(&hub).unwrap(), Some("hub-token".into())));
+        let a = "https://a.example";
+        fake_node(&mut app, a, Some("http://127.0.0.1:1"));
+        app.show(&Some(a.into()));
+        (app.selected_guild_id, app.selected_channel_id) = (Some("g_n".into()), Some("c_n".into()));
+        app.join_invite("abc".into()); // Finding 4 too: from a node's view the invite goes to the hub
+        settle(&mut app);
+        assert_eq!((app.selected_guild_id.as_deref(), app.selected_channel_id.as_deref()), (Some("g_n"), Some("c_n")));
+        assert!(app.conn_state(&None).unwrap().guilds.contains_key("g_new"), "joined on the hub");
+        app.show(&None);
+        assert_ne!(app.selected_guild_id.as_deref(), Some("g_new"), "the hub view did not jump either");
+        let seen = seen.join().unwrap();
+        assert!(seen[0].starts_with("POST /api/v9/invites/abc ") && seen[0].contains("hub-token"));
+    }
+
+    /// Finding 4: attachment images are cached per connection.
+    #[test]
+    fn attachment_images_are_kept_per_connection() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example:8443";
+        fake_node(&mut app, a, None);
+        let hub = app.attachment_uri("1", "a.png");
+        app.show(&Some(a.into()));
+        assert_ne!(app.attachment_uri("1", "a.png"), hub);
+    }
+
+    /// Finding 5: member records for servers the node does not have are dropped, member lists are asked once per
+    /// server, and members count against the node's limits.
+    #[test]
+    fn member_records_are_bounded() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example";
+        let tx = fake_node(&mut app, a, None);
+        send(&tx, "READY", json!({ "session_id": "s", "user": { "id": "n1", "username": "alex" }, "guilds": [{ "id": "g1", "name": "n" }] }));
+        send(&tx, "GUILD_MEMBER_ADD", json!({ "guild_id": "made-up", "user_id": "x", "user": { "id": "x", "username": "x" } }));
+        app.tick_nodes();
+        let conn = Some(a.to_string());
+        assert!(!app.conn_state(&conn).unwrap().members.contains_key("made-up"));
+        app.with_conn(&conn, |app| {
+            let m: HashMap<String, crate::model::Member> = (0..=MAX_MEMBERS).map(|i| (i.to_string(), Default::default())).collect();
+            app.state.members.insert("g1".into(), m);
+            app.check_node_limits();
+        });
+        app.tick_nodes();
+        assert!(app.conn_state(&conn).is_none() && matches!(app.conns[a].link, NodeLink::Down(_)), "cut off");
+    }
+
+    /// Finding 6: a sign-in started for an earlier connection to the same node (removed and added again, or
+    /// signed in meanwhile) is revoked, not adopted; a vote answer from before READY leaves the new choice alone.
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn stale_generations_are_dropped() {
+        let (node, seen) = crate::api::testing::serve(1, |_| (204, String::new()));
+        let mut app = CillhubApp::new(None, true);
+        app.settings.private_nodes = vec![crate::nodes::SavedNode { origin: node.clone(), name: "Kim".into() }];
+        fake_node(&mut app, &node, None);
+        let now = app.conns[&node].gen;
+        app.signin_tx.send((app.session_gen, node.clone(), now - 1, Ok("old-token".into()))).unwrap();
+        app.tick_nodes();
+        assert!(app.conns[&node].api.is_none() && app.settings.node_token(&app.node_key(&node)).is_none());
+        assert!(seen.join().unwrap()[0].contains("old-token"), "revoked on the node");
+
+        app.api = Some(crate::api::ApiClient::new(url::Url::parse("http://localhost:9/").unwrap(), None)); // refuses
+        app.vote_poll("c_general", "m_1", 1, true);
+        app.new_scope("history"); // READY
+        app.poll_pending.insert("m_1".into(), vec![1]); // the same choice again, after READY
+        settle(&mut app);
+        assert_eq!(app.poll_pending.get("m_1"), Some(&vec![1]), "the old answer's failure does not remove it");
+    }
+
+    /// Finding 7: removing a node tombstones its keyring entry even when nothing could be read from it.
+    #[test]
+    fn removal_tombstones_an_unreadable_credential() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example";
+        fake_node(&mut app, a, None);
+        app.drop_node(a, false);
+        assert!(app.settings.node_tombstones.contains(&app.node_key(a)));
+    }
+
+    /// Finding 8: an unconfirmed sign-out is tried again while the app runs, not only at the next start.
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn pending_sign_outs_are_retried_while_running() {
+        let (node, seen) = crate::api::testing::serve(1, |_| (204, String::new()));
+        let mut app = CillhubApp::new(None, true);
+        app.settings.add_pending_revoke(&node, "pending-token").unwrap();
+        app.last_revoke_retry = Instant::now() - Duration::from_secs(61);
+        app.tick_nodes();
+        assert!(seen.join().unwrap()[0].contains("pending-token"));
+        let t = Instant::now();
+        while !app.settings.pending_revokes.is_empty() {
+            assert!(t.elapsed() < Duration::from_secs(5));
+            app.tick_nodes();
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]

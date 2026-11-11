@@ -749,12 +749,13 @@ impl CillhubApp {
             c.error = None;
         }
         let path = format!("/invites/{code}");
-        self.api_bg(true, move |api| api.post(&path, json!({})), move |app, r| match r {
+        // invites are the hub's; the server opens only if the window still shows the hub
+        self.with_conn(&None, |app| app.api_bg(true, move |api| api.post(&path, json!({})), move |app, r| match r {
             Ok(v) => {
                 app.invite_cards.remove(&code); // the member count changed: look it up again
                 let gid = v.get("id").and_then(serde_json::Value::as_str).map(String::from);
                 if report(&mut app.status_banner, app.state.apply("GUILD_CREATE", v)).is_some() {
-                    if let Some(gid) = gid {
+                    if let Some(gid) = gid.filter(|_| app.shown == app.front) {
                         app.open_guild(&gid);
                     }
                 }
@@ -763,7 +764,7 @@ impl CillhubApp {
                 Some(c) => (c.joining, c.error) = (false, Some(e.to_string())),
                 None => drop(report(&mut app.status_banner, Err::<(), _>(e))),
             },
-        });
+        }));
     }
 
     fn post_poll(&mut self) {
