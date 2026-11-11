@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { startServer, guildWith, until } from './helpers.js';
-import { makeAdmin, totp } from './module-helpers.js';
+import { makeAdmin, totp, install, pkg, logged } from './module-helpers.js';
 
 const SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
 let srv, api, g, alex, sam, root;
@@ -40,6 +40,22 @@ test('a failure after the message is stored keeps its files and the message', as
   } finally { db(d => d.exec('DROP TRIGGER no_metric')); }
   assert.ok(r.status < 300, 'the stored message is answered');
   assert.ok(existsSync(join(srv.dataDir, 'attachments', g.general.id, r.body.attachments[0].id)), 'its file is still there');
+});
+
+test('a failing metric after the insert does not skip the insert hooks (module accessory panel)', async () => {
+  const code = `cillhub.on('MESSAGE_CREATE', async m => {
+    if (m.content === '!card') console.log('card', (await cillhub.messages.send(m.channel_id, { content: 'card', accessory_panel: 'acc' })).id);
+  });`;
+  await install(srv, root, pkg({ id: 'cards', name: 'Cards', permissions: ['messages.read', 'messages.send', 'ui'],
+    ui: { panels: [{ id: 'acc', slot: 'message_accessory', title: 'Acc', entry: 'ui/acc.html' }] } }, { 'index.js': code, 'ui/acc.html': '<p>acc</p>' }));
+  db(d => d.exec("CREATE TRIGGER no_metric2 BEFORE INSERT ON guild_analytics_daily BEGIN SELECT RAISE(ABORT, 'refused'); END"));
+  let line;
+  try {
+    await api('POST', `/channels/${g.general.id}/messages`, alex.token, { content: '!card' });
+    line = await logged(srv, root, 'cards', /^card \d+$/);
+  } finally { db(d => d.exec('DROP TRIGGER no_metric2')); }
+  const id = line.message.split(' ')[1];
+  assert.ok(db(d => d.prepare('SELECT 1 FROM module_message_panels WHERE message_id = ?').get(id), true), 'panel row stored');
 });
 
 test('a forward whose second file is missing leaves no copy of the first behind', async () => {
