@@ -1,7 +1,7 @@
 // Saved private nodes and add links (src/privateNodes.ts). Run: npm test (node strips the TypeScript types).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { addLink, addNode, cleanName, MAX_NODES, normalizeServerUrl, parseAddLink, parseNodes, tokenFor, keepSignIn, revoker } from '../src/privateNodes.ts'
+import { addLink, addNode, cleanName, MAX_NODES, normalizeServerUrl, parseAddLink, parseNodes, tokenFor, keepSignIn, revoker, inSession } from '../src/privateNodes.ts'
 
 test('addresses become origins; http only for localhost', () => {
   assert.equal(normalizeServerUrl('chat.example.org/'), 'https://chat.example.org')
@@ -95,4 +95,17 @@ test('revoking a node session retries failures a few times and stops on success 
   assert.deepEqual(await run(['net', 500, 429, 204]), [true, 4, ['https://a.example.org/api/v9/auth/logout', 'tok']])
   assert.deepEqual((await run([401])).slice(0, 2), [true, 1])
   assert.deepEqual((await run([500, 500, 500], 3)).slice(0, 2), [false, 3])
+  assert.deepEqual((await run([403])).slice(0, 2), [false, 1], 'a permanent refusal is not retried')
+  assert.deepEqual((await run([400])).slice(0, 2), [false, 1])
+})
+
+test('list changes stop as soon as the hub session changed (logout or login, in any tab)', async () => {
+  let token = 'hub-a'
+  const done = []
+  const step = (name, after) => async () => { done.push(name); if (after) token = after }
+  assert.equal(await inSession('hub-a', () => token, [step('initial', 'hub-b'), step('add')]), false)
+  assert.deepEqual(done, ['initial'], 'the add never runs with the new account')
+  token = 'hub-a'
+  assert.equal(await inSession('hub-a', () => token, [step('initial'), step('add')]), true)
+  assert.deepEqual(done, ['initial', 'initial', 'add'])
 })

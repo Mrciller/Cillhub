@@ -6,8 +6,8 @@ import { ask, toast, toastError } from '../components/dialogs'
 import { FormError } from '../components/ui'
 import { t } from '../i18n'
 import { navigate } from '../router'
-import { addLink, addNode, MAX_NODES, parseAddLink, type SavedNode } from '../privateNodes'
-import { addPrivateNode, removePrivateNode, signInWindow } from '../instances/nodes'
+import { addLink, addNode, MAX_NODES, normalizeServerUrl, parseAddLink, type SavedNode } from '../privateNodes'
+import { addPrivateNode, hubSession, removePrivateNode, signInWindow } from '../instances/nodes'
 import { STATUS_TEXT } from '../instances/InstanceUI'
 import { useInstances, useNodeIssues } from '../instances/registry'
 import { useStore } from '../store'
@@ -20,6 +20,7 @@ const CONSENT = 'Cillhub signs you in there with your account here: the node get
 /** Checks the address, asks (`confirm`, unless the add-node page already did), then adds it under the name the node gives
  *  itself; resolves the error text, '' when cancelled, or null. */
 async function add(url: string, confirm = true): Promise<string | null> {
+  const started = hubSession()
   const first = addNode(savedNodes(), url, '')
   if (!Array.isArray(first)) return t(REFUSED[first], { n: MAX_NODES })
   const origin = first.at(-1)!.origin
@@ -30,8 +31,8 @@ async function add(url: string, confirm = true): Promise<string | null> {
   if (confirm && !(await ask({ title: t('Add {name}?', { name }), confirm: t('Add and sign in'),
     body: <><p className="add-node-address">{origin}</p><p>{t('This is a separate server with its own accounts and admins.')} {t(CONSENT)}</p></> }))) return ''
   try {
-    const refused = await addPrivateNode(origin, name)
-    return refused && t(REFUSED[refused], { n: MAX_NODES })
+    const refused = await addPrivateNode(origin, name, started)
+    return refused === 'cancelled' ? '' : refused && t(REFUSED[refused], { n: MAX_NODES })
   } catch (e) {
     return e instanceof Error ? e.message : String(e)
   }
@@ -54,13 +55,13 @@ export function PrivateNodes() {
     e.preventDefault()
     setBusy(true)
     setError('')
+    const origin = normalizeServerUrl(address, true)
     void add(address).then((err) => {
       setBusy(false)
       if (err !== null) return setError(err)
-      const list = savedNodes()
-      setNodes(list)
+      setNodes(savedNodes()) // the new node itself arrives with the gateway's list update
       setAddress('')
-      check(list.at(-1)!.origin)
+      if (origin) check(origin)
     })
   }
   const fromHub = useStore((s) => s.settings.private_nodes)

@@ -8,7 +8,7 @@ import { createGateway, type Gateway } from '../gateway'
 import { t } from '../i18n'
 import { notifyEvent } from '../notifications/notify'
 import { navigate } from '../router'
-import { keepSignIn, MAX_NODES, normalizeServerUrl, revoker } from '../privateNodes'
+import { inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revoker } from '../privateNodes'
 import { apply, byId, getState, setState, setToken } from '../store'
 import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
@@ -271,7 +271,9 @@ const session = () => localStorage.getItem('token') ?? ''
 // USER_SETTINGS_UPDATE on the gateway brings the list, in order.
 const changeNodes = (path: string, method: 'PUT' | 'DELETE', body?: unknown) => api(`/users/@me/settings/private-nodes${path}`, { method, body })
 /** Ends a node session we will not keep (retried a few times). Only the node's own origin, no cookies, no redirects. */
-const revokeOnNode = revoker((url, token) => fetch(url, { method: 'POST', headers: { Authorization: token }, credentials: 'omit', redirect: 'error' }).then((r) => r.status))
+// keepalive: the first try survives a reload (another tab changed the hub session).
+const revokeOnNode = revoker((url, token) =>
+  fetch(url, { method: 'POST', headers: { Authorization: token }, credentials: 'omit', redirect: 'error', keepalive: true, signal: AbortSignal.timeout(10_000) }).then((r) => r.status))
 const revoke = (node: InstanceInfo, token: string) =>
   void revokeOnNode(node.url, token).then((ok) => ok || console.warn(`Could not end the unused session on ${node.url}; it expires there on its own.`))
 
@@ -324,6 +326,7 @@ async function connectOne(origin: string, records: NodeRecord[]) {
     retry(origin, e instanceof Error ? e.message : String(e))
   } finally {
     busy.delete(key)
+    if (reloadWhenIdle && !busy.size) location.reload()
   }
 }
 
@@ -372,16 +375,29 @@ async function signInQuietly(node: InstanceInfo, live: () => boolean): Promise<s
 }
 
 /** Adds a node to the account's list and connects it; the refusal reason when it cannot be added. */
-export async function addPrivateNode(origin: string, name: string): Promise<'invalid' | 'duplicate' | 'full' | null> {
-  const started = session()
+/** `started`: the session the user began adding in (before the address check and the dialog); 'cancelled' when it ended. */
+export async function addPrivateNode(origin: string, name: string, started: string): Promise<'invalid' | 'duplicate' | 'full' | 'cancelled' | null> {
+  if (session() !== started) return 'cancelled'
   const fresh = getState().settings.private_nodes ?? savedNodes()
   if (fresh.some((n) => n.origin === origin)) return 'duplicate'
   if (fresh.length >= MAX_NODES) return 'full'
-  if (getState().settings.private_nodes == null && fresh.length) await changeNodes('/initial', 'PUT', { nodes: fresh }) // first list of this account
-  await changeNodes('', 'PUT', { origin, name })
-  if (session() === started) tries.delete(origin) // the gateway's list update connects it
+  const first = getState().settings.private_nodes == null && fresh.length ? [() => changeNodes('/initial', 'PUT', { nodes: fresh })] : [] // first list of this account
+  if (!(await inSession(started, session, [...first, () => changeNodes('', 'PUT', { origin, name })]))) return 'cancelled'
+  tries.delete(origin) // the gateway's list update connects it
   return null
 }
+
+/** The hub session (the stored hub token) an add starts in. */
+export const hubSession = session
+
+// Another tab logged out or in: this tab's state, node tokens and list belong to the old session, so it reloads, but only
+// once no background sign-in is running here (its token is then revoked, not lost with the page).
+let reloadWhenIdle = false
+if (typeof window !== 'undefined') window.addEventListener('storage', (e) => {
+  if (e.key !== 'token' || e.newValue === getState().token) return
+  reloadWhenIdle = true
+  if (!busy.size) location.reload()
+})
 
 /** Removes a node from the account's list (all devices), signs out there and drops its servers and token. */
 export async function removePrivateNode(origin: string) {

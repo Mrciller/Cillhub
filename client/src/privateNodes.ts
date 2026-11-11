@@ -82,14 +82,26 @@ export function tokenFor(url: string, hub: { origin: string; token: string | nul
  *  still saved; otherwise its token is revoked on the node. */
 export const keepSignIn = (started: string, now: string, saved: SavedNode[], origin: string) => started === now && saved.some((n) => n.origin === origin)
 
-/** Ends node sessions we will not keep: retried on network errors, 429 and 5xx (2 s doubling, `tries` times), done on
- *  2xx or 401 (already gone). Resolves false when it gave up. `send` posts and resolves the status (0 = no answer). */
+/** Ends node sessions we will not keep: done on 2xx or 401 (already gone); retried on no answer (0: network error or
+ *  timeout), 429 and 5xx (2 s doubling, `tries` times); any other answer is final. Resolves false when it did not end it.
+ *  `send` posts and resolves the status. */
 export const revoker = (send: (url: string, token: string) => Promise<number>, wait = (ms: number) => new Promise((r) => setTimeout(r, ms)), tries = 5) =>
   async (origin: string, token: string) => {
     for (let i = 0; i < tries; i++) {
       const status = await send(`${origin}/api/v9/auth/logout`, token).catch(() => 0)
       if ((status >= 200 && status < 300) || status === 401) return true
+      if (status !== 0 && status !== 429 && status < 500) return false
       if (i < tries - 1) await wait(Math.min(60_000, 2000 * 2 ** i))
     }
     return false
   }
+
+/** Runs `steps` one after another, each only while the session it started in (`started`, read again with `now` right
+ *  before each step) is still current; false when one was skipped. */
+export async function inSession(started: string, now: () => string, steps: (() => Promise<unknown>)[]) {
+  for (const step of steps) {
+    if (now() !== started) return false
+    await step()
+  }
+  return now() === started
+}

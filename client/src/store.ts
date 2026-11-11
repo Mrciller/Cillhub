@@ -243,8 +243,6 @@ export function setToken(token: string | null) {
   setState({ ...empty, token, updateReady: state.updateReady, settings: token ? state.settings : {}, showMembers: state.showMembers, game: state.game })
   if (!token) localStorage.removeItem('user-settings')
 }
-// Another tab logged out or in: everything here belongs to the old session (node tokens and the node list are shared).
-if (typeof window !== 'undefined') window.addEventListener('storage', (e) => void (e.key === 'token' && e.newValue !== state.token && location.reload()))
 /** A new token for the same session (password change, 2FA on/off): keeps everything else. */
 export function replaceToken(token: string) {
   localStorage.setItem('token', token)
