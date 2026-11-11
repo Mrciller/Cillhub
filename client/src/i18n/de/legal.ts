@@ -1,4 +1,4 @@
-// German UI strings for 7.11 legal: imprint, privacy notice, terms, notice form, statements of reasons, appeals, admin.
+// German UI strings for 7.10.3 legal: imprint, privacy notice, terms, notice form, statements of reasons, appeals, admin.
 export const legal: Record<string, string> = {
   // Footer, pages
   'Legal': 'Rechtliches', 'Imprint': 'Impressum', 'Privacy': 'Datenschutz', 'Terms': 'Nutzungsbedingungen', 'Privacy notice': 'Datenschutzerklärung',
@@ -41,6 +41,9 @@ export const legal: Record<string, string> = {
   'Banned from a server': 'Aus einem Server gesperrt', 'Account disabled': 'Konto gesperrt', 'Server removed': 'Server entfernt', 'Hidden from the server directory': 'Aus dem Serververzeichnis ausgeblendet',
   // Sign-up, gate
   'Updated terms': 'Neue Nutzungsbedingungen', 'Accept': 'Zustimmen',
+  'Terms of this server': 'Nutzungsbedingungen dieses Servers',
+  'This server has its own terms of use and privacy notice. Read them and accept to continue, or log out.':
+    'Dieser Server hat eigene Nutzungsbedingungen und eine eigene Datenschutzerklärung. Lies sie und stimme zu, um weiterzumachen, oder melde dich ab.',
   'The operator of this server changed the terms of use or the privacy notice. Read them and accept to continue, or log out.':
     'Der Betreiber dieses Servers hat die Nutzungsbedingungen oder die Datenschutzerklärung geändert. Lies sie und stimme zu, um weiterzumachen, oder melde dich ab.',
   'I accept the terms of use and have read the privacy notice.': 'Ich akzeptiere die Nutzungsbedingungen und habe die Datenschutzerklärung gelesen.',

@@ -7,7 +7,7 @@ import { HttpError, str, invalid } from '../errors.js';
 import { issueToken } from '../auth.js';
 import { sendToUsers } from '../gateway.js';
 import { saveImage, removeImage, sniff } from '../files.js';
-import { setting, setSetting, adminAudit } from '../instance.js';
+import { setting, setSetting, adminAudit, acceptVersion } from '../instance.js';
 import { requireMfa } from '../mfa.js';
 import {
   isHub, ROLE, VERSION, HUB_URL, PUBLIC_KEY, TRUSTED_KEY, TRUSTED, publicUrl, returnOrigins, mode, fedState, setFedState, signInPolicy, hubLoginOpen,
@@ -157,9 +157,10 @@ function newLinkedAccount(claims) {
   let name = base.length >= 2 ? base : `${base}_hub`;
   for (let i = 2; get('SELECT 1 FROM users WHERE username = ?', name); i++) name = `${base}_${i}`;
   const id = snowflake();
-  // legal_pending: this node's own terms and minimum age are asked on first use (the hub's sign-up asked the hub's)
-  run(`INSERT INTO users (id, email, username, password_hash, salt, home, hub_user_id, legal_pending) VALUES (?, ?, ?, ?, ?, 'hub', ?, 1)`,
-    id, `hub-${claims.sub}@hub.invalid`, name, randomBytes(64).toString('hex'), randomBytes(16).toString('hex'), claims.sub);
+  // legal_pending: a node with its own terms asks them and its minimum age on first use; without terms it asks nothing
+  // (the hub's sign-up confirmed the age, and apps without the accept screen would only see refused calls)
+  run(`INSERT INTO users (id, email, username, password_hash, salt, home, hub_user_id, legal_pending) VALUES (?, ?, ?, ?, ?, 'hub', ?, ?)`,
+    id, `hub-${claims.sub}@hub.invalid`, name, randomBytes(64).toString('hex'), randomBytes(16).toString('hex'), claims.sub, acceptVersion() ? 1 : 0);
   return userById(id);
 }
 

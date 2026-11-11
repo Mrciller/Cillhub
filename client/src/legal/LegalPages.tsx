@@ -1,4 +1,4 @@
-// 7.11 legal pages that work without a session: imprint, privacy notice, terms, licences, the public notice form for
+// 7.10.3 legal pages that work without a session: imprint, privacy notice, terms, licences, the public notice form for
 // illegal content (DSA Art. 16) with its status page, and the appeal page (Art. 20). Plus the footer links and the
 // blocking "accept the new terms" dialog for signed-in accounts.
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
@@ -283,9 +283,12 @@ export function LegalGate() {
     L.acceptTerms(s.accept_version, s.needs_age ? true : undefined).then(setS, (err: Error) => setError(err.message))
   }
   return (
-    <Modal title={t('Updated terms')} onClose={() => {}}>
+    <Modal title={s.needs_age ? t('Terms of this server') : t('Updated terms')} onClose={() => {}}>
       <form onSubmit={submit} className="legal-gate">
-        <p>{t('The operator of this server changed the terms of use or the privacy notice. Read them and accept to continue, or log out.')}</p>
+        {/* needs_age: a hub account on its first visit to a server with its own terms */}
+        <p>{s.needs_age
+          ? t('This server has its own terms of use and privacy notice. Read them and accept to continue, or log out.')
+          : t('The operator of this server changed the terms of use or the privacy notice. Read them and accept to continue, or log out.')}</p>
         <p><a href="/terms" target="_blank" rel="noopener noreferrer">{t('Terms of use')}</a> · <a href="/privacy" target="_blank" rel="noopener noreferrer">{t('Privacy notice')}</a></p>
         {s.accept_version && <label className="legal-check"><input type="checkbox" required /> {t('I accept the terms of use and have read the privacy notice.')}</label>}
         {s.needs_age && <label className="legal-check"><input type="checkbox" required /> {t('I am at least {n} years old.', { n: s.min_age })}</label>}

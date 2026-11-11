@@ -363,11 +363,21 @@ test('sign in on the node with a hub account: consent, PKCE, audience-bound ID t
   alice.node = s.get('token');
   const me = (await node.api('GET', '/users/@me', alice.node)).body;
   assert.equal(me.username, 'alice');
-  // 7.11: the node asks its own minimum age (and terms) on first use; the API waits until then
-  assert.deepEqual((await node.api('GET', '/users/@me/guilds', alice.node)).body.required_actions, ['accept_terms']);
-  assert.deepEqual((await node.api('GET', '/legal/status', alice.node)).body.needs_age, true);
-  assert.equal((await node.api('POST', '/legal/accept', alice.node, { version: null, age_confirmed: true })).status, 200);
+  // 7.10.3: a node without terms asks a hub account nothing (the hub's sign-up confirmed the age)
   assert.equal((await node.api('GET', '/users/@me/guilds', alice.node)).status, 200);
+  assert.equal(sql(node, 'SELECT legal_pending FROM users WHERE id = ?', me.id)[0].legal_pending, 0);
+  // a node with its own terms asks them and its minimum age on first use; the API waits until then
+  assert.equal((await node.api('PUT', '/admin/legal/terms', nodeAdmin.token, { en: '# Node terms', de: '# Node-Bedingungen' })).status, 200);
+  const robin = await hub.register('robin');
+  robin.node = (await nodeSignIn(robin)).get('token');
+  assert.deepEqual((await node.api('GET', '/users/@me/guilds', robin.node)).body.required_actions, ['accept_terms']);
+  const st = (await node.api('GET', '/legal/status', robin.node)).body;
+  assert.deepEqual([st.required, st.needs_age], [true, true]);
+  assert.equal((await node.api('POST', '/legal/accept', robin.node, { version: st.accept_version })).status, 400, 'age missing');
+  assert.equal((await node.api('POST', '/legal/accept', robin.node, { version: st.accept_version, age_confirmed: true })).status, 200);
+  assert.equal((await node.api('GET', '/users/@me/guilds', robin.node)).status, 200);
+  assert.equal((await node.api('GET', '/users/@me/guilds', alice.node)).status, 200, 'publishing terms without re-acceptance asks nobody again');
+  await node.api('PUT', '/admin/legal/terms', nodeAdmin.token, { en: '', de: '' }); // the later steps run without terms
   const [row] = sql(node, 'SELECT home, hub_user_id, email FROM users WHERE id = ?', me.id);
   assert.deepEqual({ ...row }, { home: 'hub', hub_user_id: alice.id, email: `hub-${alice.id}@hub.invalid` });
   assert.equal((await node.api('POST', '/auth/login', null, { login: 'alice', password: 'hunter2hunter2' })).status, 401, 'the hub password never reaches the node');
@@ -435,7 +445,7 @@ test('server directory: Manage Server lists hub and node servers, hub users brow
   assert.equal((await hub.api('POST', `/discoverable-guilds/${nodeGuild.id}/report`, alice.token, { reason: 'spam' })).status, 400, 'once per user');
   const [rep] = (await hub.api('GET', '/admin/directory?filter=reported', hubAdmin.token)).body;
   assert.deepEqual([rep.guild.id, rep.hidden, rep.reports[0].reason, rep.reports[0].note, rep.reports[0].reporter_id], [nodeGuild.id, false, 'other', 'It is spam', alice.id]);
-  assert.equal((await hub.api('PATCH', `/admin/directory/${nodeGuild.id}`, hubAdmin.token, { hidden: true, reason: 'spam' })).status, 400, '7.11: hiding needs a statement of reasons');
+  assert.equal((await hub.api('PATCH', `/admin/directory/${nodeGuild.id}`, hubAdmin.token, { hidden: true, reason: 'spam' })).status, 400, '7.10.3: hiding needs a statement of reasons');
   const hidden = await hub.api('PATCH', `/admin/directory/${nodeGuild.id}`, hubAdmin.token, { hidden: true, category: 'spam', reason: 'spam' });
   assert.deepEqual([hidden.body.hidden, hidden.body.hidden_reason, hidden.body.reports], [true, 'spam', []]);
   assert.equal((await hub.api('GET', '/discoverable-guilds', alice.token)).body.total, 1);
