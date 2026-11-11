@@ -10,7 +10,7 @@ use super::{report, CillhubApp};
 use crate::i18n::{tr, trf};
 use crate::model::Role;
 use crate::settings::CustomGame;
-use crate::theme::{bold_font, display_font, draw_avatar, draw_icon, palette::*, spaced_text, ui_font, IconKind};
+use crate::theme::{bold_font, display_font, draw_avatar, draw_icon, palette, palette::*, space, spaced_text, ui_font, IconKind};
 use egui::{Align, Color32, Context, CornerRadius, Frame, Layout, Margin, Pos2, Rect, RichText, ScrollArea, Sense, Stroke, Ui, Vec2};
 use serde_json::json;
 
@@ -328,14 +328,14 @@ impl CillhubApp {
                 });
                 ui.label(RichText::new(tr("Waiting for the patch to drop? Pick a look you like.")).font(ui_font(15.0)).color(TEXT()));
             });
-        ui.add_space(24.0);
+        ui.add_space(space::S6);
         field_label(ui, tr("Theme"));
-        let themes = [("light", tr("Light"), 0xffffffu32), ("ash", tr("Ash"), 0x38393f), ("dark", tr("Dark"), 0x313338), ("onyx", tr("Onyx"), 0x121214)];
+        let themes = [("light", tr("Light")), ("ash", tr("Ash")), ("dark", tr("Dark")), ("onyx", tr("Onyx"))];
         let mut pick = None;
         ui.horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing.x = 16.0;
-            let w = (ui.available_width() - 48.0) / 4.0;
-            for (id, label, color) in themes {
+            ui.spacing_mut().item_spacing.x = space::S5;
+            let w = (ui.available_width() - 3.0 * space::S5) / 4.0;
+            for (id, label) in themes {
                 let on = self.theme_name == id;
                 let resp = ui
                     .allocate_ui(Vec2::new(w, 78.0), |ui| {
@@ -351,7 +351,7 @@ impl CillhubApp {
                                     if on {
                                         ui.painter().circle_stroke(r.center(), 31.5, Stroke::new(3.0_f32, ACCENT()));
                                     }
-                                    ui.painter().circle(r.center(), 27.0, role_color(color), Stroke::new(if on { 0.0_f32 } else { 2.0 }, BORDER()));
+                                    ui.painter().circle(r.center(), 27.0, palette::for_theme(id).bg_chat, Stroke::new(if on { 0.0_f32 } else { 2.0 }, BORDER()));
                                     ui.label(RichText::new(label).font(ui_font(13.0)).color(TEXT_MUTED()));
                                 });
                             })

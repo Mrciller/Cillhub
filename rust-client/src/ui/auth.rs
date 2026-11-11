@@ -12,7 +12,7 @@ use crate::theme::{
 };
 use crate::ui::{AuthMode, CillhubApp};
 use egui::{
-    Align, Align2, Color32, CornerRadius, Frame, Layout, Margin, Pos2, Rect, RichText, Sense,
+    Align, Align2, CornerRadius, Frame, Layout, Margin, Pos2, Rect, RichText, Sense,
     Stroke, StrokeKind, TextEdit, Ui, Vec2,
 };
 use serde_json::{json, Value};
@@ -493,7 +493,7 @@ impl CillhubApp {
         let hovered = resp.hovered();
         let painter = ui.painter();
         let fill = if active {
-            Color32::from_rgba_unmultiplied(0xff, 0x6a, 0x1f, 38)
+            ACCENT().gamma_multiply(0.15)
         } else if hovered {
             BG_HOVER()
         } else {

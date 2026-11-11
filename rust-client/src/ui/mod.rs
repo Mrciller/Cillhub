@@ -2078,7 +2078,7 @@ impl CillhubApp {
                             RichText::new(crate::i18n::trf("A new version of Cillhub is available ({version}).", &[("version", &version)]))
                                 .strong()
                                 .size(12.5)
-                                .color(Color32::BLACK),
+                                .color(ON_ACCENT()),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if ui.small_button("✕").on_hover_text(tr("Dismiss for an hour")).clicked() {

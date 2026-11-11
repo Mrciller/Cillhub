@@ -408,7 +408,7 @@ impl CillhubApp {
 
                                 if let Some(gname) = author_game {
                                     Frame::new()
-                                        .fill(Color32::from_rgba_unmultiplied(0x2f, 0xd3, 0x6a, 28))
+                                        .fill(GREEN().gamma_multiply(0.11))
                                         .stroke(Stroke::new(1.0_f32, GREEN()))
                                         .corner_radius(CornerRadius::same(2))
                                         .inner_margin(Margin::symmetric(5, 1))
@@ -1969,7 +1969,7 @@ pub fn menu_item(ui: &mut Ui, label: &str, danger: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::click());
     let hov = resp.hovered();
     if hov {
-        ui.painter().rect_filled(rect, CornerRadius::same(2), if danger { DANGER() } else { BG_HOVER() });
+        ui.painter().rect_filled(rect, CornerRadius::same(2), if danger { DANGER_STRONG() } else { BG_HOVER() });
     }
     let fg = match (danger, hov) {
         (true, true) => Color32::WHITE,

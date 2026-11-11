@@ -1,4 +1,4 @@
-//! Cillhub Arena & Argon visual theme, bundled web fonts, notched HUD card renderer,
+//! Cillhub Arena visual theme, bundled web fonts, notched HUD card renderer,
 //! status dot shapes, and crisp vector icons matching `client/src/index.css` & `client/src/components/ui.tsx`.
 
 #[cfg(feature = "native-gui")]
@@ -39,7 +39,6 @@ pub mod palette {
         pub accent_hover: Color32,
         pub on_accent: Color32,
         pub accent_soft: Color32,
-        pub argon_accent: Color32,
         pub green: Color32,
         pub yellow: Color32,
         pub danger: Color32,
@@ -80,7 +79,6 @@ pub mod palette {
         accent_hover: hex(0xff8747),
         on_accent: hex(0x170900),
         accent_soft: hex(0x3a2014),
-        argon_accent: hex(0x00d2eb),
         green: hex(0x2fd36a),
         yellow: hex(0xffb020),
         danger: hex(0xff4d4d),
@@ -117,7 +115,6 @@ pub mod palette {
         accent_hover: hex(0x9a3412),
         on_accent: hex(0xffffff),
         accent_soft: hex(0xf6dfd3),
-        argon_accent: hex(0x00d2eb),
         green: hex(0x15803d),
         yellow: hex(0x8a5a00),
         danger: hex(0xd93a42),
@@ -258,9 +255,6 @@ pub mod palette {
     pub fn ACCENT_SOFT() -> Color32 {
         pal().accent_soft
     }
-    pub fn ARGON_ACCENT() -> Color32 {
-        pal().argon_accent
-    }
     pub fn GREEN() -> Color32 {
         pal().green
     }
@@ -293,6 +287,17 @@ pub mod palette {
     }
 }
 
+/// Arena spacing scale `space-1` … `space-7` (px).
+pub mod space {
+    pub const S1: f32 = 2.0;
+    pub const S2: f32 = 4.0;
+    pub const S3: f32 = 8.0;
+    pub const S4: f32 = 12.0;
+    pub const S5: f32 = 16.0;
+    pub const S6: f32 = 24.0;
+    pub const S7: f32 = 40.0;
+}
+
 #[cfg(feature = "native-gui")]
 pub fn install_fonts(ctx: &Context, dyslexic: bool) {
     let mut fonts = FontDefinitions::default();
@@ -310,8 +315,8 @@ pub fn install_fonts(ctx: &Context, dyslexic: bool) {
         FontData::from_static(include_bytes!("../assets/fonts/BarlowCondensed-Bold.ttf")).into(),
     );
     fonts.font_data.insert(
-        "orbitron".to_owned(),
-        FontData::from_static(include_bytes!("../assets/fonts/Orbitron-Bold.ttf")).into(),
+        "barlow-semibold".to_owned(),
+        FontData::from_static(include_bytes!("../assets/fonts/barlow-condensed-latin-600-normal.ttf")).into(),
     );
     fonts.font_data.insert(
         "jetbrains".to_owned(),
@@ -345,9 +350,15 @@ pub fn install_fonts(ctx: &Context, dyslexic: bool) {
             }
         }
     }
+    // Headings and buttons are Barlow Condensed 700 (`display`); small section labels 600 (`label`).
+    let mut label_chain = display_chain.clone();
+    label_chain[0] = "barlow-semibold".to_owned();
     fonts
         .families
         .insert(FontFamily::Name("display".into()), display_chain);
+    fonts
+        .families
+        .insert(FontFamily::Name("label".into()), label_chain);
 
     let mut bold_chain = vec!["inter-bold".to_owned(), primary.to_owned()];
     if let Some(default_prop) = fonts.families.get(&FontFamily::Proportional).cloned() {
@@ -377,6 +388,16 @@ pub fn set_custom_families_ready(ready: bool) {
 pub fn display_font(size: f32) -> FontId {
     if CUSTOM_FAMILIES_READY.load(std::sync::atomic::Ordering::Relaxed) {
         FontId::new(size, FontFamily::Name("display".into()))
+    } else {
+        FontId::new(size, FontFamily::Proportional)
+    }
+}
+
+/// Arena `label` style face: Barlow Condensed 600 for category headers and list headings.
+#[cfg(feature = "native-gui")]
+pub fn label_font(size: f32) -> FontId {
+    if CUSTOM_FAMILIES_READY.load(std::sync::atomic::Ordering::Relaxed) {
+        FontId::new(size, FontFamily::Name("label".into()))
     } else {
         FontId::new(size, FontFamily::Proportional)
     }
@@ -677,14 +698,14 @@ pub fn draw_list_heading(ui: &mut Ui, label: &str) {
     }
 }
 
-/// Condensed heading text with the web's .12em letter spacing.
+/// Arena `label` text (Barlow Condensed 600) with the web's .12em letter spacing.
 #[cfg(feature = "native-gui")]
 pub fn spaced_text(ui: &Ui, text: &str, size: f32, color: Color32) -> std::sync::Arc<egui::Galley> {
     let mut job = egui::text::LayoutJob::default();
     job.append(
         text,
         0.0,
-        egui::TextFormat { font_id: display_font(size), color, extra_letter_spacing: size * 0.12, ..Default::default() },
+        egui::TextFormat { font_id: label_font(size), color, extra_letter_spacing: size * 0.12, ..Default::default() },
     );
     ui.fonts(|f| f.layout_job(job))
 }
