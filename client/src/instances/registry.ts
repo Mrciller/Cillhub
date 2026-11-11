@@ -60,6 +60,18 @@ export function setLive(id: string, patch: Partial<Live>) {
   live = { ...live, [id]: { ...live[id], ...patch } }
   emit()
 }
+// Saved private nodes that are not connected, by origin (Settings › Private Nodes): 'own-login' = the node does not take
+// this hub's accounts; 'sign-in' = it cannot sign in in the background (older version), a click opens the sign-in window;
+// any other text = why the last try failed (retrying).
+export type NodeIssue = { why: string; node?: InstanceInfo }
+let issues: Record<string, NodeIssue> = {}
+export function setIssue(origin: string, issue: NodeIssue | null) {
+  const { [origin]: _, ...rest } = issues
+  issues = issue ? { ...rest, [origin]: issue } : rest
+  emit()
+}
+export const useNodeIssues = () => useSyncExternalStore(subscribeInstances, () => issues)
+
 /** Our hub user and gateway session (from the hub's READY); node payloads are aliased to these. */
 export const setHubIdentity = (meId: string, sessionId: string) => ((hub.meId = meId), (hub.sessionId = sessionId))
 

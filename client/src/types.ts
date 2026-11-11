@@ -282,6 +282,8 @@ export type UserSettings = {
   sound_settings?: SoundSettings; entrance_sound?: { sound_id: string; guild_id: string | null } | null; keybinds?: Record<string, string | null>
   privacy?: { dm_read_receipts?: boolean }
   favorite_gifs?: FavoriteGif[]
+  // Settings › Private Nodes, synced through the hub account (null: never saved)
+  private_nodes?: { origin: string; name: string }[] | null
 }
 /** Colours are '#rrggbb'; gradient = two stops for the app background. */
 export type CustomTheme = { id: string; name: string; background: string; surface: string; accent: string; text: string; gradient: [string, string] | null }

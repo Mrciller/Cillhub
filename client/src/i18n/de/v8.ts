@@ -66,14 +66,20 @@ export const v8: Record<string, string> = {
   // Settings › Private Nodes and add-node links
   'Private Nodes': 'Private Nodes', 'Node address': 'Node-Adresse', 'Add node': 'Node hinzufügen', Reachable: 'Erreichbar', 'Not reachable': 'Nicht erreichbar',
   'Copy add link': 'Hinzufügen-Link kopieren', 'No private nodes saved yet.': 'Noch keine privaten Nodes gespeichert.',
-  'Private nodes you use besides the Main Hub. Each node is a separate server with its own accounts and admins. The list stays on this device.':
-    'Private Nodes, die du neben dem Haupt-Hub nutzt. Jeder Node ist ein eigener Server mit eigenen Konten und Admins. Die Liste bleibt auf diesem Gerät.',
+  'Private nodes you use besides the Main Hub, all connected at once. Each node is a separate server with its own accounts and admins. The list is saved with your account.':
+    'Private Nodes, die du neben dem Haupt-Hub nutzt, alle gleichzeitig verbunden. Jeder Node ist ein eigener Server mit eigenen Konten und Admins. Die Liste wird mit deinem Konto gespeichert.',
   'This server is already in your list.': 'Dieser Server ist schon in deiner Liste.', 'You can save up to {n} nodes.': 'Du kannst bis zu {n} Nodes speichern.',
-  '{address} leaves this list. Your account there stays as it is.': '{address} wird aus der Liste entfernt. Dein Konto dort bleibt, wie es ist.',
+  '{address} leaves the list on all your devices. Cillhub signs you out there and its servers leave your server list. Your account there stays as it is.':
+    '{address} wird auf allen deinen Geräten aus der Liste entfernt. Cillhub meldet dich dort ab und seine Server verschwinden aus deiner Serverliste. Dein Konto dort bleibt, wie es ist.',
   'Enter only the server address, with https:// (http only for localhost), e.g. https://chat.example.org.':
     'Gib nur die Serveradresse ein, mit https:// (http nur für localhost), z. B. https://chat.example.org.',
   'Add a private node?': 'Privaten Node hinzufügen?', 'Node added': 'Node hinzugefügt', 'Invalid link': 'Ungültiger Link',
   'This link does not contain a usable node address.': 'Dieser Link enthält keine gültige Node-Adresse.',
-  'This is a separate server with its own accounts and admins. Adding it only saves it to the list on this device.':
-    'Das ist ein eigener Server mit eigenen Konten und Admins. Hinzufügen speichert ihn nur in der Liste auf diesem Gerät.',
+  // Private nodes connected next to the hub
+  'This is a separate server with its own accounts and admins.': 'Das ist ein eigener Server mit eigenen Konten und Admins.',
+  'Cillhub signs you in there with your account here: the node gets your user name and avatar, never your password. Its servers then show up in your server list.':
+    'Cillhub meldet dich dort mit deinem Konto von hier an: Der Node bekommt deinen Benutzernamen und dein Profilbild, nie dein Passwort. Seine Server erscheinen dann in deiner Serverliste.',
+  'Add {name}?': '{name} hinzufügen?', 'Add and sign in': 'Hinzufügen und anmelden', 'Sign in': 'Anmelden', 'Not connected': 'Nicht verbunden',
+  'Needs its own login · not connected': 'Braucht eigene Anmeldung · nicht verbunden', 'Not connected: {reason} Retrying…': 'Nicht verbunden: {reason} Neuer Versuch folgt …',
+  '{name} is not reachable right now.': '{name} ist gerade nicht erreichbar.',
 }

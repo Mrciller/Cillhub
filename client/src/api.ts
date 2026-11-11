@@ -1,7 +1,7 @@
 import { DEFAULT_HUB_URL } from './hub'
 import { t } from './i18n'
-import { inbound, instanceById, outbound, outboundPath, route, tokenOf } from './instances/registry'
-import { cleanName, normalizeServerUrl, parseNodes, type SavedNode } from './privateNodes'
+import { inbound, instanceById, instances, outbound, outboundPath, route, tokenOf } from './instances/registry'
+import { cleanName, normalizeServerUrl, parseNodes, tokenFor, type SavedNode } from './privateNodes'
 
 export { normalizeServerUrl }
 
@@ -104,8 +104,9 @@ export class ApiError extends Error {
   }
 }
 
-const auth = (node?: string): Record<string, string> => {
-  const token = node ? tokenOf(node) : localStorage.getItem('token')
+// By the address the request really goes to, so a routing slip can never hand one server another's token.
+const auth = (url: string): Record<string, string> => {
+  const token = tokenFor(url, { origin: apiOrigin(), token: localStorage.getItem('token') }, instances().map((i) => ({ url: i.url, token: tokenOf(i.id) })))
   return token ? { Authorization: token } : {}
 }
 
@@ -120,13 +121,14 @@ function target(path: string, body: unknown, instance?: string) {
 /** `reason` goes into the X-Audit-Log-Reason header (URL-encoded). `instance` sends the call to a linked node (v7). */
 export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; reason?: string; instance?: string; headers?: Record<string, string> } = {}): Promise<T> {
   const to = target(path, init.body, init.instance)
-  const headers = { ...init.headers, ...auth(to.node) }
+  const headers = { ...init.headers, ...auth(to.url) }
   if (init.body !== undefined) headers['Content-Type'] = 'application/json'
   if (init.reason) headers['X-Audit-Log-Reason'] = encodeURIComponent(init.reason)
   let res: Response
   const sent = Date.now()
   try {
-    res = await fetch(to.url, { method: init.method ?? 'GET', headers, body: to.body === undefined ? undefined : JSON.stringify(to.body) })
+    // A node's redirect is not followed: the token was meant for that node only.
+    res = await fetch(to.url, { method: init.method ?? 'GET', headers, body: to.body === undefined ? undefined : JSON.stringify(to.body), ...(to.node && { redirect: 'error' as const }) })
   } catch {
     throw new ApiError(0, null)
   }
@@ -159,7 +161,7 @@ export function upload<T>(path: string, form: FormData, onProgress: (fraction: n
     const xhr = new XMLHttpRequest()
     const to = target(path, undefined)
     xhr.open('POST', to.url)
-    for (const [k, v] of Object.entries(auth(to.node))) xhr.setRequestHeader(k, v)
+    for (const [k, v] of Object.entries(auth(to.url))) xhr.setRequestHeader(k, v)
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
     xhr.onerror = () => reject(new ApiError(0, null))
     xhr.onload = () => {

@@ -2,16 +2,17 @@
 // into the one store (aliased in registry.ts), sign-in to a node through the hub identity flow, "Disconnect from instance",
 // and the hub's view of node status (suspended / banned / unlinked nodes are cut off, offline ones keep retrying).
 import { enterGuild } from '../actions'
-import { api, ApiError, qs, apiOrigin } from '../api'
+import { api, ApiError, qs, apiOrigin, savedNodes, saveNodes, NODES_KEY } from '../api'
 import { soundEvent } from '../custom/sounds'
 import { createGateway, type Gateway } from '../gateway'
 import { t } from '../i18n'
 import { notifyEvent } from '../notifications/notify'
 import { navigate } from '../router'
-import { apply, byId, getState, setState, setToken } from '../store'
-import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
+import { addNode, normalizeServerUrl, type SavedNode } from '../privateNodes'
+import { apply, byId, getState, mergeSettings, setState, setToken } from '../store'
+import type { GuildPayload, Presence, ReadState, User, UserGuildSettings, UserSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
-import { inbound, instanceById, instances, nodeOf, removeInstance, saveInstance, setLive, tokenOf, type InstanceInfo } from './registry'
+import { inbound, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, tokenOf, type InstanceInfo } from './registry'
 
 /** The hub's node directory record (§2), from GET /federation/nodes. */
 export type NodeRecord = {
@@ -29,6 +30,7 @@ const statusOf = (id: string) => instanceById(id)?.status
 export function startNodes() {
   for (const i of instances()) if (!conns.has(i.id) && tokenOf(i.id) && i.status !== 'suspended' && i.status !== 'signed-out') open(i)
   void refreshStatus()
+  syncPrivateNodes()
 }
 export function stopNodes() {
   for (const g of conns.values()) g.disconnect()
@@ -42,12 +44,17 @@ export function nodeSend(id: string | null, op: number, d: unknown) {
 
 function open(i: InstanceInfo) {
   const g = createGateway({
-    url: () => api<{ url: string }>('/gateway', { instance: i.id }),
+    // The node names its gateway; our node token goes only to the node's own host.
+    url: () => api<{ url: string }>('/gateway', { instance: i.id }).then((r) => {
+      if (new URL(r.url).host !== new URL(i.url).host) throw new Error('gateway on another host')
+      return r
+    }),
     token: () => tokenOf(i.id),
     ready: () => statusOf(i.id) === 'ready',
     connecting: (failed) => setLive(i.id, { status: failed ? 'offline' : 'connecting' }),
-    // The node ends our sessions when the hub suspends, bans or unlinks it: ask the hub which it is.
-    rejected: () => (close(i.id), setLive(i.id, { status: 'signed-out' }), void refreshStatus()),
+    // The node ends our sessions when the hub suspends, bans or unlinks it: ask the hub which it is. A saved private node
+    // gets a new background sign-in (with backoff).
+    rejected: () => (close(i.id), setLive(i.id, { status: 'signed-out' }), void refreshStatus(), savedNodes().some((n) => n.origin === i.url) && retry(i.url, t('Signed out'))),
     dispatch: (t, d) => dispatch(i.id, t, d),
   })
   conns.set(i.id, g)
@@ -199,9 +206,13 @@ export async function completeSignIn(fragment: string): Promise<string> {
   const token = p.get('token')
   if (pending.self && token) return setToken(token), '/channels/@me'
   if (!token || (p.get('node_id') && p.get('node_id') !== pending.node.id)) throw new Error(t('{name} sent an invalid answer.', { name: pending.node.name }))
-  saveInstance(pending.node, token)
-  if (getState().status === 'ready') (close(pending.node.id), open(pending.node))
+  adopt(pending.node, token)
   return finish(pending.node.id, pending.then)
+}
+
+function adopt(node: InstanceInfo, token: string) {
+  saveInstance(node, token)
+  if (getState().status === 'ready') (close(node.id), open(node))
 }
 
 async function finish(id: string, then: Then): Promise<string> {
@@ -224,10 +235,12 @@ export function disconnectInstance(id: string) {
   removeInstance(id)
 }
 
-/** Hub logout: node tokens were issued for this hub account. */
+/** Hub logout: node tokens and the private node list belong to this hub account. */
 export function forgetInstances() {
   stopNodes()
   for (const i of instances()) removeInstance(i.id)
+  for (const n of savedNodes()) forget(n.origin)
+  localStorage.removeItem(NODES_KEY)
 }
 
 /** An invite link of another instance → that node's record from the hub, or an error explaining why it can't be added. */
@@ -243,3 +256,138 @@ export async function nodeForInvite(link: string): Promise<{ node: InstanceInfo;
   if (r.status !== 'active') throw new Error(t('{name} is suspended by the hub admins.', { name: r.name }))
   return { node: nodeInfo(r), code }
 }
+
+// ---------- Saved private nodes (Settings › Private Nodes) ----------
+// Every saved node the hub lists is one more instance above: signed in with the hub account in the background and kept
+// connected, no switching. The list lives in the hub account (settings.private_nodes); localStorage is the cache.
+const tries = new Map<string, number>() // origin -> failed tries in a row
+const timers = new Map<string, ReturnType<typeof setTimeout>>()
+const busy = new Set<string>() // origins with a sign-in under way (READY, the settings echo and an add can all ask at once)
+const OWN_LOGIN = 'own-login'
+
+const putNodes = (list: SavedNode[]) => api<UserSettings>('/users/@me/settings', { method: 'PATCH', body: { private_nodes: list } }).then(mergeSettings)
+// shortcut: read-then-write, two devices changing the list in the same second can lose one change; a server-side add/remove route if that shows up
+const hubNodes = () => api<UserSettings>('/users/@me/settings').then((r) => r.private_nodes ?? savedNodes())
+
+/** On the hub's READY and on USER_SETTINGS_UPDATE: the hub copy wins (removals on another device too); an account that never
+ *  saved a list takes this device's. Then every saved node that is not connected gets a try. */
+export function syncPrivateNodes() {
+  const fromHub = getState().settings.private_nodes
+  const before = savedNodes()
+  if (fromHub == null) {
+    if (before.length) putNodes(before).catch(() => {}) // next READY tries again
+  } else {
+    saveNodes(fromHub)
+    const now = savedNodes()
+    for (const n of before) if (!now.some((x) => x.origin === n.origin)) forget(n.origin, true)
+  }
+  if (savedNodes().length) void connectSaved()
+}
+
+async function connectSaved(only?: string) {
+  const records = await listNodes().catch(() => null)
+  for (const n of savedNodes()) {
+    if (only && n.origin !== only) continue
+    if (!records) { retry(n.origin, t("Can't reach the server.")); continue }
+    void connectOne(n.origin, records)
+  }
+}
+
+async function connectOne(origin: string, records: NodeRecord[]) {
+  clearTimeout(timers.get(origin))
+  const r = records.find((x) => normalizeServerUrl(x.url, true) === origin)
+  if (!r) return setIssue(origin, { why: OWN_LOGIN }) // standalone, or linked to another hub
+  const node = nodeInfo(r)
+  if (r.status !== 'active') return setIssue(origin, { why: t('Suspended by the hub') })
+  const known = instanceById(node.id)
+  if (known && tokenOf(node.id) && known.status !== 'signed-out') return setIssue(origin, null) // the instance machinery keeps it connected
+  if (busy.has(origin)) return
+  busy.add(origin)
+  try {
+    const token = await signInQuietly(node)
+    if (!savedNodes().some((n) => n.origin === origin)) return // removed meanwhile: the token is never stored
+    adopt(node, token)
+    tries.delete(origin)
+    setIssue(origin, null)
+  } catch (e) {
+    if (!savedNodes().some((n) => n.origin === origin)) return // removed meanwhile
+    if (e === OLD) return setIssue(origin, { why: 'sign-in', node })
+    if (e === REFUSED) return setIssue(origin, { why: OWN_LOGIN })
+    retry(origin, e instanceof Error ? e.message : String(e))
+  } finally {
+    busy.delete(origin)
+  }
+}
+
+/** Tries again later, 5 s doubling up to 5 minutes; nothing waits for it. */
+function retry(origin: string, why: string) {
+  const n = (tries.get(origin) ?? 0) + 1
+  tries.set(origin, n)
+  setIssue(origin, { why })
+  clearTimeout(timers.get(origin))
+  timers.set(origin, setTimeout(() => void connectSaved(origin), Math.min(300_000, 5000 * 2 ** (n - 1))))
+}
+
+const OLD = new Error('no background sign-in')
+const REFUSED = new Error('no hub sign-in')
+/** The hub sign-in of joinOnNode without a window (the node's answer=json): the user agreed when adding the node, so the
+ *  consent is given here. Every address the node names is checked: the consent goes only to our hub for this node id, the
+ *  code only to the node's own callback. No cookies, no redirects. */
+async function signInQuietly(node: InstanceInfo): Promise<string> {
+  const bad = () => new Error(t('{name} sent an invalid answer.', { name: node.name }))
+  const call = async (url: string, start = false) => {
+    const res = await fetch(url, { credentials: 'omit', redirect: start ? 'manual' : 'error', signal: AbortSignal.timeout(10_000) }).catch(() => null)
+    if (!res) throw new Error(t('{name} is not reachable right now.', { name: node.name }))
+    if (res.type === 'opaqueredirect') throw OLD // a version without background sign-in
+    const body = await res.json().catch(() => null)
+    if (!body || typeof body !== 'object') throw new Error(t('Request failed ({status})', { status: res.status }))
+    return body as Record<string, unknown>
+  }
+  const state = crypto.randomUUID()
+  const start = await call(`${node.url}/api/v9/federation/hub-login${qs({ return_to: `${apiOrigin()}/instances/callback`, state, answer: 'json' })}`, true)
+  if (start.error === 'unavailable') throw REFUSED
+  let consent: URL
+  try { consent = new URL(String(start.authorize_url)) } catch { throw bad() }
+  const q = consent.searchParams
+  if (consent.origin !== apiOrigin() || consent.pathname !== '/oauth2/authorize' || q.get('client_id') !== node.id) throw bad()
+  const keep = new URLSearchParams([...q].filter(([k]) => ['client_id', 'redirect_uri', 'response_type', 'scope', 'code_challenge', 'code_challenge_method', 'state'].includes(k)))
+  const { location } = await api<{ location: string }>(`/oauth2/authorize?${keep}`, { method: 'POST', body: { authorize: true } })
+  let back: URL
+  try { back = new URL(location) } catch { throw bad() }
+  if (back.origin !== node.url || back.pathname !== '/api/v9/federation/hub-callback') throw bad()
+  const out = await call(back.href)
+  if (out.error === 'unavailable') throw REFUSED
+  if (out.error) throw new Error(t('{name} refused the sign-in: {error}', { name: node.name, error: String(out.error_description || out.error).slice(0, 200) }))
+  if (out.state !== state || out.node_id !== node.id || typeof out.token !== 'string' || !out.token) throw bad()
+  return out.token
+}
+
+/** Adds a node to the account's list and connects it; the refusal reason when it cannot be added. */
+export async function addPrivateNode(origin: string, name: string): Promise<'invalid' | 'duplicate' | 'full' | null> {
+  const next = addNode(await hubNodes(), origin, name)
+  if (!Array.isArray(next)) return next
+  await putNodes(next)
+  saveNodes(next)
+  tries.delete(origin)
+  void connectSaved(origin)
+  return null
+}
+
+/** Removes a node from the account's list (all devices), signs out there and drops its servers and token. */
+export async function removePrivateNode(origin: string) {
+  const next = (await hubNodes()).filter((n) => n.origin !== origin)
+  await putNodes(next)
+  saveNodes(next)
+  forget(origin, true)
+}
+
+function forget(origin: string, signOut = false) {
+  clearTimeout(timers.get(origin))
+  timers.delete(origin)
+  tries.delete(origin)
+  setIssue(origin, null)
+  if (signOut) for (const i of instances()) if (i.url === origin) disconnectInstance(i.id)
+}
+
+/** "Sign in" on a node row that cannot sign in in the background: the window flow of joinOnNode. */
+export const signInWindow = (node: InstanceInfo) => joinOnNode(node, {}).then(() => setIssue(node.url, null))

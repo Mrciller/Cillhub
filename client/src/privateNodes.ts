@@ -1,4 +1,4 @@
-// Saved private nodes (Settings › Private Nodes, `<origin>/add-node#<address>` links): a plain per-device list.
+// Saved private nodes (Settings › Private Nodes, `<origin>/add-node#<address>` links): a plain list, synced through the hub account.
 // No imports: scripts/private-nodes.test.mjs runs this file under plain node.
 
 /** Plain {origin, name}: a later stage attaches a session per node by origin. */
@@ -61,4 +61,18 @@ export function parseAddLink(hash: string): string | null {
     return null
   }
   return normalizeServerUrl(v, true)
+}
+
+/** The token a request to `url` may carry, chosen by the URL's own origin (never by routing): the hub token only for the
+ *  hub origin, a node token only for that node's origin; none for any other address or an origin two nodes share. */
+export function tokenFor(url: string, hub: { origin: string; token: string | null }, nodes: { url: string; token: string | null }[]): string | null {
+  let origin: string
+  try {
+    origin = new URL(url).origin
+  } catch {
+    return null
+  }
+  if (origin === hub.origin) return hub.token
+  const own = nodes.filter((n) => normalizeServerUrl(n.url, true) === origin)
+  return own.length === 1 ? own[0].token : null
 }

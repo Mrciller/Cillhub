@@ -1,7 +1,7 @@
 // Saved private nodes and add links (src/privateNodes.ts). Run: npm test (node strips the TypeScript types).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { addLink, addNode, cleanName, MAX_NODES, normalizeServerUrl, parseAddLink, parseNodes } from '../src/privateNodes.ts'
+import { addLink, addNode, cleanName, MAX_NODES, normalizeServerUrl, parseAddLink, parseNodes, tokenFor } from '../src/privateNodes.ts'
 
 test('addresses become origins; http only for localhost', () => {
   assert.equal(normalizeServerUrl('chat.example.org/'), 'https://chat.example.org')
@@ -54,4 +54,23 @@ test('add links: build and parse', () => {
   assert.equal(parseAddLink('#node.example.org'), 'https://node.example.org')
   for (const bad of ['', '#', '#%E0%A4%A', '#https://node.example.org/evil', '#https://a@node.example.org', '#http://node.example.org', '#javascript:alert(1)'])
     assert.equal(parseAddLink(bad), null, bad)
+})
+
+test('a request carries only the token of the origin it goes to', () => {
+  const hub = { origin: 'https://hub.example.org', token: 'hub-token' }
+  const nodes = [{ url: 'https://a.example.org', token: 'a-token' }, { url: 'https://b.example.org', token: 'b-token' }]
+  assert.equal(tokenFor('https://hub.example.org/api/v9/users/@me', hub, nodes), 'hub-token')
+  assert.equal(tokenFor('https://a.example.org/api/v9/channels/1/messages', hub, nodes), 'a-token')
+  assert.equal(tokenFor('https://b.example.org/api/v9/gateway', hub, nodes), 'b-token')
+  // anything that is not exactly a known origin gets nothing: look-alike hosts, other ports, user info, http
+  for (const url of ['https://a.example.org.evil.test/api', 'https://a.example.org:444/api', 'https://hub.example.org@a.example.org/api',
+    'http://a.example.org/api', 'https://evil.test/https://a.example.org', 'not a url'])
+    assert.notEqual(tokenFor(url, hub, nodes), 'hub-token', url)
+  assert.equal(tokenFor('https://a.example.org:444/api', hub, nodes), null)
+  assert.equal(tokenFor('https://hub.example.org@a.example.org/api', hub, nodes), 'a-token') // user info is not the host
+  // a node entry whose address has a path or that claims another node's origin never gets a token
+  assert.equal(tokenFor('https://a.example.org/api', hub, [...nodes, { url: 'https://a.example.org', token: 'dup' }]), null)
+  assert.equal(tokenFor('https://c.example.org/api', hub, [{ url: 'https://c.example.org/x', token: 'c' }]), null)
+  for (const n of nodes) for (const other of [hub.token, ...nodes.filter((x) => x !== n).map((x) => x.token)])
+    assert.notEqual(tokenFor(`${n.url}/api/v9/users/@me`, hub, nodes), other)
 })

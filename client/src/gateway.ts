@@ -5,7 +5,7 @@ import { apply, getState, setState, setToken } from './store'
 import { notifyEvent } from './notifications/notify'
 import { voiceEvent } from './voice/engine'
 import { soundEvent } from './custom/sounds'
-import { forgetInstances, nodeSend, startNodes, stopNodes } from './instances/nodes'
+import { forgetInstances, nodeSend, startNodes, stopNodes, syncPrivateNodes } from './instances/nodes'
 import { hubTakes, nodeOf, setHubIdentity } from './instances/registry'
 
 export type Gateway = { connect: () => void; disconnect: () => void; send: (op: number, d: unknown) => boolean }
@@ -128,6 +128,7 @@ const hub = createGateway({
     notifyEvent(t, d)
     soundEvent(t, d, before)
     if (t === 'READY') startNodes() // node payloads are aliased to our hub identity, so they wait for it
+    else if (t === 'USER_SETTINGS_UPDATE' && d.private_nodes !== undefined) syncPrivateNodes() // the list changed on another device
   },
 })
 

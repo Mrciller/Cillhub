@@ -58,7 +58,8 @@ function Page() {
   if (section === 'licenses') return <LicensesPage />
   if (section === 'report-content') return a === 'status' ? <NoticeStatusPage /> : <ReportContentPage />
   if (section === 'appeal') return <AppealPage />
-  if (section === 'add-node') return <AddNodePage />
+  // Adding saves the node to the account and signs in there: after login when needed (the address rides in the fragment).
+  if (section === 'add-node') return token ? <AddNodePage /> : <Redirect to={`/login?next=${encodeURIComponent(location.pathname + location.hash)}`} />
   if (section === 'download') return <Suspense fallback={null}><DownloadPage /></Suspense>
   if (!token) return section === 'login' || section === 'register' ? <><Auth key={section} mode={section} /><DialogHost /></> : <Redirect to={`/login${section === 'oauth2' || section === 'developers' || section === 'directory' ? `?next=${encodeURIComponent(location.pathname + location.search)}` : ''}`} />
   if (section === 'developers' && a === 'applications') return <Suspense fallback={null}><DeveloperPortal appId={b} tab={path.split('/')[4]} /></Suspense>
