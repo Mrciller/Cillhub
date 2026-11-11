@@ -9,6 +9,9 @@ const boolean = (v, f) => (typeof v === 'boolean' ? v : fail(f, 'Must be a boole
 const intIn = (min, max) => (v, f) => (Number.isInteger(v) && v >= min && v <= max ? v : fail(f, `Must be an integer between ${min} and ${max}.`));
 const strOrNull = max => (v, f) => (v === null || (typeof v === 'string' && v.length <= max) ? v || null : fail(f, `Must be a string of at most ${max} characters or null.`));
 const isoOrNull = (v, f) => (v === null ? null : typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : fail(f, 'Must be an ISO8601 timestamp or null.'));
+// server lists in the rail (folders, order) also hold node servers, as the client names them: <node id>:<snowflake>
+const GUILD_REF = /^\d{1,19}(:\d{1,20})?$/;
+const guildList = max => (v, f) => (Array.isArray(v) && v.length <= max && v.every(x => typeof x === 'string' && GUILD_REF.test(x)) ? [...new Set(v)] : fail(f, 'Must be a list of server ids.'));
 const snowflakeList = max => (v, f) => (Array.isArray(v) && v.length <= max && v.every(x => typeof x === 'string' && SNOWFLAKE.test(x)) ? [...new Set(v)] : fail(f, 'Must be a list of snowflakes.'));
 
 function customStatus(v, f) {
@@ -27,7 +30,7 @@ function guildFolders(v, f) {
   if (!Array.isArray(v) || v.length > 200) fail(f, 'Must be a list of guild folders.');
   return v.map((x, i) => ({
     id: x?.id == null ? null : intIn(0, 2 ** 31)(x.id, `${f}.${i}.id`),
-    guild_ids: snowflakeList(200)(x?.guild_ids, `${f}.${i}.guild_ids`),
+    guild_ids: guildList(200)(x?.guild_ids, `${f}.${i}.guild_ids`),
     name: strOrNull(100)(x?.name ?? null, `${f}.${i}.name`),
     color: x?.color == null ? null : intIn(0, 0xffffff)(x.color, `${f}.${i}.color`),
   }));
@@ -214,7 +217,7 @@ const SETTINGS = {
   timestamp_hour_cycle: [oneOf('auto', 'h12', 'h23'), 'auto'],
   show_current_game: [boolean, true],
   guild_folders: [guildFolders, []],
-  guild_positions: [snowflakeList(200), []],
+  guild_positions: [guildList(200), []],
   status: [oneOf('online', 'idle', 'dnd', 'invisible'), 'online'],
   custom_status: [customStatus, null],
   // null: never saved. Changed only through /users/@me/settings/private-nodes (one add, one remove, or the first list),
