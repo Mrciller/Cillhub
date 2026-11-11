@@ -44,11 +44,10 @@ impl CillhubApp {
                             let (mark_rect, _) =
                                 ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
                             ui.painter().rect_filled(mark_rect, 0.0, ACCENT());
-                            ui.label(
-                                RichText::new("CILLHUB")
-                                    .font(display_font(18.0))
-                                    .color(ACCENT()),
-                            );
+                            // letter-spacing .2em like `.auth-brand`
+                            let mut job = egui::text::LayoutJob::default();
+                            job.append("CILLHUB", 0.0, egui::TextFormat { font_id: display_font(18.0), color: ACCENT(), extra_letter_spacing: 3.6, ..Default::default() });
+                            ui.label(job);
                         });
 
                         ui.add_space(6.0);
@@ -202,7 +201,7 @@ impl CillhubApp {
                                         egui::Button::new(
                                             RichText::new(tr("Go back to login"))
                                                 .font(ui_font(13.0))
-                                                .color(ACCENT()),
+                                                .color(FOCUS()).underline(),
                                         )
                                         .frame(false),
                                     )
@@ -252,7 +251,7 @@ impl CillhubApp {
                                         egui::Button::new(
                                             RichText::new(tr("Go back to login"))
                                                 .font(ui_font(13.0))
-                                                .color(ACCENT()),
+                                                .color(FOCUS()).underline(),
                                         )
                                         .frame(false),
                                     )
@@ -264,21 +263,7 @@ impl CillhubApp {
                             AuthMode::Login | AuthMode::Register => {
                                 let is_reg = self.auth_mode == AuthMode::Register;
 
-                                Self::field_label(
-                                    ui,
-                                    if is_reg {
-                                        tr("Username")
-                                    } else {
-                                        tr("Email or username")
-                                    },
-                                );
-                                Self::auth_text_input(
-                                    ui,
-                                    &mut self.auth_login_input,
-                                    "",
-                                    false,
-                                );
-
+                                // register: Email, Username, Password like the web
                                 if is_reg {
                                     self.load_instance_info();
                                     if registration_closed(self.instance_info.as_ref()) {
@@ -297,7 +282,6 @@ impl CillhubApp {
                                                 .color(YELLOW()),
                                         );
                                     }
-                                    ui.add_space(12.0);
                                     Self::field_label(ui, tr("Email"));
                                     Self::auth_text_input(
                                         ui,
@@ -305,7 +289,22 @@ impl CillhubApp {
                                         "",
                                         false,
                                     );
+                                    ui.add_space(12.0);
                                 }
+                                Self::field_label(
+                                    ui,
+                                    if is_reg {
+                                        tr("Username")
+                                    } else {
+                                        tr("Email or username")
+                                    },
+                                );
+                                Self::auth_text_input(
+                                    ui,
+                                    &mut self.auth_login_input,
+                                    "",
+                                    false,
+                                );
 
                                 ui.add_space(12.0);
                                 Self::field_label(ui, tr("Password"));
@@ -360,8 +359,8 @@ impl CillhubApp {
                                                 } else {
                                                     tr("Register")
                                                 })
-                                                .font(bold_font(13.0))
-                                                .color(ACCENT()),
+                                                .font(ui_font(14.0))
+                                                .color(FOCUS()).underline(),
                                             )
                                             .frame(false),
                                         )
@@ -384,7 +383,7 @@ impl CillhubApp {
                                                         egui::Button::new(
                                                             RichText::new(tr("Forgot password?"))
                                                                 .font(ui_font(13.0))
-                                                                .color(ACCENT()),
+                                                                .color(FOCUS()).underline(),
                                                         )
                                                         .frame(false),
                                                     )

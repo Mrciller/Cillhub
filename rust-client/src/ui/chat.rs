@@ -100,7 +100,7 @@ impl CillhubApp {
                 self.active_drawer = Some(DrawerKind::Search);
                 self.run_search();
             }
-            if in_guild && icon_btn(ui, IconKind::People, tr("Show Member List"), self.show_member_list, false).clicked() {
+            if in_guild && !matches!(channel.kind, 2 | 13) && icon_btn(ui, IconKind::People, tr("Show Member List"), self.show_member_list, false).clicked() {
                 self.show_member_list = !self.show_member_list;
             }
             let canvas_open = self.active_drawer == Some(DrawerKind::Canvas);
@@ -129,40 +129,41 @@ impl CillhubApp {
             }
         });
 
-        // If this is a Stage channel (type 13), show Stage controls banner
-        if channel.kind == 13 {
-            self.render_stage_banner(ui, channel);
-        } else if channel.kind == 2 {
-            let mut here: Vec<String> = self
+        // Voice and stage channels: the web's `.voice-view` (rail-dark body) with the people in
+        // it and the notice in the web's `.voice-error` box. No call buttons: this app has no
+        // audio yet, so none of them could work.
+        if matches!(channel.kind, 2 | 13) {
+            let body = ui.available_rect_before_wrap();
+            ui.painter().rect_filled(body, 0.0, BG_RAIL());
+            let mut here: Vec<(String, String)> = self
                 .state
                 .voice_states
                 .values()
                 .filter(|vs| vs.channel_id.as_deref() == Some(channel.id.as_str()))
                 .map(|vs| {
-                    self.state
-                        .users
-                        .get(&vs.user_id)
-                        .map(|u| u.display_name().to_string())
-                        .unwrap_or_else(|| vs.user_id.clone())
+                    let name = self.state.users.get(&vs.user_id).map(|u| u.display_name().to_string()).unwrap_or_else(|| vs.user_id.clone());
+                    (vs.user_id.clone(), name)
                 })
                 .collect();
-            here.sort();
-            let who = if here.is_empty() {
-                tr("Nobody is in this channel.").to_string()
-            } else {
-                trf("In this channel: {names}", &[("names", &here.join(", "))])
-            };
-            Frame::new()
-                .fill(BG_PANEL())
-                .inner_margin(Margin::symmetric(16, 10))
-                .show(ui, |ui| {
-                    ui.label(RichText::new(who).font(bold_font(13.0)).color(TEXT_HEADER()));
-                    ui.label(
-                        RichText::new(tr(super::VOICE_UNAVAILABLE))
-                            .font(ui_font(12.5))
-                            .color(TEXT_MUTED()),
-                    );
+            here.sort_by(|a, b| a.1.cmp(&b.1));
+            let mut v = ui.new_child(egui::UiBuilder::new().max_rect(body.shrink(16.0)).layout(Layout::top_down(Align::Center)));
+            v.add_space(6.0);
+            let notice = tr(super::VOICE_UNAVAILABLE);
+            let g = v.painter().layout_no_wrap(notice.to_string(), ui_font(13.0), DANGER());
+            let (r, _) = v.allocate_exact_size(g.size() + Vec2::new(28.0, 16.0), Sense::hover());
+            v.painter().rect(r, CornerRadius::same(2), DANGER().gamma_multiply(0.15), Stroke::new(1.0_f32, DANGER().gamma_multiply(0.4)), egui::StrokeKind::Inside);
+            v.painter().galley(r.min + Vec2::new(14.0, 8.0), g, DANGER());
+            v.add_space(16.0);
+            if here.is_empty() {
+                v.label(RichText::new(tr("Nobody is in this channel.")).font(ui_font(14.0)).color(TEXT_MUTED()));
+            }
+            for (uid, name) in here {
+                v.horizontal(|ui| {
+                    draw_avatar(ui, 32.0, &uid, &name, None, BG_RAIL());
+                    ui.label(RichText::new(name).font(bold_font(14.0)).color(TEXT_HEADER()));
                 });
+            }
+            return;
         }
 
         // 2. Bottom `.composer-wrap` reserved first so `.messages` fills remaining height
@@ -199,6 +200,11 @@ impl CillhubApp {
                     .auto_shrink([false, false])
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
+                        // few messages sit at the bottom like the web's list (space measured last frame)
+                        let pad_id = ui.id().with("bottom_pad");
+                        let pad = ui.data(|d| d.get_temp::<f32>(pad_id)).unwrap_or(0.0);
+                        let top = ui.min_rect().min.y;
+                        ui.add_space(pad);
                         // `.channel-start` notched HUD banner (`Chat.tsx`)
                         Frame::new()
                             .inner_margin(Margin::symmetric(16, 12))
@@ -262,7 +268,15 @@ impl CillhubApp {
                             });
 
                         let mut prev_author_id: Option<String> = None;
+                        let mut prev_day = None;
                         for msg in &messages {
+                            // `.date-divider` before the first message of each day
+                            let day = msg.timestamp.as_deref().and_then(local_time).map(|t| t.date());
+                            if day.is_some() && day != prev_day {
+                                date_divider(ui, day.unwrap_or_default());
+                                prev_author_id = None;
+                            }
+                            prev_day = day;
                             let cur_author = msg
                                 .author
                                 .as_ref()
@@ -274,44 +288,13 @@ impl CillhubApp {
                             prev_author_id = Some(cur_author);
                         }
                         ui.add_space(8.0);
+                        let content = ui.min_rect().max.y - top - pad;
+                        let free = (ui.clip_rect().height() - content).max(0.0);
+                        if (free - pad).abs() > 0.5 {
+                            ui.data_mut(|d| d.insert_temp(pad_id, free));
+                            ui.ctx().request_repaint();
+                        }
                     });
-            });
-    }
-
-    fn render_stage_banner(&mut self, ui: &mut Ui, channel: &Channel) {
-        let stage = self.state.stage_instances.get(&channel.id).cloned();
-        Frame::new()
-            .fill(BG_PANEL())
-            .stroke(Stroke::new(1.0_f32, ACCENT()))
-            .inner_margin(Margin::symmetric(16, 10))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(tr("Stage").to_uppercase())
-                            .font(display_font(14.0))
-                            .color(ACCENT()),
-                    );
-                    if let Some(st) = &stage {
-                        ui.label(
-                            RichText::new(&st.topic)
-                                .font(bold_font(13.5))
-                                .color(TEXT_HEADER()),
-                        );
-                    } else {
-                        ui.label(
-                            RichText::new(tr("No active stage topic"))
-                                .font(ui_font(13.0))
-                                .color(TEXT_MUTED()),
-                        );
-                    }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(tr(super::VOICE_UNAVAILABLE))
-                                .font(ui_font(12.5))
-                                .color(TEXT_MUTED()),
-                        );
-                    });
-                });
             });
     }
 
@@ -1874,6 +1857,28 @@ pub fn emoji_list() -> &'static [(&'static str, Vec<(String, String)>)] {
 
 fn local_time(iso: &str) -> Option<chrono::NaiveDateTime> {
     chrono::DateTime::parse_from_rfc3339(iso).ok().map(|t| t.with_timezone(&chrono::Local).naive_local())
+}
+
+/// `.date-divider`: rule, 13px condensed date with .12em spacing, rule (margin 16px 16px 8px).
+fn date_divider(ui: &mut Ui, day: chrono::NaiveDate) {
+    use chrono::Datelike;
+    const DE: [&str; 12] = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+    let label = if crate::i18n::is_german() {
+        format!("{}. {} {}", day.day(), DE[day.month0() as usize], day.year())
+    } else {
+        day.format("%B %-d, %Y").to_string()
+    };
+    ui.add_space(16.0);
+    let g = crate::theme::spaced_text(ui, &label.to_uppercase(), 13.0, TEXT_MUTED());
+    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 16.0), Sense::hover());
+    let r = r.shrink2(Vec2::new(16.0, 0.0));
+    let (w, y) = (g.size().x, r.center().y);
+    let x0 = r.center().x - w / 2.0;
+    let p = ui.painter();
+    p.hline(r.min.x..=(x0 - 10.0), y, Stroke::new(1.0_f32, BORDER()));
+    p.hline((x0 + w + 10.0)..=r.max.x, y, Stroke::new(1.0_f32, BORDER()));
+    p.galley(Pos2::new(x0, y - g.size().y / 2.0), g, TEXT_MUTED());
+    ui.add_space(8.0);
 }
 
 /// Hour and minute in the UI language (web appearance/format.ts clock()).

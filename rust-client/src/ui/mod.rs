@@ -1236,9 +1236,6 @@ impl CillhubApp {
                                 };
                                 let name = ch.name.as_deref().unwrap_or("");
                                 if Self::sidebar_row(ui, icon, name, active, None).clicked() {
-                                    if matches!(ch.kind, 2 | 13) {
-                                        self.show_voice_unavailable();
-                                    }
                                     self.selected_channel_id = Some(ch.id.clone());
                                     self.load_channel_history(&ch.id);
                                 }
@@ -1895,7 +1892,13 @@ impl CillhubApp {
                 .show(ctx, |ui| {
                     self.render_drawer(ui, drawer);
                 });
-        } else if self.show_member_list {
+        } else if self.show_member_list
+            && !self
+                .selected_channel_id
+                .as_ref()
+                .and_then(|c| self.state.channels.get(c))
+                .is_some_and(|c| matches!(c.kind, 2 | 13))
+        {
             if let Some(gid) = self.selected_guild_id.clone() {
                 SidePanel::right("member_list_panel")
                     .exact_width(216.0)
@@ -1966,7 +1969,6 @@ mod tests {
         assert!(!out.shapes.is_empty());
         assert!(rx.try_recv().is_err(), "no voice state may be sent");
         assert!(!app.state.voice_states.contains_key("u_me"));
-        assert_eq!(app.status_banner.as_deref(), Some(VOICE_UNAVAILABLE));
     }
 
     #[test]
