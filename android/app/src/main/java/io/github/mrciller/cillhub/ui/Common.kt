@@ -84,9 +84,10 @@ fun groupIconUrl(c: Channel): String? = c.icon?.let { Config.cdn("/channel-icons
 
 /** An image with a letter fallback (no image, or it failed to load). */
 @Composable
-fun Picture(url: String?, letterOf: String, id: String, size: Dp, shape: Shape = CircleShape, modifier: Modifier = Modifier) {
-    Box(modifier.size(size).clip(shape).background(idColor(id)), contentAlignment = Alignment.Center) {
-        Text(letterOf.trim().take(1).uppercase().ifEmpty { "?" }, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = (size.value * 0.42f).sp)
+fun Picture(url: String?, letterOf: String, id: String, size: Dp, shape: Shape = CircleShape, modifier: Modifier = Modifier,
+            color: Color = idColor(id), letterColor: Color = Color.White) {
+    Box(modifier.size(size).clip(shape).background(color), contentAlignment = Alignment.Center) {
+        Text(letterOf.trim().take(1).uppercase().ifEmpty { "?" }, color = letterColor, fontWeight = FontWeight.SemiBold, fontSize = (size.value * 0.42f).sp)
         if (url != null) AsyncImage(url, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
     }
 }

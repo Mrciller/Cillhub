@@ -153,7 +153,9 @@ private fun ServerRail(state: State, selected: String?, select: (String) -> Unit
                         .semantics(mergeDescendants = true) { contentDescription = desc; this.selected = isSel },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Picture(guildIconUrl(g), g.name, g.id, 50.dp, shape)
+                    // the selected server's letter tile is the one accent element of the rail
+                    if (isSel) Picture(guildIconUrl(g), g.name, g.id, 50.dp, shape, color = MaterialTheme.colorScheme.primary, letterColor = MaterialTheme.colorScheme.onPrimary)
+                    else Picture(guildIconUrl(g), g.name, g.id, 50.dp, shape)
                 }
                 CountBadge(badge.mentions, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 4.dp))
             }
