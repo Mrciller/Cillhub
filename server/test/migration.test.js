@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { scryptSync } from 'node:crypto';
 import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
-import { startServer, tempDir } from './helpers.js';
+import { startServer, tempDir, until } from './helpers.js';
 
 test('a v1 database upgrades in place to v3', async () => {
   const dir = await tempDir();
@@ -365,6 +365,47 @@ test('a v10 database upgrades to v11: message_ttl, quality_mode, canvas, onboard
   assert.equal(db.prepare("SELECT calendar_token FROM users WHERE id = '100'").get().calendar_token, null);
   assert.equal(db.prepare("SELECT solved_message_id FROM channels WHERE id = '300'").get().solved_message_id, null);
   assert.equal(db.prepare("SELECT vanity_code FROM guilds WHERE id = '200'").get().vanity_code, null);
+  db.close();
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('a v19 database upgrades to v20: DM lifetimes set before the upgrade keep the older messages', async () => {
+  const dir = await tempDir();
+  const file = join(dir, 'cillcord.sqlite');
+  const v19 = new DatabaseSync(file);
+  v19.exec(readFileSync(new URL('./fixtures/v10-schema.sql', import.meta.url), 'utf8'));
+  for (const f of ['011-v9', '012-v9-phase4', '013-v10', '014-v11', '015-v12', '016-v13', '017-role-scope', '018-attachment-sig', '019-password-reset']) {
+    v19.exec(readFileSync(new URL(`../src/migrations/${f}.sql`, import.meta.url), 'utf8'));
+  }
+  const old = String((BigInt(Date.now() - 2 * 86_400_000) - 1420070400000n) << 22n); // two days old
+  const hash = scryptSync('hunter2hunter2', 'salt', 64).toString('hex');
+  v19.exec(`
+    PRAGMA user_version = 19;
+    INSERT INTO users (id, email, username, password_hash, salt) VALUES ('100', 'alex@example.com', 'alex', '${hash}', 'salt'), ('101', 'sam@example.com', 'sam', '${hash}', 'salt');
+    INSERT INTO guilds (id, name, owner_id) VALUES ('200', 'Old Guild', '100');
+    INSERT INTO roles (id, guild_id, name, position, permissions) VALUES ('200', '200', '@everyone', 0, '673423025360449');
+    INSERT INTO members (guild_id, user_id, joined_at) VALUES ('200', '100', '2026-01-01T00:00:00.000Z');
+    INSERT INTO channels (id, type, guild_id, name, position, message_ttl) VALUES ('300', 0, '200', 'general', 0, 86400);
+    INSERT INTO channels (id, type, message_ttl) VALUES ('500', 1, 86400), ('501', 3, 86400);
+    INSERT INTO dm_recipients (channel_id, user_id) VALUES ('500', '100'), ('500', '101'), ('501', '100'), ('501', '101');
+    INSERT INTO messages (id, channel_id, author_id, content, timestamp) VALUES
+      ('${old}', '300', '100', 'guild', '2026-01-01T00:00:00.000Z'), ('${BigInt(old) + 1n}', '500', '101', 'dm', '2026-01-01T00:00:00.000Z'),
+      ('${BigInt(old) + 2n}', '501', '101', 'group', '2026-01-01T00:00:00.000Z');`);
+  v19.close();
+
+  const srv = await startServer({ dataDir: dir });
+  try {
+    const { token } = (await srv.api('POST', '/auth/login', null, { login: 'alex', password: 'hunter2hunter2' })).body;
+    // the guild channel's lifetime still covers its history: once that message is gone the sweep has run
+    await until(async () => (await srv.api('GET', '/channels/300/messages', token)).body.length === 0, 5000);
+    assert.deepEqual((await srv.api('GET', '/channels/500/messages', token)).body.map(m => m.content), ['dm']);
+    assert.deepEqual((await srv.api('GET', '/channels/501/messages', token)).body.map(m => m.content), ['group']);
+  } finally {
+    await srv.stop(true);
+  }
+  const db = new DatabaseSync(file);
+  assert.equal(db.prepare("SELECT message_ttl_since FROM channels WHERE id = '300'").get().message_ttl_since, null);
+  assert.ok(BigInt(db.prepare("SELECT message_ttl_since FROM channels WHERE id = '500'").get().message_ttl_since) > BigInt(old));
   db.close();
   await rm(dir, { recursive: true, force: true });
 });
