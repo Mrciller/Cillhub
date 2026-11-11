@@ -2027,6 +2027,18 @@ mod tests {
         assert_eq!(app.state.messages["c_general"], before);
         assert_eq!(app.composer_text, "not sent", "the draft stays for a retry");
         assert!(app.status_banner.is_some());
+
+        // failed creations make up nothing and keep the input
+        let (guilds, channels) = (app.state.guilds.len(), app.state.channels.len());
+        app.new_guild_name_input = "Taylor's server".into();
+        app.create_guild();
+        app.create_thread_from_message("c_general", &before[0]);
+        let kim = User { id: "u_kim".into(), username: "kim".into(), ..Default::default() };
+        app.open_or_create_dm(&kim);
+        settle(&mut app);
+        assert_eq!((app.state.guilds.len(), app.state.channels.len()), (guilds, channels));
+        assert_eq!(app.new_guild_name_input, "Taylor's server");
+        assert_eq!(app.selected_channel_id.as_deref(), Some("c_general"));
     }
 
     #[test]

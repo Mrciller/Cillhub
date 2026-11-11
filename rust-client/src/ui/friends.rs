@@ -355,20 +355,18 @@ impl CillhubApp {
             return;
         }
         if let Some(api) = &self.api {
-            if let Ok(val) =
-                api.post("/users/@me/channels", json!({ "recipient_id": target.id }))
-            {
-                if let Ok(ch) = serde_json::from_value::<Channel>(val) {
-                    let cid = ch.id.clone();
-                    self.state.channels.insert(cid.clone(), ch);
-                    self.selected_guild_id = None;
-                    self.selected_channel_id = Some(cid.clone());
-                    self.load_channel_history(&cid);
-                    return;
-                }
+            let r = api.post("/users/@me/channels", json!({ "recipient_id": target.id }));
+            let ch = report(&mut self.status_banner, r).map(serde_json::from_value::<Channel>);
+            if let Some(ch) = ch.and_then(|c| report(&mut self.status_banner, c)) {
+                let cid = ch.id.clone();
+                self.state.channels.insert(cid.clone(), ch);
+                self.selected_guild_id = None;
+                self.selected_channel_id = Some(cid.clone());
+                self.load_channel_history(&cid);
             }
+            return;
         }
-        // Fallback for local/demo mode
+        // demo mode (--demo, no server) only
         let cid = format!("dm_{}", target.id);
         let ch = Channel {
             id: cid.clone(),

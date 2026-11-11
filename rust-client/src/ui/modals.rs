@@ -598,18 +598,21 @@ impl CillhubApp {
             });
     }
 
-    fn create_guild(&mut self) {
+    pub fn create_guild(&mut self) {
         let name = self.new_guild_name_input.trim().to_string();
         if name.is_empty() {
             return;
         }
-        self.new_guild_name_input.clear();
         if let Some(api) = &self.api {
-            if let Ok(val) = api.post("/guilds", json!({ "name": name })) {
+            // a failed request reports why and keeps the name for a retry
+            if let Some(val) = report(&mut self.status_banner, api.post("/guilds", json!({ "name": name }))) {
+                self.new_guild_name_input.clear();
                 report(&mut self.status_banner, self.state.apply("GUILD_CREATE", val));
-                return;
             }
+            return;
         }
+        // demo mode (--demo, no server) only
+        self.new_guild_name_input.clear();
         let gid = format!("g_{}", self.next_local_id());
         let cid = format!("c_{}", self.next_local_id());
         let ch = Channel {

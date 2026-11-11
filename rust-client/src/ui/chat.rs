@@ -1703,18 +1703,16 @@ impl CillhubApp {
             msg.content.chars().take(32).collect()
         };
         if let Some(api) = &self.api {
-            if let Ok(val) = api.post(
-                &format!("/channels/{channel_id}/messages/{}/threads", msg.id),
-                json!({ "name": name }),
-            ) {
-                if let Ok(th) = serde_json::from_value::<Channel>(val) {
-                    let tid = th.id.clone();
-                    self.state.channels.insert(tid.clone(), th);
-                    self.selected_channel_id = Some(tid);
-                    return;
-                }
+            let r = api.post(&format!("/channels/{channel_id}/messages/{}/threads", msg.id), json!({ "name": name }));
+            let th = report(&mut self.status_banner, r).map(serde_json::from_value::<Channel>);
+            if let Some(th) = th.and_then(|t| report(&mut self.status_banner, t)) {
+                let tid = th.id.clone();
+                self.state.channels.insert(tid.clone(), th);
+                self.selected_channel_id = Some(tid);
             }
+            return;
         }
+        // demo mode (--demo, no server) only
         let tid = format!("th_{}", self.next_local_id());
         let th = Channel {
             id: tid.clone(),
