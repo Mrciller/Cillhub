@@ -188,6 +188,7 @@ test('public notice: field rules, captcha when configured, receipt mail, status 
   assert.ok(n.body.code.length >= 20 && n.body.receipt_mailed);
   const receipt = (await mailTo('kim@example.org')).data.replace(/=\n/g, '');
   assert.match(receipt, new RegExp(n.body.id));
+  assert.match(receipt, /--=20\nExample Verein\nhttps:\/\/chat\.example\.org\/imprint/, 'mail footer from the operator fields');
   const status = await api('POST', '/legal/notices/status', null, { code: n.body.code });
   assert.deepEqual([status.body.status, status.body.category, status.body.decision], ['open', 'hate_speech', null]);
   assert.ok(!JSON.stringify(status.body).includes('kim@'), 'nothing about the notifier');

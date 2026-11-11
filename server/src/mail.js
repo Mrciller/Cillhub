@@ -14,9 +14,16 @@ function transport() {
   });
 }
 
+// 7.11: who sends the mail, once the operator filled in a name (a Verein or company names itself on its correspondence)
+function footer() {
+  const name = setting('legal_operator')?.name;
+  const url = setting('public_url') ?? process.env.CILLCORD_PUBLIC_URL;
+  return name ? `\n-- \n${name}${url ? `\n${url.replace(/\/+$/, '')}/imprint` : ''}\n` : '';
+}
+
 export async function sendMail({ to, subject, text }) {
   if (!mailConfigured()) throw new Error('Email is not set up on this instance.');
-  return transport().sendMail({ from: setting('smtp_from'), to, subject, text });
+  return transport().sendMail({ from: setting('smtp_from'), to, subject, text: text + footer() });
 }
 
 // an SMTP error for the admin: its text, never the password
