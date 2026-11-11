@@ -14,6 +14,7 @@ quickjs-emscripten-core and the QuickJS-ng WebAssembly build (MIT), AndroidX and
 @sapphi-red/web-noise-suppressor (MIT, with RNNoise, BSD-3-Clause), qrcode-generator (MIT). The desktop app uses Tauri
 and its plugins single-instance, deep-link, window-state, autostart and opener (Apache-2.0 OR MIT), serde, serde_json,
 url, base64, sha2 and reqwest (MIT OR Apache-2.0), sysinfo (MIT) and ed25519-dalek (BSD-3-Clause). Bundled fonts
-(Inter, JetBrains Mono, OpenDyslexic, Orbitron) are under the SIL Open Font
-License; their license texts are in client/public/fonts/.
+(Inter, Barlow Condensed, JetBrains Mono, OpenDyslexic, Orbitron) are under the SIL Open Font
+License; their license texts are in client/public/fonts/. The Android app bundles Inter, Barlow Condensed
+and JetBrains Mono (SIL Open Font License) with their license texts in android/app/src/main/assets/fonts/.
 cillvoice, the built-in SFU, was written for this project; mediasoup (ISC) served as a design reference only.
