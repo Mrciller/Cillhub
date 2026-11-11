@@ -14,6 +14,8 @@ COPY server/package*.json ./
 RUN npm ci --omit=dev
 COPY server/ ./
 COPY examples/ /app/examples/
+# AGPL-3.0 and the third-party notices, served at /licenses (server/src/routes/legal.js)
+COPY LICENSE NOTICE /app/
 COPY --from=client /app/client/dist /app/client/dist
 ENV PORT=3000 DATA_DIR=/data STATIC_DIR=/app/client/dist NODE_ENV=production CILLCORD_VERSION=7.10.3
 VOLUME /data
