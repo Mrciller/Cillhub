@@ -181,6 +181,9 @@ pub struct CillhubApp {
     pub editing_message_id: Option<String>,
     /// Spoilers clicked open: (message id, spoiler index).
     pub revealed_spoilers: std::collections::HashSet<(String, u16)>,
+    /// Parsed message Markdown by content: (made at, for guild, blocks).
+    #[allow(clippy::type_complexity)]
+    md_cache: (Instant, Option<String>, std::collections::HashMap<String, std::rc::Rc<Vec<crate::markdown::Block>>>),
     /// Message whose toolbar was shown last frame (keeps it while the pointer is on the toolbar).
     pub toolbar_msg: Option<String>,
     /// Open "More" menu: (message id, anchor).
@@ -315,6 +318,7 @@ impl CillhubApp {
             image_cache: images::Cache::default(),
             lightbox: None,
             forget_images: false,
+            md_cache: (Instant::now(), None, Default::default()),
             show_composer_plus_menu: false,
             plus_anchor: Pos2::ZERO,
             poll_answers: vec![String::new(), String::new()],

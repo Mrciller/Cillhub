@@ -1013,6 +1013,17 @@ impl CillhubApp {
     /// Message text through the web client's Markdown rules (see crate::markdown).
     fn render_formatted_content(&mut self, ui: &mut Ui, msg_id: &str, content: &str) {
         let gid = self.selected_guild_id.clone();
+        // parsed once per content; names and relative times may be a minute old
+        let (born, cache_gid, cache) = &mut self.md_cache;
+        if born.elapsed() > std::time::Duration::from_secs(60) || *cache_gid != gid || cache.len() > 2000 {
+            *born = std::time::Instant::now();
+            cache_gid.clone_from(&gid);
+            cache.clear();
+        }
+        if let Some(blocks) = cache.get(content).cloned() {
+            self.render_md_blocks(ui, msg_id, &blocks);
+            return;
+        }
         let state = &self.state;
         let user = |id: &str| {
             let m = gid.as_ref().and_then(|g| state.members.get(g)).and_then(|m| m.get(id));
@@ -1026,7 +1037,8 @@ impl CillhubApp {
         let channel = |id: &str| state.channels.get(id).and_then(|c| c.name.clone());
         let time = |unix: i64, style: char| unix_time(unix, style);
         let ctx = crate::markdown::Ctx { user: &user, role: &role, channel: &channel, time: &time };
-        let blocks = crate::markdown::parse(content, &ctx);
+        let blocks = std::rc::Rc::new(crate::markdown::parse(content, &ctx));
+        self.md_cache.2.insert(content.to_string(), blocks.clone());
         self.render_md_blocks(ui, msg_id, &blocks);
     }
 

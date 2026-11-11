@@ -4,6 +4,8 @@
 //! bold, underline, italic, strike; blocks: code fences, quotes, headers (#, ##, ###), subtext (-#), lists.
 //! Not drawn: KaTeX ($…$ stays text) and tables (stay text).
 
+use std::collections::HashMap;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Style {
     pub bold: bool,
@@ -58,27 +60,19 @@ fn word_before(s: &str, i: usize) -> bool {
     s[..i].chars().next_back().is_some_and(is_word)
 }
 
-/// Start of the first `delim` after `from` (content at least one char) for which `ok` holds.
-fn close(s: &str, from: usize, delim: &str, ok: impl Fn(usize) -> bool) -> Option<usize> {
-    let mut j = from + s[from..].chars().next()?.len_utf8();
-    while let Some(k) = s.get(j..)?.find(delim) {
-        let pos = j + k;
-        if ok(pos) {
-            return Some(pos);
-        }
-        j = pos + 1;
-    }
-    None
-}
-
 fn digits(s: &str) -> usize {
     s.bytes().take_while(u8::is_ascii_digit).count()
 }
+
+/// Longer content is shown as plain text after this many bytes (the hub accepts 2000 chars).
+pub const MAX_PARSED_BYTES: usize = 8000;
 
 struct Inline<'c, 'a> {
     ctx: &'c Ctx<'a>,
     out: Vec<Span>,
     spoilers: u16,
+    /// Per string (address, length) and search: (searched from, first hit). See `first`.
+    memo: HashMap<(usize, usize), HashMap<String, (usize, Option<usize>)>>,
 }
 
 /// What a matched rule adds: plain text, or a slice parsed again with a style (and link).
@@ -88,6 +82,38 @@ enum Act<'s> {
 }
 
 impl Inline<'_, '_> {
+    /// First hit at or after byte `from` of `s` of a search whose answer depends only on the position. Remembered
+    /// per string, so a missing or far delimiter is not searched for again from every later start (that made long
+    /// hostile messages quadratic).
+    fn first(&mut self, s: &str, from: usize, key: &str, search: impl Fn(usize) -> Option<usize>) -> Option<usize> {
+        let m = self.memo.entry((s.as_ptr() as usize, s.len())).or_default();
+        if let Some(&(f0, hit)) = m.get(key) {
+            if from >= f0 && hit.is_none_or(|p| p >= from) {
+                return hit;
+            }
+        }
+        let hit = search(from);
+        m.insert(key.to_string(), (from, hit));
+        hit
+    }
+
+    /// Start (relative to `i`) of the first `delim` after `from` (content at least one char) for which `ok`
+    /// (given absolute positions) holds.
+    fn close(&mut self, s: &str, i: usize, from: usize, delim: &str, key: &str, ok: impl Fn(usize) -> bool) -> Option<usize> {
+        let start = i + from + s[i + from..].chars().next()?.len_utf8();
+        let hit = self.first(s, start, key, |f| {
+            let mut j = f;
+            while let Some(k) = s.get(j..)?.find(delim) {
+                if ok(j + k) {
+                    return Some(j + k);
+                }
+                j += k + 1;
+            }
+            None
+        })?;
+        Some(hit - i)
+    }
+
     fn push(&mut self, text: &str, style: Style, link: Option<String>) {
         if text.is_empty() {
             return;
@@ -118,8 +144,7 @@ impl Inline<'_, '_> {
             let n = rest.bytes().take_while(|&b| b == b'`').count();
             let fence = &rest[..n];
             let mut j = n;
-            while let Some(k) = rest[j..].find(fence) {
-                let pos = j + k;
+            while let Some(pos) = self.first(s, i + j, fence, |f| s[f..].find(fence).map(|k| f + k)).map(|p| p - i) {
                 let run = rest[pos..].bytes().take_while(|&b| b == b'`').count();
                 let content = &rest[n..pos];
                 if run == n && !content.is_empty() && !content.ends_with('`') {
@@ -134,7 +159,7 @@ impl Inline<'_, '_> {
             }
         }
         if c == '<' {
-            let end = rest.find('>')?;
+            let end = self.first(s, i, ">", |f| s[f..].find('>').map(|k| f + k))? - i;
             let tag = &rest[1..end];
             if (tag.starts_with("http://") || tag.starts_with("https://")) && !tag.contains(char::is_whitespace) {
                 return Some((end + 1, text(tag, st, safe_url(tag))));
@@ -176,7 +201,7 @@ impl Inline<'_, '_> {
             return Some((end + 1, Act::Text((self.ctx.time)(v, style), st, None)));
         }
         if c == '[' {
-            let close_text = rest.find(']')?;
+            let close_text = self.first(s, i, "]", |f| s[f..].find(']').map(|k| f + k))? - i;
             let label = &rest[1..close_text];
             if label.is_empty() || label.contains(['[', '\n']) || !rest[close_text..].starts_with("](") {
                 return None;
@@ -186,7 +211,9 @@ impl Inline<'_, '_> {
             if !(after_lt.starts_with("http://") || after_lt.starts_with("https://")) {
                 return None;
             }
-            let url_len = after_lt.find(|ch: char| ch.is_whitespace() || ch == ')' || ch == '>')?;
+            let at = s.len() - after_lt.len();
+            let url_end = |ch: char| ch.is_whitespace() || ch == ')' || ch == '>';
+            let url_len = self.first(s, at, "url-end", |f| s[f..].find(url_end).map(|k| f + k))? - at;
             let tail = &after_lt[url_len..];
             let gt = usize::from(tail.starts_with('>'));
             if !tail[gt..].starts_with(')') {
@@ -212,38 +239,38 @@ impl Inline<'_, '_> {
         }
         let nest = |open: usize, end: usize, style: Style| Some((end + open, Act::Nest(&rest[open..end], style, None)));
         if rest.starts_with("||") {
-            if let Some(e) = close(rest, 2, "||", |_| true) {
+            if let Some(e) = self.close(s, i, 2, "||", "||", |_| true) {
                 self.spoilers += 1;
                 return nest(2, e, Style { spoiler: Some(self.spoilers - 1), ..st });
             }
         }
         if rest.starts_with("**") {
-            if let Some(e) = close(rest, 2, "**", |p| !rest[p + 2..].starts_with('*')) {
+            if let Some(e) = self.close(s, i, 2, "**", "**", |p| !s[p + 2..].starts_with('*')) {
                 return nest(2, e, Style { bold: true, ..st });
             }
         }
         if rest.starts_with("__") {
-            if let Some(e) = close(rest, 2, "__", |p| !rest[p + 2..].starts_with('_')) {
+            if let Some(e) = self.close(s, i, 2, "__", "__", |p| !s[p + 2..].starts_with('_')) {
                 return nest(2, e, Style { underline: true, ..st });
             }
         }
         if c == '*' && rest[1..].chars().next().is_some_and(|n| !n.is_whitespace()) {
             let ok = |p: usize| {
-                !rest[..p].chars().next_back().is_some_and(char::is_whitespace) && !rest[p + 1..].starts_with('*')
+                !s[..p].chars().next_back().is_some_and(char::is_whitespace) && !s[p + 1..].starts_with('*')
             };
-            if let Some(e) = close(rest, 1, "*", ok) {
+            if let Some(e) = self.close(s, i, 1, "*", "*i", ok) {
                 return nest(1, e, Style { italic: true, ..st });
             }
         }
         if c == '_' && !word_before(s, i) {
-            if let Some(p) = rest[1..].find('_').map(|p| p + 1).filter(|&p| p > 1) {
+            if let Some(p) = self.first(s, i + 1, "_", |f| s[f..].find('_').map(|k| f + k)).map(|p| p - i).filter(|&p| p > 1) {
                 if !rest[p + 1..].chars().next().is_some_and(|n| is_word(n) || n == '_') {
                     return nest(1, p, Style { italic: true, ..st });
                 }
             }
         }
         if rest.starts_with("~~") {
-            if let Some(e) = close(rest, 2, "~~", |_| true) {
+            if let Some(e) = self.close(s, i, 2, "~~", "~~", |_| true) {
                 return nest(2, e, Style { strike: true, ..st });
             }
         }
@@ -277,7 +304,7 @@ impl Inline<'_, '_> {
 }
 
 fn spans(s: &str, ctx: &Ctx, spoilers: &mut u16) -> Vec<Span> {
-    let mut p = Inline { ctx, out: Vec::new(), spoilers: *spoilers };
+    let mut p = Inline { ctx, out: Vec::new(), spoilers: *spoilers, memo: HashMap::new() };
     p.inline(s, Style::default(), None, 0);
     *spoilers = p.spoilers;
     p.out
@@ -349,6 +376,19 @@ fn blocks(src: &str, ctx: &Ctx, quoted: bool, sp: &mut u16, out: &mut Vec<Block>
 
 /// Parses a message: code fences first (```lang\n…```), Markdown blocks around them.
 pub fn parse(content: &str, ctx: &Ctx) -> Vec<Block> {
+    let mut cut = content.len().min(MAX_PARSED_BYTES);
+    while !content.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let (content, rest) = content.split_at(cut);
+    let mut out = parse_all(content, ctx);
+    if !rest.is_empty() {
+        out.push(Block::Text(vec![Span { text: rest.to_string(), style: Style::default(), link: None }]));
+    }
+    out
+}
+
+fn parse_all(content: &str, ctx: &Ctx) -> Vec<Block> {
     let mut out = Vec::new();
     let mut sp = 0u16;
     let mut last = 0;
@@ -393,6 +433,21 @@ mod tests {
         let none = |_: &str| None;
         let time = |v: i64, st: char| format!("T{v}{st}");
         parse(s, &Ctx { user: &user, role: &none, channel: &none, time: &time })
+    }
+
+    #[test]
+    fn hostile_content_parses_fast() {
+        let t = std::time::Instant::now();
+        let blocks = ctx_parse(&"<".repeat(500_000));
+        let shown: usize = blocks.iter().map(|b| match b { Block::Text(sp) => sp.iter().map(|s| s.text.len()).sum(), _ => 0 }).sum();
+        assert_eq!(shown, 500_000, "nothing is lost, the rest is plain text");
+        // below the cap every starter fails against the same missing (or rejected) delimiter
+        for evil in ["<", "[", "*", "**", "_", "__", "||", "~~", "`", "[a](http"] {
+            ctx_parse(&evil.repeat(MAX_PARSED_BYTES / evil.len()));
+        }
+        ctx_parse(&format!("**{}", "*".repeat(MAX_PARSED_BYTES)));
+        ctx_parse(&format!("{}>", "<".repeat(MAX_PARSED_BYTES - 1)));
+        assert!(t.elapsed() < std::time::Duration::from_secs(1), "{:?}", t.elapsed());
     }
 
     fn line(s: &str) -> Vec<Span> {
