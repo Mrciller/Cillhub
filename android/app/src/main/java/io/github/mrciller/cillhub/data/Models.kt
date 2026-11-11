@@ -391,7 +391,7 @@ data class Profile(
 data class InstanceInfo(val name: String? = null, val motd: String? = null, val registrationMode: String = "open", val maxUploadBytes: Long = 25L * 1024 * 1024, val setupPending: Boolean = false,
     /** 7.10: password reset by email is offered. */
     val passwordReset: Boolean = false,
-    /** 7.11: the legal pages and sign-up checks; null on older servers (no checkboxes then). */
+    /** 7.10.3: the legal pages and sign-up checks; null on older servers (no checkboxes then). */
     val legal: LegalInfo? = null)
 
 /** GET /instance `legal`: which pages the operator filled in, the terms version sign-up accepts, the minimum age. */

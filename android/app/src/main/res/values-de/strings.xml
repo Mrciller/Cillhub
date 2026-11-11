@@ -91,6 +91,8 @@
     <string name="legal_privacy">Datenschutzerklärung</string>
     <string name="legal_terms">Nutzungsbedingungen</string>
     <string name="legal_report">Rechtswidrige Inhalte melden</string>
+    <string name="terms_gate_title">Nutzungsbedingungen akzeptieren</string>
+    <string name="terms_gate_open">Website öffnen</string>
     <string name="registration_closed">Die Registrierung ist auf diesem Server geschlossen. Frag den Admin nach einem Konto.</string>
     <string name="mfa_title">Zwei-Faktor-Authentifizierung</string>
     <string name="mfa_text">Gib den 6-stelligen Code aus deiner Authenticator-App ein.</string>

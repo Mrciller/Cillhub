@@ -24,15 +24,19 @@ import java.io.IOException
  * An API error: HTTP status (0 = unreachable), v9 error code, the server's message, retry_after for 429s, and captcha:
  * the server wants a captcha token (sign-up and password reset, 7.10).
  */
-class ApiError(val status: Int, val code: Int, message: String, val retryAfter: Double = 0.0, val captcha: Boolean = false) : IOException(message) {
+class ApiError(val status: Int, val code: Int, message: String, val retryAfter: Double = 0.0, val captcha: Boolean = false, val acceptTerms: Boolean = false) : IOException(message) {
     companion object {
+        /** The server's terms gate message (403 required_actions: accept_terms); "" once the user closed it. */
+        val termsGate = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
         /** The first field message of a 50035 answer ("Username is unavailable."), else the message. */
         fun parse(status: Int, text: String, retryHeader: String?): ApiError {
             val body = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
             val code = body?.get("code")?.jsonPrimitive?.intOrNull ?: 0
             val msg = (if (code == 50035) firstFieldError(body?.get("errors")) else null) ?: body?.get("message")?.jsonPrimitive?.contentOrNull ?: "Request failed ($status)"
             val retry = body?.get("retry_after")?.jsonPrimitive?.doubleOrNull ?: retryHeader?.toDoubleOrNull() ?: 0.0
-            return ApiError(status, code, msg, retry, captcha = body?.containsKey("captcha_key") == true)
+            val terms = body?.get("required_actions")?.let { a -> (a as? kotlinx.serialization.json.JsonArray)?.any { it.jsonPrimitive.contentOrNull == "accept_terms" } } == true
+            return ApiError(status, code, msg, retry, captcha = body?.containsKey("captcha_key") == true, acceptTerms = terms)
         }
 
         private fun firstFieldError(e: JsonElement?): String? {
@@ -103,6 +107,7 @@ class Rest(private val base: () -> String, private val token: () -> String?) {
             }
             if (code in 200..299) return text
             val err = ApiError.parse(code, text, retryAfter)
+            if (err.acceptTerms && ApiError.termsGate.value == null) ApiError.termsGate.value = err.message
             if (code == 429 && retry && attempt < 2 && err.retryAfter in 0.0..5.0) {
                 attempt++
                 delay((err.retryAfter * 1000).toLong() + 100)

@@ -92,6 +92,8 @@
     <string name="legal_privacy">Privacy notice</string>
     <string name="legal_terms">Terms of use</string>
     <string name="legal_report">Report illegal content</string>
+    <string name="terms_gate_title">Accept the terms</string>
+    <string name="terms_gate_open">Open the website</string>
     <string name="registration_closed">Registration is closed on this server. Ask its admin for an account.</string>
     <string name="mfa_title">Two-factor authentication</string>
     <string name="mfa_text">Enter the 6-digit code from your authenticator app.</string>

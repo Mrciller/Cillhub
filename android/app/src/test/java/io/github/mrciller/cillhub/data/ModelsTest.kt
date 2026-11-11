@@ -52,6 +52,13 @@ class ModelsTest {
         assertFalse(e.captcha)
     }
 
+    @Test fun termsGateIsRecognised() {
+        val g = ApiError.parse(403, """{"code":0,"message":"Accept the updated terms of use to continue.","required_actions":["accept_terms"]}""", null)
+        assertEquals(true, g.acceptTerms)
+        assertEquals("Accept the updated terms of use to continue.", g.message)
+        assertFalse(ApiError.parse(403, """{"code":0,"message":"x","required_actions":["update_password"]}""", null).acceptTerms)
+    }
+
     @Test fun captchaRequiredIsRecognised() {
         val c = ApiError.parse(400, """{"message":"Complete the captcha.","captcha_key":["captcha-required"],"captcha_sitekey":"k","captcha_service":"recaptcha"}""", null)
         assertTrue(c.captcha)

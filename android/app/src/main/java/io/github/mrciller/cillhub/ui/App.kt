@@ -54,6 +54,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import io.github.mrciller.cillhub.R
 import io.github.mrciller.cillhub.WebCallActivity
+import io.github.mrciller.cillhub.data.ApiError
 import io.github.mrciller.cillhub.data.Sel
 import io.github.mrciller.cillhub.data.Session
 import io.github.mrciller.cillhub.data.isPrivate
@@ -276,6 +277,17 @@ private fun MainShell() {
                 text = { Text(s(R.string.leaving_text, url)) },
                 confirmButton = { TextButton({ openUrl(ctx, url); link = null }) { Text(s(R.string.leaving_visit)) } },
                 dismissButton = { TextButton({ link = null }) { Text(s(R.string.cancel)) } },
+            )
+        }
+        // the server asks to accept its terms first; this app has no accept screen, the website does
+        val gate by ApiError.termsGate.collectAsStateWithLifecycle()
+        gate?.takeIf { it.isNotEmpty() }?.let { msg ->
+            AlertDialog(
+                onDismissRequest = { ApiError.termsGate.value = "" },
+                title = { Text(s(R.string.terms_gate_title)) },
+                text = { Text(msg) },
+                confirmButton = { TextButton({ openUrl(ctx, io.github.mrciller.cillhub.Config.APP_URL); ApiError.termsGate.value = "" }) { Text(s(R.string.terms_gate_open)) } },
+                dismissButton = { TextButton({ ApiError.termsGate.value = "" }) { Text(s(R.string.cancel)) } },
             )
         }
     }

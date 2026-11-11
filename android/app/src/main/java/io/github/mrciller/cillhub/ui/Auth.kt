@@ -234,7 +234,7 @@ private fun ForgotForm(back: () -> Unit) {
     TextButton(back, Modifier.padding(top = 8.dp)) { Text(s(R.string.back)) }
 }
 
-/** The server's own legal pages (7.11), opened in the browser. */
+/** The server's own legal pages (7.10.3), opened in the browser. */
 @Composable
 private fun LegalLinks() {
     val ctx = LocalContext.current
@@ -274,7 +274,7 @@ private fun RegisterForm(mode: String, legal: LegalInfo?, toLogin: () -> Unit, d
         return
     }
     Spacer(Modifier.height(16.dp))
-    // 7.11 servers: the age always, the terms once the operator published terms or a privacy notice
+    // 7.10.3 servers: the age always, the terms once the operator published terms or a privacy notice
     val askTerms = legal?.acceptVersion != null
     val checked = legal != null && ageOk && (termsOk || !askTerms)
     val ok = email.contains('@') && username.trim().length in 2..32 && password.length >= 8 && (mode != "invite" || code.isNotBlank()) && (legal == null || checked)
