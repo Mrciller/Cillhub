@@ -51,11 +51,11 @@ export function DownloadPage() {
     <div className="download-page">
       <header className="download-nav">
         <div className="download-brand">
-          <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden="true">
-            <rect x="4" y="4" width="92" height="92" rx="22" fill="#00d2b4" />
-            <path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke="#fff" strokeWidth="13.5" strokeLinecap="butt" />
+          <svg className="download-mark" width="32" height="32" viewBox="0 0 100 100" aria-hidden="true">
+            <rect x="4" y="4" width="92" height="92" rx="12" />
+            <path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" strokeWidth="13.5" strokeLinecap="butt" />
           </svg>
-          <strong>Cillhub {beta && <span style={{ color: '#00d2b4', fontSize: '13px', fontWeight: 600, verticalAlign: 'middle', marginLeft: '6px' }}>Beta</span>}</strong>
+          <strong>Cillhub {beta && <span className="download-beta">Beta</span>}</strong>
         </div>
         <div className="download-nav-actions">
           {token ? (
@@ -86,7 +86,7 @@ export function DownloadPage() {
               </span>
             </a>
             {!android && <button type="button" onClick={handleInstallPwa} className="dl-btn secondary">
-              <span className="dl-icon">⚡</span>
+              <span className="dl-icon"><Icon d={ICONS.screen} size={22} /></span>
               <span className="dl-labels">
                 <strong>{installed ? t('Web app installed') : t('Install the web app (PWA)')}</strong>
                 <span className="dl-sub">{t('Install directly from your browser with full desktop integration')}</span>

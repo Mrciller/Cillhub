@@ -24,8 +24,8 @@
   animation: auth-in .3s var(--ease-out);
 }
 .legal-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: var(--accent); }
-.legal-card h1 { color: var(--header); font-size: 36px; margin-bottom: 14px; }
-.legal-card h2 { color: var(--header); font-size: 18px; margin: 22px 0 8px; }
+.legal-card h1 { color: var(--header); font-family: var(--font-display); font-weight: 600; font-size: 36px; line-height: 1.05; letter-spacing: .02em; text-transform: uppercase; margin-bottom: 14px; }
+.legal-card h2 { color: var(--header); font-family: var(--font-display); font-weight: 600; font-size: 22px; line-height: 26px; letter-spacing: .02em; text-transform: uppercase; margin: 22px 0 8px; }
 .legal-card .sub { color: var(--muted); margin-bottom: 18px; }
 .legal-text { line-height: 1.6; overflow-wrap: anywhere; }
 .legal-text .md-h1, .legal-text .md-h2, .legal-text .md-h3 { margin: 18px 0 6px; color: var(--header); }
