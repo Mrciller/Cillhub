@@ -533,7 +533,7 @@ private fun ShareDialog(onDismiss: () -> Unit, onShare: () -> Unit) {
         title = { Text(s(R.string.voice_share_screen).uppercase()) },
         text = {
             Column {
-                Text(s(R.string.voice_share_quality), style = MaterialTheme.typography.labelLarge)
+                Text(s(R.string.voice_share_quality).uppercase(), style = MaterialTheme.typography.labelMedium)
                 for (p in ScreenQuality.entries) Row(
                     Modifier.fillMaxWidth().selectable(p == q, role = Role.RadioButton) { q = p }.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -561,7 +561,7 @@ fun VoiceBar(onOpen: (String) -> Unit) {
         Row(Modifier.clickable(onClickLabel = s(R.string.voice_open)) { onOpen(id) }.padding(start = 16.dp, end = 4.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
             Ic(R.drawable.ms_graphic_eq, null, tint = if (v.status == VStatus.CONNECTED) LocalExtra.current.online else MaterialTheme.colorScheme.onSecondaryContainer)
             Column(Modifier.weight(1f).padding(horizontal = 12.dp).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }) {
-                Text(statusText(ctx, v), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(statusText(ctx, v), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Text(name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             IconButton({ Voice.setSelfMute(!v.selfMute) }) { Ic(if (v.selfMute) R.drawable.ms_mic_off else R.drawable.ms_mic, s(if (v.selfMute) R.string.voice_unmute else R.string.voice_mute)) }

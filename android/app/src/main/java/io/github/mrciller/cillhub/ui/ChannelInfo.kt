@@ -327,13 +327,13 @@ private fun TargetPicker(state: State, gid: String, roles: List<io.github.mrcill
         title = { Text(s(R.string.add_role_or_member).uppercase()) },
         text = {
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                item { Text(s(R.string.roles), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(vertical = 4.dp)) }
+                item { Text(s(R.string.roles).uppercase(), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(vertical = 4.dp)) }
                 items(roles, key = { "r" + it.id }) { r ->
                     ListItem(headlineContent = { Text(if (r.id == gid) "@everyone" else r.name) }, leadingContent = { RoleDot(r.color) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent), modifier = Modifier.clickable { pick(r.id, 0) })
                 }
                 item {
-                    Text(s(R.string.members), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                    Text(s(R.string.members).uppercase(), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                     OutlinedTextField(q, { q = it }, placeholder = { Text(s(R.string.search_members)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
                 items(shown, key = { "m$it" }) { id ->

@@ -199,7 +199,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                 }
                 val bio = profile?.guildMember?.let { profile?.userProfile?.bio }?.takeIf { it.isNotBlank() } ?: profile?.userProfile?.bio?.takeIf { it.isNotBlank() }
                 if (bio != null) {
-                    Text(s(R.string.about_me), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
+                    Text(s(R.string.about_me).uppercase(), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
                     MarkdownText(bio, state, guildId, style = MaterialTheme.typography.bodyMedium)
                 }
                 val g = guildId?.let { state.guilds[it] }
@@ -211,7 +211,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                 val assignable = if (g != null && target != null) g.roles.filter { Perm.canAssignRole(g, meId, myM, it) }.map { it.id }.toSet() else emptySet()
                 fun act(f: suspend () -> Unit) = scope.launch { try { f(); error = null } catch (e: Exception) { error = errorText(ctx, e) } }
                 if (roles.isNotEmpty() || assignable.isNotEmpty()) {
-                    Text(s(R.string.roles), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
+                    Text(s(R.string.roles).uppercase(), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (r in roles) {
                             if (r.id in assignable) InputChip(
@@ -228,7 +228,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                                 Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     RoleDot(r.color, 10.dp)
                                     Spacer(Modifier.width(6.dp))
-                                    Text(r.name, style = MaterialTheme.typography.labelLarge)
+                                    Text(r.name, style = MaterialTheme.typography.titleSmall)
                                 }
                             }
                         }
@@ -244,7 +244,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                     val canKick = Perm.canModerate(g, meId, myM, Perm.KICK_MEMBERS, userId, target)
                     val canBan = Perm.canModerate(g, meId, myM, Perm.BAN_MEMBERS, userId, target)
                     if (canNick || canTimeout || canKick || canBan) {
-                        Text(s(R.string.moderation), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
+                        Text(s(R.string.moderation).uppercase(), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
                         if (Perm.timedOut(target)) Text(s(R.string.timed_out), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (canNick) OutlinedButton({ dialog = "nick" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.nickname).uppercase()) }
@@ -313,7 +313,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                                         Text(s(if (ban) R.string.ban_confirm else R.string.kick_confirm, name))
                                         if (ban) {
                                             OutlinedTextField(reason, { reason = it.take(512) }, label = { Text(s(R.string.ban_reason)) }, modifier = Modifier.fillMaxWidth())
-                                            Text(s(R.string.ban_delete_messages), style = MaterialTheme.typography.labelLarge)
+                                            Text(s(R.string.ban_delete_messages).uppercase(), style = MaterialTheme.typography.labelMedium)
                                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 for ((secs, label) in BAN_WIPE) FilterChip(wipe == secs, { wipe = secs }, label = { Text(s(label)) })
                                             }

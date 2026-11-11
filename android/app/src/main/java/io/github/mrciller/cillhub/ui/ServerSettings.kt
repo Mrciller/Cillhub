@@ -313,7 +313,7 @@ private fun RoleEditor(state: State, g: Guild, r: Role, act: (suspend () -> Unit
         item {
             if (!everyone) OutlinedTextField(name, { name = it.take(100) }, label = { Text(s(R.string.role_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             if (!everyone) {
-                Text(s(R.string.role_color), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                Text(s(R.string.role_color).uppercase(), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (c in ROLE_COLORS) {
                         val label = if (c == 0) ctx.getString(R.string.role_color_none) else "#%06X".format(c)
@@ -540,7 +540,7 @@ private fun CreateChannelDialog(g: Guild, categories: List<Channel>, act: (suspe
                 }
                 OutlinedTextField(name, { name = it.take(100) }, label = { Text(s(R.string.channel_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (type != 4 && categories.isNotEmpty()) {
-                    Text(s(R.string.category), style = MaterialTheme.typography.labelLarge)
+                    Text(s(R.string.category).uppercase(), style = MaterialTheme.typography.labelMedium)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         FilterChip(parent == null, { parent = null }, label = { Text(s(R.string.no_category)) })
                         for (cat in categories) FilterChip(parent == cat.id, { parent = cat.id }, label = { Text(cat.name ?: "") })
