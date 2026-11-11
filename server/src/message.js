@@ -33,8 +33,10 @@ const attachmentsOf = (messageId, inSnapshot = 0) =>
   all('SELECT * FROM attachments WHERE message_id = ? AND in_snapshot = ? ORDER BY rowid', messageId, inSnapshot).map(attachmentObj);
 
 // webhook messages: author is the webhook, with the per-message name and avatar overrides
+// whose row author_id is the author (users and interaction responses); SQL twin of the test in authorOf()
+export const AUTHOR_IS_ID_SQL = '(m.webhook_id IS NULL OR m.application_id IS NOT NULL)';
 function authorOf(m) {
-  if (!m.webhook_id || m.application_id) return userObj(userById(m.author_id));
+  if (!m.webhook_id || m.application_id) return userObj(userById(m.author_id)); // keep AUTHOR_IS_ID_SQL in step
   const w = json(m.webhook_author, {});
   return {
     id: m.webhook_id, username: w.username, discriminator: '0000', global_name: null, avatar: w.avatar ?? null, bot: true,

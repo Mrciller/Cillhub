@@ -86,6 +86,10 @@ test('bots without message content read no content through pins, search or edit 
   assert.deepEqual([res.total_results, res.messages.flat().map(x => x.id)], [1, [ping.id]], 'the hidden message is not matched by its text');
   assert.equal((await search(`content=second&min_id=${BigInt(m.id) - 1n}&max_id=${BigInt(m.id) + 1n}`)).total_results, 0);
   assert.equal((await search(`has=link&author_id=${alex.id}`)).total_results, 0, 'nor by what it contains');
+  // its own interaction response (author and webhook are the app) is readable to it, so it is found
+  dbRun(`INSERT INTO messages (id, channel_id, author_id, webhook_id, application_id, content, timestamp) VALUES (?, ?, ?, ?, ?, 'own needle', ?)`,
+    '1500000000000000001', g.general.id, app.id, app.id, app.id, new Date().toISOString());
+  assert.equal((await search('content=needle')).total_results, 1, 'own interaction response');
   assert.equal((await api('GET', `/guilds/${g.guild.id}/messages/search?content=second`, alex.token)).body.total_results, 1, 'people still find it');
   assert.deepEqual((await api('GET', `/channels/${g.general.id}/messages/${m.id}/edits`, alex.token)).body.edits.map(e => e.content), ['first words'], 'people still see them');
 });

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { get, all, isMember, threadObj, threadMemberObj, userById } from '../db.js';
 import { invalid, intParam, idParam, notFound } from '../errors.js';
 import { P, has, need, channelPerms, isThread } from '../permissions.js';
-import { messageObj, getChannel } from '../message.js';
+import { messageObj, getChannel, AUTHOR_IS_ID_SQL } from '../message.js';
 import { loadChannel } from './channels.js';
 import { forViewer, seesContent } from './messages.js';
 
@@ -76,7 +76,7 @@ function search(query, readable, userId) {
   // a bot without message content matches text and contents only where redact() would show them: DMs, its own
   // messages, messages mentioning it; otherwise hits and total_results would reveal what it cannot read
   if ((join || query.has('has')) && !seesContent(viewer)) {
-    where.push(`(m.channel_id IN (SELECT value FROM json_each(?)) OR (m.author_id = ? AND m.webhook_id IS NULL)
+    where.push(`(m.channel_id IN (SELECT value FROM json_each(?)) OR (m.author_id = ? AND ${AUTHOR_IS_ID_SQL})
       OR m.content LIKE '%<@' || ? || '>%' OR m.content LIKE '%<@!' || ? || '>%')`);
     args.push(JSON.stringify(channels.filter(c => !c.guild_id).map(c => c.id)), userId, userId, userId);
   }
