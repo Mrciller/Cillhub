@@ -963,6 +963,19 @@ impl CillhubApp {
                     if let Some(id) = new_guild {
                         self.load_members(&id);
                     }
+                    if is_ready {
+                        // READY replaced the state: keep a selection that still exists and load its history again
+                        let gone = |c: &Option<String>, ok: &dyn Fn(&str) -> bool| c.as_deref().is_some_and(|c| !ok(c));
+                        if gone(&self.selected_guild_id, &|g| self.state.guilds.contains_key(g))
+                            || gone(&self.selected_channel_id, &|c| self.state.channels.contains_key(c))
+                        {
+                            self.selected_guild_id = None;
+                            self.selected_channel_id = None;
+                        }
+                        if let Some(cid) = self.selected_channel_id.clone() {
+                            self.load_channel_history(&cid);
+                        }
+                    }
                     if is_ready && self.selected_channel_id.is_none() {
                         if let Some(g) = self.state.sorted_guilds().first() {
                             let gid = g.id.clone();
@@ -2032,6 +2045,54 @@ mod tests {
         assert!(rx.try_recv().is_err(), "no voice state may be sent");
         assert!(!app.state.voice_states.contains_key("u_me"));
     }
+
+    /// A one-shot HTTP server answering `body` to every request; returns its origin and the request lines.
+    fn fake_hub(body: &'static str, requests: usize) -> (Url, std::thread::JoinHandle<Vec<String>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = Url::parse(&format!("http://localhost:{}/", listener.local_addr().unwrap().port())).unwrap();
+        let t = std::thread::spawn(move || {
+            let mut seen = Vec::new();
+            for _ in 0..requests {
+                let (mut sock, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 8192];
+                let n = sock.read(&mut buf).unwrap_or(0);
+                seen.push(String::from_utf8_lossy(&buf[..n]).lines().next().unwrap_or("").to_string());
+                let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                let _ = sock.write_all(head.as_bytes());
+                let _ = sock.write_all(body.as_bytes());
+            }
+            seen
+        });
+        (origin, t)
+    }
+
+    fn dispatch(app: &mut CillhubApp, name: &str, payload: Value) {
+        let (tx, rx) = mpsc::channel();
+        tx.send(GatewayEvent::Dispatch(name.into(), payload)).unwrap();
+        app.gateway_rx = Some(rx);
+        app.process_background_events();
+    }
+
+    #[test]
+    fn reconnect_reloads_the_open_channel() {
+        let mut app = CillhubApp::new(None, true);
+        let (origin, hub) = fake_hub(r#"[{"id":"m9","channel_id":"c_general","content":"again","author":{"id":"u_sam","username":"sam"},"timestamp":"2026-11-10T20:30:00Z"}]"#, 2);
+        app.api = Some(ApiClient::new(origin, None));
+        app.selected_guild_id = Some("g_arena".into());
+        app.selected_channel_id = Some("c_general".into());
+        let ready = serde_json::json!({"session_id": "s", "user": {"id": "u_me", "username": "alex"},
+            "guilds": [{"id": "g_arena", "name": "Arena", "owner_id": "u_me", "channels": [{"id": "c_general", "type": 0, "guild_id": "g_arena", "name": "general"}]}]});
+        dispatch(&mut app, "READY", ready);
+        settle(&mut app);
+        assert_eq!(app.selected_channel_id.as_deref(), Some("c_general"));
+        assert_eq!(app.state.messages.get("c_general").map(|l| l[0].content.as_str()), Some("again"));
+        let seen = hub.join().unwrap();
+        assert!(seen.iter().any(|r| r.starts_with("GET /api/v9/channels/c_general/messages")), "{seen:?}");
+    }
+
+    /// Runs frames until background requests have answered (no-op while requests are synchronous).
+    fn settle(_app: &mut CillhubApp) {}
 
     #[test]
     fn logout_forgets_the_session() {
