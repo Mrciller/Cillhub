@@ -1153,6 +1153,22 @@ ol.md-list { list-style: decimal; }
 .embed-remove { position: absolute; top: 4px; right: -24px; opacity: 0; }
 .msg:hover .embed-remove, .embed-remove:focus-visible { opacity: 1; }
 
+/* Server invite card (chat/ServerInvite.tsx): box like the game invite card */
+.invite-card { max-width: 420px; margin: 6px 0; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); display: grid; gap: 10px; }
+.invite-card-label { margin: 0; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.invite-card-row { display: flex; align-items: center; gap: 12px; min-height: 48px; }
+.invite-card-icon { width: 48px; height: 48px; flex: none; display: grid; place-items: center; overflow: hidden; border-radius: 12px; background: var(--card); color: var(--strong); font-family: var(--font-display); font-size: 18px; font-weight: 700; white-space: nowrap; }
+.invite-card-icon img { width: 100%; height: 100%; object-fit: cover; }
+.invite-card-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.invite-card-text strong { color: var(--header); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.invite-card-text span { color: var(--muted); font-size: 13px; }
+.invite-card-row > button { flex: none; min-width: 84px; }
+.invite-card-error { margin: 0; color: var(--danger-text); font-size: 13px; }
+.invite-card.muted .invite-card-icon, .invite-card.muted .invite-card-text strong { color: var(--muted); }
+.invite-card .skeleton, .invite-card .skeleton-line { background: var(--card); }
+.invite-card .skeleton-line { display: block; height: 12px; width: 35%; border-radius: var(--radius-s); }
+.invite-card .skeleton-line.wide { height: 16px; width: 60%; margin-bottom: 4px; }
+
 /* Stickers, forwards, spoiler attachments, voice messages */
 .stickers { margin: 4px 0; }
 .sticker { width: 160px; height: 160px; object-fit: contain; }

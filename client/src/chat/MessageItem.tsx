@@ -32,6 +32,8 @@ import { EditHistoryModal } from './EditHistoryModal'
 import { Embeds } from './Embeds'
 import { GameInviteCard, parseGameInvite } from './GameInvite'
 import { MessageLinkQuotes } from './MessageLinkQuotes'
+import { ServerInviteCard } from './ServerInvite'
+import { inviteCodes, onlyInvite } from './inviteLinks'
 
 export function stamp(iso: string) {
   const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 864e5)
@@ -288,6 +290,8 @@ function Item({ m, head, perms, ctx }: ItemProps) {
   if (m.type === 46)
     return <li id={`msg-${m.id}`} className="msg system poll-result-msg" tabIndex={-1}><PollResult m={m} name={author.name} /></li>
   const mine = m.author.id === me?.id
+  const invites = inviteCodes(m.content, apiOrigin())
+  const inviteOnly = onlyInvite(m.content, apiOrigin())
   const sent = !m.pending && !m.failed
   const dm = !m.guild_id
   const manage = has(perms, P.MANAGE_MESSAGES)
@@ -394,7 +398,7 @@ function Item({ m, head, perms, ctx }: ItemProps) {
       ) : flags & LOADING ? (
         <div className="content thinking" role="status"><span>{t('{name} is thinking…', { name: author.name })}</span><span className="dots" aria-hidden="true"><i /><i /><i /></span></div>
       ) : (
-        m.content && (
+        m.content && !inviteOnly && (
           <div className="content">
             {isSolution && (
               <div className="solution-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(45, 199, 112, 0.2)', color: '#2dc770', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
@@ -418,6 +422,7 @@ function Item({ m, head, perms, ctx }: ItemProps) {
       )}
       <MessageLinkQuotes content={m.content} ctx={ctx} />
       {parseGameInvite(m.content) && <GameInviteCard data={parseGameInvite(m.content)!} />}
+      {invites.map((code) => <ServerInviteCard key={code} code={code} mine={mine} />)}
       {forwarded && <Forwarded snap={forwarded} ctx={ctx} from={{ channelId: m.message_reference?.channel_id, messageId: m.message_reference!.message_id }} />}
       {m.poll && <PollView m={m} canVote={has(perms, P.READ_MESSAGE_HISTORY) && !!me && !m.pending} />}
       {m.pending && m.files?.length ? <Uploading m={m} /> : <Attachments list={m.attachments} voice={!!(flags & IS_VOICE_MESSAGE)} />}
