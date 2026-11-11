@@ -60,4 +60,7 @@ export const v8: Record<string, string> = {
   'Current value: {id}': 'Aktueller Wert: {id}', 'Choose a server first': 'Zuerst einen Server wählen', Change: 'Ändern', 'Servers found': 'Gefundene Server', 'No servers found.': 'Keine Server gefunden.',
   // Panels
   'Close {name}': '{name} schließen',
+  // Server invite card in messages
+  "You've been invited to join a server": 'Du wurdest auf einen Server eingeladen', 'You sent an invite to join a server': 'Du hast eine Servereinladung gesendet',
+  Joined: 'Beigetreten', 'This invite has expired or was revoked.': 'Diese Einladung ist abgelaufen oder wurde widerrufen.',
 }
