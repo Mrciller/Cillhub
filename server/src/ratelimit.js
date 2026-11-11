@@ -46,16 +46,18 @@ const bucketId = (method, pattern) => createHash('sha256').update(`${method} ${p
 // here: a new guess must not mean a new bucket
 const resourceOf = (pattern, params) => (/^\/(channels|guilds)\/:id/.test(pattern) ? params.id : params.webhook_id ?? '');
 
-// hard cap for the in-memory maps: past max, drop stale entries, then the oldest, down to 90% (so this runs rarely)
-// shortcut: oldest by insertion, not by last use; a flood of new keys can reset someone's window early
-export function capMap(map, max, stale, onDrop) {
-  if (map.size < max) return;
-  for (const [k, v] of map) if (stale(v)) { map.delete(k); onDrop?.(k); }
-  for (const k of map.keys()) {
-    if (map.size < max * 0.9) break;
-    map.delete(k);
-    onDrop?.(k);
+// hard cap for the in-memory maps: a live entry is never dropped (that would reset a locked counter). Past max, stale
+// entries go (at most one sweep per second, so a full map of live keys costs nothing per call); if the map is still
+// full, a new key shares the map's one overflow entry with the same limits, so a flood of new keys throttles itself
+const swept = new WeakMap(); // map -> time of its last sweep
+export function capKey(map, max, stale, key, onDrop) {
+  if (map.has(key) || map.size < max) return key;
+  const now = Date.now();
+  if (now - (swept.get(map) ?? 0) >= 1000) {
+    swept.set(map, now);
+    for (const [k, v] of map) if (stale(v)) { map.delete(k); onDrop?.(k); }
   }
+  return map.size < max ? key : '\0overflow';
 }
 
 function rateLimitError(seconds, headers) {
@@ -72,9 +74,8 @@ export function limit(method, pattern, params, identity, headers, policy) {
   const base = policy?.max ?? defaultMax, windowMs = policy?.windowMs ?? defaultWindow;
   const max = base * SCALE;
   const bucket = bucketId(method, pattern);
-  const key = `${bucket}:${resourceOf(pattern, params)}:${identity}`;
   const now = Date.now();
-  capMap(buckets, 50_000, b => b.reset <= now);
+  const key = capKey(buckets, 50_000, b => b.reset <= now, `${bucket}:${resourceOf(pattern, params)}:${identity}`);
   let b = buckets.get(key);
   if (!b || b.reset <= now) buckets.set(key, b = { count: 0, reset: now + windowMs });
   const after = (b.reset - now) / 1000;
@@ -93,6 +94,12 @@ export function limit(method, pattern, params, identity, headers, policy) {
 const LOGIN_MAX = 10;
 const LOGIN_WINDOW = 15 * 60 * 1000;
 const failures = new Map(); // key -> timestamps
+const cleared = new Map(); // login: key -> time of its last successful password check
+// the overflow entry keeps the kind (ip:, acct:, login:) so it keeps that kind's limit
+const slots = keys => [...new Set(keys.map(key => {
+  const k = capKey(failures, 50_000, list => !list.length || Date.now() - list.at(-1) >= LOGIN_WINDOW, key, d => cleared.delete(d));
+  return k === key ? key : `${key.split(':')[0]}:${k}`;
+}))];
 const recent = key => (failures.get(key) ?? []).filter(t => Date.now() - t < LOGIN_WINDOW);
 
 // acct: keys count every failure on one account from anywhere; higher so one stranger can't lock it for everyone
@@ -101,13 +108,12 @@ const maxOf = key => (key.startsWith('acct:') ? 100 : LOGIN_MAX);
 // so a typo and a quick retry cost nothing but guessing is slow before the lockout
 const DELAY_FREE = 2;
 const DELAY_BASE = SCALE > 1 ? 0 : 1000;
-const cleared = new Map(); // login: key -> time of its last successful password check
 const delayAfter = key => {
   const run = recent(key).filter(t => t > (cleared.get(key) ?? 0));
   return run.length > DELAY_FREE ? run.at(-1) + Math.min(2 ** (run.length - DELAY_FREE - 1), 60) * DELAY_BASE - Date.now() : 0;
 };
 export function checkLogin(keys, headers = {}) {
-  for (const key of keys) {
+  for (const key of slots(keys)) {
     const list = recent(key);
     if (list.length >= maxOf(key)) throw rateLimitError((list[0] + LOGIN_WINDOW - Date.now()) / 1000, headers);
     const wait = key.startsWith('login:') ? delayAfter(key) : 0;
@@ -115,15 +121,14 @@ export function checkLogin(keys, headers = {}) {
   }
 }
 export function loginFailed(keys) {
-  capMap(failures, 50_000, list => !list.length || Date.now() - list.at(-1) >= LOGIN_WINDOW, k => cleared.delete(k));
   const now = Date.now();
-  for (const key of keys) failures.set(key, [...recent(key), now]);
+  for (const key of slots(keys)) failures.set(key, [...recent(key), now]);
   return now;
 }
 // a correct password takes back the attempt counted before the hash (`stamp` from loginFailed) and ends the run of
 // failures for the delay; the 10/100 lockout counts are kept
 export function loginSucceeded(keys, stamp) {
-  for (const key of keys) {
+  for (const key of slots(keys)) {
     const list = failures.get(key);
     const i = list ? list.lastIndexOf(stamp) : -1;
     if (i >= 0) list.splice(i, 1);

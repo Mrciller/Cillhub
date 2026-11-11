@@ -7,7 +7,7 @@ import { startServer, guildWith, bits, tempDir } from './helpers.js';
 
 process.env.DATA_DIR = await tempDir(); // the in-process limiter checks below open their own database
 process.env.CILLCORD_RATE_LIMIT_SCALE = '1';
-const { limit, loginFailed } = await import('../src/ratelimit.js');
+const { limit, loginFailed, checkLogin } = await import('../src/ratelimit.js');
 const { hit } = await import('../src/modules/store.js');
 
 const MANAGE_WEBHOOKS = 29, EMBED_LINKS = 14;
@@ -73,12 +73,29 @@ test('rate limits: a guessed webhook token gets no fresh bucket', () => {
   assert.throws(() => hit1(50), e => e.status === 429);
 });
 
-test('rate-limit, login and module maps stay bounded under a flood of new keys', { timeout: 20_000 }, async () => {
-  // past 50,000 live keys the old sweep walked the whole map on every call; yields so the timeout can fire
-  const flood = async fn => { for (let i = 0; i < 120_000; i++) { fn(i); if (i % 5000 === 0) await new Promise(setImmediate); } };
-  await flood(i => limit('GET', '/channels/:id', { id: String(i) }, '203.0.113.10', {}));
+test('a flood of new keys keeps live counters locked and the maps bounded', { timeout: 20_000 }, async () => {
+  const is429 = e => e.status === 429;
+  const report = (id, ip) => limit('POST', '/channels/:id/messages/:mid/report', { id }, ip, {}); // 5 per minute
+  for (let i = 0; i < 5; i++) report('locked', '203.0.113.11');
+  for (let i = 0; i < 10; i++) loginFailed(['ip:locked']);
+  for (let i = 0; i < 5; i++) hit('locked', 5, 60_000);
+  // 60,000 new keys per map; past the cap they share one overflow entry, which soon answers 429 itself
+  const flood = async fn => {
+    for (let i = 0; i < 60_000; i++) {
+      try { fn(i); } catch (e) { if (!is429(e)) throw e; }
+      if (i % 5000 === 0) await new Promise(setImmediate);
+    }
+  };
+  await flood(i => report(`flood${i}`, '203.0.113.10'));
   await flood(i => loginFailed([`ip:flood${i}`]));
   await flood(i => hit(`flood:${i}`, 5, 60_000));
+  assert.throws(() => report('locked', '203.0.113.11'), is429, 'the exhausted bucket stays exhausted');
+  assert.throws(() => checkLogin(['ip:locked']), is429, 'the locked login stays locked');
+  assert.ok(hit('locked', 5, 60_000) > 0, 'the full module window stays full');
+  // bounded: a newcomer past the cap gets no fresh entry of its own
+  assert.throws(() => report('newcomer', '203.0.113.12'), is429);
+  assert.throws(() => checkLogin(['ip:newcomer']), is429);
+  assert.ok(hit('newcomer', 5, 60_000) > 0);
 });
 
 test('the account login budget is shared by its name and its email', async () => {
