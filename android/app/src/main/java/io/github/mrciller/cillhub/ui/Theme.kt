@@ -141,12 +141,12 @@ val ArenaTypography = Typography(
     labelSmall = TextStyle(fontFamily = Inter, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
 )
 
-/** Colours Material has no role for: presence, mention highlight. */
+/** Colours Material has no role for: presence, mention highlight, the count badge fill (signal-strong, behind white digits). */
 @Immutable
-data class Extra(val online: Color, val idle: Color, val dnd: Color, val offline: Color, val mention: Color, val mentionBg: Color, val isDark: Boolean)
+data class Extra(val online: Color, val idle: Color, val dnd: Color, val offline: Color, val mention: Color, val mentionBg: Color, val isDark: Boolean, val badge: Color)
 
-internal val DarkExtra = Extra(Color(0xFF2FD36A), Color(0xFFFFB020), Color(0xFFFF4D4D), Color(0xFF7D8591), Color(0xFFFF3D57), Color(0x1AFF3D57), true)
-internal val LightExtra = Extra(Color(0xFF15803D), Color(0xFFFFB020), Color(0xFFD93A42), Color(0xFF6B7380), Color(0xFFBE123C), Color(0x14BE123C), false)
+internal val DarkExtra = Extra(Color(0xFF2FD36A), Color(0xFFFFB020), Color(0xFFFF4D4D), Color(0xFF7D8591), Color(0xFFFF3D57), Color(0x1AFF3D57), true, Color(0xFFE11D3C))
+internal val LightExtra = Extra(Color(0xFF15803D), Color(0xFFFFB020), Color(0xFFD93A42), Color(0xFF6B7380), Color(0xFFBE123C), Color(0x14BE123C), false, Color(0xFF9F1239))
 
 val LocalExtra = staticCompositionLocalOf { DarkExtra }
 /** True when the system's "Remove animations" is on (animator duration scale 0). */

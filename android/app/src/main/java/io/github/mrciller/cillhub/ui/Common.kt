@@ -118,7 +118,7 @@ fun Avatar(user: User?, size: Dp, presence: String? = null, modifier: Modifier =
 @Composable
 fun CountBadge(count: Int, modifier: Modifier = Modifier) {
     if (count <= 0) return
-    Box(modifier.sizeIn(minWidth = 20.dp, minHeight = 20.dp).clip(MaterialTheme.shapes.extraSmall).background(LocalExtra.current.mention).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
+    Box(modifier.sizeIn(minWidth = 20.dp, minHeight = 20.dp).clip(MaterialTheme.shapes.extraSmall).background(LocalExtra.current.badge).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
         Text(if (count > 99) "99+" else count.toString(), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }
@@ -136,8 +136,8 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier, color: Color = Ma
 fun EmptyState(@DrawableRes icon: Int, title: String, text: String? = null, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
         Box(
-            Modifier.size(72.dp).clip(Hud).background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, Hud),
+            Modifier.size(72.dp).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.large),
             contentAlignment = Alignment.Center,
         ) {
             Ic(icon, null, Modifier.size(34.dp), MaterialTheme.colorScheme.primary)
