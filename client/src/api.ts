@@ -1,7 +1,7 @@
 import { DEFAULT_HUB_URL } from './hub'
 import { t } from './i18n'
-import { inbound, instanceById, instances, outbound, outboundPath, route, tokenOf } from './instances/registry'
-import { cleanName, normalizeServerUrl, parseNodes, tokenFor, type SavedNode } from './privateNodes'
+import { admitRest, instanceById, instances, outbound, outboundPath, route, tokenOf } from './instances/registry'
+import { cleanName, normalizeServerUrl, parseNodes, safePath, tokenFor, type SavedNode } from './privateNodes'
 
 export { normalizeServerUrl }
 
@@ -112,6 +112,8 @@ const auth = (url: string): Record<string, string> => {
 
 /** Where a call goes: the hub (this origin), or a linked node (v7) chosen by `instance` or by the node-owned ids in the path/body. */
 function target(path: string, body: unknown, instance?: string) {
+  // Ids from servers end up in paths; one that walks out of its segment never leaves the client.
+  if (!safePath(path)) throw new ApiError(0, { message: t('Request failed ({status})', { status: 0 }) })
   const node = instance ?? route(path, body)
   const info = instanceById(node)
   const base = apiOrigin() + '/api/v9'
@@ -134,10 +136,24 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   }
   if (!to.node) clockSample(res.headers.get('Date'), sent, Date.now())
   if (res.status === 204) return undefined as T
-  const data = await res.json().catch(() => null)
+  const data = to.node ? await nodeJson(res) : await res.json().catch(() => null)
   // A 200 that is not JSON means something other than the API answered (e.g. an SPA fallback).
   if (!res.ok || data === null) throw new ApiError(res.ok ? 0 : res.status, data)
-  return (to.node ? inbound(to.node, data) : data) as T
+  return (to.node ? admitted(to.node, data) : data) as T
+}
+
+// A node answer: at most 8 MB, then the node boundary (shape, ids, users); a refused one is an error, never applied.
+const NODE_ANSWER_BYTES = 8 * 1024 * 1024
+async function nodeJson(res: Response) {
+  if (Number(res.headers.get('Content-Length') ?? 0) > NODE_ANSWER_BYTES) return null
+  const text = await res.text().catch(() => '')
+  if (text.length > NODE_ANSWER_BYTES) return null
+  try { return JSON.parse(text) } catch { return null }
+}
+function admitted(node: string, data: unknown) {
+  const d = admitRest(node, data)
+  if (d === null) throw new ApiError(0, { message: t('{name} sent an invalid answer.', { name: instanceById(node)?.name ?? '' }) })
+  return d
 }
 
 // Server clock offset (Watch Together sync) from the Date header. The header has 1 s resolution, so each answer bounds the
@@ -157,9 +173,19 @@ export const serverOffset = () => (Number.isFinite(lo) && Number.isFinite(hi) ? 
 
 /** Multipart POST with upload progress (fetch has no upload progress events). */
 export function upload<T>(path: string, form: FormData, onProgress: (fraction: number) => void = () => {}): Promise<T> {
+  const to = target(path, undefined)
+  // A node upload never follows a redirect (XHR would re-send the files elsewhere): fetch, without progress steps.
+  if (to.node) {
+    return fetch(to.url, { method: 'POST', headers: auth(to.url), body: form, redirect: 'error' }).then(async (res) => {
+      if (res.status === 204) return undefined as T
+      const data = await nodeJson(res)
+      if (!res.ok || data === null) throw new ApiError(res.ok ? 0 : res.status, data)
+      onProgress(1)
+      return admitted(to.node!, data) as T
+    }, () => { throw new ApiError(0, null) })
+  }
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    const to = target(path, undefined)
     xhr.open('POST', to.url)
     for (const [k, v] of Object.entries(auth(to.url))) xhr.setRequestHeader(k, v)
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
@@ -168,7 +194,7 @@ export function upload<T>(path: string, form: FormData, onProgress: (fraction: n
       let data = null
       try { data = JSON.parse(xhr.responseText) } catch { /* not JSON */ }
       if (xhr.status === 204) resolve(undefined as T)
-      else if (xhr.status >= 200 && xhr.status < 300 && data) resolve((to.node ? inbound(to.node, data) : data) as T)
+      else if (xhr.status >= 200 && xhr.status < 300 && data) resolve(data as T)
       else reject(new ApiError(xhr.status, data))
     }
     xhr.send(form)

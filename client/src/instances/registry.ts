@@ -24,13 +24,7 @@ const load = (): InstanceInfo[] => {
 }
 
 let live: Record<string, Live> = Object.fromEntries(load().map((i) => [i.id, { ...i, status: 'connecting', meId: null, sessionId: null }]))
-const origins = new Map<string, string>() // snowflake -> instance id (node-owned ids only; hub ids are never recorded)
 const hub = { meId: '', sessionId: '' }
-// Ids the hub already showed us (store.ts registers it: its guilds, channels and users). A node never takes those over.
-let hubHas: (id: string) => boolean = () => false
-export const setHubHas = (f: (id: string) => boolean) => void (hubHas = f)
-/** A guild or channel the hub sent us (its GUILD_CREATE): the hub wins over a node that named the id first. */
-export const hubTakes = (id: string) => void origins.delete(id)
 const listeners = new Set<() => void>()
 const emit = () => listeners.forEach((l) => l())
 const persist = () => localStorage.setItem(KEY, JSON.stringify(Object.values(live).map(({ id, name, url, icon }) => ({ id, name, url, icon }))))
@@ -51,7 +45,9 @@ export function saveInstance(info: InstanceInfo, token: string) {
 export function removeInstance(id: string) {
   localStorage.removeItem(tokenKey(id))
   const { [id]: _, ...rest } = live
-  live = rest // its ids stay in `origins`: they still are not the hub's, and a new sign-in to the same node owns them again
+  live = rest
+  for (const [k, o] of owners) if (o.by === id) owners.delete(k)
+  claimed.delete(id)
   persist()
   emit()
 }
@@ -75,10 +71,70 @@ export const useNodeIssues = () => useSyncExternalStore(subscribeInstances, () =
 /** Our hub user and gateway session (from the hub's READY); node payloads are aliased to these. */
 export const setHubIdentity = (meId: string, sessionId: string) => ((hub.meId = meId), (hub.sessionId = sessionId))
 
-/** The node a snowflake (guild, channel, user, message, emoji…) belongs to; undefined = the hub. */
-export const nodeOf = (id: string | null | undefined) => (id ? origins.get(id) : undefined)
+// ---------- Who an id belongs to ----------
+// Kept apart from the store (a deleted channel stays the hub's). '' = the hub: hub claims win over node claims and are made
+// on every hub ingestion path (hubSaw). A node claims only ids of objects it was allowed to introduce, typed, first come;
+// it can never take an id the hub or another node holds.
+export type Kind = 'guild' | 'channel' | 'emoji' | 'sticker' | 'role' | 'event' | 'sound' | 'user'
+const owners = new Map<string, { by: string; kind: Kind }>()
+const claimed = new Map<string, number>() // instance -> ids it holds
+export const MAX_IDS = 100_000
+const ownerOf = (id: unknown) => (typeof id === 'string' ? owners.get(id)?.by : undefined)
+export function hubTakes(id: unknown, kind: Kind) {
+  if (typeof id !== 'string' || !id) return
+  const o = owners.get(id)
+  if (o?.by) claimed.set(o.by, (claimed.get(o.by) ?? 1) - 1)
+  owners.set(id, { by: '', kind })
+}
+function claim(inst: string, id: string, kind: Kind) {
+  const by = ownerOf(id)
+  if (by !== undefined) return by === inst
+  const n = claimed.get(inst) ?? 0
+  if (n >= MAX_IDS) return false
+  owners.set(id, { by: inst, kind })
+  claimed.set(inst, n + 1)
+  return true
+}
 
-const SNOWFLAKE = /^\d+$/
+/** The node a snowflake (guild, channel, user, emoji…) belongs to; undefined = the hub (or nobody). */
+export const nodeOf = (id: string | null | undefined) => ownerOf(id) || undefined
+
+// User objects sit under these keys (alone, in lists, or as an id-keyed map like resolved.users).
+const USER_KEYS = new Set(['user', 'author', 'users', 'recipients', 'mentions', 'creator', 'target_user'])
+const userObjects = (d: unknown, out: { id?: unknown }[] = [], depth = 0): { id?: unknown }[] => {
+  if (!d || typeof d !== 'object' || depth > 40) return out
+  for (const [k, v] of Object.entries(d)) {
+    if (USER_KEYS.has(k) && v && typeof v === 'object') {
+      for (const u of Array.isArray(v) ? v : 'id' in v ? [v] : Object.values(v)) if (u && typeof u === 'object') out.push(u)
+    }
+    userObjects(v, out, depth + 1)
+  }
+  return out
+}
+
+/** What the hub showed us: its guilds, channels, threads, emojis, stickers, roles, events, sounds and users are the hub's for good. */
+export function hubSaw(t: string, d: any) {
+  if (!d || typeof d !== 'object') return
+  const guild = (g: any) => {
+    if (!g?.id) return
+    hubTakes(g.id, 'guild')
+    for (const c of [...(g.channels ?? []), ...(g.threads ?? [])]) hubTakes(c?.id, 'channel')
+    for (const e of g.emojis ?? []) hubTakes(e?.id, 'emoji')
+    for (const x of g.stickers ?? []) hubTakes(x?.id, 'sticker')
+    for (const r of g.roles ?? []) hubTakes(r?.id, 'role')
+    for (const e of g.guild_scheduled_events ?? []) hubTakes(e?.id, 'event')
+  }
+  if (t === 'READY') (d.guilds ?? []).forEach(guild), (d.private_channels ?? []).forEach((c: any) => hubTakes(c?.id, 'channel')), hubTakes(d.user?.id, 'user')
+  else if (t === 'GUILD_CREATE' || t === 'GUILD_UPDATE') guild(d)
+  else if (['CHANNEL_CREATE', 'CHANNEL_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE'].includes(t)) hubTakes(d.id, 'channel')
+  else if (t === 'THREAD_LIST_SYNC') (d.threads ?? []).forEach((c: any) => hubTakes(c?.id, 'channel'))
+  else if (t === 'GUILD_EMOJIS_UPDATE') (d.emojis ?? []).forEach((e: any) => hubTakes(e?.id, 'emoji'))
+  else if (t === 'GUILD_STICKERS_UPDATE') (d.stickers ?? []).forEach((e: any) => hubTakes(e?.id, 'sticker'))
+  else if (t === 'GUILD_ROLE_CREATE' || t === 'GUILD_ROLE_UPDATE') hubTakes(d.role?.id, 'role')
+  else if (t.startsWith('GUILD_SCHEDULED_EVENT_') && !t.includes('USER')) hubTakes(d.id, 'event')
+  for (const u of userObjects(d)) hubTakes(u.id, 'user')
+}
+
 // Root-relative URLs in node payloads point at the node: made absolute on the way in (attachments, embeds, voice endpoint).
 const URL_KEYS = new Set(['url', 'proxy_url', 'icon_url', 'proxy_icon_url', 'avatar_url', 'sound_url', 'endpoint'])
 // Media the client loads by itself (attachments, entrance sounds, webhook avatars) must come from the node's own origin.
@@ -89,10 +145,8 @@ const onNode = (n: Live, a: unknown) => {
 }
 const swapMentions = (s: string, from: string, to: string) => (from && s.includes(from) ? s.replaceAll(`<@${from}>`, `<@${to}>`).replaceAll(`<@!${from}>`, `<@${to}>`) : s)
 
-/** A node payload as the hub-centred store expects it: our node ids aliased, its ids recorded, its root-relative URLs made absolute. */
-export function inbound<T>(id: string, data: T): T {
-  const n = live[id]
-  if (!n) return data
+/** Our node ids aliased to the hub ones, root-relative URLs made absolute, foreign media dropped. */
+function inbound<T>(n: Live, data: T): T {
   const walk = (x: unknown, key = ''): unknown => {
     if (typeof x === 'string') {
       if (n.meId && x === n.meId) return hub.meId || x
@@ -105,17 +159,177 @@ export function inbound<T>(id: string, data: T): T {
     if (Array.isArray(x)) return x.map((v) => walk(v, key))
     if (!x || typeof x !== 'object') return x
     const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(x)) {
-      // `hub_user_id` and friends name hub accounts, not node objects.
-      // First writer wins, and never our hub user or an id the hub already showed us (else a node could take over hub DMs and servers).
-      if ((k === 'id' || k.endsWith('_id')) && !k.startsWith('hub_') && typeof v === 'string' && SNOWFLAKE.test(v) && v !== n.meId
-        && v !== hub.meId && !origins.has(v) && !hubHas(v)) origins.set(v, id)
-      out[k] = walk(k === 'attachments' && Array.isArray(v) ? v.filter((a) => onNode(n, a)) : v, k)
-    }
+    for (const [k, v] of Object.entries(x)) out[k] = walk(k === 'attachments' && Array.isArray(v) ? v.filter((a) => onNode(n, a)) : v, k)
     return out
   }
   return walk(data) as T
 }
+
+// ---------- The boundary: every node gateway event, node READY and node REST answer passes admit() ----------
+// A node is untrusted input: bounded size and shape, numeric snowflake ids only (else the whole payload is dropped), and it
+// may only touch guilds and channels it owns. Account-wide things (settings, friends, DMs, calls, read state of foreign
+// channels, instance notices) are the hub's whatever fields an event carries.
+const SNOW = /^\d{1,20}$/
+const FREE_IDS = new Set(['custom_id', 'session_id', 'video_id', 'panel_id', 'module_id', 'sku_id', 'folder_id']) // not snowflakes
+const FREE_TREES = new Set(['activities', 'components']) // free-form ids inside
+export const LIMITS = { depth: 32, list: 10_000, nodes: 500_000 }
+/** Bounded nesting, list lengths and size; every `id`, `*_id` and `*_ids` a numeric snowflake (or null). */
+export function wellFormed(d: unknown): boolean {
+  let count = 0
+  const ok = (x: unknown, key: string, depth: number): boolean => {
+    if (++count > LIMITS.nodes || depth > LIMITS.depth) return false
+    if (Array.isArray(x)) return x.length <= LIMITS.list && x.every((v) => ok(v, key, depth + 1))
+    if (!x || typeof x !== 'object') return true
+    for (const [k, v] of Object.entries(x)) {
+      if (FREE_TREES.has(k)) continue
+      const idKey = (k === 'id' || k.endsWith('_id')) && !FREE_IDS.has(k)
+      if (idKey && typeof v === 'string' && !SNOW.test(v)) return false
+      if (idKey && v !== null && v !== undefined && typeof v !== 'string' && typeof v !== 'number') return false
+      if (k.endsWith('_ids') && v != null && (!Array.isArray(v) || !v.every((i) => typeof i === 'string' && SNOW.test(i)))) return false
+      if (!ok(v, k, depth + 1)) return false
+    }
+    return true
+  }
+  return ok(d, '', 0)
+}
+
+/** What the boundary asks the client about (set by instances/nodes.ts from the store; tests pass their own). */
+export type View = {
+  channel: (id: string) => { guild_id?: string | null; parent_id?: string | null } | undefined
+  user: (id: string) => object | undefined
+  /** The pending interaction a nonce or interaction id names, with the channel it was sent in. */
+  interaction: (nonce?: string, id?: string) => { channelId: string } | undefined
+  voiceGuild: () => string | null | undefined
+}
+let view: View = { channel: () => undefined, user: () => undefined, interaction: () => undefined, voiceGuild: () => null }
+export const setView = (v: View) => void (view = v)
+
+// Node events the client applies; anything else (USER_SETTINGS_UPDATE, RELATIONSHIP_*, CALL_*, CHANNEL_RECIPIENT_*,
+// SAVED_MESSAGE_*, MESSAGE_REMINDER_DUE, INSTANCE_*, SOUNDBOARD_SOUNDS, …) never comes from a node.
+const GUILD_EVENTS = ['GUILD_UPDATE', 'GUILD_DELETE', 'GUILD_ROLE_CREATE', 'GUILD_ROLE_UPDATE', 'GUILD_ROLE_DELETE', 'GUILD_MEMBER_ADD', 'GUILD_MEMBER_UPDATE',
+  'GUILD_MEMBER_REMOVE', 'GUILD_BAN_ADD', 'GUILD_BAN_REMOVE', 'GUILD_EMOJIS_UPDATE', 'GUILD_STICKERS_UPDATE', 'GUILD_SCHEDULED_EVENT_CREATE',
+  'GUILD_SCHEDULED_EVENT_UPDATE', 'GUILD_SCHEDULED_EVENT_DELETE', 'GUILD_SCHEDULED_EVENT_USER_ADD', 'GUILD_SCHEDULED_EVENT_USER_REMOVE',
+  'GUILD_SOUNDBOARD_SOUND_CREATE', 'GUILD_SOUNDBOARD_SOUND_UPDATE', 'GUILD_SOUNDBOARD_SOUND_DELETE', 'GUILD_SOUNDBOARD_SOUNDS_UPDATE',
+  'GUILD_APPLICATION_COMMAND_INDEX_UPDATE', 'GUILD_MODULE_PANELS_UPDATE', 'MODULE_UI_EVENT', 'VOICE_STATE_UPDATE', 'VOICE_SERVER_UPDATE', 'VOICE_CHANNEL_EFFECT_SEND', 'USER_GUILD_SETTINGS_UPDATE']
+const CHANNEL_EVENTS = ['MESSAGE_CREATE', 'MESSAGE_UPDATE', 'MESSAGE_DELETE', 'MESSAGE_DELETE_BULK', 'MESSAGE_REACTION_ADD', 'MESSAGE_REACTION_REMOVE',
+  'MESSAGE_REACTION_REMOVE_ALL', 'MESSAGE_REACTION_REMOVE_EMOJI', 'MESSAGE_POLL_VOTE_ADD', 'MESSAGE_POLL_VOTE_REMOVE', 'MESSAGE_ACK', 'TYPING_START',
+  'CHANNEL_PINS_UPDATE', 'CHANNEL_CANVAS_UPDATE', 'STAGE_INSTANCE_CREATE', 'STAGE_INSTANCE_UPDATE', 'STAGE_INSTANCE_DELETE', 'WATCH_SESSION_UPDATE',
+  'WATCH_SESSION_DELETE', 'VOICE_CHANNEL_STATUS_UPDATE']
+const INTERACTION_EVENTS = ['INTERACTION_CREATE', 'INTERACTION_SUCCESS', 'INTERACTION_FAILURE', 'INTERACTION_MODAL_CREATE', 'APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE']
+const NODE_EVENTS = new Set([...GUILD_EVENTS, ...CHANNEL_EVENTS, ...INTERACTION_EVENTS, 'READY', 'GUILD_CREATE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE',
+  'CHANNEL_DELETE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'THREAD_LIST_SYNC', 'THREAD_MEMBER_UPDATE', 'THREAD_MEMBERS_UPDATE', 'USER_UPDATE',
+  'PRESENCE_UPDATE', 'CILLVOICE_ANSWER', 'CILLVOICE_TRACKS', 'CILLVOICE_SPEAKING', 'CILLVOICE_ERROR'])
+
+/** A channel id this node owns, and (when the event names a guild) one that really lies in that node guild. */
+function ownChannel(inst: string, channelId: unknown, guildId?: unknown) {
+  if (typeof channelId !== 'string' || ownerOf(channelId) !== inst) return false
+  const c = view.channel(channelId)
+  if (c?.guild_id && ownerOf(c.guild_id) !== inst) return false
+  if (c?.parent_id && ownerOf(c.parent_id) !== inst) return false
+  return guildId == null || (ownerOf(guildId) === inst && (!c?.guild_id || c.guild_id === guildId))
+}
+const ownGuild = (inst: string, id: unknown) => typeof id === 'string' && ownerOf(id) === inst
+const freeOrOwn = (inst: string, id: unknown) => typeof id === 'string' && (ownerOf(id) === undefined || ownerOf(id) === inst)
+
+/** A guild payload (READY, GUILD_CREATE, a join answer) a node may introduce: its own or new ids only, children inside it. */
+function guildOk(inst: string, g: any) {
+  if (!g || typeof g !== 'object' || !freeOrOwn(inst, g.id)) return false
+  const chans = [...(g.channels ?? []), ...(g.threads ?? [])]
+  const ids = new Set(chans.map((c: any) => c?.id))
+  const inGuild = (c: unknown) => c == null || ids.has(c) || ownChannel(inst, c)
+  return chans.every((c: any) => freeOrOwn(inst, c?.id) && (c.guild_id == null || c.guild_id === g.id) && inGuild(c.parent_id))
+    && [...(g.emojis ?? []), ...(g.stickers ?? []), ...(g.roles ?? []), ...(g.guild_scheduled_events ?? [])].every((x: any) => freeOrOwn(inst, x?.id))
+    && [...(g.stage_instances ?? []), ...(g.guild_scheduled_events ?? []), ...(g.watch_sessions ?? []), ...(g.voice_states ?? [])]
+      .every((x: any) => (x.guild_id == null || x.guild_id === g.id) && inGuild(x.channel_id))
+    && (g.soundboard_sounds ?? []).every((x: any) => freeOrOwn(inst, x?.sound_id))
+}
+function claimGuild(inst: string, g: any) {
+  claim(inst, g.id, 'guild')
+  for (const c of [...(g.channels ?? []), ...(g.threads ?? [])]) claim(inst, c.id, 'channel')
+  for (const e of g.emojis ?? []) e.id && claim(inst, e.id, 'emoji')
+  for (const x of g.stickers ?? []) claim(inst, x.id, 'sticker')
+  for (const r of g.roles ?? []) claim(inst, r.id, 'role')
+  for (const e of g.guild_scheduled_events ?? []) claim(inst, e.id, 'event')
+  for (const x of g.soundboard_sounds ?? []) claim(inst, x.sound_id, 'sound')
+}
+
+/** May this node apply event `t` with (aliased) `d`? Checks the real target, never only a supplied guild_id. */
+function allowed(inst: string, t: string, d: any): boolean {
+  if (!NODE_EVENTS.has(t)) return false
+  if (t === 'READY') return (d.guilds ?? []).every((g: any) => guildOk(inst, g))
+  if (t === 'GUILD_CREATE') return guildOk(inst, d)
+  if (t === 'GUILD_UPDATE' || t === 'GUILD_DELETE') return ownGuild(inst, d.id)
+  if (t === 'CHANNEL_CREATE' || t === 'THREAD_CREATE') return ownGuild(inst, d.guild_id) && freeOrOwn(inst, d.id) && (d.parent_id == null || ownChannel(inst, d.parent_id, d.guild_id))
+  if (['CHANNEL_UPDATE', 'CHANNEL_DELETE', 'THREAD_UPDATE', 'THREAD_DELETE', 'THREAD_MEMBER_UPDATE', 'THREAD_MEMBERS_UPDATE'].includes(t)) return ownChannel(inst, d.id, d.guild_id ?? null)
+  if (t === 'THREAD_LIST_SYNC') return ownGuild(inst, d.guild_id) && (d.threads ?? []).every((c: any) => freeOrOwn(inst, c?.id) && ownChannel(inst, c.parent_id, d.guild_id))
+  if (t === 'USER_UPDATE') return freeOrOwn(inst, d.id) && d.id !== hub.meId
+  if (t === 'PRESENCE_UPDATE') return freeOrOwn(inst, d.user?.id) && d.user?.id !== hub.meId && (d.guild_id == null || ownGuild(inst, d.guild_id))
+  if (t.startsWith('CILLVOICE_')) return ownerOf(view.voiceGuild() ?? '') === inst // only the call on this node
+  if (INTERACTION_EVENTS.includes(t)) {
+    // only answers to an interaction we sent to this node, in that channel
+    const p = view.interaction(d.nonce, d.id)
+    return !!p && ownChannel(inst, p.channelId) && (d.channel_id == null || d.channel_id === p.channelId)
+  }
+  if (CHANNEL_EVENTS.includes(t)) return ownChannel(inst, d.channel_id, d.guild_id ?? null)
+  if (GUILD_EVENTS.includes(t)) {
+    if (!ownGuild(inst, d.guild_id)) return false
+    const ch = d.channel_id ?? d.member?.channel_id
+    if (ch != null && !ownChannel(inst, ch, d.guild_id)) return false
+    if (t.startsWith('GUILD_SCHEDULED_EVENT_') && !t.includes('USER')) return freeOrOwn(inst, d.id)
+    if (t === 'GUILD_ROLE_CREATE' || t === 'GUILD_ROLE_UPDATE') return freeOrOwn(inst, d.role?.id)
+    if (t === 'GUILD_EMOJIS_UPDATE') return (d.emojis ?? []).every((e: any) => freeOrOwn(inst, e?.id))
+    if (t === 'GUILD_STICKERS_UPDATE') return (d.stickers ?? []).every((e: any) => freeOrOwn(inst, e?.id))
+    if (t === 'GUILD_SOUNDBOARD_SOUND_CREATE' || t === 'GUILD_SOUNDBOARD_SOUND_UPDATE') return freeOrOwn(inst, d.sound_id)
+    return true
+  }
+  return false
+}
+
+/** Node users stay the node's: a user object naming our own account becomes our hub record; one naming any other id the
+ *  hub or another node holds (or the store has without an owner) refuses the payload; new ones are claimed. */
+function scopeUsers(inst: string, d: unknown): boolean {
+  for (const u of userObjects(d)) {
+    const id = u.id
+    if (typeof id !== 'string') continue
+    if (id === hub.meId) {
+      const self = view.user(id)
+      if (self) Object.assign(u, self) // shortcut: our own entry keeps the hub's fields; node-only extras on it survive
+      continue
+    }
+    const by = ownerOf(id)
+    if (by === inst) continue
+    if (by !== undefined || view.user(id) || !claim(inst, id, 'user')) return false
+  }
+  return true
+}
+
+/** A node gateway event (or READY) as the store may apply it, or null to drop it. */
+export function admit<T>(inst: string, t: string, raw: T): T | null {
+  const n = live[inst]
+  if (!n || !wellFormed(raw)) return null
+  const d = inbound(n, raw) as any
+  if (!d || typeof d !== 'object' || !allowed(inst, t, d) || !scopeUsers(inst, d)) return null
+  if (t === 'READY') for (const g of d.guilds ?? []) claimGuild(inst, g)
+  else if (t === 'GUILD_CREATE') claimGuild(inst, d)
+  else if (t === 'CHANNEL_CREATE' || t === 'THREAD_CREATE') claim(inst, d.id, 'channel')
+  else if (t === 'THREAD_LIST_SYNC') for (const c of d.threads ?? []) claim(inst, c.id, 'channel')
+  else if (t === 'GUILD_EMOJIS_UPDATE') for (const e of d.emojis ?? []) claim(inst, e.id, 'emoji')
+  else if (t === 'GUILD_STICKERS_UPDATE') for (const e of d.stickers ?? []) claim(inst, e.id, 'sticker')
+  else if (t === 'GUILD_ROLE_CREATE' || t === 'GUILD_ROLE_UPDATE') claim(inst, d.role.id, 'role')
+  else if (t.startsWith('GUILD_SCHEDULED_EVENT_') && !t.includes('USER')) claim(inst, d.id, 'event')
+  else if (t === 'GUILD_SOUNDBOARD_SOUND_CREATE' || t === 'GUILD_SOUNDBOARD_SOUND_UPDATE') claim(inst, d.sound_id, 'sound')
+  return d as T
+}
+
+/** A node REST answer: same shape rules and user scoping (a guild it returns is checked again where it is applied). */
+export function admitRest<T>(inst: string, raw: T): T | null {
+  const n = live[inst]
+  if (!n || !wellFormed(raw)) return null
+  const d = inbound(n, raw)
+  return scopeUsers(inst, d) ? d : null
+}
+/** A guild answer of a node (join): only its own or new ids; claimed when it may be applied. */
+export const admitGuild = (inst: string, g: unknown) => (guildOk(inst, g) ? (claimGuild(inst, g), true) : false)
 
 /** The reverse for a request body or a path going to the node: our hub ids become the node ones. */
 export function outbound<T>(id: string, data: T): T {
@@ -133,38 +347,30 @@ export const outboundPath = (id: string, path: string) => {
   return n?.meId && hub.meId ? path.split('/').map((seg) => (seg === hub.meId ? n.meId : seg)).join('/') : path
 }
 
-/** Which node a REST path or CDN path belongs to: the first node-owned snowflake in the path, else `guild_id`/`channel_id` in the query or body. */
+/** Which node a REST path or CDN path belongs to: the first owned snowflake in the path decides (a hub one keeps it on the
+ *  hub), else `guild_id`/`channel_id` in the query or body. */
 export function route(path: string, body?: unknown): string | undefined {
   const [p, q] = path.split('?')
   // A node may name any user id (also hub users we have not seen yet), so /users/... goes to a node only through the
   // node guild or channel given as context below, never by the user id in the path.
   if (!p.startsWith('/users/')) for (const seg of p.split('/')) {
-    const s = seg.replace(/\.\w+$/, '')
-    const n = origins.get(s)
-    if (n) return n
-    if (s !== hub.meId && hubHas(s)) return undefined // a hub channel decides for the messages under it
+    const by = ownerOf(seg.replace(/\.\w+$/, ''))
+    if (by === '') return undefined
+    if (by) return by
   }
   const params = new URLSearchParams(q ?? '')
   const b = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {}
   for (const k of ['guild_id', 'channel_id']) {
-    const n = origins.get(params.get(k) ?? '') ?? (typeof b[k] === 'string' ? origins.get(b[k] as string) : undefined)
-    if (n) return n
+    const v = params.get(k) ?? b[k]
+    const by = ownerOf(v)
+    if (by === '') return undefined
+    if (by) return by
   }
   return undefined
 }
 
-if (import.meta.env.DEV) {
-  // self-check: aliasing round-trips and routing picks the node for its ids only
-  live.__t = { id: '__t', name: 't', url: 'https://n.example', status: 'ready', meId: '9', sessionId: 'ns' }
-  hub.meId = '1'
-  const d = inbound('__t', { id: '77', author: { id: '9' }, content: 'hi <@9>', session_id: 'ns', attachments: [{ url: '/attachments/77/1/a.png' }] })
-  console.assert(d.author.id === '1' && d.content === 'hi <@1>' && d.attachments[0].url === 'https://n.example/attachments/77/1/a.png', 'inbound aliasing')
-  console.assert(route('/channels/77/messages') === '__t' && route('/channels/78/messages') === undefined && route('/users/1/profile?guild_id=77') === '__t', 'routing')
-  console.assert(route('/users/9/profile') === undefined && route('/users/@me/relationships/77') === undefined, 'user routes stay on the hub')
-  const m = inbound('__t', { attachments: [{ url: 'https://evil.example/a.png' }, { url: 'https://n.example/attachments/1/2/b.png' }], sound_url: 'https://evil.example/s.ogg' })
-  console.assert(m.attachments.length === 1 && m.attachments[0].url.startsWith('https://n.example/') && m.sound_url === undefined, 'node media from the node only')
-  console.assert(outbound('__t', { content: '<@1>', user_id: '1' }).user_id === '9' && outboundPath('__t', '/guilds/77/members/1') === '/guilds/77/members/9', 'outbound aliasing')
-  origins.delete('77')
-  delete live.__t
-  hub.meId = ''
+/** Test hook: a node with our node identity, no storage. */
+export const testNode = (id: string, url: string, meId: string, hubMeId: string) => {
+  live = { ...live, [id]: { id, name: id, url, status: 'ready', meId, sessionId: null } }
+  hub.meId = hubMeId
 }

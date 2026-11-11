@@ -105,3 +105,19 @@ export async function inSession(started: string, now: () => string, steps: (() =
   }
   return now() === started
 }
+
+/** A node's gateway address must be on the node itself: same host and port, wss for an https node (ws or wss for a local
+ *  http one). */
+export function gatewayOk(nodeUrl: string, gateway: string) {
+  try {
+    const n = new URL(nodeUrl)
+    const g = new URL(gateway)
+    const scheme = n.protocol === 'https:' ? g.protocol === 'wss:' : g.protocol === 'ws:' || g.protocol === 'wss:'
+    return scheme && g.hostname === n.hostname && (g.port || (g.protocol === 'wss:' ? '443' : '80')) === (n.port || (n.protocol === 'https:' ? '443' : '80')) && !g.username && !g.password
+  } catch {
+    return false
+  }
+}
+
+/** An API path whose segments cannot walk elsewhere once the URL is resolved (`..`, `.`, encoded slashes or dots, backslashes). */
+export const safePath = (path: string) => !path.split('?')[0].split('/').some((seg) => seg === '.' || seg === '..' || /%2e|%2f|%5c|\\/i.test(seg))

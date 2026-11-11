@@ -1,18 +1,18 @@
 // Multi-instance client (CONTRACT-v7 §4): one gateway connection per linked node next to the hub's, node payloads merged
 // into the one store (aliased in registry.ts), sign-in to a node through the hub identity flow, "Disconnect from instance",
 // and the hub's view of node status (suspended / banned / unlinked nodes are cut off, offline ones keep retrying).
-import { enterGuild } from '../actions'
+import { enterGuild, sentInteractions } from '../actions'
 import { api, ApiError, qs, apiOrigin, savedNodes, saveNodes, NODES_KEY } from '../api'
 import { soundEvent } from '../custom/sounds'
 import { createGateway, type Gateway } from '../gateway'
 import { t } from '../i18n'
 import { notifyEvent } from '../notifications/notify'
 import { navigate } from '../router'
-import { inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revoker } from '../privateNodes'
+import { gatewayOk, inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revoker } from '../privateNodes'
 import { apply, byId, getState, setState, setToken } from '../store'
 import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
-import { inbound, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, tokenOf, type InstanceInfo } from './registry'
+import { admit, admitGuild, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
 
 /** The hub's node directory record (§2), from GET /federation/nodes. */
 export type NodeRecord = {
@@ -24,6 +24,21 @@ export const nodeInfo = (n: Pick<NodeRecord, 'node_id' | 'name' | 'url' | 'icon'
 export const listNodes = () => api<NodeRecord[]>('/federation/nodes')
 
 const conns = new Map<string, Gateway>()
+const NODE_FRAME_BYTES = 4 * 1024 * 1024 // a node gateway frame above this closes the connection
+
+// What the node boundary (registry.ts admit) may ask about the client's state.
+setView({
+  channel: (id) => getState().channels[id],
+  user: (id) => getState().users[id],
+  interaction: (nonce, iid) => {
+    const s = getState()
+    const p = (nonce && s.interactions[nonce]) || (iid ? Object.values(s.interactions).find((x) => x.id === iid) : undefined)
+    if (p) return { channelId: p.channelId }
+    const ch = nonce && sentInteractions.get(nonce)
+    return ch ? { channelId: ch } : undefined
+  },
+  voiceGuild: () => getState().voice.guildId,
+})
 const statusOf = (id: string) => instanceById(id)?.status
 
 /** Opens the gateways of saved instances that have a token and are not cut off (after the hub's READY). */
@@ -46,9 +61,10 @@ function open(i: InstanceInfo) {
   const g = createGateway({
     // The node names its gateway; our node token goes only to the node's own host.
     url: () => api<{ url: string }>('/gateway', { instance: i.id }).then((r) => {
-      if (new URL(r.url).host !== new URL(i.url).host) throw new Error('gateway on another host')
+      if (!gatewayOk(i.url, r.url)) throw new Error('gateway not on the node')
       return r
     }),
+    maxBytes: NODE_FRAME_BYTES,
     token: () => tokenOf(i.id),
     ready: () => statusOf(i.id) === 'ready',
     connecting: (failed) => setLive(i.id, { status: failed ? 'offline' : 'connecting' }),
@@ -65,31 +81,17 @@ function close(id: string) {
   conns.delete(id)
 }
 
-// Events that are about guilds but name them by `id`, and events that carry no guild but are ours to apply.
-const PASS = new Set(['USER_UPDATE', 'PRESENCE_UPDATE', 'INTERACTION_CREATE', 'INTERACTION_SUCCESS', 'INTERACTION_FAILURE', 'APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE',
-  'INTERACTION_MODAL_CREATE', 'CILLVOICE_ANSWER', 'CILLVOICE_TRACKS', 'CILLVOICE_SPEAKING', 'CILLVOICE_ERROR'])
-
 function dispatch(id: string, t: string, raw: any) {
-  if (t === 'READY') setLive(id, { meId: raw.user?.id ?? null, sessionId: raw.session_id ?? null })
-  const d = inbound(id, raw)
+  if (t === 'READY' && /^\d{1,20}$/.test(raw?.user?.id ?? '')) setLive(id, { meId: raw.user.id, sessionId: typeof raw.session_id === 'string' ? raw.session_id : null })
+  // The one way in for node events: shape, ids, event type, target ownership and users are checked there.
+  const d = admit(id, t, raw)
+  if (!d) return
   if (t === 'READY') return ready(id, d)
   const s = getState()
-  const me = s.me?.id
-  const mine = (guildId?: string | null) => !!guildId && nodeOf(guildId) === id
-  // Only guild-scoped data comes from a node: DMs, friends, calls, settings and instance notices stay on the hub (§3).
-  const ok = t === 'GUILD_CREATE' || t === 'GUILD_UPDATE' || t === 'GUILD_DELETE' ? mine(d.id)
-    : (t === 'USER_UPDATE' && d.id === me) || (t === 'PRESENCE_UPDATE' && d.user?.id === me) ? false
-    : d.guild_id ? mine(d.guild_id)
-    : d.channel_id ? mine(s.channels[d.channel_id]?.guild_id)
-    : PASS.has(t)
-  if (!ok) return
-  const hubMe = me ? s.users[me] : undefined
   apply(t, d)
   voiceEvent(t, d)
   notifyEvent(t, d)
   soundEvent(t, d, s)
-  // Our node account's user object (its own avatar hash) must not replace the hub one.
-  if (me && hubMe && getState().users[me] !== hubMe) setState((x) => ({ users: { ...x.users, [me]: hubMe } }))
 }
 
 const list = <T,>(x: unknown): T[] => (Array.isArray(x) ? x : Array.isArray((x as { entries?: unknown })?.entries) ? (x as { entries: T[] }).entries : [])
@@ -104,7 +106,7 @@ function ready(id: string, d: { guilds?: GuildPayload[]; users?: User[]; presenc
   setState((s) => ({
     users: { ...byId((d.users ?? []).filter((u) => u.id !== me)), ...s.users },
     presences: { ...s.presences, ...Object.fromEntries((d.presences ?? []).filter((p) => p.user.id !== me).map((p) => [p.user.id, p.status])) },
-    readStates: { ...s.readStates, ...byId(list<ReadState>(d.read_state).filter((r) => r && nodeOf(s.channels[r.id]?.guild_id) === id)) },
+    readStates: { ...s.readStates, ...byId(list<ReadState>(d.read_state).filter((r) => r && nodeOf(r.id) === id)) },
     guildSettings: { ...s.guildSettings, ...Object.fromEntries(list<UserGuildSettings>(d.user_guild_settings).filter((g) => g?.guild_id && nodeOf(g.guild_id) === id).map((g) => [g.guild_id!, g])) },
   }))
   setLive(id, { status: 'ready' })
@@ -220,7 +222,7 @@ async function finish(id: string, then: Then): Promise<string> {
     ? await api<GuildPayload>(`/invites/${encodeURIComponent(then.invite)}`, { method: 'POST', instance: id })
     : then.guild ? await api<GuildPayload | undefined>(`/guilds/${then.guild}/members/@me`, { method: 'PUT', instance: id }) : undefined
   // 204 (already a member) or a partial answer: the node's GUILD_CREATE brings the server.
-  if (g?.channels) enterGuild(g, undefined, true)
+  if (g?.channels && admitGuild(id, g)) enterGuild(g, undefined, true)
   const guildId = g?.id ?? then.guild
   return guildId ? `/channels/${guildId}` : '/channels/@me'
 }

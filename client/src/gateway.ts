@@ -6,7 +6,7 @@ import { notifyEvent } from './notifications/notify'
 import { voiceEvent } from './voice/engine'
 import { soundEvent } from './custom/sounds'
 import { forgetInstances, nodeSend, startNodes, stopNodes, syncPrivateNodes } from './instances/nodes'
-import { hubTakes, nodeOf, setHubIdentity } from './instances/registry'
+import { hubSaw, nodeOf, setHubIdentity } from './instances/registry'
 
 export type Gateway = { connect: () => void; disconnect: () => void; send: (op: number, d: unknown) => boolean }
 type Options = {
@@ -18,6 +18,8 @@ type Options = {
   dispatch: (t: string, d: any) => void
   /** 4004: the token was rejected. */
   rejected: () => void
+  /** A frame above this closes the connection (node gateways). */
+  maxBytes?: number
 }
 
 const send = (sock: WebSocket, op: number, d: unknown) => sock.readyState === WebSocket.OPEN && (sock.send(JSON.stringify({ op, d })), true)
@@ -45,6 +47,7 @@ export function createGateway(o: Options): Gateway {
   let attempt = 0
   let heartbeat = 0
   let retry = 0
+  let reidentify = 0
 
   function connect() {
     disconnect()
@@ -60,6 +63,8 @@ export function createGateway(o: Options): Gateway {
     generation++
     clearInterval(heartbeat)
     clearTimeout(retry)
+    clearTimeout(reidentify)
+    reidentify = 0
     const sock = ws
     ws = null
     sock?.close(1000)
@@ -81,21 +86,30 @@ export function createGateway(o: Options): Gateway {
     ws = sock
     let seq: number | null = null
     let acked = true
+    let hello = false
     sock.onmessage = (e) => {
-      const { op, d, s, t } = JSON.parse(e.data)
-      if (s != null) seq = s
+      if (gen !== generation) return
+      if (o.maxBytes && (typeof e.data !== 'string' || e.data.length > o.maxBytes)) return sock.close(4008)
+      let frame
+      try { frame = JSON.parse(e.data) } catch { return sock.close(4002) }
+      const { op, d, s, t } = frame ?? {}
+      if (typeof s === 'number') seq = s
       if (op === 10) {
+        if (hello) return // one HELLO per connection, so one heartbeat timer
+        hello = true
+        clearInterval(heartbeat)
         heartbeat = setInterval(() => {
           // No ACK since the last beat: the connection is a zombie, drop it and reconnect.
           if (!acked) return sock.close(4000)
           acked = false
           send(sock, 1, seq)
-        }, d.heartbeat_interval)
+        }, Math.max(1000, Number(d?.heartbeat_interval) || 41_250))
         identify(sock, o.token())
       } else if (op === 11) acked = true
       else if (op === 1) send(sock, 1, seq)
       // v1 cannot resume; the protocol asks for a fresh IDENTIFY after a random 1-5 s wait.
-      else if (op === 9) setTimeout(() => gen === generation && identify(sock, o.token()), 1000 + Math.random() * 4000)
+      // One pending re-identify at a time, however many op 9 arrive.
+      else if (op === 9 && !reidentify) reidentify = setTimeout(() => ((reidentify = 0), gen === generation && identify(sock, o.token())), 1000 + Math.random() * 4000)
       else if (op === 0) {
         if (t === 'READY') attempt = 0
         o.dispatch(t, d)
@@ -104,6 +118,8 @@ export function createGateway(o: Options): Gateway {
     sock.onclose = (e) => {
       if (sock !== ws) return
       clearInterval(heartbeat)
+      clearTimeout(reidentify)
+      reidentify = 0
       if (e.code === 4004) return o.rejected() // token rejected
       reconnect(gen)
     }
@@ -120,7 +136,7 @@ const hub = createGateway({
   rejected: () => logout(),
   dispatch(t, d) {
     if (t === 'READY') setHubIdentity(d.user.id, d.session_id)
-    if (t === 'GUILD_CREATE') for (const x of [d.id, ...(d.channels ?? []).map((c: { id: string }) => c.id)]) hubTakes(x)
+    hubSaw(t, d) // the hub's ids stay the hub's, whatever a node names first
     const before = getState()
     apply(t, d)
     // A hub reconnect says nothing about a call on a node server (that node's own READY does).

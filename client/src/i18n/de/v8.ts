@@ -82,4 +82,5 @@ export const v8: Record<string, string> = {
   'Add {name}?': '{name} hinzufügen?', 'Add and sign in': 'Hinzufügen und anmelden', 'Sign in': 'Anmelden', 'Not connected': 'Nicht verbunden',
   'Needs its own login · not connected': 'Braucht eigene Anmeldung · nicht verbunden', 'Not connected: {reason} Retrying…': 'Nicht verbunden: {reason} Neuer Versuch folgt …',
   '{name} is not reachable right now.': '{name} ist gerade nicht erreichbar.',
+  'From {instance}, a separate server. What you enter goes there.': 'Von {instance}, einem eigenen Server. Was du eingibst, geht dorthin.',
 }
