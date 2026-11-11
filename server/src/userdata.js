@@ -160,6 +160,20 @@ function privateNodes(v, f) {
   }).filter(n => !seen.has(n.origin) && seen.add(n.origin));
 }
 
+// one node added at the end (an origin already there keeps its entry) or removed by origin, applied to the stored list in
+// one synchronous step, so two devices changing the list at once never bring back a removed node
+export function privateNodesChange(userId, add, removeOrigin) {
+  const list = settingsOf(userId).private_nodes ?? [];
+  if (add !== undefined) {
+    const [n] = privateNodes([add], 'node');
+    if (list.some(x => x.origin === n.origin)) return list;
+    if (list.length >= 20) fail('node', 'At most 20 nodes.');
+    return [...list, n];
+  }
+  if (typeof removeOrigin !== 'string' || !removeOrigin) fail('origin', 'Give the origin of the node to remove.');
+  return list.filter(x => x.origin !== removeOrigin);
+}
+
 // the allow-list: the documented user settings names where they exist, Cillhub's own keys for the rest
 const SETTINGS = {
   privacy: [privacySettings, { dm_read_receipts: true }],
