@@ -74,21 +74,9 @@ pub enum FriendsTab {
     Add,
 }
 
-impl FriendsTab {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Online => "ONLINE",
-            Self::All => "ALL FRIENDS",
-            Self::Pending => "PENDING",
-            Self::Blocked => "BLOCKED",
-            Self::Add => "ADD FRIEND",
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModalKind {
-    GameLobbyInvite,
     UserSettings,
     ServerSettings,
     CreateJoinGuild,
@@ -145,6 +133,8 @@ pub struct CillhubApp {
     pub selected_channel_id: Option<String>,
     pub friends_tab: FriendsTab,
     pub add_friend_input: String,
+    /// Result line under Add Friend: (ok, text).
+    pub add_friend_result: Option<(bool, String)>,
     pub show_member_list: bool,
     pub active_modal: Option<ModalKind>,
     pub active_drawer: Option<DrawerKind>,
@@ -215,7 +205,6 @@ pub struct CillhubApp {
     pub lobby_form_party_id: String,
     pub lobby_form_members: u32,
     pub lobby_form_max_members: u32,
-    pub lcu_summoner_target: String,
     pub custom_game_exe_input: String,
     pub custom_game_name_input: String,
 
@@ -290,6 +279,7 @@ impl CillhubApp {
             selected_channel_id: None,
             friends_tab: FriendsTab::Online,
             add_friend_input: String::new(),
+            add_friend_result: None,
             show_member_list: true,
             active_modal: None,
             active_drawer: None,
@@ -327,7 +317,7 @@ impl CillhubApp {
             events: Vec::new(),
             search_query: String::new(),
             quick_switcher_query: String::new(),
-            canvas_doc_input: "# Arena Match Notes\n- Mid prio at 3:15\n- Objective control".to_string(),
+            canvas_doc_input: String::new(),
             self_mute: false,
             self_deaf: false,
             self_video: false,
@@ -343,7 +333,6 @@ impl CillhubApp {
             lobby_form_party_id: "arena-party-77".to_string(),
             lobby_form_members: 2,
             lobby_form_max_members: 5,
-            lcu_summoner_target: String::new(),
             custom_game_exe_input: String::new(),
             custom_game_name_input: String::new(),
             my_status: "online".to_string(),
@@ -767,65 +756,25 @@ impl CillhubApp {
         })
     }
 
+    /// Join Party on a game invite card: accepts the invite in the local League client, like the
+    /// web's desktop bridge (acceptLeagueInvite).
     pub fn join_game_party(&mut self, invite: &GameInviteData) {
-        if let Some(lock_path) = find_lockfile_path(self.game_tracker.last_processes()) {
-            if let Some(creds) = read_lockfile(&lock_path) {
-                if let Ok(client) = LeagueClient::new() {
-                    match client.accept_invite(&creds, &invite.party_id) {
-                        Ok(_) => {
-                            self.status_banner = Some(format!(
-                                "Joined {} lobby ({}) via League LCU API!",
-                                invite.game, invite.queue_name
-                            ));
-                            return;
-                        }
-                        Err(err) => {
-                            self.status_banner = Some(format!(
-                                "LCU response for party {}: {err}",
-                                invite.party_id
-                            ));
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-        self.status_banner = Some(format!(
-            "Accepted party invite for {} — {} (Host: {}, Party ID: {})!",
-            invite.game, invite.queue_name, invite.host_name, invite.party_id
-        ));
-    }
-
-    pub fn send_direct_lcu_invite(&mut self) {
-        let target = self.lcu_summoner_target.trim().to_string();
-        if target.is_empty() {
-            return;
-        }
-        if let Some(lock_path) = find_lockfile_path(self.game_tracker.last_processes()) {
-            if let Some(creds) = read_lockfile(&lock_path) {
-                if let Ok(client) = LeagueClient::new() {
-                    match client.send_invite(&creds, &target) {
-                        Ok(_) => {
-                            self.status_banner =
-                                Some(format!("Sent League LCU lobby invite to {target}!"));
-                        }
-                        Err(e) => {
-                            self.status_banner = Some(format!("LCU invite error: {e}"));
-                        }
-                    }
-                    return;
-                }
-            }
-        }
-        self.status_banner = Some(format!(
-            "Queued League lobby invite for {target} (start LeagueClientUx to send over local LCU)."
-        ));
+        let client = find_lockfile_path(self.game_tracker.last_processes())
+            .and_then(|p| read_lockfile(&p))
+            .and_then(|creds| LeagueClient::new().ok().map(|c| (c, creds)));
+        self.status_banner = Some(match client {
+            Some((c, creds)) => match c.accept_invite(&creds, &invite.party_id) {
+                Ok(_) => crate::i18n::trf("Joining {game} lobby...", &[("game", &invite.game)]),
+                Err(e) => e.to_string(),
+            },
+            None => tr("Could not join lobby. Ensure League of Legends is running.").to_string(),
+        });
     }
 
     /// Voice calls need audio I/O and the hub's media transport, which this app does not have
     /// yet. It does not send a voice state either: others would see a silent member.
     pub fn show_voice_unavailable(&mut self) {
-        self.status_banner = Some(VOICE_UNAVAILABLE.to_string());
+        self.status_banner = Some(tr(VOICE_UNAVAILABLE).to_string());
     }
 
     pub fn load_channel_history(&mut self, channel_id: &str) {
@@ -971,11 +920,11 @@ impl CillhubApp {
                     }
                 }
                 GatewayEvent::ConnectionError(err) => {
-                    self.status_banner = Some(format!("Gateway reconnecting: {err}"));
+                    self.status_banner = Some(crate::i18n::trf("Gateway reconnecting: {error}", &[("error", &err.to_string())]));
                 }
                 GatewayEvent::RejectedToken => {
                     self.logout();
-                    self.auth_error = Some("Session expired. Please log in again.".to_string());
+                    self.auth_error = Some(tr("Session expired. Please log in again.").to_string());
                 }
                 GatewayEvent::Connected => {
                     self.status_banner = None;
@@ -1413,7 +1362,7 @@ impl CillhubApp {
                                     );
                                     if let Some(gname) = game {
                                         ui.label(
-                                            RichText::new(format!("Playing {gname}"))
+                                            RichText::new(crate::i18n::trf("Playing {name}", &[("name", &gname)]))
                                                 .font(ui_font(11.0))
                                                 .color(GREEN()),
                                         );
@@ -1864,17 +1813,17 @@ impl CillhubApp {
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new(format!("A new version of Cillhub is available ({version})."))
+                            RichText::new(crate::i18n::trf("A new version of Cillhub is available ({version}).", &[("version", &version)]))
                                 .strong()
                                 .size(12.5)
                                 .color(Color32::BLACK),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.small_button("✕").on_hover_text("Dismiss for an hour").clicked() {
+                            if ui.small_button("✕").on_hover_text(tr("Dismiss for an hour")).clicked() {
                                 self.update_dismissed_until =
                                     Some(Instant::now() + Duration::from_secs(3600));
                             }
-                            if ui.button("Restart to Update").clicked()
+                            if ui.button(tr("Restart to Update")).clicked()
                                 && report(&mut self.status_banner, crate::update::run_installer(&path))
                                     .is_some()
                             {
@@ -1898,7 +1847,7 @@ impl CillhubApp {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(&banner).strong().size(12.5).color(TEXT_HEADER()));
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.small_button("Dismiss").clicked() {
+                            if ui.small_button(tr("Dismiss")).clicked() {
                                 self.status_banner = None;
                             }
                         });
@@ -2058,7 +2007,7 @@ mod tests {
         );
 
         // 2. Open Game Lobby Invite modal and render
-        app.active_modal = Some(ModalKind::GameLobbyInvite);
+        app.active_modal = Some(ModalKind::CreatePoll);
         let out_modal = ctx.run(input.clone(), |ctx| {
             app.headless_tick(ctx);
         });

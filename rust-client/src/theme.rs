@@ -747,6 +747,7 @@ pub enum IconKind {
     Hangup,
     OpenFull,
     PersonAdd,
+    Block,
 }
 
 /// Web icon name (ICONS in client/src/components/ui.tsx) and a rotation in degrees.
@@ -806,6 +807,7 @@ fn web_icon(kind: IconKind) -> Option<(&'static str, i32)> {
         Hangup => ("hangup", 0),
         OpenFull => ("openFull", 0),
         PersonAdd => ("personAdd", 0),
+        Block => ("block", 0),
         Hash | Gamepad | Globe => return None,
     })
 }

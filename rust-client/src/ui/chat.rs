@@ -105,7 +105,12 @@ impl CillhubApp {
             }
             let canvas_open = self.active_drawer == Some(DrawerKind::Canvas);
             if icon_btn(ui, IconKind::Canvas, tr("Channel Canvas"), canvas_open, false).clicked() {
-                self.active_drawer = if canvas_open { None } else { Some(DrawerKind::Canvas) };
+                self.active_drawer = if canvas_open {
+                    None
+                } else {
+                    self.load_canvas(&cid);
+                    Some(DrawerKind::Canvas)
+                };
             }
             let pins_open = self.active_drawer == Some(DrawerKind::Pins);
             if icon_btn(ui, IconKind::Pin, tr("Pinned Messages"), pins_open, false).clicked() {
@@ -143,9 +148,9 @@ impl CillhubApp {
                 .collect();
             here.sort();
             let who = if here.is_empty() {
-                "Nobody is in this channel.".to_string()
+                tr("Nobody is in this channel.").to_string()
             } else {
-                format!("In this channel: {}", here.join(", "))
+                trf("In this channel: {names}", &[("names", &here.join(", "))])
             };
             Frame::new()
                 .fill(BG_PANEL())
@@ -153,7 +158,7 @@ impl CillhubApp {
                 .show(ui, |ui| {
                     ui.label(RichText::new(who).font(bold_font(13.0)).color(TEXT_HEADER()));
                     ui.label(
-                        RichText::new(super::VOICE_UNAVAILABLE)
+                        RichText::new(tr(super::VOICE_UNAVAILABLE))
                             .font(ui_font(12.5))
                             .color(TEXT_MUTED()),
                     );
@@ -215,10 +220,9 @@ impl CillhubApp {
                                         };
                                         ui.horizontal(|ui| {
                                             ui.label(
-                                                RichText::new(format!(
-                                                    "WELCOME TO {prefix}{}!",
-                                                    ch_name.to_uppercase()
-                                                ))
+                                                RichText::new(
+                                                    trf("Welcome to {label}!", &[("label", &format!("{prefix}{ch_name}"))]).to_uppercase(),
+                                                )
                                                 .font(display_font(30.0))
                                                 .color(TEXT_HEADER()),
                                             );
@@ -228,7 +232,7 @@ impl CillhubApp {
                                                     |ui| {
                                                         if ui
                                                             .button(
-                                                                RichText::new("Load older")
+                                                                RichText::new(tr("Load older"))
                                                                     .font(ui_font(12.0))
                                                                     .color(INTERACTIVE()),
                                                             )
@@ -246,9 +250,7 @@ impl CillhubApp {
                                             .filter(|s| !s.is_empty())
                                             .map(|s| s.to_string())
                                             .unwrap_or_else(|| {
-                                                format!(
-                                                    "This is the start of the {prefix}{ch_name} channel."
-                                                )
+                                                trf("This is the start of {label}.", &[("label", &format!("{prefix}{ch_name}"))])
                                             });
                                         ui.label(
                                             RichText::new(sub)
@@ -285,7 +287,7 @@ impl CillhubApp {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new("STAGE CHANNEL")
+                        RichText::new(tr("Stage").to_uppercase())
                             .font(display_font(14.0))
                             .color(ACCENT()),
                     );
@@ -297,14 +299,14 @@ impl CillhubApp {
                         );
                     } else {
                         ui.label(
-                            RichText::new("No active stage topic")
+                            RichText::new(tr("No active stage topic"))
                                 .font(ui_font(13.0))
                                 .color(TEXT_MUTED()),
                         );
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.label(
-                            RichText::new(super::VOICE_UNAVAILABLE)
+                            RichText::new(tr(super::VOICE_UNAVAILABLE))
                                 .font(ui_font(12.5))
                                 .color(TEXT_MUTED()),
                         );
@@ -498,7 +500,7 @@ impl CillhubApp {
                                             .font(mono_font(11.0))
                                             .color(TEXT_MUTED()),
                                         );
-                                        if ui.small_button("Open").clicked() {
+                                        if ui.small_button(tr("Open in Browser")).clicked() {
                                             report(&mut self.status_banner, open::that(&url));
                                         }
                                     });
@@ -516,11 +518,12 @@ impl CillhubApp {
                                 .show(ui, |ui| {
                                     ui.label(
                                         RichText::new(format!(
-                                            "📊 POLL — {}",
+                                            "{} — {}",
+                                            tr("Poll").to_uppercase(),
                                             poll.question
                                                 .text
                                                 .as_deref()
-                                                .unwrap_or("Poll")
+                                                .unwrap_or(tr("Poll"))
                                                 .to_uppercase()
                                         ))
                                         .font(display_font(15.0))
@@ -539,10 +542,11 @@ impl CillhubApp {
                                             .map(|a| (a.count, a.me_voted))
                                             .unwrap_or((0, false));
                                         ui.horizontal(|ui| {
+                                            let votes = if count.0 == 1 { tr("{n} vote") } else { tr("{n} votes") };
                                             let label = format!(
-                                                "{} ({} votes)",
-                                                ans.poll_media.text.as_deref().unwrap_or("Option"),
-                                                count.0
+                                                "{} ({})",
+                                                ans.poll_media.text.as_deref().unwrap_or(""),
+                                                votes.replace("{n}", &count.0.to_string())
                                             );
                                             if ui.selectable_label(count.1, label).clicked() {
                                                 self.vote_poll(
@@ -982,15 +986,15 @@ impl CillhubApp {
                 );
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!("Host: {}", invite.host_name))
+                        RichText::new(trf("Host: {name}", &[("name", &invite.host_name)]))
                             .font(ui_font(12.5))
                             .color(TEXT()),
                     );
                     ui.label(RichText::new("•").color(TEXT_MUTED()));
                     ui.label(
-                        RichText::new(format!(
-                            "Party: {}/{}",
-                            invite.members, invite.max_members
+                        RichText::new(trf(
+                            "Party: {members}/{max}",
+                            &[("members", &invite.members.to_string()), ("max", &invite.max_members.to_string())],
                         ))
                         .font(mono_font(12.0))
                         .color(TEXT()),
@@ -1500,7 +1504,7 @@ impl CillhubApp {
     /// text stay in the composer when it fails.
     fn send_files(&mut self, cid: &str, content: &str) {
         let Some(api) = &self.api else {
-            self.status_banner = Some("Uploads need a connection to a server.".to_string());
+            self.status_banner = Some(tr("Uploads need a connection to a server.").to_string());
             return;
         };
         let mut files = Vec::new();
@@ -1512,7 +1516,7 @@ impl CillhubApp {
             match std::fs::read(path) {
                 Ok(bytes) => files.push((name, bytes)),
                 Err(e) => {
-                    self.status_banner = Some(format!("Could not read {}: {e}", path.display()));
+                    self.status_banner = Some(format!("{}: {e}", path.display()));
                     return;
                 }
             }
@@ -1654,6 +1658,16 @@ impl CillhubApp {
         }
     }
 
+    /// The channel canvas text (web getCanvas: GET /channels/{id}/canvas -> { content }).
+    pub fn load_canvas(&mut self, cid: &str) {
+        self.canvas_doc_input.clear();
+        if let Some(api) = &self.api {
+            if let Ok(v) = api.get(&format!("/channels/{cid}/canvas")) {
+                self.canvas_doc_input = v.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
+            }
+        }
+    }
+
     /// Bookmark on/off like the web's toggleBookmark (saved messages without a due date).
     pub fn toggle_bookmark(&mut self, msg: &Message) {
         let path = format!("/users/@me/saved-messages/{}/{}", msg.channel_id, msg.id);
@@ -1684,7 +1698,7 @@ impl CillhubApp {
 
     pub fn create_thread_from_message(&mut self, channel_id: &str, msg: &Message) {
         let name = if msg.content.is_empty() {
-            "Discussion Thread".to_string()
+            tr("Thread").to_string()
         } else {
             msg.content.chars().take(32).collect()
         };

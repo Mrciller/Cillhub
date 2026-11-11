@@ -4,15 +4,14 @@
 //! Quick Switcher, and Threads/Pins/Saved/Search/Canvas Drawers.
 
 use super::report;
-use crate::league::{format_game_invite_url, GameInviteData};
 use crate::model::{
     Channel, Guild, Message, Role,
 };
 use crate::theme::{display_font, palette::*};
 use crate::ui::{CillhubApp, DrawerKind, ModalKind};
 use egui::{
-    Align, Color32, Context, CornerRadius, Frame, Layout, Margin, RichText, ScrollArea, Slider,
-    Stroke, TextEdit, Ui, Vec2, Window,
+    Align, Color32, Context, CornerRadius, Frame, Layout, Margin, RichText, ScrollArea,
+    Stroke, TextEdit, Ui, Vec2,
 };
 use serde_json::json;
 use crate::i18n::{tr, trf};
@@ -25,7 +24,6 @@ impl CillhubApp {
         };
 
         match modal {
-            ModalKind::GameLobbyInvite => self.render_game_lobby_modal(ctx),
             ModalKind::UserSettings => self.render_user_settings(ctx),
             ModalKind::ServerSettings => self.render_server_settings(ctx),
             ModalKind::CreateJoinGuild => self.render_create_join_guild_modal(ctx),
@@ -37,183 +35,6 @@ impl CillhubApp {
         }
     }
 
-    fn render_game_lobby_modal(&mut self, ctx: &Context) {
-        let mut open = true;
-        Window::new("🎮 Invite to Game Lobby & League Party")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_width(460.0)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.label(
-                    RichText::new("SHARE AN INTERACTIVE() GAME LOBBY INVITE CARD IN CHAT")
-                        .size(11.5)
-                        .strong()
-                        .color(LEAGUE_TEAL()),
-                );
-                ui.add_space(6.0);
-
-                // If a live League LCU lobby is detected, show a one-click sync banner
-                if let Some(l) = self.league_lobby.clone() {
-                    Frame::new()
-                        .fill(LEAGUE_BG())
-                        .stroke(Stroke::new(1.0_f32, LEAGUE_TEAL()))
-                        .corner_radius(CornerRadius::same(4))
-                        .inner_margin(Margin::same(10))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "✅ Live LCU Lobby: {}",
-                                            l.queue_name
-                                        ))
-                                        .strong()
-                                        .color(LEAGUE_TEAL()),
-                                    );
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "Party ID: {} · Members: {}/{}",
-                                            l.party_id.as_deref().unwrap_or("open"),
-                                            l.member_count,
-                                            l.max_party_size
-                                        ))
-                                        .size(11.5)
-                                        .color(TEXT_MUTED()),
-                                    );
-                                });
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if ui.button("Use LCU Lobby").clicked() {
-                                        self.lobby_form_game = "League of Legends".to_string();
-                                        self.lobby_form_queue = l.queue_name.clone();
-                                        self.lobby_form_party_id = l
-                                            .party_id
-                                            .clone()
-                                            .unwrap_or_else(|| "lol-party".to_string());
-                                        self.lobby_form_members = l.member_count.max(1) as u32;
-                                        self.lobby_form_max_members = l.max_party_size.max(5) as u32;
-                                    }
-                                });
-                            });
-                        });
-                    ui.add_space(8.0);
-                }
-
-                egui::Grid::new("lobby_invite_form")
-                    .num_columns(2)
-                    .spacing([12.0, 8.0])
-                    .show(ui, |ui| {
-                        ui.label(RichText::new("Game Title:").color(TEXT_MUTED()));
-                        ui.add_sized(
-                            Vec2::new(280.0, 28.0),
-                            TextEdit::singleline(&mut self.lobby_form_game),
-                        );
-                        ui.end_row();
-
-                        ui.label(RichText::new("Queue / Mode:").color(TEXT_MUTED()));
-                        ui.add_sized(
-                            Vec2::new(280.0, 28.0),
-                            TextEdit::singleline(&mut self.lobby_form_queue),
-                        );
-                        ui.end_row();
-
-                        ui.label(RichText::new("Host Name:").color(TEXT_MUTED()));
-                        ui.add_sized(
-                            Vec2::new(280.0, 28.0),
-                            TextEdit::singleline(&mut self.lobby_form_host),
-                        );
-                        ui.end_row();
-
-                        ui.label(RichText::new("Party / Lobby ID:").color(TEXT_MUTED()));
-                        ui.add_sized(
-                            Vec2::new(280.0, 28.0),
-                            TextEdit::singleline(&mut self.lobby_form_party_id),
-                        );
-                        ui.end_row();
-
-                        ui.label(RichText::new("Party Size:").color(TEXT_MUTED()));
-                        ui.horizontal(|ui| {
-                            ui.add(
-                                Slider::new(&mut self.lobby_form_members, 1..=10).text("Current"),
-                            );
-                            ui.add(
-                                Slider::new(&mut self.lobby_form_max_members, 1..=10).text("Max"),
-                            );
-                        });
-                        ui.end_row();
-                    });
-
-                ui.add_space(10.0);
-                let preview = GameInviteData {
-                    game: self.lobby_form_game.clone(),
-                    party_id: self.lobby_form_party_id.clone(),
-                    queue_name: self.lobby_form_queue.clone(),
-                    queue_id: Some(420),
-                    host_name: self.lobby_form_host.clone(),
-                    host_puuid: None,
-                    members: self.lobby_form_members as usize,
-                    max_members: self.lobby_form_max_members.max(self.lobby_form_members) as usize,
-                };
-
-                ui.label(
-                    RichText::new("CARD PREVIEW")
-                        .size(11.0)
-                        .strong()
-                        .color(TEXT_MUTED()),
-                );
-                self.render_game_invite_card(ui, &preview);
-
-                ui.add_space(10.0);
-                if ui
-                    .add_sized(
-                        Vec2::new(ui.available_width(), 34.0),
-                        egui::Button::new(
-                            RichText::new("🎮 Post Lobby Invite Card to Current Channel")
-                                .strong()
-                                .color(Color32::BLACK),
-                        )
-                        .fill(LEAGUE_TEAL()),
-                    )
-                    .clicked()
-                {
-                    let url = format_game_invite_url(&preview);
-                    self.send_message_to_selected(&url);
-                    self.active_modal = None;
-                }
-
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(6.0);
-
-                // Direct League of Legends LCU Summoner Invite
-                ui.label(
-                    RichText::new("DIRECT LEAGUE CLIENT (LCU) SUMMONER INVITE")
-                        .size(11.0)
-                        .strong()
-                        .color(TEXT_MUTED()),
-                );
-                ui.horizontal(|ui| {
-                    ui.add_sized(
-                        Vec2::new(260.0, 28.0),
-                        TextEdit::singleline(&mut self.lcu_summoner_target)
-                            .hint_text("Summoner Name or Numeric ID"),
-                    );
-                    if ui
-                        .button(RichText::new("Send LCU Invite").color(LEAGUE_TEAL()))
-                        .clicked()
-                    {
-                        self.send_direct_lcu_invite();
-                    }
-                });
-            });
-
-        if !open {
-            self.active_modal = None;
-        }
-    }
-
-    /// "Add a server" (GuildRail.tsx AddServerModal): create one, or join with an invite.
     fn render_create_join_guild_modal(&mut self, ctx: &Context) {
         if self.new_guild_name_input.is_empty() {
             if let Some(me) = &self.state.me {
@@ -634,19 +455,19 @@ impl CillhubApp {
     pub fn render_drawer(&mut self, ui: &mut Ui, drawer: DrawerKind) {
         ui.horizontal(|ui| {
             let title = match drawer {
-                DrawerKind::Threads => "THREADS",
-                DrawerKind::Pins => "PINNED MESSAGES",
-                DrawerKind::Saved => "SAVED BOOKMARKS",
-                DrawerKind::Search => "SEARCH RESULTS",
-                DrawerKind::Canvas => "SHARED CHANNEL CANVAS",
+                DrawerKind::Threads => tr("Threads"),
+                DrawerKind::Pins => tr("Pinned Messages"),
+                DrawerKind::Saved => tr("Bookmarks"),
+                DrawerKind::Search => tr("Search"),
+                DrawerKind::Canvas => tr("Canvas"),
             };
             ui.label(
-                RichText::new(title)
+                RichText::new(title.to_uppercase())
                     .font(display_font(18.0))
                     .color(TEXT_HEADER()),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.small_button("✕").clicked() {
+                if crate::ui::chat::toolbar_btn(ui, crate::theme::IconKind::Close, false, false).on_hover_text(tr("Close")).clicked() {
                     self.active_drawer = None;
                 }
             });
@@ -666,11 +487,11 @@ impl CillhubApp {
                         .cloned()
                         .collect();
                     if threads.is_empty() {
-                        ui.label(RichText::new("No threads in this channel yet.").color(TEXT_MUTED()));
+                        ui.label(RichText::new(tr("No threads in this channel yet.")).color(TEXT_MUTED()));
                     }
                     for th in threads {
                         if ui
-                            .button(format!("🧵 {}", th.name.as_deref().unwrap_or("Thread")))
+                            .button(th.name.as_deref().unwrap_or(tr("Thread")))
                             .clicked()
                         {
                             self.selected_channel_id = Some(th.id);
@@ -686,7 +507,7 @@ impl CillhubApp {
                         .map(|list| list.iter().filter(|m| m.pinned).cloned().collect())
                         .unwrap_or_default();
                     if pinned.is_empty() {
-                        ui.label(RichText::new("No pinned messages yet.").color(TEXT_MUTED()));
+                        ui.label(RichText::new(tr("This channel doesn't have any pinned messages yet.")).color(TEXT_MUTED()));
                     }
                     for m in pinned {
                         Frame::new()
@@ -700,7 +521,7 @@ impl CillhubApp {
                 }
                 DrawerKind::Saved => {
                     if self.state.saved_messages.is_empty() {
-                        ui.label(RichText::new("No saved messages yet.").color(TEXT_MUTED()));
+                        ui.label(RichText::new(tr("No bookmarks yet. Click the bookmark icon on any message to save it here.")).color(TEXT_MUTED()));
                     }
                     for sm in &self.state.saved_messages {
                         Frame::new()
@@ -731,7 +552,7 @@ impl CillhubApp {
                         })
                         .unwrap_or_default();
                     ui.label(
-                        RichText::new(format!("{} results for '{}'", hits.len(), self.search_query))
+                        RichText::new(if hits.len() == 1 { tr("{n} Result") } else { tr("{n} Results") }.replace("{n}", &hits.len().to_string()))
                             .size(11.5)
                             .color(TEXT_MUTED()),
                     );
@@ -746,25 +567,20 @@ impl CillhubApp {
                     }
                 }
                 DrawerKind::Canvas => {
-                    ui.label(
-                        RichText::new("Collaborative Markdown & Sticky Notes")
-                            .size(11.5)
-                            .color(TEXT_MUTED()),
-                    );
-                    ui.add_space(6.0);
                     ui.add_sized(
                         Vec2::new(ui.available_width(), 220.0),
                         TextEdit::multiline(&mut self.canvas_doc_input)
-                            .hint_text("Write shared strategy notes, scrim codes, or links…"),
+                            .hint_text(tr("Write shared notes, guidelines, or resources in Markdown…")),
                     );
-                    if ui.button("Save Canvas").clicked() {
+                    ui.add_space(8.0);
+                    if primary_btn(ui, tr("Save")).clicked() {
                         if let (Some(api), Some(cid)) = (&self.api, &self.selected_channel_id) {
+                            // the web's saveCanvas: PUT { content }
                             report(&mut self.status_banner, api.put(
                                 &format!("/channels/{cid}/canvas"),
-                                Some(json!({ "doc": self.canvas_doc_input })),
+                                Some(json!({ "content": self.canvas_doc_input })),
                             ));
                         }
-                        self.status_banner = Some("Channel canvas updated!".to_string());
                     }
                 }
             });
@@ -822,15 +638,14 @@ impl CillhubApp {
         }
         let code = match crate::deeplink::parse_deep_link(&raw) {
             Some(crate::deeplink::DeepLinkTarget::Invite(c)) => c,
-            _ => raw.trim_start_matches('/').to_string(),
+            // like the web: the last path part of an invite link
+            _ => raw.split('/').filter(|p| !p.is_empty()).next_back().unwrap_or_default().to_string(),
         };
         if let Some(api) = &self.api {
             match api.post(&format!("/invites/{code}"), json!({})) {
-                Ok(_) => self.status_banner = Some(format!("Joined invite {code}!")),
+                Ok(_) => {}
                 Err(e) => self.status_banner = Some(e.to_string()),
             }
-        } else {
-            self.status_banner = Some(format!("Processed invite code: {code}"));
         }
     }
 

@@ -3,6 +3,7 @@
 //! `.auth-brand` badge, `Barlow Condensed` display headings (`READY UP` / `JOIN THE ROSTER`),
 //! `.server-choice` selector (Main Hub / Private Node), and styled inputs/buttons.
 
+use crate::i18n::tr;
 use super::report;
 use crate::api::normalize_server_url;
 use crate::config::HUB_URL;
@@ -54,20 +55,20 @@ impl CillhubApp {
 
                         let (heading, subtitle) = match self.auth_mode {
                             AuthMode::Login => (
-                                "READY UP",
-                                "Log in to get back to your team.",
+                                &tr("Ready up").to_uppercase(),
+                                tr("Log in to get back to your team."),
                             ),
                             AuthMode::Register => (
-                                "JOIN THE ROSTER",
-                                "Create your Cillhub account in seconds.",
+                                &tr("Join the roster").to_uppercase(),
+                                tr("Create your account to join your team."),
                             ),
                             AuthMode::Mfa => (
-                                "VERIFY ACCESS",
-                                "Enter your 6-digit authenticator code or 8-character backup code.",
+                                &tr("Multi-Factor Authentication").to_uppercase(),
+                                tr("Enter the 6-digit code from your authenticator app."),
                             ),
                             AuthMode::ResetPassword => (
-                                "RESET PASSWORD",
-                                "Enter your account email or username to reset your password.",
+                                &tr("Forgot password?").to_uppercase(),
+                                tr("Enter the email address of your account. You get a link to choose a new password."),
                             ),
                         };
 
@@ -103,8 +104,8 @@ impl CillhubApp {
                                     if Self::server_tab_btn(
                                         ui,
                                         Vec2::new(tab_w, 32.0),
-                                        "🌐 Main Hub",
-                                        Some("DEFAULT"),
+                                        &format!("🌐 {}", tr("Main Hub")),
+                                        Some(&tr("Default").to_uppercase()),
                                         is_hub,
                                     )
                                     .clicked()
@@ -117,7 +118,7 @@ impl CillhubApp {
                                     if Self::server_tab_btn(
                                         ui,
                                         Vec2::new(tab_w, 32.0),
-                                        "🔒 Private Node",
+                                        &format!("🔒 {}", tr("Private Node")),
                                         None,
                                         is_node,
                                     )
@@ -136,7 +137,7 @@ impl CillhubApp {
 
                                 if is_node {
                                     ui.label(
-                                        RichText::new("Node Server URL")
+                                        RichText::new(tr("Server URL"))
                                             .font(bold_font(12.5))
                                             .color(INTERACTIVE()),
                                     );
@@ -154,7 +155,7 @@ impl CillhubApp {
                                     ui.add_space(4.0);
                                     ui.label(
                                         RichText::new(
-                                            "Connect directly to a self-hosted Cillhub node.",
+                                            tr("Connect directly to a self-hosted Cillhub node."),
                                         )
                                         .font(ui_font(12.0))
                                         .color(TEXT_MUTED()),
@@ -167,14 +168,9 @@ impl CillhubApp {
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = 4.0;
                                         ui.label(
-                                            RichText::new("Connected to")
+                                            RichText::new(crate::i18n::trf("Connected to {hub}", &[("hub", &host)]))
                                                 .font(ui_font(12.0))
                                                 .color(TEXT_MUTED()),
-                                        );
-                                        ui.label(
-                                            RichText::new(host)
-                                                .font(bold_font(12.0))
-                                                .color(TEXT()),
                                         );
                                     });
                                 }
@@ -184,7 +180,7 @@ impl CillhubApp {
 
                         match self.auth_mode {
                             AuthMode::Mfa => {
-                                Self::field_label(ui, "6-digit code or 8-char backup code");
+                                Self::field_label(ui, tr("Authentication code"));
                                 let code_resp = Self::auth_text_input(
                                     ui,
                                     &mut self.auth_mfa_code,
@@ -197,14 +193,14 @@ impl CillhubApp {
                                     self.submit_mfa();
                                 }
                                 ui.add_space(16.0);
-                                if Self::primary_wide_btn(ui, "VERIFY").clicked() {
+                                if Self::primary_wide_btn(ui, tr("Log In")).clicked() {
                                     self.submit_mfa();
                                 }
                                 ui.add_space(10.0);
                                 if ui
                                     .add(
                                         egui::Button::new(
-                                            RichText::new("← Back to login")
+                                            RichText::new(tr("Go back to login"))
                                                 .font(ui_font(13.0))
                                                 .color(ACCENT()),
                                         )
@@ -216,7 +212,7 @@ impl CillhubApp {
                                 }
                             }
                             AuthMode::ResetPassword => {
-                                Self::field_label(ui, "Email or username");
+                                Self::field_label(ui, tr("Email or username"));
                                 Self::auth_text_input(
                                     ui,
                                     &mut self.auth_login_input,
@@ -224,7 +220,7 @@ impl CillhubApp {
                                     false,
                                 );
                                 ui.add_space(10.0);
-                                Self::field_label(ui, "Reset token (if received)");
+                                Self::field_label(ui, tr("Reset token (if received)"));
                                 Self::auth_text_input(
                                     ui,
                                     &mut self.auth_reset_token,
@@ -233,7 +229,7 @@ impl CillhubApp {
                                 );
                                 if !self.auth_reset_token.trim().is_empty() {
                                     ui.add_space(10.0);
-                                    Self::field_label(ui, "New password");
+                                    Self::field_label(ui, tr("New Password"));
                                     Self::auth_text_input(
                                         ui,
                                         &mut self.auth_password_input,
@@ -243,9 +239,9 @@ impl CillhubApp {
                                 }
                                 ui.add_space(16.0);
                                 let btn_txt = if self.auth_reset_token.trim().is_empty() {
-                                    "SEND RESET LINK"
+                                    tr("Send link")
                                 } else {
-                                    "SET NEW PASSWORD"
+                                    tr("Change Password")
                                 };
                                 if Self::primary_wide_btn(ui, btn_txt).clicked() {
                                     self.submit_password_reset();
@@ -254,7 +250,7 @@ impl CillhubApp {
                                 if ui
                                     .add(
                                         egui::Button::new(
-                                            RichText::new("← Back to login")
+                                            RichText::new(tr("Go back to login"))
                                                 .font(ui_font(13.0))
                                                 .color(ACCENT()),
                                         )
@@ -271,9 +267,9 @@ impl CillhubApp {
                                 Self::field_label(
                                     ui,
                                     if is_reg {
-                                        "Username"
+                                        tr("Username")
                                     } else {
-                                        "Email or username"
+                                        tr("Email or username")
                                     },
                                 );
                                 Self::auth_text_input(
@@ -288,7 +284,7 @@ impl CillhubApp {
                                     if registration_closed(self.instance_info.as_ref()) {
                                         ui.add_space(8.0);
                                         ui.label(
-                                            RichText::new("Registration is closed on this instance. Ask its admin for an account.")
+                                            RichText::new(tr("Registration is closed on this instance. Ask its admin for an account."))
                                                 .font(ui_font(13.0))
                                                 .color(YELLOW()),
                                         );
@@ -296,13 +292,13 @@ impl CillhubApp {
                                     if self.instance_info.as_ref().is_some_and(|i| !i["captcha"].is_null()) {
                                         ui.add_space(8.0);
                                         ui.label(
-                                            RichText::new("This server asks for a captcha check, which this app cannot show yet. Please register on the website, then log in here.")
+                                            RichText::new(tr("This server asks for a captcha check, which this app cannot show yet. Please register on the website, then log in here."))
                                                 .font(ui_font(13.0))
                                                 .color(YELLOW()),
                                         );
                                     }
                                     ui.add_space(12.0);
-                                    Self::field_label(ui, "Email");
+                                    Self::field_label(ui, tr("Email"));
                                     Self::auth_text_input(
                                         ui,
                                         &mut self.auth_email_input,
@@ -312,7 +308,7 @@ impl CillhubApp {
                                 }
 
                                 ui.add_space(12.0);
-                                Self::field_label(ui, "Password");
+                                Self::field_label(ui, tr("Password"));
                                 let pw_resp = Self::auth_text_input(
                                     ui,
                                     &mut self.auth_password_input,
@@ -337,7 +333,7 @@ impl CillhubApp {
                                 ui.add_space(16.0);
                                 if Self::primary_wide_btn(
                                     ui,
-                                    if is_reg { "CONTINUE" } else { "LOG IN" },
+                                    if is_reg { tr("Continue") } else { tr("Log In") },
                                 )
                                 .clicked()
                                 {
@@ -349,9 +345,9 @@ impl CillhubApp {
                                     ui.spacing_mut().item_spacing.x = 4.0;
                                     ui.label(
                                         RichText::new(if is_reg {
-                                            "Already have an account?"
+                                            tr("Already have an account?")
                                         } else {
-                                            "Need an account?"
+                                            tr("Need an account?")
                                         })
                                         .font(ui_font(13.0))
                                         .color(TEXT_MUTED()),
@@ -360,9 +356,9 @@ impl CillhubApp {
                                         .add(
                                             egui::Button::new(
                                                 RichText::new(if is_reg {
-                                                    "Log in"
+                                                    tr("Log In")
                                                 } else {
-                                                    "Register"
+                                                    tr("Register")
                                                 })
                                                 .font(bold_font(13.0))
                                                 .color(ACCENT()),
@@ -386,7 +382,7 @@ impl CillhubApp {
                                                 if ui
                                                     .add(
                                                         egui::Button::new(
-                                                            RichText::new("Forgot your password?")
+                                                            RichText::new(tr("Forgot password?"))
                                                                 .font(ui_font(13.0))
                                                                 .color(ACCENT()),
                                                         )
@@ -403,34 +399,6 @@ impl CillhubApp {
                             }
                         }
 
-                        ui.add_space(12.0);
-                        ui.horizontal(|ui| {
-                            let game_txt = if let Some(g) = &self.current_game {
-                                format!("🎮 Active: {}", g.name)
-                            } else {
-                                "🎮 Game Activity Ready".to_string()
-                            };
-                            ui.label(
-                                RichText::new(game_txt)
-                                    .font(ui_font(11.5))
-                                    .color(TEXT_MUTED()),
-                            );
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui
-                                    .add(
-                                        egui::Button::new(
-                                            RichText::new("Preview UI Offline →")
-                                                .font(ui_font(11.5))
-                                                .color( TEXT_MUTED() ),
-                                        )
-                                        .frame(false),
-                                    )
-                                    .clicked()
-                                {
-                                    self.enter_demo_arena();
-                                }
-                            });
-                        });
                     });
                 },
             );
@@ -631,7 +599,7 @@ impl CillhubApp {
             // The hub requires an email to register (server/src/routes/auth.js emailField).
             let email = self.auth_email_input.trim();
             if email.is_empty() {
-                self.auth_error = Some("Email is required.".to_string());
+                self.auth_error = Some(tr("Email is required.").to_string());
                 return;
             }
             body["email"] = Value::String(email.to_string());
@@ -705,7 +673,7 @@ impl CillhubApp {
             ) {
                 Ok(_) => {
                     self.status_banner =
-                        Some("Password reset instructions sent if account exists.".to_string());
+                        Some(tr("If an account with this address exists, a mail with a link is on its way.").to_string());
                 }
                 Err(e) => self.auth_error = Some(e.to_string()),
             }
@@ -720,7 +688,7 @@ impl CillhubApp {
                 Ok(_) => {
                     self.auth_mode = AuthMode::Login;
                     self.status_banner =
-                        Some("Password updated! You can now log in.".to_string());
+                        Some(tr("Password updated! You can now log in.").to_string());
                 }
                 Err(e) => self.auth_error = Some(e.to_string()),
             }
