@@ -146,6 +146,20 @@ export function favoriteGifsChange(userId, add, removeUrl) {
   return list.filter(x => x.url !== removeUrl);
 }
 
+// saved private nodes (Settings › Private Nodes), synced to the user's other devices: at most 20 {origin, name}, the origin
+// exactly as URL.origin gives it (https, http only for localhost), the name plain text; a repeated origin is dropped
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\]|.+\.localhost)$/;
+function privateNodes(v, f) {
+  if (!Array.isArray(v) || v.length > 20) fail(f, 'Must be a list of at most 20 nodes.');
+  const seen = new Set();
+  return v.map((n, i) => {
+    let u;
+    try { u = new URL(n?.origin); } catch { fail(`${f}.${i}.origin`, 'Must be an https origin (http only for localhost).'); }
+    if (u.origin !== n.origin || !(u.protocol === 'https:' || (u.protocol === 'http:' && LOCAL_HOST.test(u.hostname)))) fail(`${f}.${i}.origin`, 'Must be an https origin (http only for localhost).');
+    return { origin: u.origin, name: typeof n.name === 'string' ? n.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 64) : '' };
+  }).filter(n => !seen.has(n.origin) && seen.add(n.origin));
+}
+
 // the allow-list: the documented user settings names where they exist, Cillhub's own keys for the rest
 const SETTINGS = {
   privacy: [privacySettings, { dm_read_receipts: true }],
@@ -187,6 +201,7 @@ const SETTINGS = {
   guild_positions: [snowflakeList(200), []],
   status: [oneOf('online', 'idle', 'dnd', 'invisible'), 'online'],
   custom_status: [customStatus, null],
+  private_nodes: [privateNodes, null], // null: never saved (a device then uploads its local list)
 };
 
 const stored = userId => get('SELECT settings, status FROM users WHERE id = ?', userId);

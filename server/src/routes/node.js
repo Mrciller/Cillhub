@@ -188,6 +188,8 @@ async function hubSignIn({ code, code_verifier, redirect_uri }) {
 // the hub sends the browser to GET /federation/hub-callback?code|error&state, which trades the code and ends with a 302 to
 // return_to#token=<node token>&state=<the caller's state>&node_id=<id> (or #error=…&error_description=…&state=…).
 // return_to must be on this node's pinned URL or the linked hub's (the multi-instance client), never the live Host header.
+// answer=json (the hub client connecting a saved node in the background): the same steps answer JSON instead of 302s,
+// {authorize_url} here and {token, node_id, state} | {error, error_description, state} from the callback.
 const logins = new Map(); // our state -> {verifier, returnTo, state, expires}
 const LOGIN_MS = 10 * 60_000;
 const redirect = (ctx, location) => ((ctx.status = 302), (ctx.headers.Location = location), (ctx.headers['Cache-Control'] = 'no-store'), { location });
@@ -202,8 +204,10 @@ function hubLogin(ctx) {
   const returnTo = returnTarget(ctx.query.get('return_to'));
   if (!returnTo) throw invalid('return_to', 'BASE_TYPE_BAD_VALUE', 'Must be a URL on this instance or on its hub.');
   const state = String(ctx.query.get('state') ?? '').slice(0, 200);
+  const json = ctx.query.get('answer') === 'json';
   if (!hubLoginOpen()) {
-    return redirect(ctx, `${returnTo}#${new URLSearchParams({ error: 'unavailable', error_description: 'Sign-in with the hub is not available on this instance.', state })}`);
+    const refused = { error: 'unavailable', error_description: 'Sign-in with the hub is not available on this instance.', state };
+    return json ? refused : redirect(ctx, `${returnTo}#${new URLSearchParams(refused)}`);
   }
   const f = fedState();
   const now = Date.now();
@@ -211,12 +215,12 @@ function hubLogin(ctx) {
   if (logins.size > 10_000) throw new HttpError(429, 0, 'Too many sign-ins in progress; try again in a few minutes.');
   const key = randomCode(18);
   const verifier = randomCode(32);
-  logins.set(key, { verifier, returnTo, state, expires: now + LOGIN_MS });
+  logins.set(key, { verifier, returnTo, state, json, expires: now + LOGIN_MS });
   const q = new URLSearchParams({
     client_id: f.node_id, redirect_uri: `${f.node_url}/api/v9/federation/hub-callback`, response_type: 'code', scope: 'identify',
     code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256', state: key,
   });
-  return redirect(ctx, `${f.hub_url}/oauth2/authorize?${q}`);
+  return json ? { authorize_url: `${f.hub_url}/oauth2/authorize?${q}` } : redirect(ctx, `${f.hub_url}/oauth2/authorize?${q}`);
 }
 async function hubCallback(ctx) {
   nodeOnly();
@@ -224,7 +228,7 @@ async function hubCallback(ctx) {
   const l = logins.get(key);
   logins.delete(key);
   if (!l || l.expires <= Date.now()) throw new HttpError(400, 0, 'This sign-in has expired. Start it again.');
-  const back = params => redirect(ctx, `${l.returnTo}#${new URLSearchParams({ ...params, state: l.state })}`);
+  const back = params => (l.json ? { ...params, state: l.state } : redirect(ctx, `${l.returnTo}#${new URLSearchParams({ ...params, state: l.state })}`));
   if (ctx.query.get('error')) return back({ error: clean(ctx.query.get('error'), 40) || 'access_denied' });
   try {
     if (!hubLoginOpen()) throw new HttpError(403, 0, 'Sign-in with the hub is not available on this instance.');
