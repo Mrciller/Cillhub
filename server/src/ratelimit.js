@@ -48,16 +48,19 @@ const resourceOf = (pattern, params) => (/^\/(channels|guilds)\/:id/.test(patter
 
 // hard cap for the in-memory maps: a live entry is never dropped (that would reset a locked counter). Past max, stale
 // entries go (at most one sweep per second, so a full map of live keys costs nothing per call); if the map is still
-// full, a new key shares the map's one overflow entry with the same limits, so a flood of new keys throttles itself
+// full, a new key goes to an overflow entry of its policy (one window, one limit) and of one of 16 shards of its
+// identity, so a flood throttles itself and a chosen victim shares an entry with only 1/16 of the newcomers.
+// Bound: max + (policies x 16) entries.
 const swept = new WeakMap(); // map -> time of its last sweep
-export function capKey(map, max, stale, key, onDrop) {
+export const shard = id => createHash('sha256').update(String(id)).digest()[0] % 16;
+export function capKey(map, max, stale, key, policy, id = key, onDrop) {
   if (map.has(key) || map.size < max) return key;
   const now = Date.now();
   if (now - (swept.get(map) ?? 0) >= 1000) {
     swept.set(map, now);
     for (const [k, v] of map) if (stale(v)) { map.delete(k); onDrop?.(k); }
   }
-  return map.size < max ? key : '\0overflow';
+  return map.size < max ? key : `${policy}:\0overflow:${shard(id)}`;
 }
 
 function rateLimitError(seconds, headers) {
@@ -75,7 +78,7 @@ export function limit(method, pattern, params, identity, headers, policy) {
   const max = base * SCALE;
   const bucket = bucketId(method, pattern);
   const now = Date.now();
-  const key = capKey(buckets, 50_000, b => b.reset <= now, `${bucket}:${resourceOf(pattern, params)}:${identity}`);
+  const key = capKey(buckets, 50_000, b => b.reset <= now, `${bucket}:${resourceOf(pattern, params)}:${identity}`, bucket, identity);
   let b = buckets.get(key);
   if (!b || b.reset <= now) buckets.set(key, b = { count: 0, reset: now + windowMs });
   const after = (b.reset - now) / 1000;
@@ -95,11 +98,9 @@ const LOGIN_MAX = 10;
 const LOGIN_WINDOW = 15 * 60 * 1000;
 const failures = new Map(); // key -> timestamps
 const cleared = new Map(); // login: key -> time of its last successful password check
-// the overflow entry keeps the kind (ip:, acct:, login:) so it keeps that kind's limit
-const slots = keys => [...new Set(keys.map(key => {
-  const k = capKey(failures, 50_000, list => !list.length || Date.now() - list.at(-1) >= LOGIN_WINDOW, key, d => cleared.delete(d));
-  return k === key ? key : `${key.split(':')[0]}:${k}`;
-}))];
+// the overflow policy is the kind (ip:, acct:, login:), so the entry keeps that kind's limit (maxOf reads the prefix)
+const slots = keys => [...new Set(keys.map(key => capKey(failures, 50_000, list => !list.length || Date.now() - list.at(-1) >= LOGIN_WINDOW,
+  key, key.split(':')[0], key, d => cleared.delete(d))))];
 const recent = key => (failures.get(key) ?? []).filter(t => Date.now() - t < LOGIN_WINDOW);
 
 // acct: keys count every failure on one account from anywhere; higher so one stranger can't lock it for everyone

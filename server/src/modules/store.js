@@ -180,7 +180,8 @@ const windows = new Map();
 // 0 when allowed (and counted), else the seconds until a slot frees
 export function hit(key, max, ms) {
   const now = Date.now();
-  key = capKey(windows, 50_000, w => !w.length || now - w.at(-1) > 3_600_000, key);
+  // overflow policy: kind and module (keys are kind:moduleId[:more]) with this limit and window
+  key = capKey(windows, 50_000, w => !w.length || now - w.at(-1) > 3_600_000, key, `${key.split(':').slice(0, 2).join(':')}:${max}/${ms}`);
   let w = windows.get(key);
   if (!w) windows.set(key, w = []);
   while (w.length && now - w[0] >= ms) w.shift();

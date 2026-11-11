@@ -7,7 +7,7 @@ import { startServer, guildWith, bits, tempDir } from './helpers.js';
 
 process.env.DATA_DIR = await tempDir(); // the in-process limiter checks below open their own database
 process.env.CILLCORD_RATE_LIMIT_SCALE = '1';
-const { limit, loginFailed, checkLogin } = await import('../src/ratelimit.js');
+const { limit, loginFailed, checkLogin, shard } = await import('../src/ratelimit.js');
 const { hit } = await import('../src/modules/store.js');
 
 const MANAGE_WEBHOOKS = 29, EMBED_LINKS = 14;
@@ -88,14 +88,40 @@ test('a flood of new keys keeps live counters locked and the maps bounded', { ti
   };
   await flood(i => report(`flood${i}`, '203.0.113.10'));
   await flood(i => loginFailed([`ip:flood${i}`]));
-  await flood(i => hit(`flood:${i}`, 5, 60_000));
+  await flood(i => hit(`flood:m1:${i}`, 5, 60_000));
   assert.throws(() => report('locked', '203.0.113.11'), is429, 'the exhausted bucket stays exhausted');
   assert.throws(() => checkLogin(['ip:locked']), is429, 'the locked login stays locked');
   assert.ok(hit('locked', 5, 60_000) > 0, 'the full module window stays full');
-  // bounded: a newcomer past the cap gets no fresh entry of its own
-  assert.throws(() => report('newcomer', '203.0.113.12'), is429);
+  // bounded: a newcomer past the cap gets no fresh entry of its own (here: in the flooding address's overflow shard)
+  assert.throws(() => report('newcomer', '203.0.113.10'), is429);
   assert.throws(() => checkLogin(['ip:newcomer']), is429);
-  assert.ok(hit('newcomer', 5, 60_000) > 0);
+  assert.ok(hit('flood:m1:newcomer', 5, 60_000) > 0);
+});
+
+test('overflow entries keep one policy each and spread newcomers over 16 shards', async () => {
+  const is429 = e => e.status === 429;
+  for (let i = 0; i < 50_000; i++) { // full of live keys (already, when the flood test ran first)
+    try { limit('POST', '/channels/:id/messages/:mid/report', { id: `flood${i}` }, '203.0.113.10', {}); } catch (e) { if (!is429(e)) throw e; }
+    hit(`flood:m1:${i}`, 5, 60_000);
+  }
+  const used = new Set(['203.0.113.10', '203.0.113.12'].map(shard));
+  const ips = [];
+  for (let i = 0; ips.length < 2; i++) if (!used.has(shard(`198.51.100.${i}`)) && !ips.some(ip => shard(ip) === shard(`198.51.100.${i}`))) ips.push(`198.51.100.${i}`);
+  const [a, b] = ips;
+  const report = (id, ip) => { try { limit('POST', '/channels/:id/messages/:mid/report', { id }, ip, {}); return 1; } catch (e) { if (!is429(e)) throw e; return 0; } };
+  // a request with a 1 s window must not give the report overflow its window
+  limit('GET', '/channels/:id', { id: 'seed' }, a, {});
+  let ok = 0;
+  for (let i = 0; i < 4; i++) ok += report(`r${i}`, a);
+  await new Promise(r => setTimeout(r, 1001));
+  for (let i = 4; i < 8; i++) ok += report(`r${i}`, a);
+  assert.equal(ok, 5, 'still 5 reports per minute');
+  assert.equal(report('other', b), 1, 'another shard is not blocked');
+  // a short window does not drop the timestamps a longer one still needs
+  for (let i = 0; i < 5; i++) hit('lim:m2:a', 5, 60_000);
+  await new Promise(r => setTimeout(r, 20));
+  hit('lim:m2:b', 100, 10);
+  assert.ok(hit('lim:m2:a', 5, 60_000) > 0);
 });
 
 test('the account login budget is shared by its name and its email', async () => {
