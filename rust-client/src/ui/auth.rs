@@ -262,10 +262,10 @@ impl CillhubApp {
                             }
                             AuthMode::Login | AuthMode::Register => {
                                 let is_reg = self.auth_mode == AuthMode::Register;
+                                self.load_instance_info(); // registration mode, captcha and the 7.11 legal block
 
                                 // register: Email, Username, Password like the web
                                 if is_reg {
-                                    self.load_instance_info();
                                     if registration_closed(self.instance_info.as_ref()) {
                                         ui.add_space(8.0);
                                         ui.label(
@@ -318,6 +318,16 @@ impl CillhubApp {
                                     && ui.input(|i| i.key_pressed(egui::Key::Enter))
                                 {
                                     self.submit_auth();
+                                }
+
+                                if let Some((ask_terms, min_age)) = signup_checks(self.instance_info.as_ref()).filter(|_| is_reg) {
+                                    ui.add_space(12.0);
+                                    if ask_terms {
+                                        ui.checkbox(&mut self.auth_terms_ok, RichText::new(tr("I accept the terms of use and have read the privacy notice.")).font(ui_font(13.0)).color(TEXT()));
+                                        self.legal_links(ui, &["terms", "privacy"]);
+                                    }
+                                    let age = crate::i18n::trf("I am at least {n} years old.", &[("n", &min_age.to_string())]);
+                                    ui.checkbox(&mut self.auth_age_ok, RichText::new(age).font(ui_font(13.0)).color(TEXT()));
                                 }
 
                                 if let Some(err) = &self.auth_error {
@@ -395,12 +405,35 @@ impl CillhubApp {
                                         );
                                     }
                                 });
+                                if signup_checks(self.instance_info.as_ref()).is_some() {
+                                    ui.add_space(14.0);
+                                    self.legal_links(ui, &["imprint", "privacy", "terms", "report-content"]);
+                                }
                             }
                         }
 
                     });
                 },
             );
+        });
+    }
+
+    /// Links to the picked server's own legal pages (7.11), opened in the browser.
+    fn legal_links(&mut self, ui: &mut Ui, pages: &[&str]) {
+        let Some(origin) = normalize_server_url(self.picked_server_url()) else { return };
+        ui.horizontal_wrapped(|ui| {
+            for page in pages {
+                let label = match *page {
+                    "imprint" => tr("Imprint"),
+                    "privacy" => tr("Privacy notice"),
+                    "terms" => tr("Terms of use"),
+                    _ => tr("Report illegal content"),
+                };
+                let link = egui::Button::new(RichText::new(label).font(ui_font(12.5)).color(FOCUS()).underline()).frame(false);
+                if ui.add(link).clicked() {
+                    super::open_external(&mut self.status_banner, &format!("{origin}/{page}"));
+                }
+            }
         });
     }
 
@@ -607,6 +640,15 @@ impl CillhubApp {
                 return;
             }
             body["email"] = Value::String(email.to_string());
+            // 7.11 servers: the boxes must be ticked; older servers send no legal block and get no fields
+            if let Some((ask_terms, _)) = signup_checks(self.instance_info.as_ref()) {
+                if !self.auth_age_ok || (ask_terms && !self.auth_terms_ok) {
+                    self.auth_error = Some(tr("Tick the boxes above to create an account.").to_string());
+                    return;
+                }
+                body["age_confirmed"] = Value::Bool(true);
+                body["terms_accepted"] = Value::Bool(true);
+            }
             ("/auth/register", body)
         } else {
             ("/auth/login", login_body)
@@ -686,9 +728,25 @@ pub fn registration_closed(instance: Option<&Value>) -> bool {
     instance.and_then(|i| i.get("registration_mode")).and_then(Value::as_str) == Some("closed")
 }
 
+/// The 7.11 sign-up checks from the instance's `legal` block: (ask for the terms, minimum age).
+/// None for a server from before 7.11 (no block): no checkboxes, no fields.
+pub fn signup_checks(instance: Option<&Value>) -> Option<(bool, u64)> {
+    let legal = instance?.get("legal")?.as_object()?;
+    let ask_terms = legal.get("accept_version").is_some_and(|v| !v.is_null());
+    Some((ask_terms, legal.get("min_age").and_then(Value::as_u64).unwrap_or(14)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn signup_checks_follow_the_legal_block() {
+        assert_eq!(signup_checks(Some(&json!({"registration_mode": "open"}))), None, "old server");
+        assert_eq!(signup_checks(None), None);
+        assert_eq!(signup_checks(Some(&json!({"legal": {"accept_version": null, "min_age": 16}}))), Some((false, 16)));
+        assert_eq!(signup_checks(Some(&json!({"legal": {"accept_version": 3, "min_age": 14}}))), Some((true, 14)));
+    }
 
     #[test]
     fn closed_registration_is_read_from_instance_info() {

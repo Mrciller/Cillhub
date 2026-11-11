@@ -151,6 +151,9 @@ pub struct CillhubApp {
     pub auth_server_url: String,
     pub auth_login_input: String,
     pub auth_email_input: String,
+    /// 7.11 sign-up checkboxes: terms + privacy, minimum age
+    pub auth_terms_ok: bool,
+    pub auth_age_ok: bool,
     pub auth_password_input: String,
     pub auth_mfa_ticket: String,
     pub auth_mfa_code: String,
@@ -320,6 +323,8 @@ impl CillhubApp {
             auth_server_url: server_url,
             auth_login_input: String::new(),
             auth_email_input: String::new(),
+            auth_terms_ok: false,
+            auth_age_ok: false,
             auth_password_input: String::new(),
             auth_mfa_ticket: String::new(),
             auth_mfa_code: String::new(),
@@ -507,6 +512,8 @@ impl CillhubApp {
         self.clear_auth_secrets();
         self.auth_login_input.clear();
         self.auth_email_input.clear();
+        self.auth_terms_ok = false;
+        self.auth_age_ok = false;
         self.auth_mode = AuthMode::Login;
         // account-bound views and caches
         self.lightbox = None;
