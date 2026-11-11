@@ -35,7 +35,7 @@ const NATIVE_DE: &[(&str, &str)] = &[
     ("This server asks for a captcha check, which this app cannot show yet. Please register on the website, then log in here.", "Dieser Server verlangt eine Captcha-Prüfung, die diese App noch nicht anzeigen kann. Registriere dich bitte auf der Website und melde dich dann hier an."),
     ("Email is required.", "E-Mail ist erforderlich."),
     ("Password updated! You can now log in.", "Passwort geändert! Du kannst dich jetzt anmelden."),
-    // 7.11 legal (same wording as the web client)
+    // 7.10.3 legal (same wording as the web client)
     ("I accept the terms of use and have read the privacy notice.", "Ich akzeptiere die Nutzungsbedingungen und habe die Datenschutzerklärung gelesen."),
     ("I am at least {n} years old.", "Ich bin mindestens {n} Jahre alt."),
     ("Imprint", "Impressum"),

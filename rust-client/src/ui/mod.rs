@@ -151,7 +151,7 @@ pub struct CillhubApp {
     pub auth_server_url: String,
     pub auth_login_input: String,
     pub auth_email_input: String,
-    /// 7.11 sign-up checkboxes: terms + privacy, minimum age
+    /// 7.10.3 sign-up checkboxes: terms + privacy, minimum age
     pub auth_terms_ok: bool,
     pub auth_age_ok: bool,
     pub auth_password_input: String,

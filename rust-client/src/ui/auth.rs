@@ -262,7 +262,7 @@ impl CillhubApp {
                             }
                             AuthMode::Login | AuthMode::Register => {
                                 let is_reg = self.auth_mode == AuthMode::Register;
-                                self.load_instance_info(); // registration mode, captcha and the 7.11 legal block
+                                self.load_instance_info(); // registration mode, captcha and the 7.10.3 legal block
 
                                 // register: Email, Username, Password like the web
                                 if is_reg {
@@ -418,7 +418,7 @@ impl CillhubApp {
         });
     }
 
-    /// Links to the picked server's own legal pages (7.11), opened in the browser.
+    /// Links to the picked server's own legal pages (7.10.3), opened in the browser.
     fn legal_links(&mut self, ui: &mut Ui, pages: &[&str]) {
         let Some(origin) = normalize_server_url(self.picked_server_url()) else { return };
         ui.horizontal_wrapped(|ui| {
@@ -640,7 +640,7 @@ impl CillhubApp {
                 return;
             }
             body["email"] = Value::String(email.to_string());
-            // 7.11 servers: the boxes must be ticked; older servers send no legal block and get no fields
+            // 7.10.3 servers: the boxes must be ticked; older servers send no legal block and get no fields
             if let Some((ask_terms, _)) = signup_checks(self.instance_info.as_ref()) {
                 if !self.auth_age_ok || (ask_terms && !self.auth_terms_ok) {
                     self.auth_error = Some(tr("Tick the boxes above to create an account.").to_string());
@@ -728,8 +728,8 @@ pub fn registration_closed(instance: Option<&Value>) -> bool {
     instance.and_then(|i| i.get("registration_mode")).and_then(Value::as_str) == Some("closed")
 }
 
-/// The 7.11 sign-up checks from the instance's `legal` block: (ask for the terms, minimum age).
-/// None for a server from before 7.11 (no block): no checkboxes, no fields.
+/// The 7.10.3 sign-up checks from the instance's `legal` block: (ask for the terms, minimum age).
+/// None for a server from before 7.10.3 (no block): no checkboxes, no fields.
 pub fn signup_checks(instance: Option<&Value>) -> Option<(bool, u64)> {
     let legal = instance?.get("legal")?.as_object()?;
     let ask_terms = legal.get("accept_version").is_some_and(|v| !v.is_null());
