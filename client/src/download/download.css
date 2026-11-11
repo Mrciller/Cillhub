@@ -28,8 +28,6 @@
   text-transform: uppercase;
   color: var(--header);
 }
-.download-mark { fill: var(--accent); }
-.download-mark path { stroke: var(--on-accent); }
 .download-beta { margin-left: var(--space-3); padding: 0 var(--space-2); border: 1px solid var(--accent); border-radius: var(--radius-s); color: var(--accent); font-size: 13px; vertical-align: middle; }
 
 .download-content {

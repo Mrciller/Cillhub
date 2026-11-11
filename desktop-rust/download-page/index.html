@@ -21,8 +21,6 @@
   a { color: var(--focus); text-underline-offset: 2px; }
   a:focus-visible, .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .wrap { max-width: 920px; margin: 0 auto; padding: 0 16px; }
-  .mark rect { fill: var(--accent); }
-  .mark path { stroke: var(--on-accent); }
   header { background: var(--rail); border-bottom: 1px solid var(--border); }
   header .wrap { display: flex; align-items: center; gap: 12px; padding-block: 16px; }
   header strong { color: var(--header); font: 700 22px/1 var(--font-display); letter-spacing: .02em; text-transform: uppercase; }
@@ -62,14 +60,14 @@
 <body>
 <header>
   <div class="wrap">
-    <svg class="mark" width="32" height="32" viewBox="0 0 100 100" aria-hidden="true"><rect x="4" y="4" width="92" height="92" rx="12"/><path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke-width="13.5" stroke-linecap="butt"/></svg>
+    <svg width="32" height="32" viewBox="0 0 512 512" aria-hidden="true"><path fill="#0b0c0f" d="M31 0H440L512 72V481A31 31 0 0 1 481 512H31A31 31 0 0 1 0 481V31A31 31 0 0 1 31 0Z"/><path fill="#ff6a1f" d="M192 96L384 96L384 192L248 192L224 216L224 296L248 320L384 320L384 416L192 416L128 352L128 160Z"/></svg>
     <strong>Cillhub</strong>
     <a href="/">Open in browser</a>
   </div>
 </header>
 <main>
   <div class="hero wrap">
-    <svg class="mark" viewBox="0 0 100 100" role="img" aria-label="Cillhub logo"><rect x="4" y="4" width="92" height="92" rx="12"/><path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke-width="13.5"/></svg>
+    <svg viewBox="0 0 512 512" role="img" aria-label="Cillhub logo"><path fill="#0b0c0f" d="M31 0H440L512 72V481A31 31 0 0 1 481 512H31A31 31 0 0 1 0 481V31A31 31 0 0 1 31 0Z"/><path fill="#ff6a1f" d="M200 113L328 113L372 157L372 200L251 200L235 216L235 296L251 312L372 312L372 355L328 399L200 399L148 347L148 165Z"/></svg>
     <h1>Get Cillhub for your desktop</h1>
     <p class="lead">Notifications, screen sharing and a tray icon, with the same chat as the website. The app updates itself.</p>
     <div class="buttons">

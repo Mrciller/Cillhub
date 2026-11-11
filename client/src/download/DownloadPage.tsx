@@ -51,9 +51,9 @@ export function DownloadPage() {
     <div className="download-page">
       <header className="download-nav">
         <div className="download-brand">
-          <svg className="download-mark" width="32" height="32" viewBox="0 0 100 100" aria-hidden="true">
-            <rect x="4" y="4" width="92" height="92" rx="12" />
-            <path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" strokeWidth="13.5" strokeLinecap="butt" />
+          <svg width="32" height="32" viewBox="0 0 512 512" aria-hidden="true">
+            <path fill="#0b0c0f" d="M31 0H440L512 72V481A31 31 0 0 1 481 512H31A31 31 0 0 1 0 481V31A31 31 0 0 1 31 0Z" />
+            <path fill="#ff6a1f" d="M192 96L384 96L384 192L248 192L224 216L224 296L248 320L384 320L384 416L192 416L128 352L128 160Z" />
           </svg>
           <strong>Cillhub {beta && <span className="download-beta">Beta</span>}</strong>
         </div>
