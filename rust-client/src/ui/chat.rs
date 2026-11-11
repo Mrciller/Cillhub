@@ -402,33 +402,29 @@ impl CillhubApp {
             .as_ref()
             .map(|u| u.id.clone())
             .unwrap_or_else(|| "system".to_string());
-        let is_me = self.state.me.as_ref().map(|u| u.id.as_str()) == Some(author_id.as_str());
         let author_game = self.state.user_game(&author_id).map(|g| g.name.clone());
         let game_invite = parse_game_invite(&msg.content);
 
         if is_head {
-            ui.add_space(8.0);
+            ui.add_space(10.0); // `.msg.head { margin-top: 10px }`
         }
+        let name_color = self.member_color(&author_id).unwrap_or(TEXT_HEADER);
+        let bg_idx = ui.painter().add(egui::Shape::Noop);
 
-        let row_bg = if msg.mention_everyone {
-            MENTION_BG
-        } else {
-            Color32::TRANSPARENT
-        };
-
-        Frame::new()
-            .fill(row_bg)
-            .inner_margin(Margin::symmetric(16, if is_head { 4 } else { 2 }))
+        // `.msg`: padding 2px 28px 2px 58px, avatar at left 12px
+        let row = Frame::new()
+            .inner_margin(Margin { left: 12, right: 28, top: 2, bottom: 2 })
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
+                ui.style_mut().interaction.selectable_labels = false;
 
                 // Referenced reply preview (`.msg-reply-ref`)
                 if let Some(replied) = &msg.referenced_message {
                     ui.horizontal(|ui| {
-                        ui.add_space(48.0);
+                        ui.add_space(46.0);
                         let (r_rect, _) =
                             ui.allocate_exact_size(Vec2::splat(13.0), Sense::hover());
-                        draw_icon(ui.painter(), r_rect, IconKind::Reply, ACCENT);
+                        draw_icon(ui.painter(), r_rect, IconKind::Reply, TEXT_MUTED);
                         let rep_author = replied
                             .author
                             .as_ref()
@@ -436,38 +432,46 @@ impl CillhubApp {
                             .unwrap_or("User");
                         ui.label(
                             RichText::new(format!("@{rep_author}"))
-                                .font(bold_font(12.0))
+                                .font(bold_font(12.5))
                                 .color(TEXT_HEADER),
                         );
-                        ui.label(
-                            RichText::new(&replied.content)
-                                .font(ui_font(12.0))
-                                .color(TEXT_MUTED),
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(replied.content.replace('\n', " "))
+                                    .font(ui_font(12.5))
+                                    .color(TEXT_MUTED),
+                            )
+                            .truncate(),
                         );
                     });
                     ui.add_space(2.0);
                 }
 
                 ui.horizontal_top(|ui| {
-                    ui.spacing_mut().item_spacing.x = 12.0;
+                    ui.spacing_mut().item_spacing.x = 10.0;
 
-                    // Left 36px column: Avatar on `.msg.head`, blank spacer on continuation
+                    // Left 36px column: avatar on `.msg.head`, gutter on continuation lines
                     if is_head {
-                        draw_avatar(ui, 36.0, &author_id, &author_name, None, BG_CHAT);
+                        ui.add_space(0.0);
+                        let (r, _) = ui.allocate_exact_size(Vec2::new(36.0, 38.0), Sense::hover());
+                        let mut av = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(r.min + Vec2::new(0.0, 2.0), Vec2::splat(36.0))));
+                        draw_avatar(&mut av, 36.0, &author_id, &author_name, None, BG_CHAT);
                     } else {
-                        ui.allocate_exact_size(Vec2::new(36.0, 18.0), Sense::hover());
+                        ui.allocate_exact_size(Vec2::new(36.0, 20.0), Sense::hover());
                     }
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width());
+                        ui.spacing_mut().item_spacing.y = 0.0;
 
                         if is_head {
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = 8.0;
+                                ui.set_min_height(21.0);
                                 ui.label(
                                     RichText::new(&author_name)
                                         .font(bold_font(14.5))
-                                        .color(if is_me { ACCENT } else { TEXT_HEADER }),
+                                        .color(name_color),
                                 );
 
                                 if let Some(gname) = author_game {
@@ -492,65 +496,8 @@ impl CillhubApp {
                                             .color(TEXT_MUTED),
                                     );
                                 }
-                                if msg.edited_timestamp.is_some() {
-                                    ui.label(
-                                        RichText::new(tr("(edited)"))
-                                            .font(ui_font(11.0))
-                                            .color(TEXT_MUTED),
-                                    );
-                                }
-                                if msg.pinned {
-                                    ui.label(
-                                        RichText::new("PINNED")
-                                            .font(display_font(11.0))
-                                            .color(YELLOW),
-                                    );
-                                }
-
-                                // Right `.toolbar` action buttons matching `Chat.tsx`
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    ui.spacing_mut().item_spacing.x = 2.0;
-                                    if is_me
-                                        && Self::mini_toolbar_btn(ui, IconKind::Close, "Delete")
-                                            .clicked()
-                                    {
-                                        self.delete_message(channel_id, &msg.id);
-                                    }
-                                    if is_me
-                                        && Self::mini_toolbar_btn(ui, IconKind::Edit, "Edit")
-                                            .clicked()
-                                    {
-                                        self.editing_message_id = Some(msg.id.clone());
-                                        self.composer_text = msg.content.clone();
-                                    }
-                                    if Self::mini_toolbar_btn(ui, IconKind::Inbox, "Bookmark")
-                                        .clicked()
-                                    {
-                                        self.bookmark_message(msg);
-                                    }
-                                    if Self::mini_toolbar_btn(ui, IconKind::Pin, "Pin / Unpin")
-                                        .clicked()
-                                    {
-                                        self.toggle_pin_message(channel_id, msg);
-                                    }
-                                    if Self::mini_toolbar_btn(ui, IconKind::Thread, "Create Thread")
-                                        .clicked()
-                                    {
-                                        self.create_thread_from_message(channel_id, msg);
-                                    }
-                                    if Self::mini_toolbar_btn(ui, IconKind::Reply, "Reply")
-                                        .clicked()
-                                    {
-                                        self.reply_to_message = Some(msg.clone());
-                                    }
-                                    if Self::mini_toolbar_btn(ui, IconKind::Smile, "React 🔥")
-                                        .clicked()
-                                    {
-                                        self.toggle_reaction(channel_id, &msg.id, "🔥");
-                                    }
-                                });
                             });
-                            ui.add_space(2.0);
+                            ui.add_space(1.0);
                         }
 
                         // Message Content OR GameInviteCard
@@ -582,19 +529,24 @@ impl CillhubApp {
                                 let uri = format!("bytes://attachment/{}/{}", att.id, att.filename);
                                 self.request_image(&uri, url.clone());
                                 if self.images.get(&uri) == Some(&super::ImageLoad::Ready) {
-                                    let resp = ui.add(
-                                        egui::Image::new(uri.as_str())
-                                            .fit_to_exact_size(size)
-                                            .sense(Sense::click()),
-                                    );
-                                    if resp.on_hover_text(&att.filename).clicked() {
+                                    // `.att-image`: 1px border, sidebar behind transparent pixels
+                                    let resp = Frame::new()
+                                        .fill(BG_SIDEBAR)
+                                        .stroke(Stroke::new(1.0_f32, BORDER.gamma_multiply(0.7)))
+                                        .corner_radius(CornerRadius::same(3))
+                                        .inner_margin(Margin::same(1))
+                                        .show(ui, |ui| {
+                                            ui.add(egui::Image::new(uri.as_str()).fit_to_exact_size(size).sense(Sense::click()))
+                                        })
+                                        .inner;
+                                    if resp.clicked() {
                                         self.lightbox = Some((uri, att.filename.clone(), url));
                                     }
                                     continue;
                                 }
                                 if self.images.get(&uri) == Some(&super::ImageLoad::Loading) {
                                     let (r, _) = ui.allocate_exact_size(size, Sense::hover());
-                                    ui.painter().rect_filled(r, CornerRadius::same(2), BG_SIDEBAR);
+                                                    ui.painter().rect_filled(r, CornerRadius::same(3), BG_SIDEBAR);
                                     continue;
                                 }
                             }
@@ -677,48 +629,386 @@ impl CillhubApp {
                                 });
                         }
 
-                        // Reactions Bar (`.reactions`)
+                        if msg.edited_timestamp.is_some() {
+                            ui.label(RichText::new(tr("(edited)")).font(ui_font(11.0)).color(TEXT_MUTED));
+                        }
+
+                        // `.reactions`: 26px chips, 5px gap
                         if !msg.reactions.is_empty() {
-                            ui.add_space(4.0);
+                            ui.add_space(5.0);
                             ui.horizontal_wrapped(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::splat(5.0);
                                 for r in &msg.reactions {
                                     let ename = r.emoji.name.as_deref().unwrap_or("👍");
-                                    let btn = egui::Button::new(
-                                        RichText::new(format!("{ename} {}", r.count))
-                                            .font(bold_font(12.0))
-                                            .color(if r.me { ACCENT } else { TEXT }),
-                                    )
-                                    .fill(if r.me { ACCENT_SOFT } else { BG_SIDEBAR })
-                                    .stroke(Stroke::new(
-                                        1.0_f32,
-                                        if r.me { ACCENT } else { BORDER },
-                                    ));
-                                    if ui.add(btn).clicked() {
+                                    let count = r.count.to_string();
+                                    let cg = ui.painter().layout_no_wrap(count, bold_font(12.5), if r.me { TEXT_HEADER } else { TEXT });
+                                    let (rect, resp) = ui.allocate_exact_size(Vec2::new(18.0 + 16.0 + 6.0 + cg.size().x, 26.0), Sense::click());
+                                    let (fill, border) = match (r.me, resp.hovered()) {
+                                        (true, _) => (ACCENT.gamma_multiply(0.16), ACCENT),
+                                        (false, true) => (BG_HOVER, BTN_SECONDARY_HOVER),
+                                        _ => (BG_SIDEBAR, BORDER),
+                                    };
+                                    ui.painter().rect(rect, CornerRadius::same(2), fill, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
+                                    crate::theme::draw_emoji(ui.painter(), Rect::from_min_size(rect.min + Vec2::new(9.0, 5.0), Vec2::splat(16.0)), ename);
+                                    ui.painter().galley(rect.min + Vec2::new(31.0, (26.0 - cg.size().y) / 2.0), cg, TEXT);
+                                    let btn = resp;
+                                    if btn.clicked() {
                                         self.toggle_reaction(channel_id, &msg.id, ename);
                                     }
                                 }
                             });
+                            ui.add_space(2.0);
                         }
                     });
                 });
+            })
+            .response;
+
+        // Hover: row tint, gutter time, floating toolbar (`.msg:hover .toolbar`)
+        let ctx = ui.ctx().clone();
+        let rect = row.rect;
+        let buttons = self.toolbar_buttons(channel_id, msg);
+        let tb_w = buttons.len() as f32 * 32.0 - 2.0 + 8.0;
+        let tb = Rect::from_min_size(
+            egui::pos2(rect.max.x - 16.0 - tb_w, (rect.min.y - 16.0).max(ui.clip_rect().min.y)),
+            Vec2::new(tb_w, 38.0),
+        );
+        let over_tb = self.toolbar_msg.as_deref() == Some(msg.id.as_str())
+            && ctx.pointer_hover_pos().is_some_and(|p| tb.contains(p));
+        let busy = self.active_modal.is_some() || self.confirm_delete.is_some();
+        let menu_open = self.msg_menu.as_ref().is_some_and(|(id, _)| id == &msg.id)
+            || matches!(&self.emoji_picker, Some((EmojiTarget::Reaction(_, id), _)) if id == &msg.id);
+        let hovered = !busy && (ui.rect_contains_pointer(rect) || over_tb) || menu_open;
+        let fill = if msg.mention_everyone {
+            MENTION_BG
+        } else if hovered {
+            BG_HOVER.gamma_multiply(0.72)
+        } else {
+            Color32::TRANSPARENT
+        };
+        ui.painter().set(bg_idx, egui::Shape::rect_filled(rect, 0.0, fill));
+        if hovered {
+            if !is_head {
+                if let Some(t) = msg.timestamp.as_deref().and_then(local_time) {
+                    ui.painter().text(
+                        egui::pos2(rect.min.x + 29.0, rect.min.y + 12.0),
+                        Align2::CENTER_CENTER,
+                        clock(&t),
+                        ui_font(11.0),
+                        TEXT_MUTED,
+                    );
+                }
+            }
+            self.toolbar_msg = Some(msg.id.clone());
+            self.render_toolbar(&ctx, tb, channel_id, msg, &buttons);
+        }
+    }
+
+    /// The web toolbar's buttons for this message, in the web's order (MessageItem.tsx).
+    fn toolbar_buttons(&self, channel_id: &str, msg: &Message) -> Vec<MsgAction> {
+        let perms = self.my_perms(channel_id);
+        let has = |b| crate::permissions::has(perms, b);
+        use crate::permissions::p;
+        let mine = self.state.me.as_ref().map(|u| u.id.as_str()) == msg.author.as_ref().map(|u| u.id.as_str());
+        let channel = self.state.channels.get(channel_id);
+        let threadable = channel.is_some_and(|c| c.guild_id.is_some() && matches!(c.kind, 0 | 5))
+            && has(p::CREATE_PUBLIC_THREADS);
+        let mut out = Vec::new();
+        if has(p::ADD_REACTIONS) {
+            out.push(MsgAction::React);
+        }
+        if has(p::SEND_MESSAGES) {
+            out.push(MsgAction::Reply);
+        }
+        out.push(MsgAction::Bookmark);
+        if threadable {
+            out.push(MsgAction::Thread);
+        }
+        if mine && msg.poll.is_none() {
+            out.push(MsgAction::Edit);
+        }
+        out.push(MsgAction::More);
+        if mine || has(p::MANAGE_MESSAGES) {
+            out.push(MsgAction::Delete);
+        }
+        out
+    }
+
+    fn render_toolbar(&mut self, ctx: &egui::Context, tb: Rect, channel_id: &str, msg: &Message, buttons: &[MsgAction]) {
+        let bookmarked = self.state.saved_messages.iter().any(|s| s.message_id == msg.id && s.due_at.is_none());
+        egui::Area::new(egui::Id::new(("msg_toolbar", &msg.id)))
+            .order(egui::Order::Foreground)
+            .fixed_pos(tb.min)
+            .show(ctx, |ui| {
+                Frame::new()
+                    .fill(BG_MENU)
+                    .stroke(Stroke::new(1.0_f32, BORDER))
+                    .corner_radius(CornerRadius::same(3))
+                    .shadow(egui::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(128) })
+                    .inner_margin(Margin::same(3))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            for &a in buttons {
+                                let (icon, tip, pressed) = match a {
+                                    MsgAction::React => (IconKind::Smile, tr("Add Reaction"), false),
+                                    MsgAction::Reply => (IconKind::Reply, tr("Reply"), false),
+                                    MsgAction::Bookmark if bookmarked => (IconKind::Bookmark, tr("Remove Bookmark"), true),
+                                    MsgAction::Bookmark => (IconKind::Bookmark, tr("Bookmark Message"), false),
+                                    MsgAction::Thread => (IconKind::Thread, tr("Create Thread"), false),
+                                    MsgAction::Edit => (IconKind::Edit, tr("Edit"), false),
+                                    MsgAction::More => (IconKind::More, tr("More"), false),
+                                    MsgAction::Delete => (IconKind::Trash, tr("Delete"), false),
+                                };
+                                let resp = toolbar_btn(ui, icon, pressed, a == MsgAction::Delete).on_hover_text(tip);
+                                if resp.clicked() {
+                                    let at = resp.rect.left_bottom();
+                                    self.message_action(a, channel_id, msg, at);
+                                }
+                            }
+                        });
+                    });
             });
     }
 
-    fn mini_toolbar_btn(ui: &mut Ui, kind: IconKind, tip: &str) -> egui::Response {
-        let (rect, resp) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::click());
-        let hovered = resp.hovered();
-        if hovered {
-            ui.painter()
-                .rect_filled(rect, CornerRadius::same(2), BG_HOVER);
+    pub fn message_action(&mut self, a: MsgAction, channel_id: &str, msg: &Message, at: egui::Pos2) {
+        match a {
+            MsgAction::React => {
+                self.emoji_picker = Some((EmojiTarget::Reaction(channel_id.to_string(), msg.id.clone()), at));
+                self.emoji_query.clear();
+            }
+            MsgAction::Reply => {
+                self.editing_message_id = None;
+                self.reply_to_message = Some(msg.clone());
+            }
+            MsgAction::Bookmark => self.toggle_bookmark(msg),
+            MsgAction::Thread => self.create_thread_from_message(channel_id, msg),
+            MsgAction::Edit => {
+                self.reply_to_message = None;
+                self.editing_message_id = Some(msg.id.clone());
+                self.composer_text = msg.content.clone();
+            }
+            MsgAction::More => self.msg_menu = Some((msg.id.clone(), at)),
+            MsgAction::Delete => self.confirm_delete = Some(msg.clone()),
         }
-        let icon_r = Rect::from_center_size(rect.center(), Vec2::splat(13.0));
-        draw_icon(
-            ui.painter(),
-            icon_r,
-            kind,
-            if hovered { TEXT_HEADER } else { TEXT_MUTED },
+    }
+
+    /// The "More" menu of a message (web: the message context menu, the parts this app has).
+    pub fn render_message_menu(&mut self, ctx: &egui::Context) {
+        let Some((mid, at)) = self.msg_menu.clone() else { return };
+        let Some(cid) = self.selected_channel_id.clone() else { return };
+        let Some(msg) = self.state.messages.get(&cid).and_then(|l| l.iter().find(|m| m.id == mid)).cloned() else {
+            self.msg_menu = None;
+            return;
+        };
+        let buttons = self.toolbar_buttons(&cid, &msg);
+        let perms = self.my_perms(&cid);
+        let can_pin = crate::permissions::has(perms, crate::permissions::p::MANAGE_MESSAGES);
+        let bookmarked = self.state.saved_messages.iter().any(|s| s.message_id == msg.id && s.due_at.is_none());
+        let mut picked: Option<&str> = None;
+        let resp = egui::Area::new(egui::Id::new("msg_more_menu"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(at + Vec2::new(-180.0, 4.0))
+            .show(ctx, |ui| {
+                menu_frame(ui, |ui| {
+                    ui.set_width(188.0);
+                    let item = |ui: &mut Ui, label: &str, danger: bool| menu_item(ui, label, danger).clicked();
+                    if buttons.contains(&MsgAction::React) && item(ui, tr("Add Reaction"), false) {
+                        picked = Some("react");
+                    }
+                    if buttons.contains(&MsgAction::Edit) && item(ui, tr("Edit Message"), false) {
+                        picked = Some("edit");
+                    }
+                    if buttons.contains(&MsgAction::Reply) && item(ui, tr("Reply"), false) {
+                        picked = Some("reply");
+                    }
+                    if item(ui, if bookmarked { tr("Remove Bookmark") } else { tr("Bookmark Message") }, false) {
+                        picked = Some("bookmark");
+                    }
+                    if buttons.contains(&MsgAction::Thread) && item(ui, tr("Create Thread"), false) {
+                        picked = Some("thread");
+                    }
+                    if can_pin && item(ui, if msg.pinned { tr("Unpin Message") } else { tr("Pin Message") }, false) {
+                        picked = Some("pin");
+                    }
+                    if item(ui, tr("Copy Text"), false) {
+                        picked = Some("copy");
+                    }
+                    if item(ui, tr("Copy Message ID"), false) {
+                        picked = Some("copy_id");
+                    }
+                    if buttons.contains(&MsgAction::Delete) {
+                        menu_sep(ui);
+                        if item(ui, tr("Delete Message"), true) {
+                            picked = Some("delete");
+                        }
+                    }
+                });
+            })
+            .response;
+        let clicked_outside = ctx.input(|i| i.pointer.any_pressed())
+            && ctx.pointer_interact_pos().is_some_and(|p| !resp.rect.contains(p));
+        if picked.is_some() || clicked_outside {
+            self.msg_menu = None;
+        }
+        match picked {
+            Some("react") => self.message_action(MsgAction::React, &cid, &msg, at),
+            Some("edit") => self.message_action(MsgAction::Edit, &cid, &msg, at),
+            Some("reply") => self.message_action(MsgAction::Reply, &cid, &msg, at),
+            Some("bookmark") => self.toggle_bookmark(&msg),
+            Some("thread") => self.create_thread_from_message(&cid, &msg),
+            Some("pin") => self.toggle_pin_message(&cid, &msg),
+            Some("copy") => ctx.copy_text(msg.content.clone()),
+            Some("copy_id") => ctx.copy_text(msg.id.clone()),
+            Some("delete") => self.confirm_delete = Some(msg.clone()),
+            _ => {}
+        }
+    }
+
+    /// `.emoji-picker`: search, curated emoji by category (the web's emoji/data.ts), 8 per row.
+    pub fn render_emoji_picker(&mut self, ctx: &egui::Context) {
+        let Some((target, at)) = self.emoji_picker.clone() else { return };
+        let screen = ctx.screen_rect();
+        let size = Vec2::new(364.0, 380.0);
+        let pos = egui::pos2(
+            (at.x - size.x).clamp(screen.min.x + 8.0, screen.max.x - size.x - 8.0),
+            (at.y + 4.0).min(screen.max.y - size.y - 8.0).max(screen.min.y + 8.0),
         );
-        resp.on_hover_text(tip)
+        let mut picked: Option<String> = None;
+        let resp = egui::Area::new(egui::Id::new("emoji_picker"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos)
+            .show(ctx, |ui| {
+                Frame::new()
+                    .fill(BG_SIDEBAR)
+                    .stroke(Stroke::new(1.0_f32, BORDER))
+                    .corner_radius(CornerRadius::same(3))
+                    .shadow(egui::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(128) })
+                    .inner_margin(Margin::same(12))
+                    .show(ui, |ui| {
+                        ui.set_width(size.x - 24.0);
+                        let q = ui.add(
+                            TextEdit::singleline(&mut self.emoji_query)
+                                .hint_text(tr("Find the perfect emoji"))
+                                .desired_width(f32::INFINITY)
+                                .margin(Margin::symmetric(10, 8)),
+                        );
+                        q.request_focus();
+                        ui.add_space(8.0);
+                        let query = self.emoji_query.trim().to_lowercase();
+                        ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                            for (category, list) in emoji_list() {
+                                let shown: Vec<&(String, String)> = list
+                                    .iter()
+                                    .filter(|(_, kw)| query.is_empty() || kw.contains(&query))
+                                    .collect();
+                                if shown.is_empty() {
+                                    continue;
+                                }
+                                ui.add_space(8.0);
+                                crate::theme::draw_list_heading(ui, &tr(category).to_uppercase());
+                                ui.add_space(4.0);
+                                for chunk in shown.chunks(8) {
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 2.0;
+                                        for (ch, kw) in chunk {
+                                            let (r, resp) = ui.allocate_exact_size(Vec2::new(38.0, 40.0), Sense::click());
+                                            if resp.hovered() {
+                                                ui.painter().rect_filled(r, CornerRadius::same(2), BG_SELECTED);
+                                            }
+                                            crate::theme::draw_emoji(ui.painter(), Rect::from_center_size(r.center(), Vec2::splat(24.0)), ch);
+                                            if resp.on_hover_text(format!(":{}:", kw.split(' ').next().unwrap_or(""))).clicked() {
+                                                picked = Some(ch.clone());
+                                            }
+                                        }
+                                    });
+                                    ui.add_space(2.0);
+                                }
+                            }
+                        });
+                    });
+            })
+            .response;
+        let clicked_outside = ctx.input(|i| i.pointer.any_pressed())
+            && ctx.pointer_interact_pos().is_some_and(|p| !resp.rect.contains(p));
+        if clicked_outside && picked.is_none() {
+            self.emoji_picker = None;
+        }
+        if let Some(e) = picked {
+            self.emoji_picker = None;
+            match target {
+                EmojiTarget::Reaction(cid, mid) => self.toggle_reaction(&cid, &mid, &e),
+                EmojiTarget::Composer => self.composer_text.push_str(&e),
+            }
+        }
+    }
+
+    /// The web's "Delete Message" dialog.
+    pub fn render_confirm_delete(&mut self, ctx: &egui::Context) {
+        let Some(msg) = self.confirm_delete.clone() else { return };
+        let mut dim_clicked = false;
+        let mut close = false;
+        let mut delete = false;
+        super::modals::overlay(ctx, "confirm_delete", 448.0, &mut dim_clicked, |ui| {
+            ui.label(RichText::new(tr("Delete Message").to_uppercase()).font(display_font(28.0)).color(TEXT_HEADER));
+            ui.add_space(16.0);
+            ui.label(RichText::new(tr("Are you sure you want to delete this message?")).font(ui_font(15.0)).color(TEXT));
+            if !msg.content.is_empty() {
+                ui.add_space(8.0);
+                let quote: String = msg.content.chars().take(300).collect();
+                let r = Frame::new()
+                    .fill(BG_SIDEBAR)
+                    .corner_radius(CornerRadius::same(2))
+                    .inner_margin(Margin { left: 16, right: 12, top: 10, bottom: 10 })
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.label(RichText::new(quote).font(ui_font(15.0)).color(TEXT));
+                    })
+                    .response
+                    .rect;
+                ui.painter().rect_filled(Rect::from_min_size(r.min, Vec2::new(4.0, r.height())), 0.0, ACCENT);
+            }
+            ui.add_space(18.0);
+            super::modals::actions_row(ui, |ui| {
+                if super::modals::danger_btn(ui, tr("Delete")).clicked() {
+                    delete = true;
+                }
+                if super::modals::secondary_btn(ui, tr("Cancel")).clicked() {
+                    close = true;
+                }
+            });
+        });
+        if delete {
+            self.delete_message(&msg.channel_id, &msg.id);
+        }
+        if close || delete || dim_clicked {
+            self.confirm_delete = None;
+        }
+    }
+
+    /// Role colour of a member of the open server (the web's StyledName), if any.
+    pub fn member_color(&self, user_id: &str) -> Option<Color32> {
+        let gid = self.selected_guild_id.as_ref()?;
+        let g = self.state.guilds.get(gid)?;
+        let m = self.state.members.get(gid)?.get(user_id)?;
+        g.roles
+            .iter()
+            .filter(|r| m.roles.contains(&r.id) && r.color != 0)
+            .max_by_key(|r| r.position)
+            .map(|r| Color32::from_rgb((r.color >> 16) as u8, (r.color >> 8) as u8, r.color as u8))
+    }
+
+    /// My permissions in a channel; DMs allow messaging, reactions and deleting own messages.
+    pub fn my_perms(&self, channel_id: &str) -> u64 {
+        use crate::permissions::{channel_perms, p};
+        let Some(ch) = self.state.channels.get(channel_id) else { return 0 };
+        let Some(me) = self.state.me.as_ref() else { return 0 };
+        let Some(g) = ch.guild_id.as_ref().and_then(|g| self.state.guilds.get(g)) else {
+            return p::SEND_MESSAGES | p::ADD_REACTIONS | p::ATTACH_FILES | p::EMBED_LINKS;
+        };
+        let member = self.state.members.get(&g.id).and_then(|m| m.get(&me.id));
+        let parent = ch.parent_id.as_ref().and_then(|id| self.state.channels.get(id));
+        channel_perms(g, &me.id, member, ch, parent)
     }
 
     /// Notched HUD `GameInviteCard` matching `client/src/chat/GameInvite.tsx`:
@@ -947,6 +1237,7 @@ impl CillhubApp {
                 },
                 color,
                 italics: st.italic,
+                line_height: Some((font.size * 1.44).round()), // `.content { line-height: 1.44 }`
                 ..Default::default()
             };
             if st.code {
@@ -1018,7 +1309,7 @@ impl CillhubApp {
                                 .color(ACCENT),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if Self::mini_toolbar_btn(ui, IconKind::Close, "Cancel Reply").clicked()
+                            if toolbar_btn(ui, IconKind::Close, false, false).on_hover_text(tr("Cancel")).clicked()
                             {
                                 self.reply_to_message = None;
                             }
@@ -1042,7 +1333,7 @@ impl CillhubApp {
                                 .color(YELLOW),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if Self::mini_toolbar_btn(ui, IconKind::Close, "Cancel Edit").clicked()
+                            if toolbar_btn(ui, IconKind::Close, false, false).on_hover_text(tr("Cancel")).clicked()
                             {
                                 self.editing_message_id = None;
                                 self.composer_text.clear();
@@ -1426,19 +1717,19 @@ impl CillhubApp {
         }
     }
 
-    pub fn bookmark_message(&mut self, msg: &Message) {
+    /// Bookmark on/off like the web's toggleBookmark (saved messages without a due date).
+    pub fn toggle_bookmark(&mut self, msg: &Message) {
+        let path = format!("/users/@me/saved-messages/{}/{}", msg.channel_id, msg.id);
+        let on = self.state.saved_messages.iter().any(|s| s.message_id == msg.id && s.due_at.is_none());
         if let Some(api) = &self.api {
-            report(&mut self.status_banner, api.put(
-                &format!("/users/@me/saved-messages/{}", msg.id),
-                Some(json!({ "channel_id": msg.channel_id })),
-            ));
+            let r = if on { api.delete(&path).map(|_| ()) } else { api.put(&path, Some(json!({}))).map(|_| ()) };
+            if report(&mut self.status_banner, r).is_none() {
+                return;
+            }
         }
-        if !self
-            .state
-            .saved_messages
-            .iter()
-            .any(|s| s.message_id == msg.id)
-        {
+        if on {
+            self.state.saved_messages.retain(|s| s.message_id != msg.id);
+        } else {
             self.state.saved_messages.insert(
                 0,
                 SavedMessage {
@@ -1447,12 +1738,11 @@ impl CillhubApp {
                     guild_id: msg.guild_id.clone(),
                     note: None,
                     due_at: None,
-                    created_at: "just now".to_string(),
+                    created_at: String::new(),
                     message: Some(msg.clone()),
                 },
             );
         }
-        self.status_banner = Some("Message saved to bookmarks!".to_string());
     }
 
     pub fn create_thread_from_message(&mut self, channel_id: &str, msg: &Message) {
@@ -1520,6 +1810,104 @@ impl CillhubApp {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MsgAction {
+    React,
+    Reply,
+    Bookmark,
+    Thread,
+    Edit,
+    More,
+    Delete,
+}
+
+/// Where a picked emoji goes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EmojiTarget {
+    Reaction(String, String),
+    Composer,
+}
+
+/// `.toolbar button`: 30px, interactive colour, hover fill; `pressed` = accent (aria-pressed).
+pub fn toolbar_btn(ui: &mut Ui, icon: IconKind, pressed: bool, danger: bool) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::click());
+    let hov = resp.hovered();
+    let (bg, fg) = if hov && danger {
+        (DANGER.gamma_multiply(0.15).blend(BG_HOVER.gamma_multiply(0.85)), DANGER)
+    } else if hov {
+        (BG_HOVER, TEXT_HEADER)
+    } else if pressed {
+        (ACCENT.gamma_multiply(0.14), ACCENT)
+    } else {
+        (Color32::TRANSPARENT, INTERACTIVE)
+    };
+    ui.painter().rect_filled(rect, CornerRadius::same(2), bg);
+    draw_icon(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(18.0)), icon, fg);
+    resp
+}
+
+/// `.menu` popover frame.
+pub fn menu_frame<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    Frame::new()
+        .fill(BG_MENU)
+        .stroke(Stroke::new(1.0_f32, BORDER))
+        .corner_radius(CornerRadius::same(3))
+        .shadow(egui::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(128) })
+        .inner_margin(Margin::same(6))
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            add(ui)
+        })
+        .inner
+}
+
+/// `.menu button`: full-width row, 14px text, hover fill (danger rows turn red).
+pub fn menu_item(ui: &mut Ui, label: &str, danger: bool) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::click());
+    let hov = resp.hovered();
+    if hov {
+        ui.painter().rect_filled(rect, CornerRadius::same(2), if danger { DANGER } else { BG_HOVER });
+    }
+    let fg = match (danger, hov) {
+        (true, true) => Color32::WHITE,
+        (true, false) => DANGER,
+        (false, true) => TEXT_HEADER,
+        _ => TEXT,
+    };
+    ui.painter().text(rect.left_center() + Vec2::new(10.0, 0.0), Align2::LEFT_CENTER, label, ui_font(14.0), fg);
+    resp
+}
+
+pub fn menu_sep(ui: &mut Ui) {
+    ui.add_space(4.0);
+    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
+    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0_f32, BORDER));
+    ui.add_space(4.0);
+}
+
+/// The web's curated emoji (assets/emoji.json): (category, [(char, "name keywords")]).
+pub fn emoji_list() -> &'static [(&'static str, Vec<(String, String)>)] {
+    static E: std::sync::OnceLock<Vec<(&'static str, Vec<(String, String)>)>> = std::sync::OnceLock::new();
+    E.get_or_init(|| {
+        let raw: Vec<(String, Vec<String>)> =
+            serde_json::from_str(include_str!("../../assets/emoji.json")).expect("emoji.json");
+        raw.into_iter()
+            .map(|(cat, list)| {
+                let cat: &'static str = Box::leak(cat.into_boxed_str());
+                let items = list
+                    .into_iter()
+                    .filter_map(|e| e.split_once(' ').map(|(c, k)| (c.to_string(), k.to_string())))
+                    .collect();
+                (cat, items)
+            })
+            .collect()
+    })
+}
+
+fn local_time(iso: &str) -> Option<chrono::NaiveDateTime> {
+    chrono::DateTime::parse_from_rfc3339(iso).ok().map(|t| t.with_timezone(&chrono::Local).naive_local())
+}
+
 /// Hour and minute in the UI language (web appearance/format.ts clock()).
 fn clock(t: &chrono::NaiveDateTime) -> String {
     t.format(if crate::i18n::is_german() { "%H:%M" } else { "%I:%M %p" }).to_string()
@@ -1540,9 +1928,9 @@ pub fn stamp_at(t: chrono::NaiveDateTime, now: chrono::NaiveDateTime) -> String 
 
 /// A server time stamp (RFC 3339, UTC) as the web shows it, in the local time zone.
 pub fn stamp(iso: &str) -> String {
-    match chrono::DateTime::parse_from_rfc3339(iso) {
-        Ok(t) => stamp_at(t.with_timezone(&chrono::Local).naive_local(), chrono::Local::now().naive_local()),
-        Err(_) => iso.to_string(),
+    match local_time(iso) {
+        Some(t) => stamp_at(t, chrono::Local::now().naive_local()),
+        None => iso.to_string(),
     }
 }
 

@@ -1110,3 +1110,70 @@ impl CillhubApp {
         self.state.messages.entry(cid).or_default().push(msg);
     }
 }
+
+/// A dialog like the web's `.modal`: page dimmed (rgb 0 0 0 / .72), centred notched card with
+/// the 4px accent top, `--chat` fill, 24px padding. A click on the dim area sets `close`.
+pub fn overlay<R>(ctx: &Context, id: &str, width: f32, close: &mut bool, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let screen = ctx.screen_rect();
+    let dim = egui::Area::new(egui::Id::new((id, "dim")))
+        .order(egui::Order::Middle)
+        .fixed_pos(screen.min)
+        .show(ctx, |ui| {
+            let (r, resp) = ui.allocate_exact_size(screen.size(), egui::Sense::click());
+            ui.painter().rect_filled(r, 0.0, Color32::from_black_alpha(184));
+            resp
+        })
+        .inner;
+    if dim.clicked() {
+        *close = true;
+    }
+    egui::Area::new(egui::Id::new((id, "card")))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+        .show(ctx, |ui| {
+            crate::theme::show_notched_card(ui, BG_CHAT, BORDER, 12.0, Some(ACCENT), None, Margin::same(24), |ui| {
+                ui.set_width(width - 48.0);
+                ui.set_max_height(screen.height() - 96.0);
+                add(ui)
+            })
+            .inner
+        })
+        .inner
+}
+
+fn button(ui: &mut Ui, label: &str, fill: Color32, hover: Color32, fg: Color32, border: Option<Color32>) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(label.to_uppercase(), display_font(16.0), fg);
+    let size = Vec2::new(galley.size().x + 32.0, 36.0);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    let rect = if resp.hovered() { rect.translate(Vec2::new(0.0, -1.0)) } else { rect };
+    ui.painter().rect_filled(rect, CornerRadius::same(2), if resp.hovered() { hover } else { fill });
+    if let Some(b) = border {
+        ui.painter().rect_stroke(rect, CornerRadius::same(2), Stroke::new(1.0_f32, b), egui::StrokeKind::Inside);
+    }
+    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, fg);
+    resp
+}
+
+/// `.primary`
+pub fn primary_btn(ui: &mut Ui, label: &str) -> egui::Response {
+    button(ui, label, ACCENT, ACCENT_HOVER, ON_ACCENT, None)
+}
+
+/// `.secondary`
+pub fn secondary_btn(ui: &mut Ui, label: &str) -> egui::Response {
+    button(ui, label, BTN_SECONDARY, BTN_SECONDARY_HOVER, TEXT_HEADER, Some(BORDER))
+}
+
+/// `.danger-btn`
+pub fn danger_btn(ui: &mut Ui, label: &str) -> egui::Response {
+    button(ui, label, DANGER_STRONG, Color32::from_rgb(0xb5, 0x20, 0x2a), Color32::WHITE, None)
+}
+
+/// `.modal-actions`: buttons right-aligned in one 36px row (add them right to left).
+pub fn actions_row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    let w = ui.available_width();
+    ui.allocate_ui_with_layout(Vec2::new(w, 36.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        add(ui)
+    });
+}

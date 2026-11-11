@@ -614,6 +614,40 @@ pub fn icon_svg(name: &str, rotate: i32) -> Option<String> {
     ))
 }
 
+#[cfg(feature = "native-gui")]
+fn emoji_svgs() -> &'static std::collections::HashMap<String, String> {
+    static E: std::sync::OnceLock<std::collections::HashMap<String, String>> = std::sync::OnceLock::new();
+    E.get_or_init(|| serde_json::from_str(include_str!("../assets/emoji-svg.json")).expect("emoji-svg.json"))
+}
+
+/// Paints SVG bytes registered under `uri` (once per context) into `rect`.
+#[cfg(feature = "native-gui")]
+fn paint_svg(painter: &Painter, rect: Rect, uri: &str, svg: impl FnOnce() -> Option<String>, tint: Color32) -> bool {
+    let ctx = painter.ctx();
+    let id = egui::Id::new(uri);
+    if !ctx.data(|d| d.get_temp::<bool>(id).unwrap_or(false)) {
+        let Some(svg) = svg() else { return false };
+        ctx.include_bytes(uri.to_string(), svg.into_bytes());
+        ctx.data_mut(|d| d.insert_temp(id, true));
+    }
+    let px = (rect.size() * ctx.pixels_per_point()).round();
+    let hint = egui::load::SizeHint::Size(px.x.max(1.0) as u32, px.y.max(1.0) as u32);
+    if let Ok(egui::load::TexturePoll::Ready { texture }) = ctx.try_load_texture(uri, egui::TextureOptions::LINEAR, hint) {
+        painter.image(texture.id, rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), tint);
+    }
+    true
+}
+
+/// Draws a colour emoji (Twemoji image for the curated set, else the font glyph).
+#[cfg(feature = "native-gui")]
+pub fn draw_emoji(painter: &Painter, rect: Rect, ch: &str) {
+    let key = ch.trim_end_matches('\u{fe0f}');
+    let svg = emoji_svgs().get(ch).or_else(|| emoji_svgs().get(key)).cloned();
+    if svg.is_none() || !paint_svg(painter, rect, &format!("bytes://emoji/{key}.svg"), || svg, Color32::WHITE) {
+        painter.text(rect.center(), Align2::CENTER_CENTER, ch, FontId::proportional(rect.height() * 0.9), Color32::WHITE);
+    }
+}
+
 /// Draws an icon from the web client's SVG set (same paths), tinted with `color`.
 #[cfg(feature = "native-gui")]
 pub fn draw_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32) {
@@ -627,21 +661,7 @@ pub fn draw_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32) 
         painter.text(rect.center(), Align2::CENTER_CENTER, glyph, FontId::proportional(rect.height() * scale), color);
         return;
     };
-    let ctx = painter.ctx();
-    let uri = format!("bytes://icon/{name}{rot}.svg");
-    let id = egui::Id::new(&uri);
-    if !ctx.data(|d| d.get_temp::<bool>(id).unwrap_or(false)) {
-        if let Some(svg) = icon_svg(name, rot) {
-            ctx.include_bytes(uri.clone(), svg.into_bytes());
-        }
-        ctx.data_mut(|d| d.insert_temp(id, true));
-    }
-    let px = (rect.size() * ctx.pixels_per_point()).round();
-    let hint = egui::load::SizeHint::Size(px.x.max(1.0) as u32, px.y.max(1.0) as u32);
-    if let Ok(egui::load::TexturePoll::Ready { texture }) = ctx.try_load_texture(&uri, egui::TextureOptions::LINEAR, hint) {
-        let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
-        painter.image(texture.id, rect, uv, color);
-    }
+    paint_svg(painter, rect, &format!("bytes://icon/{name}{rot}.svg"), || icon_svg(name, rot), color);
 }
 
 /// Draws a `32px × 32px` `.icon-btn` matching `client/src/index.css`.

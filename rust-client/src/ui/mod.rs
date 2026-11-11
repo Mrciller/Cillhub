@@ -165,6 +165,13 @@ pub struct CillhubApp {
     pub editing_message_id: Option<String>,
     /// Spoilers clicked open: (message id, spoiler index).
     pub revealed_spoilers: std::collections::HashSet<(String, u16)>,
+    /// Message whose toolbar was shown last frame (keeps it while the pointer is on the toolbar).
+    pub toolbar_msg: Option<String>,
+    /// Open "More" menu: (message id, anchor).
+    pub msg_menu: Option<(String, Pos2)>,
+    pub emoji_picker: Option<(chat::EmojiTarget, Pos2)>,
+    pub emoji_query: String,
+    pub confirm_delete: Option<Message>,
     pub search_query: String,
     pub quick_switcher_query: String,
     pub canvas_doc_input: String,
@@ -279,6 +286,11 @@ impl CillhubApp {
             reply_to_message: None,
             editing_message_id: None,
             revealed_spoilers: Default::default(),
+            toolbar_msg: None,
+            msg_menu: None,
+            emoji_picker: None,
+            emoji_query: String::new(),
+            confirm_delete: None,
             search_query: String::new(),
             quick_switcher_query: String::new(),
             canvas_doc_input: "# Arena Match Notes\n- Mid prio at 3:15\n- Objective control".to_string(),
@@ -1909,6 +1921,9 @@ impl CillhubApp {
             self.active_modal = None;
             self.show_composer_plus_menu = false;
             self.lightbox = None;
+            self.msg_menu = None;
+            self.emoji_picker = None;
+            self.confirm_delete = None;
         }
 
         // Full-size image view (the web client's lightbox)
@@ -2052,6 +2067,9 @@ impl CillhubApp {
 
         // 5. Floating Modals
         self.render_modals(ctx);
+        self.render_message_menu(ctx);
+        self.render_emoji_picker(ctx);
+        self.render_confirm_delete(ctx);
     }
 }
 
