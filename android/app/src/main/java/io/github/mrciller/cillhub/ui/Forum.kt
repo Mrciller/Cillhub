@@ -370,7 +370,7 @@ private fun NewPostDialog(forum: Channel, onDismiss: () -> Unit, onCreated: (Cha
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(s(R.string.forum_new_post), fontWeight = FontWeight.Bold) },
+        title = { Text(s(R.string.forum_new_post).uppercase(), fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
@@ -424,11 +424,11 @@ private fun NewPostDialog(forum: Channel, onDismiss: () -> Unit, onCreated: (Cha
                 },
                 enabled = canSubmit,
              shape = MaterialTheme.shapes.small) {
-                Text(s(R.string.forum_post))
+                Text(s(R.string.forum_post).uppercase())
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) }
+            TextButton(onClick = onDismiss, enabled = !busy, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) }
         },
     )
 }

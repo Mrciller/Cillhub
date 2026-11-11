@@ -247,7 +247,7 @@ fun VoiceScreen(channelId: String, start: Boolean = false) {
         if (here && v.error != 0) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(ctx.getString(v.error, v.errorDetail).trim(), color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Assertive })
-                if (v.status == VStatus.ERROR) TextButton({ Voice.retry() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.retry)) } else TextButton({ Voice.clearError() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.close)) }
+                if (v.status == VStatus.ERROR) TextButton({ Voice.retry() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.retry).uppercase()) } else TextButton({ Voice.clearError() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.close).uppercase()) }
             }
         }
         val people = ch?.let { Sel.voiceUsers(state, it.guildId, it.id) }.orEmpty()
@@ -283,8 +283,8 @@ fun VoiceScreen(channelId: String, start: Boolean = false) {
         }
         when {
             ringing -> Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                Button({ Calls.decline(ctx, channelId); nav.back() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), shape = MaterialTheme.shapes.small) { Text(s(R.string.decline)) }
-                Button({ withMic { Calls.answer(ctx, channelId, openApp = false) } }, colors = ButtonDefaults.buttonColors(containerColor = LocalExtra.current.online), shape = MaterialTheme.shapes.small) { Text(s(R.string.answer)) }
+                Button({ Calls.decline(ctx, channelId); nav.back() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), shape = MaterialTheme.shapes.small) { Text(s(R.string.decline).uppercase()) }
+                Button({ withMic { Calls.answer(ctx, channelId, openApp = false) } }, colors = ButtonDefaults.buttonColors(containerColor = LocalExtra.current.online), shape = MaterialTheme.shapes.small) { Text(s(R.string.answer).uppercase()) }
             }
             here -> Controls(v, ch,
                 onCamera = { if (granted(ctx, Manifest.permission.CAMERA)) Voice.toggleCamera() else camAsk.launch(Manifest.permission.CAMERA) },
@@ -292,7 +292,7 @@ fun VoiceScreen(channelId: String, start: Boolean = false) {
             ch != null -> Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), contentAlignment = Alignment.Center) {
                 val canJoin = Sel.canJoinVoice(state, ch)
                 Button({ join(ring = isPrivate(ch)) }, enabled = canJoin, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = MaterialTheme.shapes.small) {
-                    Text(s(when { isPrivate(ch) -> if (state.calls.containsKey(ch.id)) R.string.voice_join_call else R.string.start_call; ch.type == 13 -> R.string.voice_listen; else -> R.string.voice_join }))
+                    Text(s(when { isPrivate(ch) -> if (state.calls.containsKey(ch.id)) R.string.voice_join_call else R.string.start_call; ch.type == 13 -> R.string.voice_listen; else -> R.string.voice_join }).uppercase())
                 }
             }
         }
@@ -347,7 +347,7 @@ private fun ParticipantGrid(state: State, ch: Channel?, people: List<VoiceState>
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Ic(R.drawable.ms_screen_share, null, Modifier.size(36.dp), MaterialTheme.colorScheme.onSecondaryContainer)
                     Text(s(R.string.voice_you_share), Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSecondaryContainer, style = MaterialTheme.typography.titleSmall)
-                    TextButton({ Voice.stopScreen() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.voice_stop_share)) }
+                    TextButton({ Voice.stopScreen() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.voice_stop_share).uppercase()) }
                 }
                 else VideoView(t, mirror = false, fit = true, modifier = Modifier.fillMaxSize())
                 if (!t.local) Label(s(R.string.voice_screen_of, name), Modifier.align(Alignment.BottomStart))
@@ -498,7 +498,7 @@ private fun VolumeSheet(state: State, guildId: String?, userId: String, close: (
                     Voice.prefs.setSoundboardMuted(userId, it)
                 })
             }
-            TextButton({ nav.openProfile(userId, guildId); close() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.view_profile)) }
+            TextButton({ nav.openProfile(userId, guildId); close() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.view_profile).uppercase()) }
         }
     }
 }
@@ -530,7 +530,7 @@ private fun ShareDialog(onDismiss: () -> Unit, onShare: () -> Unit) {
     var q by remember { mutableStateOf(Voice.prefs.screenQuality) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(s(R.string.voice_share_screen)) },
+        title = { Text(s(R.string.voice_share_screen).uppercase()) },
         text = {
             Column {
                 Text(s(R.string.voice_share_quality), style = MaterialTheme.typography.labelLarge)
@@ -544,8 +544,8 @@ private fun ShareDialog(onDismiss: () -> Unit, onShare: () -> Unit) {
                 Text(s(R.string.voice_share_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton({ Voice.prefs.screenQuality = q; onShare() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.voice_go_live)) } },
-        dismissButton = { TextButton(onDismiss, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
+        confirmButton = { TextButton({ Voice.prefs.screenQuality = q; onShare() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.voice_go_live).uppercase()) } },
+        dismissButton = { TextButton(onDismiss, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
 }
 

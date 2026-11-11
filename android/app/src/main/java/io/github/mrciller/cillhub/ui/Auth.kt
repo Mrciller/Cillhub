@@ -133,7 +133,7 @@ private fun ServerChip(name: String?, onClick: () -> Unit) {
     val host = Config.APP_URL.substringAfter("://")
     Column {
         Text(s(R.string.server_label, name?.takeIf { it.isNotBlank() }?.let { "$it · $host" } ?: host), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        TextButton(onClick, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp, vertical = 8.dp), shape = MaterialTheme.shapes.small) { Text(s(R.string.use_another_server)) }
+        TextButton(onClick, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp, vertical = 8.dp), shape = MaterialTheme.shapes.small) { Text(s(R.string.use_another_server).uppercase()) }
     }
 }
 
@@ -159,7 +159,7 @@ private fun ErrorLine(text: String?) {
 @Composable
 private fun Submit(label: String, busy: Boolean, enabled: Boolean, onClick: () -> Unit) {
     Button(onClick, enabled = enabled && !busy, modifier = Modifier.fillMaxWidth().height(52.dp), shape = MaterialTheme.shapes.small) {
-        if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) else Text(label)
+        if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) else Text(label.uppercase())
     }
 }
 
@@ -199,8 +199,8 @@ private fun LoginForm(toRegister: () -> Unit, toForgot: (() -> Unit)?, done: (Lo
     Field(password, { password = it }, s(R.string.password), ContentType.Password, password = true, ime = ImeAction.Go, onDone = { submit() })
     ErrorLine(error)
     Submit(s(R.string.log_in), busy, login.isNotBlank() && password.isNotEmpty()) { submit() }
-    TextButton(toRegister, Modifier.padding(top = 8.dp), shape = MaterialTheme.shapes.small) { Text(s(R.string.create_account)) }
-    if (toForgot != null) TextButton(toForgot, shape = MaterialTheme.shapes.small) { Text(s(R.string.forgot_password)) }
+    TextButton(toRegister, Modifier.padding(top = 8.dp), shape = MaterialTheme.shapes.small) { Text(s(R.string.create_account).uppercase()) }
+    if (toForgot != null) TextButton(toForgot, shape = MaterialTheme.shapes.small) { Text(s(R.string.forgot_password).uppercase()) }
 }
 
 /** Password reset by email: the link in the mail opens the web page; the answer never says whether the address exists. */
@@ -231,7 +231,7 @@ private fun ForgotForm(back: () -> Unit) {
         ErrorLine(error)
         Submit(s(R.string.forgot_send), busy, email.contains('@')) { attempt(null) }
     }
-    TextButton(back, Modifier.padding(top = 8.dp), shape = MaterialTheme.shapes.small) { Text(s(R.string.back)) }
+    TextButton(back, Modifier.padding(top = 8.dp), shape = MaterialTheme.shapes.small) { Text(s(R.string.back).uppercase()) }
 }
 
 /** The server's own legal pages (7.10.3), opened in the browser. */
@@ -240,7 +240,7 @@ private fun LegalLinks() {
     val ctx = LocalContext.current
     Column(Modifier.padding(top = 24.dp)) {
         for ((label, path) in listOf(R.string.legal_imprint to "imprint", R.string.legal_privacy to "privacy", R.string.legal_terms to "terms", R.string.legal_report to "report-content")) {
-            TextButton({ openUrl(ctx, "${Config.APP_URL}/$path") }, shape = MaterialTheme.shapes.small) { Text(s(label)) }
+            TextButton({ openUrl(ctx, "${Config.APP_URL}/$path") }, shape = MaterialTheme.shapes.small) { Text(s(label).uppercase()) }
         }
     }
 }
@@ -270,7 +270,7 @@ private fun RegisterForm(mode: String, legal: LegalInfo?, toLogin: () -> Unit, d
     Text(s(R.string.register_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
     if (mode == "closed") {
         Text(s(R.string.registration_closed), modifier = Modifier.padding(vertical = 16.dp))
-        TextButton(toLogin, shape = MaterialTheme.shapes.small) { Text(s(R.string.have_account)) }
+        TextButton(toLogin, shape = MaterialTheme.shapes.small) { Text(s(R.string.have_account).uppercase()) }
         return
     }
     Spacer(Modifier.height(16.dp))
@@ -297,8 +297,8 @@ private fun RegisterForm(mode: String, legal: LegalInfo?, toLogin: () -> Unit, d
         if (askTerms) {
             Check(termsOk, { termsOk = it }, s(R.string.signup_terms))
             Row {
-                TextButton({ openUrl(ctx, "${Config.APP_URL}/terms") }, shape = MaterialTheme.shapes.small) { Text(s(R.string.legal_terms)) }
-                TextButton({ openUrl(ctx, "${Config.APP_URL}/privacy") }, shape = MaterialTheme.shapes.small) { Text(s(R.string.legal_privacy)) }
+                TextButton({ openUrl(ctx, "${Config.APP_URL}/terms") }, shape = MaterialTheme.shapes.small) { Text(s(R.string.legal_terms).uppercase()) }
+                TextButton({ openUrl(ctx, "${Config.APP_URL}/privacy") }, shape = MaterialTheme.shapes.small) { Text(s(R.string.legal_privacy).uppercase()) }
             }
         }
         Check(ageOk, { ageOk = it }, s(R.string.signup_age, legal.minAge))
@@ -306,7 +306,7 @@ private fun RegisterForm(mode: String, legal: LegalInfo?, toLogin: () -> Unit, d
     }
     ErrorLine(error)
     Submit(s(R.string.register), busy, ok) { submit() }
-    TextButton(toLogin, Modifier.padding(top = 8.dp), shape = MaterialTheme.shapes.small) { Text(s(R.string.have_account)) }
+    TextButton(toLogin, Modifier.padding(top = 8.dp), shape = MaterialTheme.shapes.small) { Text(s(R.string.have_account).uppercase()) }
 }
 
 @Composable
@@ -331,8 +331,8 @@ private fun MfaForm(ticket: String, cancel: () -> Unit, done: (LoginAnswer) -> U
     ErrorLine(error)
     Submit(s(R.string.verify), busy, ok) { submit() }
     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        TextButton({ backup = !backup; code = "" }, shape = MaterialTheme.shapes.small) { Text(s(if (backup) R.string.use_mfa_code else R.string.use_backup_code)) }
-        TextButton(cancel, shape = MaterialTheme.shapes.small) { Text(s(R.string.back)) }
+        TextButton({ backup = !backup; code = "" }, shape = MaterialTheme.shapes.small) { Text(s(if (backup) R.string.use_mfa_code else R.string.use_backup_code).uppercase()) }
+        TextButton(cancel, shape = MaterialTheme.shapes.small) { Text(s(R.string.back).uppercase()) }
     }
 }
 
@@ -366,7 +366,7 @@ private fun ServerDialog(close: () -> Unit) {
     val ctx = LocalContext.current
     AlertDialog(
         onDismissRequest = close,
-        title = { Text(s(R.string.use_another_server)) },
+        title = { Text(s(R.string.use_another_server).uppercase()) },
         text = {
             Column {
                 Text(s(R.string.server_dialog_text), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 12.dp))
@@ -389,8 +389,8 @@ private fun ServerDialog(close: () -> Unit) {
                     }
                     busy = false
                 }
-            }, shape = MaterialTheme.shapes.small) { Text(s(R.string.connect)) }
+            }, shape = MaterialTheme.shapes.small) { Text(s(R.string.connect).uppercase()) }
         },
-        dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
+        dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
 }

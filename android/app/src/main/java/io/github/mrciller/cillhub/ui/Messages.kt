@@ -145,7 +145,7 @@ fun MessagesScreen(detail: String?) {
                     if (allDms.isEmpty()) item {
                         Column(Modifier.fillMaxWidth().heightIn(min = 320.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             EmptyState(R.drawable.ms_chat, s(R.string.no_dms_title), s(R.string.no_dms_text), Modifier.heightIn(min = 240.dp, max = 300.dp))
-                            Button(nav::openFriends, shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_group, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.friends)) }
+                            Button(nav::openFriends, shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_group, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.friends).uppercase()) }
                         }
                     }
                     itemsIndexed(dms, key = { _, it -> it.id }) { i, c -> Box(Modifier.animateItem().reveal(i, clock)) { DmRow(state, c, c.id == detail) { nav.openChannel(c.id) } } }

@@ -68,7 +68,7 @@ fun InboxScreen() {
     Scaffold(topBar = {
         Column {
             TopAppBar(title = { Text(s(R.string.tab_inbox).uppercase()) }, actions = {
-                if (tab == 1 && unread.isNotEmpty()) TextButton({ scope.launch { runCatching { Session.ackBulk(unread) }.onFailure { error = errorText(ctx, it) } } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.mark_all_read)) }
+                if (tab == 1 && unread.isNotEmpty()) TextButton({ scope.launch { runCatching { Session.ackBulk(unread) }.onFailure { error = errorText(ctx, it) } } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.mark_all_read).uppercase()) }
             })
             PrimaryTabRow(tab) {
                 Tab(tab == 0, { tab = 0 }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, text = { Text(s(R.string.mentions_tab)) })

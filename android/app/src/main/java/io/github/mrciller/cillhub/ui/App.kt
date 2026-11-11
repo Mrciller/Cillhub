@@ -283,10 +283,10 @@ private fun MainShell() {
         link?.let { url ->
             AlertDialog(
                 onDismissRequest = { link = null },
-                title = { Text(s(R.string.leaving_title)) },
+                title = { Text(s(R.string.leaving_title).uppercase()) },
                 text = { Text(s(R.string.leaving_text, url)) },
-                confirmButton = { TextButton({ openUrl(ctx, url); link = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.leaving_visit)) } },
-                dismissButton = { TextButton({ link = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
+                confirmButton = { TextButton({ openUrl(ctx, url); link = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.leaving_visit).uppercase()) } },
+                dismissButton = { TextButton({ link = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
             )
         }
         // the server asks to accept its terms first; this app has no accept screen, the website does
@@ -294,10 +294,10 @@ private fun MainShell() {
         gate?.takeIf { it.isNotEmpty() }?.let { msg ->
             AlertDialog(
                 onDismissRequest = { ApiError.termsGate.value = "" },
-                title = { Text(s(R.string.terms_gate_title)) },
+                title = { Text(s(R.string.terms_gate_title).uppercase()) },
                 text = { Text(msg) },
-                confirmButton = { TextButton({ openUrl(ctx, io.github.mrciller.cillhub.Config.APP_URL); ApiError.termsGate.value = "" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.terms_gate_open)) } },
-                dismissButton = { TextButton({ ApiError.termsGate.value = "" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
+                confirmButton = { TextButton({ openUrl(ctx, io.github.mrciller.cillhub.Config.APP_URL); ApiError.termsGate.value = "" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.terms_gate_open).uppercase()) } },
+                dismissButton = { TextButton({ ApiError.termsGate.value = "" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
             )
         }
     }

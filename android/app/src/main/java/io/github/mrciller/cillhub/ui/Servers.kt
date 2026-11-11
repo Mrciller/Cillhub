@@ -310,10 +310,10 @@ private fun ChannelActionSheet(state: State, g: Guild, c: Channel, close: () -> 
         ChannelAction.NOTIFY -> ChannelNotifySheet(state, g.id, c, close)
         ChannelAction.DELETE -> AlertDialog(
             onDismissRequest = close,
-            title = { Text(s(if (category) R.string.delete_category else R.string.delete_channel)) },
+            title = { Text(s(if (category) R.string.delete_category else R.string.delete_channel).uppercase()) },
             text = { Text(s(R.string.delete_channel_confirm, c.name ?: "")) },
-            confirmButton = { TextButton({ scope.launch { runCatching { Session.rest.request("DELETE", "/channels/${c.id}") }; close() } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
+            confirmButton = { TextButton({ scope.launch { runCatching { Session.rest.request("DELETE", "/channels/${c.id}") }; close() } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete).uppercase(), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
         )
         else -> {}
     }
@@ -375,7 +375,7 @@ private fun CloneChannelDialog(channel: Channel, close: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = close,
-        title = { Text(s(R.string.clone_channel)) },
+        title = { Text(s(R.string.clone_channel).uppercase()) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -406,9 +406,9 @@ private fun CloneChannelDialog(channel: Channel, close: () -> Unit) {
                     }
                 },
                 enabled = !busy && name.isNotBlank(),
-             shape = MaterialTheme.shapes.small) { Text(s(R.string.clone)) }
+             shape = MaterialTheme.shapes.small) { Text(s(R.string.clone).uppercase()) }
         },
-        dismissButton = { TextButton(onClick = close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
+        dismissButton = { TextButton(onClick = close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
 }
 
@@ -429,7 +429,7 @@ private fun AddServerDialog(close: () -> Unit) {
     }
     AlertDialog(
         onDismissRequest = close,
-        title = { Text(s(R.string.add_server)) },
+        title = { Text(s(R.string.add_server).uppercase()) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(s(R.string.join_server_text), style = MaterialTheme.typography.bodyMedium)
@@ -442,7 +442,7 @@ private fun AddServerDialog(close: () -> Unit) {
                         Session.store.dispatch("GUILD_CREATE", io.github.mrciller.cillhub.data.json.parseToJsonElement(g).jsonObject)
                         (sys as? kotlinx.serialization.json.JsonPrimitive)?.content?.let { nav.openChannel(it) }
                     }
-                }, shape = MaterialTheme.shapes.small) { Text(s(R.string.join_server)) }
+                }, shape = MaterialTheme.shapes.small) { Text(s(R.string.join_server).uppercase()) }
                 HorizontalDivider()
                 OutlinedTextField(name, { name = it }, label = { Text(s(R.string.new_server_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 TextButton(enabled = name.isNotBlank() && !busy, onClick = {
@@ -450,10 +450,10 @@ private fun AddServerDialog(close: () -> Unit) {
                         val g = Session.rest.request("POST", "/guilds", buildJsonObject { put("name", name.trim()) })
                         Session.store.dispatch("GUILD_CREATE", io.github.mrciller.cillhub.data.json.parseToJsonElement(g).jsonObject)
                     }
-                }, shape = MaterialTheme.shapes.small) { Text(s(R.string.create_server)) }
+                }, shape = MaterialTheme.shapes.small) { Text(s(R.string.create_server).uppercase()) }
                 if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error)
             }
         },
-        confirmButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.close)) } },
+        confirmButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.close).uppercase()) } },
     )
 }

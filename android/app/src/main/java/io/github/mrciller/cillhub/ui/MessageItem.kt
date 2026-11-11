@@ -498,7 +498,7 @@ fun ReactionPicker(close: () -> Unit, pick: (EmojiRef) -> Unit) {
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = close,
-        title = { Text(s(R.string.add_reaction)) },
+        title = { Text(s(R.string.add_reaction).uppercase()) },
         text = {
             Column {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -507,8 +507,8 @@ fun ReactionPicker(close: () -> Unit, pick: (EmojiRef) -> Unit) {
                 OutlinedTextField(text, { text = it.trim() }, label = { Text(s(R.string.emoji_from_keyboard)) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
             }
         },
-        confirmButton = { TextButton({ pick(EmojiRef(name = text)) }, enabled = text.isNotEmpty() && text.length <= 16, shape = MaterialTheme.shapes.small) { Text(s(R.string.react)) } },
-        dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
+        confirmButton = { TextButton({ pick(EmojiRef(name = text)) }, enabled = text.isNotEmpty() && text.length <= 16, shape = MaterialTheme.shapes.small) { Text(s(R.string.react).uppercase()) } },
+        dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
 }
 
@@ -825,7 +825,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                         },
                         shape = MaterialTheme.shapes.small,
                     ) {
-                        Text(s(R.string.poll_export_csv), style = MaterialTheme.typography.labelSmall)
+                        Text(s(R.string.poll_export_csv).uppercase(), style = MaterialTheme.typography.labelSmall)
                     }
 
                     // End Poll (if author and not finalized)
@@ -845,7 +845,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                             },
                             enabled = !busy, shape = MaterialTheme.shapes.small,
                         ) {
-                            Text(s(R.string.poll_end), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                            Text(s(R.string.poll_end).uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }

@@ -324,7 +324,7 @@ private fun TargetPicker(state: State, gid: String, roles: List<io.github.mrcill
         .sortedBy { Sel.memberName(state, gid, it).lowercase() }.take(50)
     AlertDialog(
         onDismissRequest = close,
-        title = { Text(s(R.string.add_role_or_member)) },
+        title = { Text(s(R.string.add_role_or_member).uppercase()) },
         text = {
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
                 item { Text(s(R.string.roles), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(vertical = 4.dp)) }
@@ -342,7 +342,7 @@ private fun TargetPicker(state: State, gid: String, roles: List<io.github.mrcill
                 }
             }
         },
-        confirmButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
+        confirmButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
 }
 
@@ -371,9 +371,9 @@ private fun OverwriteEditor(ch: Channel, o: Overwrite, name: String, grantable: 
                                 put("type", o.type); put("allow", allow.toString()); put("deny", deny.toString())
                             })
                         }
-                    }, shape = MaterialTheme.shapes.small) { Text(s(R.string.save)) }
+                    }, shape = MaterialTheme.shapes.small) { Text(s(R.string.save).uppercase()) }
                     if (existing) TextButton({ save(others) { Session.rest.request("DELETE", "/channels/${ch.id}/permissions/${o.id}") } }, shape = MaterialTheme.shapes.small) {
-                        Text(s(R.string.remove_overwrite), color = MaterialTheme.colorScheme.error)
+                        Text(s(R.string.remove_overwrite).uppercase(), color = MaterialTheme.colorScheme.error)
                     }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
