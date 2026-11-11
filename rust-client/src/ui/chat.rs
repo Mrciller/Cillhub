@@ -246,7 +246,7 @@ impl CillhubApp {
                     .inner_margin(Margin::from(egui:: Vec2::new(12.0, 12.0))),
             )
             .show_inside(ui, |ui| {
-                self.render_composer(ui, &cid, &ch_name);
+                self.render_composer(ui, &ch_name);
             });
 
         // 3. `.messages` scroller
@@ -568,9 +568,30 @@ impl CillhubApp {
                             self.render_formatted_content(ui, &msg.content);
                         }
 
-                        // Attachments
+                        // Attachments: images inline (fit into 400x300, click = full size), other files as a card
                         for att in &msg.attachments {
                             ui.add_space(4.0);
+                            let url = self.absolute_url(&att.url);
+                            if let Some(size) = inline_image_size(att) {
+                                let uri = format!("bytes://attachment/{}/{}", att.id, att.filename);
+                                self.request_image(&uri, url.clone());
+                                if self.images.get(&uri) == Some(&super::ImageLoad::Ready) {
+                                    let resp = ui.add(
+                                        egui::Image::new(uri.as_str())
+                                            .fit_to_exact_size(size)
+                                            .sense(Sense::click()),
+                                    );
+                                    if resp.on_hover_text(&att.filename).clicked() {
+                                        self.lightbox = Some((uri, att.filename.clone(), url));
+                                    }
+                                    continue;
+                                }
+                                if self.images.get(&uri) == Some(&super::ImageLoad::Loading) {
+                                    let (r, _) = ui.allocate_exact_size(size, Sense::hover());
+                                    ui.painter().rect_filled(r, CornerRadius::same(2), BG_SIDEBAR);
+                                    continue;
+                                }
+                            }
                             Frame::new()
                                 .fill(BG_SIDEBAR)
                                 .stroke(Stroke::new(1.0_f32, BORDER))
@@ -592,7 +613,7 @@ impl CillhubApp {
                                             .color(TEXT_MUTED),
                                         );
                                         if ui.small_button("Open").clicked() {
-                                            report(&mut self.status_banner, open::that(&att.url));
+                                            report(&mut self.status_banner, open::that(&url));
                                         }
                                     });
                                 });
@@ -808,7 +829,7 @@ impl CillhubApp {
         }
     }
 
-    fn render_composer(&mut self, ui: &mut Ui, channel_id: &str, ch_name: &str) {
+    fn render_composer(&mut self, ui: &mut Ui, ch_name: &str) {
         // Reply or Edit bar above `.composer` (`.composer-reply`)
         if let Some(reply) = self.reply_to_message.clone() {
             Frame::new()
@@ -916,13 +937,50 @@ impl CillhubApp {
                             self.show_composer_plus_menu = false;
                         }
 
-                        if ui.button("📎 Upload File").clicked() {
-                            self.send_attachment_demo(channel_id);
+                        if ui.button("📎 Upload a File").clicked() {
+                            if let Some(paths) = rfd::FileDialog::new().pick_files() {
+                                self.pending_files.extend(paths);
+                            }
                             self.show_composer_plus_menu = false;
                         }
                     });
                 });
             ui.add_space(6.0);
+        }
+
+        // Files dropped on the window join the pending uploads.
+        let dropped: Vec<_> = ui
+            .ctx()
+            .input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
+        self.pending_files.extend(dropped);
+        if !self.pending_files.is_empty() {
+            let mut remove = None;
+            ui.horizontal_wrapped(|ui| {
+                for (i, path) in self.pending_files.iter().enumerate() {
+                    let name = path.file_name().map(|n| n.to_string_lossy().to_string());
+                    Frame::new()
+                        .fill(BG_SIDEBAR)
+                        .stroke(Stroke::new(1.0_f32, BORDER))
+                        .corner_radius(CornerRadius::same(2))
+                        .inner_margin(Margin::symmetric(8, 4))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new(name.unwrap_or_default())
+                                        .font(ui_font(12.5))
+                                        .color(TEXT),
+                                );
+                                if ui.small_button("✕").on_hover_text("Remove").clicked() {
+                                    remove = Some(i);
+                                }
+                            });
+                        });
+                }
+            });
+            if let Some(i) = remove {
+                self.pending_files.remove(i);
+            }
+            ui.add_space(4.0);
         }
 
         // `.composer` bar (`background: var(--input)`, `border: 1px solid var(--border)`, `min-height: 44px`)
@@ -1001,7 +1059,7 @@ impl CillhubApp {
 
     pub fn submit_composer(&mut self) {
         let content = self.composer_text.trim().to_string();
-        if content.is_empty() {
+        if content.is_empty() && self.pending_files.is_empty() {
             return;
         }
         let Some(cid) = self.selected_channel_id.clone() else {
@@ -1025,8 +1083,52 @@ impl CillhubApp {
             return;
         }
 
+        if !self.pending_files.is_empty() {
+            self.send_files(&cid, &content);
+            return;
+        }
         self.composer_text.clear();
         self.send_message_to_selected(&content);
+    }
+
+    /// Multipart upload like the web client: payload_json + files[n]. Pending files and the
+    /// text stay in the composer when it fails.
+    fn send_files(&mut self, cid: &str, content: &str) {
+        let Some(api) = &self.api else {
+            self.status_banner = Some("Uploads need a connection to a server.".to_string());
+            return;
+        };
+        let mut files = Vec::new();
+        for path in &self.pending_files {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "file".to_string());
+            match std::fs::read(path) {
+                Ok(bytes) => files.push((name, bytes)),
+                Err(e) => {
+                    self.status_banner = Some(format!("Could not read {}: {e}", path.display()));
+                    return;
+                }
+            }
+        }
+        let names: Vec<String> = files.iter().map(|(n, _)| n.clone()).collect();
+        let reply = self.reply_to_message.as_ref().map(|m| m.id.clone());
+        let payload = crate::api::upload_payload(content, &names, reply.as_deref());
+        let Some(val) = report(&mut self.status_banner, api.upload_message(cid, &payload, &files))
+        else {
+            return;
+        };
+        self.pending_files.clear();
+        self.composer_text.clear();
+        self.reply_to_message = None;
+        if let Some(msg) = report(&mut self.status_banner, crate::model::parse::<Message>(val)) {
+            if let Some(list) = self.state.messages.get_mut(cid) {
+                if !list.iter().any(|m| m.id == msg.id) {
+                    list.push(msg);
+                }
+            }
+        }
     }
 
     pub fn send_message_to_selected(&mut self, content: &str) {
@@ -1042,7 +1144,7 @@ impl CillhubApp {
             }
             match api.post(&format!("/channels/{cid}/messages"), body) {
                 Ok(val) => {
-                    if let Ok(msg) = serde_json::from_value::<Message>(val) {
+                    if let Ok(msg) = crate::model::parse::<Message>(val) {
                         let list = self.state.messages.entry(cid).or_default();
                         if !list.iter().any(|m| m.id == msg.id) {
                             list.push(msg);
@@ -1051,12 +1153,16 @@ impl CillhubApp {
                     return;
                 }
                 Err(e) => {
+                    // Keep the text so the user can retry; never show it as sent.
+                    self.composer_text = content.to_string();
+                    self.reply_to_message = reply_ref;
                     self.status_banner = Some(e.to_string());
+                    return;
                 }
             }
         }
 
-        // Local state append (works in offline/sandbox mode too)
+        // Demo mode (no server): append locally.
         let msg = Message {
             id: format!("m_{}", self.next_local_id()),
             channel_id: cid.clone(),
@@ -1233,17 +1339,41 @@ impl CillhubApp {
             }),
         ));
     }
+}
 
-    fn send_attachment_demo(&mut self, channel_id: &str) {
-        let content = "Uploaded attachment: `arena-clip-highlights.mp4`";
-        if let Some(api) = &self.api {
-            report(&mut self.status_banner, api.upload_message(
-                channel_id,
-                &json!({ "content": content }),
-                &[("arena-notes.txt".to_string(), b"Cillhub Rust Client".to_vec())],
-            ));
-        } else {
-            self.send_message_to_selected(content);
+/// Size of an inline image like the web client (chat/Attachments.tsx fit): only the types the
+/// hub serves inline, scaled down to fit 400x300. None = show a file card.
+pub fn inline_image_size(att: &crate::model::Attachment) -> Option<Vec2> {
+    let ty = att.content_type.as_deref().unwrap_or("");
+    if !matches!(ty, "image/png" | "image/jpeg" | "image/gif" | "image/webp") {
+        return None;
+    }
+    Some(match (att.width, att.height) {
+        (Some(w), Some(h)) if w > 0 && h > 0 => {
+            let k = (400.0 / w as f32).min(300.0 / h as f32).min(1.0);
+            Vec2::new((w as f32 * k).round(), (h as f32 * k).round())
         }
+        _ => Vec2::new(400.0, 300.0),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Attachment;
+
+    #[test]
+    fn inline_images_fit_like_the_web_client() {
+        let att = |ty: &str, w, h| Attachment {
+            content_type: Some(ty.into()),
+            width: w,
+            height: h,
+            ..Default::default()
+        };
+        assert_eq!(inline_image_size(&att("image/png", Some(1600), Some(900))), Some(Vec2::new(400.0, 225.0)));
+        assert_eq!(inline_image_size(&att("image/jpeg", Some(200), Some(100))), Some(Vec2::new(200.0, 100.0)));
+        assert_eq!(inline_image_size(&att("image/webp", None, None)), Some(Vec2::new(400.0, 300.0)));
+        assert_eq!(inline_image_size(&att("image/svg+xml", Some(10), Some(10))), None);
+        assert_eq!(inline_image_size(&att("application/pdf", None, None)), None);
     }
 }

@@ -132,6 +132,34 @@ fn flatten_errors(
     }
 }
 
+/// The type a browser would claim for an upload; the hub checks image bytes itself.
+pub fn mime_for(filename: &str) -> &'static str {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "txt" | "log" | "md" => "text/plain",
+        _ => "application/octet-stream",
+    }
+}
+
+/// payload_json for a message with files, as the web client builds it (actions.ts sendMessage):
+/// one `attachments` entry per files[n] with id "n".
+pub fn upload_payload(content: &str, filenames: &[String], reply_to: Option<&str>) -> Value {
+    let mut payload = serde_json::json!({
+        "content": content,
+        "attachments": filenames.iter().enumerate()
+            .map(|(i, f)| serde_json::json!({ "id": i.to_string(), "filename": f }))
+            .collect::<Vec<_>>(),
+    });
+    if let Some(id) = reply_to {
+        payload["message_reference"] = serde_json::json!({ "message_id": id });
+    }
+    payload
+}
+
 #[cfg(feature = "native-net")]
 #[derive(Clone)]
 pub struct ApiClient {
@@ -239,7 +267,9 @@ impl ApiClient {
             .text("payload_json", payload_json.to_string());
         for (idx, (filename, bytes)) in files.iter().enumerate() {
             let part = reqwest::blocking::multipart::Part::bytes(bytes.clone())
-                .file_name(filename.clone());
+                .file_name(filename.clone())
+                .mime_str(mime_for(filename))
+                .expect("static mime type");
             form = form.part(format!("files[{idx}]"), part);
         }
         let mut req = self.client.post(url).multipart(form);
@@ -294,6 +324,47 @@ mod tests {
             "https://chat.example.org/api/v9/channels/123/messages"
         );
         assert!(api_url(&origin, "//evil.example.org").is_none());
+    }
+
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn upload_sends_the_web_clients_multipart_form() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            sock.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+            let mut req = Vec::new();
+            let mut buf = [0u8; 4096];
+            while let Ok(n) = sock.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                req.extend_from_slice(&buf[..n]);
+                if req.ends_with(b"--\r\n") {
+                    break;
+                }
+            }
+            let body = br#"{"id":"m1","channel_id":"c1"}"#;
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n", body.len());
+            sock.write_all(head.as_bytes()).unwrap();
+            sock.write_all(body).unwrap();
+            String::from_utf8_lossy(&req).to_string()
+        });
+        let origin = normalize_server_url(&format!("http://localhost:{port}")).unwrap();
+        let api = ApiClient::new(origin, Some("dummy-token".into()));
+        let names = vec!["board.png".to_string()];
+        let payload = upload_payload("look", &names, Some("m0"));
+        let out = api.upload_message("c1", &payload, &[(names[0].clone(), vec![0x89, b'P', b'N', b'G'])]).unwrap();
+        assert_eq!(out["id"], "m1");
+        let req = server.join().unwrap();
+        assert!(req.starts_with("POST /api/v9/channels/c1/messages "));
+        assert!(req.contains("name=\"payload_json\""));
+        assert!(req.contains(r#""attachments":[{"filename":"board.png","id":"0"}]"#), "{req}");
+        assert!(req.contains(r#""message_reference":{"message_id":"m0"}"#));
+        assert!(req.contains("name=\"files[0]\"; filename=\"board.png\""));
+        assert!(req.contains("Content-Type: image/png"));
     }
 
     #[test]

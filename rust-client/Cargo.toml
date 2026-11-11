@@ -7,8 +7,8 @@ description = "Pure Rust native Cillhub desktop client and protocol engine"
 
 [features]
 default = ["native-gui"]
-native-gui = ["dep:eframe", "dep:egui", "dep:image", "dep:open", "native-net"]
-native-gtk = ["dep:eframe", "dep:egui", "dep:image", "dep:open", "native-net"]
+native-gui = ["dep:eframe", "dep:egui", "dep:egui_extras", "dep:image", "dep:open", "dep:rfd", "native-net"]
+native-gtk = ["dep:eframe", "dep:egui", "dep:egui_extras", "dep:image", "dep:open", "dep:rfd", "native-net"]
 native-net = ["dep:rustls", "dep:webpki-roots", "dep:getrandom", "dep:reqwest"]
 
 [dependencies]
@@ -32,6 +32,8 @@ eframe = { version = "0.31.1", default-features = false, features = ["default_fo
 egui = { version = "0.31.1", optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"], optional = true }
 open = { version = "5", optional = true }
+egui_extras = { version = "0.31.1", default-features = false, features = ["image"], optional = true }
+rfd = { version = "0.18", default-features = false, features = ["xdg-portal"], optional = true }
 keyring = { version = "3.6", default-features = false, features = ["apple-native", "windows-native", "async-secret-service", "async-io", "crypto-rust"] }
 
 [dev-dependencies]

@@ -46,6 +46,13 @@ pub fn report<T, E: std::fmt::Display>(banner: &mut Option<String>, r: Result<T,
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageLoad {
+    Loading,
+    Ready,
+    Failed,
+}
+
 pub const VOICE_UNAVAILABLE: &str = "Voice calls are not available in this app yet.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,6 +146,14 @@ pub struct CillhubApp {
 
     // Chat & Composer state
     pub composer_text: String,
+    /// Inline image attachments by egui URI; bytes arrive from fetch threads.
+    pub images: std::collections::HashMap<String, ImageLoad>,
+    image_tx: Sender<(String, Option<Vec<u8>>)>,
+    image_rx: Receiver<(String, Option<Vec<u8>>)>,
+    /// Full-size image view: (egui URI, file name, absolute URL).
+    pub lightbox: Option<(String, String, String)>,
+    /// Files picked or dropped, sent with the next message.
+    pub pending_files: Vec<std::path::PathBuf>,
     pub show_composer_plus_menu: bool,
     pub reply_to_message: Option<Message>,
     pub editing_message_id: Option<String>,
@@ -209,6 +224,7 @@ impl CillhubApp {
                     .and_then(|c| c.fetch_lobby(&creds).ok().flatten())
             });
 
+        let (image_tx, image_rx) = mpsc::channel();
         let mut app = Self {
             settings,
             state: State::default(),
@@ -235,6 +251,11 @@ impl CillhubApp {
             settings_tab: SettingsTab::Games,
             status_banner: None,
             composer_text: String::new(),
+            pending_files: Vec::new(),
+            images: Default::default(),
+            image_tx,
+            image_rx,
+            lightbox: None,
             show_composer_plus_menu: false,
             reply_to_message: None,
             editing_message_id: None,
@@ -1696,6 +1717,43 @@ impl eframe::App for CillhubApp {
 }
 
 impl CillhubApp {
+    /// Attachment URLs are paths on the server the message came from (the web client's cdn()).
+    pub fn absolute_url(&self, url: &str) -> String {
+        if url.starts_with("https://") || url.starts_with("http://") {
+            return url.to_string();
+        }
+        self.api
+            .as_ref()
+            .and_then(|api| api.origin.join(url).ok())
+            .map(|u| u.to_string())
+            .unwrap_or_else(|| url.to_string())
+    }
+
+    /// Starts one background download per image; the bytes reach egui in headless_tick.
+    pub fn request_image(&mut self, uri: &str, url: String) {
+        if self.images.contains_key(uri) {
+            return;
+        }
+        self.images.insert(uri.to_string(), ImageLoad::Loading);
+        let (Some(api), tx, uri) = (self.api.clone(), self.image_tx.clone(), uri.to_string()) else {
+            self.images.insert(uri.to_string(), ImageLoad::Failed);
+            return;
+        };
+        std::thread::spawn(move || {
+            let bytes = api
+                .client
+                .get(&url)
+                .send()
+                .and_then(|r| r.error_for_status())
+                .and_then(|r| r.bytes())
+                .map(|b| b.to_vec());
+            if let Err(e) = &bytes {
+                eprintln!("cillhub: image {url}: {e}");
+            }
+            let _ = tx.send((uri, bytes.ok())); // the app may have closed
+        });
+    }
+
     pub fn mark_fonts_installed(&mut self) {
         self.fonts_installed = true;
     }
@@ -1704,6 +1762,7 @@ impl CillhubApp {
         if !self.fonts_installed {
             install_fonts(ctx, self.state.user_settings.dyslexic_font);
             apply_theme(ctx, &self.theme_name, self.settings.font_scale);
+            egui_extras::install_image_loaders(ctx);
             self.fonts_installed = true;
         }
         let families_ready = ctx.fonts(|f| {
@@ -1713,6 +1772,16 @@ impl CillhubApp {
         crate::theme::set_custom_families_ready(families_ready);
 
         self.process_background_events();
+        while let Ok((uri, bytes)) = self.image_rx.try_recv() {
+            let state = match bytes {
+                Some(b) => {
+                    ctx.include_bytes(uri.clone(), b);
+                    ImageLoad::Ready
+                }
+                None => ImageLoad::Failed,
+            };
+            self.images.insert(uri, state);
+        }
         ctx.request_repaint_after(Duration::from_millis(250));
 
         // Global Keyboard Shortcuts
@@ -1722,6 +1791,27 @@ impl CillhubApp {
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             self.active_modal = None;
             self.show_composer_plus_menu = false;
+            self.lightbox = None;
+        }
+
+        // Full-size image view (the web client's lightbox)
+        if let Some((uri, name, url)) = self.lightbox.clone() {
+            let mut open = true;
+            let max = ctx.screen_rect().size() * 0.85;
+            let banner = &mut self.status_banner;
+            egui::Window::new(name)
+                .open(&mut open)
+                .collapsible(false)
+                .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+                .show(ctx, |ui| {
+                    ui.add(egui::Image::new(uri.as_str()).max_size(max).shrink_to_fit());
+                    if ui.button("Open in Browser").clicked() {
+                        report(banner, open::that(&url));
+                    }
+                });
+            if !open {
+                self.lightbox = None;
+            }
         }
 
         // Optional status notification banner at top
