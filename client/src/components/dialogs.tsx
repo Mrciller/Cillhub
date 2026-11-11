@@ -8,7 +8,7 @@ type AskText = {
   id: number; kind: 'text'; title: string; label: string; body?: ReactNode; initial: string; confirm: string; placeholder?: string; maxLength?: number
   allowEmpty?: boolean; multiline?: boolean; danger?: boolean; resolve: (v: string | null) => void
 }
-/** 7.11 statement of reasons (DSA Art. 17): a category, the legal ground and an explanation the affected user gets. */
+/** 7.10.3 statement of reasons (DSA Art. 17): a category, the legal ground and an explanation the affected user gets. */
 export type Statement = { category: string; ground: 'terms' | 'illegal'; reason: string }
 type AskStatement = { id: number; kind: 'statement'; title: string; body?: ReactNode; confirm: string; categories: [string, string][]; initial?: string; resolve: (v: Statement | null) => void }
 type Dialog = Ask | AskText | AskStatement

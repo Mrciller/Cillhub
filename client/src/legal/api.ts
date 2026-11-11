@@ -1,4 +1,4 @@
-// 7.11 legal: REST calls and shapes, matching server/src/routes/legal.js.
+// 7.10.3 legal: REST calls and shapes, matching server/src/routes/legal.js.
 import { api } from '../api'
 
 export type LegalDocId = 'imprint' | 'privacy' | 'terms'

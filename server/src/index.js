@@ -236,7 +236,7 @@ async function api(req, url, headers) {
         e.body.required_actions = ['update_password'];
         throw e;
       }
-      // 7.11: new terms with re-acceptance, or an account made without the sign-up checks: accept first (or log out)
+      // 7.10.3: new terms with re-acceptance, or an account made without the sign-up checks: accept first (or log out)
       if (legalGate(ctx.user) && !route.pattern.startsWith('/legal/') && !LEGAL_GATE_ROUTES.has(`${route.method} ${route.pattern}`)) {
         const e = new HttpError(403, 0, 'Accept the updated terms of use to continue. If this app has no button for that, update it or sign in once on the website.');
         e.body.required_actions = ['accept_terms'];

@@ -119,7 +119,7 @@ async function run(browser, errors) {
   await watch.getByText(/Paste a YouTube link/).waitFor()
   await watch.getByLabel('YouTube link').fill(`https://youtu.be/${VIDEO}`)
   assert.deepEqual(await bodyOf(watch.getByRole('button', { name: 'Start Watching' }), 'POST', '/channels/302/watch'), { video_url: `https://youtu.be/${VIDEO}` })
-  // 7.11: the YouTube player loads only after a click (remembered on this device)
+  // 7.10.3: the YouTube player loads only after a click (remembered on this device)
   assert.equal(await page.evaluate(() => !!window.__yt), false, 'no YouTube script before consent')
   await watch.getByText(/Your IP address and browser data go to Google/).waitFor()
   await watch.getByRole('button', { name: 'Load player' }).click()

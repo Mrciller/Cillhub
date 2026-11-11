@@ -38,6 +38,6 @@ export function bytes(n: number) {
 export const askCode = (title: string, body: ReactNode, confirm: string) =>
   askText({ title, body, confirm, danger: true, label: t('Authentication or backup code') }).then((c) => c?.replace(/[\s-]/g, '') || null)
 
-/** 7.11: the statement of reasons for a moderation action (category, legal ground, explanation); null when cancelled. */
+/** 7.10.3: the statement of reasons for a moderation action (category, legal ground, explanation); null when cancelled. */
 export const askReasons = (title: string, confirm: string, body?: ReactNode, initial?: string) =>
   askStatement({ title, confirm, body, initial, categories: DECISION_CATEGORIES.map(([k, label]) => [k, t(label)]) })

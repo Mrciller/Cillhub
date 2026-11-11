@@ -14,7 +14,7 @@ function transport() {
   });
 }
 
-// 7.11: who sends the mail, once the operator filled in a name (a Verein or company names itself on its correspondence)
+// 7.10.3: who sends the mail, once the operator filled in a name (a Verein or company names itself on its correspondence)
 function footer() {
   const name = setting('legal_operator')?.name;
   const url = setting('public_url') ?? process.env.CILLCORD_PUBLIC_URL;

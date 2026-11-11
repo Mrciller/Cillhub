@@ -20,7 +20,7 @@ export type PublicInstance = {
   password_reset?: boolean
   /** 7.10: reCAPTCHA v2 at sign-up and password reset. */
   captcha?: { service: 'recaptcha'; sitekey: string } | null
-  /** 7.11: which legal documents exist, the version a sign-up accepts and the DSA contact point. */
+  /** 7.10.3: which legal documents exist, the version a sign-up accepts and the DSA contact point. */
   legal?: import('../legal/api').LegalInfo
 }
 export type InstanceSettings = {
@@ -32,7 +32,7 @@ export type InstanceSettings = {
   captcha_site_key: string | null
   /** The secrets themselves never come back. */
   smtp_password_set: boolean; captcha_secret_set: boolean
-  /** 7.11: the operator's own details (empty on a fresh server), sign-up age and the AGPL source link. */
+  /** 7.10.3: the operator's own details (empty on a fresh server), sign-up age and the AGPL source link. */
   legal_operator?: import('../legal/api').Operator; min_age?: number; source_url?: string | null
 }
 /** PATCH: a secret left out is kept, null clears it. */
@@ -49,7 +49,7 @@ export type Overview = {
     backends: { configured: string[]; default: string | null; livekit: { configured: boolean; reachable: boolean | null }; cillvoice: { configured: boolean; running?: boolean; rooms?: number } }
   }
   reports_open: number
-  /** 7.11: open appeals; true while an imprint, privacy notice, terms, operator name or contact email is missing. */
+  /** 7.10.3: open appeals; true while an imprint, privacy notice, terms, operator name or contact email is missing. */
   appeals_open?: number; legal_incomplete?: boolean
   storage: { uploads_bytes: number; database_bytes: number }
   disk: { total_bytes: number; free_bytes: number } | null
@@ -85,7 +85,7 @@ export type ReportReason = 'spam' | 'harassment' | 'hate' | 'nsfw' | 'violence' 
 export type ReportAction = 'dismiss' | 'delete_message' | 'timeout' | 'kick' | 'ban' | 'disable_account'
 export type Report = {
   id: string; status: 'open' | 'resolved'; reason: ReportReason; note: string | null; created_at: string
-  /** 7.11: user = in-app report, public = notice from the open form (DSA Art. 16), removal = removed by link and preserved. */
+  /** 7.10.3: user = in-app report, public = notice from the open form (DSA Art. 16), removal = removed by link and preserved. */
   source: 'user' | 'public' | 'removal'; resolved_at?: string | null
   notice?: { url: string | null; description: string | null; link_kind: string | null; name: string | null; email: string | null; decision: string | null }
   preserve_until?: string | null; url?: string | null; server?: { id: string; name: string } | null

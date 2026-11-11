@@ -129,7 +129,7 @@ function Player({ session, host, audio, onPosition }: { session: WatchSession; h
   )
 }
 
-// 7.11: the YouTube player is third-party content; it loads only after a click, remembered on this device
+// 7.10.3: the YouTube player is third-party content; it loads only after a click, remembered on this device
 const CONSENT_KEY = 'watch-youtube-ok'
 const consented = () => { try { return localStorage.getItem(CONSENT_KEY) === '1' } catch { return false } }
 function YouTubeConsent({ children }: { children: ReactNode }) {

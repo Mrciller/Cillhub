@@ -1,4 +1,4 @@
-// 7.11 legal, end to end against a real server (server/src/index.js serving client/dist on a temporary database):
+// 7.10.3 legal, end to end against a real server (server/src/index.js serving client/dist on a temporary database):
 // legal links on login, sign-up with the terms and age boxes, the legal pages (Markdown cannot inject HTML), the public
 // notice form -> admin decision -> status page, remove by link, disable with reasons -> login shows them -> appeal.
 // Run: npm run build && NODE_PATH=<dir with playwright> node scripts/e2e-legal.cjs   (SHOTS=<dir> saves screenshots, E2E_PORT fixes the port)

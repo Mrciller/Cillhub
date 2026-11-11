@@ -1,4 +1,4 @@
-// 7.11 legal features (EU / DACH): the operator's imprint, privacy notice and terms with versions, the terms gate,
+// 7.10.3 legal features (EU / DACH): the operator's imprint, privacy notice and terms with versions, the terms gate,
 // public notices of illegal content (DSA Art. 16), statements of reasons and one appeal per decision (Art. 17, 20),
 // "remove and preserve" by link (TCO Art. 3 and 6), yearly counts for a transparency report and the licence texts.
 // The operator details are this instance's own: nothing here is taken from or sent to a hub.

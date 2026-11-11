@@ -34,11 +34,11 @@ async function register(ctx) {
   if (setupOpen()) throw new HttpError(403, 0, 'This instance is not set up yet.');
   if (!localLoginOpen()) throw hubOnlyLogin(); // v7: a connected node whose admin chose hub sign-in only
   if (setting('registration_mode') === 'closed') registrationCode({}); // says "closed" before asking for a captcha
-  // 7.11: an app from before the sign-up checks sends neither field; its form shows a plain message, not field errors
+  // 7.10.3: an app from before the sign-up checks sends neither field; its form shows a plain message, not field errors
   if (ctx.body?.age_confirmed === undefined && ctx.body?.terms_accepted === undefined) {
     throw new HttpError(400, 0, 'Update the app to create an account here: this server asks you to confirm your age and accept its terms.');
   }
-  checkSignUp(ctx.body); // 7.11: terms + privacy checkbox (when the operator published them) and the minimum age
+  checkSignUp(ctx.body); // 7.10.3: terms + privacy checkbox (when the operator published them) and the minimum age
   await requireCaptcha(ctx); // before the hash and before any answer about taken names
   registrationCode(ctx.body ?? {});
   const email = emailField(ctx.body);
@@ -118,7 +118,7 @@ async function reset(ctx) {
 const loginSettings = userId => { const s = settingsOf(userId); return { locale: s.locale, theme: s.theme }; };
 // login response tail: settings, and required_actions (docs) when an admin asked for a new password
 const loginTail = user => ({ user_settings: loginSettings(user.id), ...(user.require_password_change && { required_actions: ['update_password'] }) });
-// 7.11 (DSA Art. 17): the reason, the ground and how to appeal, after the password was right
+// 7.10.3 (DSA Art. 17): the reason, the ground and how to appeal, after the password was right
 const disabled = (user, req) => {
   const e = new HttpError(400, 20013, 'This account has been disabled.');
   const moderation = user && disabledInfo(user.id, req);

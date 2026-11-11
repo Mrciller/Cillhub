@@ -101,7 +101,7 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
     </div>
   ) : <Captcha key={captchaRound} sitekey={sitekey} onToken={setCaptchaKey} />)
   const withCaptcha = (body: Record<string, unknown>) => (captchaKey ? { ...body, captcha_key: captchaKey } : body)
-  // 7.11: a disabled account sees why, on which ground, and where to appeal (DSA Art. 17)
+  // 7.10.3: a disabled account sees why, on which ground, and where to appeal (DSA Art. 17)
   const moderation = error?.body?.moderation as (Decision & { appeal_url: string | null; appeal_status: string | null; appeal_decision: string | null }) | undefined
   const message = wait ? t('Too many attempts. Try again in {n} seconds.', { n: wait }) : error && Object.keys(error.errors).length === 0 ? error.message : ''
 

@@ -137,7 +137,7 @@
 .module-log .lvl-error .admin-badge { background: var(--danger-strong); }
 .module-log .lvl-warn .admin-badge, .module-log .lvl-system .admin-badge { background: #8a5a00; }
 
-/* 7.11 legal */
+/* 7.10.3 legal */
 .admin-warning { margin: 0 0 16px; padding: 12px 14px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--sidebar)); }
 .legal-doc-editor { margin-top: 16px; }
 .legal-editor { min-height: 180px; font-family: var(--font-mono, monospace); font-size: 13px; }

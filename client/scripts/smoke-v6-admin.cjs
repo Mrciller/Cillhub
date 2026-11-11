@@ -71,7 +71,7 @@ function adminRoutes(calls, { mfa = true } = {}) {
   }
 }
 
-/** 7.11: fills the statement of reasons dialog (category spam, terms, explanation) and returns its confirm button. */
+/** 7.10.3: fills the statement of reasons dialog (category spam, terms, explanation) and returns its confirm button. */
 async function reasons(page, title, confirm) {
   const d = page.getByRole('dialog', { name: title })
   await d.getByLabel('Reason').selectOption('spam')

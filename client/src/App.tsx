@@ -51,7 +51,7 @@ function Page() {
   // Template links open "Add a server" with the code (templates/Templates.tsx); after login when needed.
   if (section === 'template' && a) return sessionStorage.setItem('template-code', decodeURIComponent(a)), <Redirect to="/channels/@me" />
   if (section === 'reset') return <ResetPage />
-  // 7.11: legal pages, the public notice form and appeals work without a session (German aliases for the imprint etc.)
+  // 7.10.3: legal pages, the public notice form and appeals work without a session (German aliases for the imprint etc.)
   const doc = LEGAL_PATHS[section]
   if (doc) return <LegalDocPage key={doc} doc={doc} />
   if (section === 'licenses') return <LicensesPage />

@@ -1,4 +1,4 @@
-// 7.11 legal: documents and versions, the sign-up checks and the terms gate, public notices (limits, captcha, status by
+// 7.10.3 legal: documents and versions, the sign-up checks and the terms gate, public notices (limits, captcha, status by
 // code), statements of reasons on admin actions, one appeal per decision, remove-and-preserve with its deletion, and
 // that the open routes show nothing private. Local stubs on ephemeral ports: SMTP and the captcha verify endpoint.
 import { test, before, after } from 'node:test';
@@ -128,7 +128,7 @@ test('operator fields and documents: validation, versions with hashes, public vi
 });
 
 test('sign-up: age always, terms checkbox once terms exist, the accepted version is stored', async () => {
-  // an app from before 7.11 sends neither field: one plain message (no field errors) that its form can show
+  // an app from before 7.10.3 sends neither field: one plain message (no field errors) that its form can show
   const oldApp = await reg('sam');
   assert.deepEqual([oldApp.status, oldApp.body.code, oldApp.body.errors], [400, 0, undefined]);
   assert.match(oldApp.body.message, /^Update the app to create an account/);

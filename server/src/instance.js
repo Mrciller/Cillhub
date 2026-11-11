@@ -15,7 +15,7 @@ export const DEFAULTS = {
   public_url: null, // origin; null = CILLCORD_PUBLIC_URL, else the request's own (federation.js publicUrl)
   smtp_host: null, smtp_port: 587, smtp_security: 'starttls', smtp_user: null, smtp_password: null, smtp_from: null,
   captcha_site_key: null, captcha_secret: null, // reCAPTCHA v2 checkbox
-  // 7.11 legal: the operator's own details (every instance fills in its own; nothing is inherited from a hub)
+  // 7.10.3 legal: the operator's own details (every instance fills in its own; nothing is inherited from a hub)
   legal_operator: {}, // {name, legal_form, address, email, phone, register, representatives, purpose, authority, languages}
   min_age: 14, // sign-up asks "I am at least N years old"
   source_url: 'https://github.com/TCCiller/Cillhub', // AGPL §13: where users get the source of the running version
@@ -51,7 +51,7 @@ export const publicInstance = () => ({
   legal: legalInfo(),
 });
 
-// --- 7.11 legal documents: the newest row per doc is current; an empty text means "not provided" --------------------
+// --- 7.10.3 legal documents: the newest row per doc is current; an empty text means "not provided" --------------------
 export const LEGAL_DOCS = ['imprint', 'privacy', 'terms'];
 const docCache = new Map();
 export function legalDoc(doc) {

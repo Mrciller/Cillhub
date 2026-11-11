@@ -1,4 +1,4 @@
--- 7.11 legal: imprint, privacy notice and terms with versions; terms acceptance on the account; public notices of
+-- 7.10.3 legal: imprint, privacy notice and terms with versions; terms acceptance on the account; public notices of
 -- illegal content (DSA Art. 16), removals kept for 6 months (TCO Art. 6), statements of reasons and appeals (DSA Art. 17, 20)
 
 -- every save of a document is a new row; the current one is the newest row per doc
