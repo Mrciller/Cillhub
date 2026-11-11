@@ -9,7 +9,7 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 pub const GAMES: &[(&str, &[&str])] = &[
     ("Counter-Strike 2", &["cs2.exe"]),
     ("VALORANT", &["VALORANT-Win64-Shipping.exe"]),
-    ("League of Legends", &["League of Legends.exe"]),
+    ("League of Legends", &["League of Legends.exe", "LeagueClientUx.exe", "LeagueClient.exe"]),
     ("Dota 2", &["dota2.exe"]),
     ("Rocket League", &["RocketLeague.exe"]),
     (
@@ -47,6 +47,7 @@ pub struct GameActivity {
     pub start: u64,
 }
 
+#[derive(Debug, Clone)]
 pub struct ProcessInfo {
     pub names: Vec<String>,
     pub cmdline: String,
@@ -127,6 +128,13 @@ pub fn scan_system_processes(sys: &mut System) -> Vec<ProcessInfo> {
 pub struct GameTracker {
     sys: System,
     current: Option<GameActivity>,
+    last_procs: Vec<ProcessInfo>,
+}
+
+impl Default for GameTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GameTracker {
@@ -134,6 +142,7 @@ impl GameTracker {
         Self {
             sys: System::new(),
             current: None,
+            last_procs: Vec::new(),
         }
     }
 
@@ -141,10 +150,23 @@ impl GameTracker {
         self.current.as_ref()
     }
 
+    pub fn last_processes(&self) -> &[ProcessInfo] {
+        &self.last_procs
+    }
+
+    pub fn reset(&mut self) {
+        self.current = None;
+    }
+
+    pub fn poll(&mut self, custom: &[CustomGame]) -> Option<GameActivity> {
+        self.scan(custom)
+    }
+
     pub fn scan(&mut self, custom: &[CustomGame]) -> Option<GameActivity> {
         let procs = scan_system_processes(&mut self.sys);
         let cur_name = self.current.as_ref().map(|c| c.name.as_str());
         let detected = detect_game(&procs, custom, cur_name);
+        self.last_procs = procs;
 
         match (self.current.as_ref(), detected) {
             (Some(cur), Some(new_name)) if cur.name == new_name => self.current.clone(),

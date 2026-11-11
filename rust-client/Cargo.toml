@@ -1,0 +1,43 @@
+[package]
+name = "cillhub-client-core"
+version = "3.0.2"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Pure Rust native Cillhub desktop client and protocol engine"
+
+[features]
+default = ["native-gui"]
+native-gui = ["dep:eframe", "dep:egui", "dep:image", "dep:open", "native-net"]
+native-gtk = ["dep:eframe", "dep:egui", "dep:image", "dep:open", "native-net"]
+native-net = ["dep:rustls", "dep:webpki-roots", "dep:getrandom", "dep:reqwest"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2.5"
+base64 = "0.22"
+ring = "0.17"
+ed25519-dalek = "2"
+sha2 = "0.10"
+sysinfo = "0.33"
+regex = "1"
+percent-encoding = "2.3"
+biquad = "0.4"
+nnnoiseless = "0.5"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+webpki-roots = { version = "1", optional = true }
+getrandom = { version = "0.2", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"], optional = true }
+eframe = { version = "0.31.1", default-features = false, features = ["default_fonts", "glow", "x11"], optional = true }
+egui = { version = "0.31.1", optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"], optional = true }
+open = { version = "5", optional = true }
+
+[dev-dependencies]
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+
+[[bin]]
+name = "cillhub-native"
+path = "src/main.rs"
+required-features = ["native-gui"]

@@ -2,18 +2,14 @@
   "name": "cillhub-desktop",
   "version": "3.0.2",
   "private": true,
-  "description": "Cillhub desktop client (Tauri shell around the web client)",
+  "description": "Cillhub pure-Rust native desktop client (egui/eframe)",
   "license": "AGPL-3.0-only",
   "author": "Pascal Oraze",
   "scripts": {
-    "build:web": "node scripts/build-web.js",
     "test": "cargo test",
-    "build": "tauri build",
-    "build:windows": "tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis",
+    "build": "cargo build --release",
+    "build:windows": "cargo xwin build --release --target x86_64-pc-windows-msvc && makensis -DVERSION=3.0.2 installer.nsi",
     "publish": "node scripts/publish.js"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2.12.4"
   },
   "cillhubServer": "7.10.0"
 }

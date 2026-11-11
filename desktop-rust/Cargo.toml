@@ -3,37 +3,14 @@ name = "cillhub"
 version = "3.0.2"
 edition = "2021"
 authors = ["Pascal Oraze"]
-description = "Cillhub desktop client"
+description = "Cillhub pure-Rust native desktop client (egui/eframe, zero WebView/Tauri)"
 license = "AGPL-3.0-only"
 
 [dependencies]
+cillhub-client-core = { path = "../rust-client" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sysinfo = "0.33"
 url = "2.5"
-base64 = "0.22"
-ed25519-dalek = "2"
-sha2 = "0.10"
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
-tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
-tauri-plugin-deep-link = "2"
-tauri-plugin-window-state = "2"
-tauri-plugin-autostart = "2"
-tauri-plugin-opener = "2"
-
-[target.'cfg(not(windows))'.dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
-
-
-[target.'cfg(windows)'.dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["native-tls", "blocking"] }
-
-[dev-dependencies]
-ed25519-dalek = { version = "2", features = ["rand_core"] }
-rand = "0.8"
-
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
 
 [[bin]]
 name = "cillhub"
