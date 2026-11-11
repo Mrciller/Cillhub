@@ -80,9 +80,9 @@ impl CillhubApp {
         let from_hub = self.state.user_settings.extra.get("private_nodes").filter(|v| v.is_array()).cloned();
         match from_hub {
             None if !self.settings.private_nodes.is_empty() => {
-                // the first upload is the only whole-list write; adds and removes are single calls on the hub
-                let list = self.settings.private_nodes.clone();
-                self.api_bg(true, move |api| api.patch("/users/@me/settings", json!({ "private_nodes": list })), |_, _| {});
+                // stored only while the account has none; the list comes back with USER_SETTINGS_UPDATE
+                let nodes = self.settings.private_nodes.clone();
+                self.api_bg(true, move |api| api.put("/users/@me/settings/private-nodes/initial", Some(json!({ "nodes": nodes }))), |_, _| {});
             }
             None => {}
             Some(v) => self.adopt_list(&v),
@@ -185,7 +185,9 @@ impl CillhubApp {
                     self.open_node(&origin, token);
                 }
                 // started for another session, or the node was removed meanwhile: never stored, ended on the node
-                (Outcome::Revoke, Ok(token)) => self.spawn_bg(false, move || crate::nodes::revoke(&origin, &token), |_, ()| {}),
+                (Outcome::Revoke, Ok(token)) => {
+                    std::thread::spawn(move || crate::nodes::revoke(&origin, &token));
+                }
                 (Outcome::Fail, Err(SignInFail::OwnLogin)) => self.set_link(&origin, NodeLink::OwnLogin),
                 (Outcome::Fail, Err(SignInFail::Old)) => self.set_link(&origin, NodeLink::Old),
                 (Outcome::Fail, Err(SignInFail::Down(why))) => self.retry(&origin, why),
@@ -357,7 +359,7 @@ impl CillhubApp {
         if let Some(token) = self.settings.node_token(origin) {
             if sign_out {
                 let o = origin.to_string();
-                self.spawn_bg(false, move || crate::nodes::revoke(&o, &token), |_, ()| {});
+                std::thread::spawn(move || crate::nodes::revoke(&o, &token));
             }
             super::report(&mut self.status_banner, self.settings.set_node_token(origin, None));
         }
@@ -405,7 +407,8 @@ impl CillhubApp {
         Some((self.node_name(&origin), link))
     }
 
-    /// Adds a node to the account's list (one call on the hub) and connects it; offline or demo: this device only.
+    /// Adds a node to the account's list (one call on the hub); the hub's USER_SETTINGS_UPDATE brings the list and
+    /// connects it (answers are not merged: an older answer would undo a newer change). Demo: this device only.
     pub fn save_added_node(&mut self, node: crate::nodes::SavedNode) {
         if self.api.is_none() {
             self.settings.private_nodes.push(node);
@@ -414,16 +417,12 @@ impl CillhubApp {
         }
         let body = json!({ "origin": node.origin, "name": node.name });
         self.api_bg(true, move |api| api.put("/users/@me/settings/private-nodes", Some(body)), |app, r| {
-            if let Some(v) = super::report(&mut app.status_banner, r) {
-                if let Some(list) = v.get("private_nodes") {
-                    app.adopt_list(list);
-                }
-                app.connect_saved();
-            }
+            super::report(&mut app.status_banner, r);
         });
     }
 
     /// Removes a node from the account's list (all devices, one call on the hub), signs out there, drops its servers.
+    /// The hub's USER_SETTINGS_UPDATE removes it on the other devices.
     pub fn remove_saved_node(&mut self, origin: &str) {
         if self.api.is_none() {
             self.settings.private_nodes.retain(|n| n.origin != origin);
@@ -432,13 +431,11 @@ impl CillhubApp {
         }
         let path = format!("/users/@me/settings/private-nodes?origin={}", percent_encoding::utf8_percent_encode(origin, percent_encoding::NON_ALPHANUMERIC));
         let o = origin.to_string();
+        // only this session's answer arrives here (pump_bg); the list itself comes with USER_SETTINGS_UPDATE
         self.api_bg(true, move |api| api.delete(&path), move |app, r| {
-            if let Some(v) = super::report(&mut app.status_banner, r) {
+            if super::report(&mut app.status_banner, r).is_some() {
                 app.settings.private_nodes.retain(|n| n.origin != o);
                 app.drop_node(&o, true);
-                if let Some(list) = v.get("private_nodes") {
-                    app.adopt_list(list);
-                }
             }
         });
     }
@@ -477,7 +474,8 @@ mod tests {
         let wait = |app: &mut CillhubApp, what: &str, ok: &dyn Fn(&CillhubApp) -> bool| {
             let t = Instant::now();
             while !ok(app) {
-                assert!(t.elapsed() < Duration::from_secs(60), "timed out waiting for {what}: {:?}", app.status_banner);
+                assert!(t.elapsed() < Duration::from_secs(60), "timed out waiting for {what}: {:?} list {:?} links {:?}", app.status_banner,
+                    app.settings.private_nodes, app.conns.iter().map(|(o, c)| (o.clone(), c.link.clone())).collect::<Vec<_>>());
                 app.pump_bg();
                 app.process_background_events();
                 std::thread::sleep(Duration::from_millis(20));

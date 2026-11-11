@@ -221,12 +221,22 @@ pub fn sign_in(hub: &url::Url, hub_token: &str, origin: &str, node_id: &str, ali
     }
 }
 
-/// Ends our session on a node (its token is revoked there). Blocking; no redirects.
+/// Ends our session on a node (its token is revoked there): no redirects; network errors, 429 and 5xx are retried
+/// up to 5 times, a 2xx or 401 is final. Blocking (sleeps between tries): run it on its own thread.
 #[cfg(feature = "native-net")]
-pub fn revoke(origin: &str, token: &str) {
-    if let Ok(o) = url::Url::parse(origin) {
-        let _ = crate::api::ApiClient::new(o, Some(token.to_string())).post("/auth/logout", serde_json::json!({}));
+pub fn revoke(origin: &str, token: &str) -> bool {
+    let Ok(o) = url::Url::parse(origin) else { return false };
+    let api = crate::api::ApiClient::new(o, Some(token.to_string()));
+    for i in 0..5 {
+        match api.post("/auth/logout", serde_json::json!({})) {
+            Ok(_) => return true,
+            Err(e) if e.status == 401 => return true, // already not valid there
+            Err(e) if e.status != 0 && e.status != 429 && e.status < 500 => break,
+            Err(_) => std::thread::sleep(std::time::Duration::from_secs(1 << i)),
+        }
     }
+    eprintln!("cillhub: could not sign out on {origin}");
+    false
 }
 
 #[cfg(test)]
