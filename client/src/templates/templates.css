@@ -5,7 +5,7 @@
 
 .starter-list { border: 0; margin: 0 0 8px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .starter { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: var(--radius-m); background: var(--card); border: 2px solid transparent; cursor: pointer; }
-.starter:hover { background: var(--hover, var(--card)); }
+.starter:hover { background: var(--hover); }
 .starter.selected, .starter:focus-within { border-color: var(--accent); }
 .starter input { position: absolute; opacity: 0; pointer-events: none; }
 .starter-title { font-weight: 600; }

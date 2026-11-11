@@ -50,7 +50,7 @@
 .auth-bg .legal-links { margin-top: 14px; }
 .auth-bg:has(.legal-links) { align-content: center; }
 .legal-gate p { margin-bottom: 10px; }
-.legal-moderation { margin-top: 12px; padding: 12px 14px; border-left: 3px solid var(--danger, #e5484d); background: var(--rail); font-size: 14px; }
+.legal-moderation { margin-top: 12px; padding: 12px 14px; border-left: 3px solid var(--danger); background: var(--rail); font-size: 14px; }
 .legal-moderation .legal-dl { margin: 6px 0 10px; }
 @media (max-width: 560px) {
   .legal-card { padding: 28px 18px 22px; }

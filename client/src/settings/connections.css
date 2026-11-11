@@ -23,17 +23,17 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--bg-secondary, #2b2d31);
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--radius-m);
   padding: 12px 8px;
   cursor: pointer;
-  color: var(--text-normal, #dbdee1);
+  color: var(--text);
   transition: background 0.15s, transform 0.15s, border-color 0.15s;
 }
 
 .service-connect-btn:hover {
-  background: var(--bg-secondary-hover, #313338);
+  background: var(--hover);
   border-color: rgba(255, 255, 255, 0.18);
   transform: translateY(-2px);
 }
@@ -75,8 +75,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--bg-secondary, #2b2d31);
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--radius-m);
   padding: 12px 16px;
   gap: 12px;
@@ -105,7 +105,7 @@
 .account-service-name {
   font-weight: 600;
   font-size: 14px;
-  color: #fff;
+  color: var(--header);
 }
 
 .verified-badge {
@@ -115,13 +115,13 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--green, #23a55a);
+  background: var(--online-strong);
   color: #fff;
 }
 
 .account-external-link {
   font-size: 13px;
-  color: var(--accent-light, #5865f2);
+  color: var(--focus);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -153,7 +153,7 @@
 }
 
 .danger-hover:hover {
-  color: var(--red, #f23f43);
+  color: var(--danger-text);
 }
 
 .connect-form {
@@ -180,17 +180,17 @@
 }
 
 .handle-input {
-  background: var(--bg-tertiary, #1e1f22);
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  background: var(--input);
+  border: 1px solid var(--border);
   border-radius: var(--radius-s);
   padding: 8px 12px;
-  color: #fff;
+  color: var(--text);
   font-size: 14px;
   width: 100%;
 }
 
 .handle-input:focus {
-  border-color: var(--accent, #5865f2);
+  border-color: var(--accent);
   outline: none;
 }
 
@@ -200,5 +200,5 @@
   gap: 8px;
   font-size: 13px;
   cursor: pointer;
-  color: var(--text-normal, #dbdee1);
+  color: var(--text);
 }
