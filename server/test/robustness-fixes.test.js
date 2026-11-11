@@ -32,6 +32,16 @@ test('a message that cannot be stored leaves no uploaded file behind', async () 
   assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], []);
 });
 
+test('a failure after the message is stored keeps its files and the message', async () => {
+  db(d => d.exec("CREATE TRIGGER no_metric BEFORE INSERT ON guild_analytics_daily BEGIN SELECT RAISE(ABORT, 'refused'); END"));
+  let r;
+  try {
+    r = await srv.upload(g.general.id, alex.token, { content: 'kept' }, [['b.txt', Buffer.from('hello'), 'text/plain']]);
+  } finally { db(d => d.exec('DROP TRIGGER no_metric')); }
+  assert.ok(r.status < 300, 'the stored message is answered');
+  assert.ok(existsSync(join(srv.dataDir, 'attachments', g.general.id, r.body.attachments[0].id)), 'its file is still there');
+});
+
 test('a scheduled message is sent under the id fixed before the send, and never twice', async () => {
   const path = `/channels/${g.general.id}/scheduled-messages`;
   const gw = await srv.gateway(alex.token);

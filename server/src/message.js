@@ -206,9 +206,12 @@ export function insertMessage(d) {
   });
   if (d.poll) schedule();
   if (ch.message_ttl > 0 || (ch.parent_id && getChannel(ch.parent_id)?.message_ttl > 0)) schedule();
-  if (ch.guild_id) recordGuildMetric(ch.guild_id, 'messages_sent', 1);
   const m = getMessage(id);
-  insertHooks.forEach(f => f(m));
+  // the message is committed: a failing metric or hook is logged, it must not fail the send (a retry would post it twice)
+  try {
+    if (ch.guild_id) recordGuildMetric(ch.guild_id, 'messages_sent', 1);
+    insertHooks.forEach(f => f(m));
+  } catch (e) { console.error(`after storing message ${id}:`, e); }
   return m;
 }
 
