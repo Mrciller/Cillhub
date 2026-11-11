@@ -173,7 +173,7 @@ test('first-run wizard on the node: setup code, first admin with mandatory 2FA, 
   assert.equal((await node.api('GET', '/server/version')).body.setup_required, true);
   assert.equal((await node.api('POST', '/setup/verify', null, { setup_code: 'wrong-code-123' })).status, 401);
   assert.equal((await node.api('POST', '/setup/verify', null, { setup_code: SETUP })).status, 204);
-  assert.equal((await node.api('POST', '/auth/register', null, { email: 'x@example.com', username: 'early', password: 'hunter2hunter2' })).status, 403, 'no sign-ups before setup');
+  assert.equal((await node.api('POST', '/auth/register', null, { age_confirmed: true, email: 'x@example.com', username: 'early', password: 'hunter2hunter2' })).status, 403, 'no sign-ups before setup');
   const admin = await node.api('POST', '/setup/admin', null, { setup_code: SETUP, email: 'admin@node.example', username: 'nodeadmin', password: 'hunter2hunter2' });
   assert.equal(admin.status, 201);
   nodeAdmin = { token: admin.body.token, id: admin.body.user_id };
@@ -363,6 +363,11 @@ test('sign in on the node with a hub account: consent, PKCE, audience-bound ID t
   alice.node = s.get('token');
   const me = (await node.api('GET', '/users/@me', alice.node)).body;
   assert.equal(me.username, 'alice');
+  // 7.11: the node asks its own minimum age (and terms) on first use; the API waits until then
+  assert.deepEqual((await node.api('GET', '/users/@me/guilds', alice.node)).body.required_actions, ['accept_terms']);
+  assert.deepEqual((await node.api('GET', '/legal/status', alice.node)).body.needs_age, true);
+  assert.equal((await node.api('POST', '/legal/accept', alice.node, { version: null, age_confirmed: true })).status, 200);
+  assert.equal((await node.api('GET', '/users/@me/guilds', alice.node)).status, 200);
   const [row] = sql(node, 'SELECT home, hub_user_id, email FROM users WHERE id = ?', me.id);
   assert.deepEqual({ ...row }, { home: 'hub', hub_user_id: alice.id, email: `hub-${alice.id}@hub.invalid` });
   assert.equal((await node.api('POST', '/auth/login', null, { login: 'alice', password: 'hunter2hunter2' })).status, 401, 'the hub password never reaches the node');
@@ -375,7 +380,7 @@ test('sign in on the node with a hub account: consent, PKCE, audience-bound ID t
   await node.register('localbob');
   assert.equal((await node.api('PATCH', '/admin/federation', nodeAdmin.token, { sign_in: 'hub' })).body.sign_in, 'hub');
   assert.equal((await node.api('POST', '/auth/login', null, { login: 'localbob', password: 'hunter2hunter2' })).status, 403);
-  assert.equal((await node.api('POST', '/auth/register', null, { email: 'c@example.com', username: 'carol', password: 'hunter2hunter2' })).status, 403);
+  assert.equal((await node.api('POST', '/auth/register', null, { age_confirmed: true, email: 'c@example.com', username: 'carol', password: 'hunter2hunter2' })).status, 403);
   assert.equal((await node.api('POST', '/auth/login', null, { login: 'nodeadmin', password: 'hunter2hunter2' })).status, 200);
   assert.equal((await node.api('PATCH', '/admin/federation', nodeAdmin.token, { sign_in: 'local' })).body.sign_in, 'local');
   assert.equal((await nodeSignIn(alice)).get('error'), 'unavailable');
@@ -430,7 +435,8 @@ test('server directory: Manage Server lists hub and node servers, hub users brow
   assert.equal((await hub.api('POST', `/discoverable-guilds/${nodeGuild.id}/report`, alice.token, { reason: 'spam' })).status, 400, 'once per user');
   const [rep] = (await hub.api('GET', '/admin/directory?filter=reported', hubAdmin.token)).body;
   assert.deepEqual([rep.guild.id, rep.hidden, rep.reports[0].reason, rep.reports[0].note, rep.reports[0].reporter_id], [nodeGuild.id, false, 'other', 'It is spam', alice.id]);
-  const hidden = await hub.api('PATCH', `/admin/directory/${nodeGuild.id}`, hubAdmin.token, { hidden: true, reason: 'spam' });
+  assert.equal((await hub.api('PATCH', `/admin/directory/${nodeGuild.id}`, hubAdmin.token, { hidden: true, reason: 'spam' })).status, 400, '7.11: hiding needs a statement of reasons');
+  const hidden = await hub.api('PATCH', `/admin/directory/${nodeGuild.id}`, hubAdmin.token, { hidden: true, category: 'spam', reason: 'spam' });
   assert.deepEqual([hidden.body.hidden, hidden.body.hidden_reason, hidden.body.reports], [true, 'spam', []]);
   assert.equal((await hub.api('GET', '/discoverable-guilds', alice.token)).body.total, 1);
   await node.api('POST', '/admin/federation/heartbeat', nodeAdmin.token);
@@ -444,7 +450,7 @@ test('server directory: Manage Server lists hub and node servers, hub users brow
   assert.equal((await hub.api('PATCH', `/admin/directory/${nodeGuild.id}`, hubAdmin.token, { hidden: false })).body.hidden, false);
   assert.equal((await hub.api('GET', '/discoverable-guilds', alice.token)).body.total, 2);
   // the same for a hub server: the owner cannot clear a hide by unlisting
-  assert.equal((await hub.api('PATCH', `/admin/directory/${hubGuild.id}`, hubAdmin.token, { hidden: true, reason: 'review' })).body.hidden, true);
+  assert.equal((await hub.api('PATCH', `/admin/directory/${hubGuild.id}`, hubAdmin.token, { hidden: true, category: 'other', reason: 'review' })).body.hidden, true);
   assert.equal((await hub.api('PATCH', `/guilds/${hubGuild.id}/discovery-metadata`, alice.token, { listed: false })).status, 200);
   const hubAgain = await hub.api('PATCH', `/guilds/${hubGuild.id}/discovery-metadata`, alice.token, { listed: true, primary_category_id: 3 });
   assert.equal(hubAgain.body.hidden, true);
@@ -546,7 +552,7 @@ test('a standalone node never contacts its configured hub', async () => {
   const g = (await solo.api('POST', '/guilds', admin.token, { name: 'Private' })).body;
   assert.equal((await solo.api('PATCH', `/guilds/${g.id}/discovery-metadata`, admin.token, { listed: true, primary_category_id: 2 })).status, 400);
   assert.equal((await solo.api('GET', '/auth/methods')).body.hub, false);
-  assert.equal((await solo.api('POST', '/auth/register', null, { email: 'z@example.com', username: 'zed', password: 'hunter2hunter2' })).status, 403, 'closed');
+  assert.equal((await solo.api('POST', '/auth/register', null, { age_confirmed: true, email: 'z@example.com', username: 'zed', password: 'hunter2hunter2' })).status, 403, 'closed');
   await solo.api('POST', '/channels/' + g.channels.find(c => c.type === 0).id + '/messages', admin.token, { content: 'hello' });
   await new Promise(r => setTimeout(r, 2500)); // past the first heartbeat slot
   assert.deepEqual(recorded, []);

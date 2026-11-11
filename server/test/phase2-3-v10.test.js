@@ -5,7 +5,7 @@ import { startServer } from './helpers.js';
 test('Anti-Raid and Quarantine Configuration (Contract v10 §4)', async () => {
   const srv = await startServer();
   try {
-    const { token } = (await srv.api('POST', '/auth/register', null, {
+    const { token } = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'owner@example.com',
       username: 'owner',
       password: 'password123',
@@ -40,7 +40,7 @@ test('Anti-Raid and Quarantine Configuration (Contract v10 §4)', async () => {
 test('Server Backup and Migration Archive (.cillpack) (Contract v10 §5)', async () => {
   const srv = await startServer();
   try {
-    const { token } = (await srv.api('POST', '/auth/register', null, {
+    const { token } = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'owner@example.com',
       username: 'owner',
       password: 'password123',
@@ -82,7 +82,7 @@ test('Server Backup and Migration Archive (.cillpack) (Contract v10 §5)', async
 test('Calendar iCal / WebCal Feed (Contract v10 §6)', async () => {
   const srv = await startServer();
   try {
-    const { token } = (await srv.api('POST', '/auth/register', null, {
+    const { token } = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'calendar_user@example.com',
       username: 'caluser',
       password: 'password123',
@@ -134,7 +134,7 @@ test('Calendar iCal / WebCal Feed (Contract v10 §6)', async () => {
 test('Detailed Session Audit & Revoke All Others (Contract v10 §8)', async () => {
   const srv = await startServer();
   try {
-    await srv.api('POST', '/auth/register', null, {
+    await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'devices@example.com',
       username: 'deviceuser',
       password: 'password123',
@@ -181,7 +181,7 @@ test('Detailed Session Audit & Revoke All Others (Contract v10 §8)', async () =
 test('View-Once Media Attachments (Contract v10 §7)', async () => {
   const srv = await startServer();
   try {
-    const { token } = (await srv.api('POST', '/auth/register', null, {
+    const { token } = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'viewonce@example.com',
       username: 'viewonceuser',
       password: 'password123',

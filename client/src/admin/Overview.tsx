@@ -4,6 +4,7 @@ import { FormError } from '../components/ui'
 import { t } from '../i18n'
 import { getOverview, type Overview as OverviewData } from './api'
 import { bytes, day, num, useLoad, when } from './util'
+import { Link } from '../router'
 
 type Status = 'ok' | 'down' | 'off'
 const HEALTH: Record<Status, [string, string]> = { ok: ['✓', 'OK'], down: ['✕', 'Down'], off: ['–', 'Not configured'] }
@@ -25,7 +26,7 @@ export function Overview() {
     [t('Servers'), num(s.guilds), t('{n} channels', { n: num(s.channels) })],
     [t('Messages'), num(s.messages.total)],
     [t('Voice minutes (30 days)'), num(s.voice.minutes_30d), t('{n} in voice now', { n: num(s.voice.in_voice_now) })],
-    [t('Open reports'), num(s.reports_open)],
+    [t('Open reports'), num(s.reports_open), s.appeals_open ? t('{n} open appeals', { n: num(s.appeals_open) }) : undefined],
     [t('Uploads'), bytes(s.storage.uploads_bytes)],
     [t('Database'), bytes(s.storage.database_bytes)],
     ...(s.disk ? [[t('Disk free'), bytes(s.disk.free_bytes), t('of {total}', { total: bytes(s.disk.total_bytes) })] as [string, string, string]] : []),
@@ -38,6 +39,12 @@ export function Overview() {
   ]
   return (
     <>
+      {s.legal_incomplete && (
+        <p className="admin-warning" role="alert">
+          <strong>{t('Legal pages incomplete')}</strong> · {t('Fill in the operator details, the imprint, the privacy notice and the terms of use.')}{' '}
+          <Link to="/admin/settings" className="link">{t('Open Instance Settings')}</Link>
+        </p>
+      )}
       <ul className="admin-tiles" aria-label={t('Instance statistics')}>
         {tiles.map(([label, value, sub]) => (
           <li key={label} className="admin-tile"><span className="admin-tile-label">{label}</span><strong className="admin-tile-value">{value}</strong>{sub && <span className="hint small">{sub}</span>}</li>

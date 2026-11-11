@@ -86,7 +86,7 @@ const linkIn = m => m.data.replace(/=\n/g, '').replace(/=3D/g, '=').match(/https
 let srv, api, root;
 let forgotCalls = 0; // every counted POST /auth/forgot from 127.0.0.1 (10 per hour)
 const forgot = (login, extra = {}) => (forgotCalls++, api('POST', '/auth/forgot', null, { login, ...extra }));
-const reg = (name, extra = {}) => api('POST', '/auth/register', null, { email: `${name}@example.com`, username: name, password: 'hunter2hunter2', ...extra });
+const reg = (name, extra = {}) => api('POST', '/auth/register', null, { age_confirmed: true, email: `${name}@example.com`, username: name, password: 'hunter2hunter2', ...extra });
 const dbGet = sql => { const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sqlite')); try { return db.prepare(sql).get(); } finally { db.close(); } };
 const dbRun = (sql, ...args) => { const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sqlite')); try { return db.prepare(sql).run(...args); } finally { db.close(); } };
 
@@ -280,7 +280,7 @@ test('no configured address: password reset is off (the Host header never builds
     assert.equal((await other.api('GET', '/instance')).body.password_reset, true);
     // a closed instance says so before asking for a captcha
     await other.api('PATCH', '/admin/settings', t, { captcha_site_key: 'site-key-kim', captcha_secret: 'captcha-secret-kim', registration_mode: 'closed' }, el);
-    const closed = await other.api('POST', '/auth/register', null, { email: 'kim@example.com', username: 'kim', password: 'hunter2hunter2' });
+    const closed = await other.api('POST', '/auth/register', null, { age_confirmed: true, email: 'kim@example.com', username: 'kim', password: 'hunter2hunter2' });
     assert.deepEqual([closed.status, closed.body.message], [403, 'Registration is closed on this instance.']);
   } finally {
     await other.stop();

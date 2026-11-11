@@ -71,6 +71,14 @@ function adminRoutes(calls, { mfa = true } = {}) {
   }
 }
 
+/** 7.11: fills the statement of reasons dialog (category spam, terms, explanation) and returns its confirm button. */
+async function reasons(page, title, confirm) {
+  const d = page.getByRole('dialog', { name: title })
+  await d.getByLabel('Reason').selectOption('spam')
+  await d.getByLabel('Explanation for the affected user').fill('Spam links')
+  return d.getByRole('button', { name: confirm })
+}
+
 /** Clicks and returns the admin call it triggered (method + path). */
 async function call(calls, method, p, act) {
   const before = calls.length
@@ -178,7 +186,8 @@ async function run(browser, errors) {
   await drawer.getByText('Windows · Cillhub Web').waitFor()
   await drawer.getByText('Bobbot').waitFor()
   await drawer.getByRole('button', { name: 'Disable Account' }).click()
-  await call(calls, 'POST', '/users/101/disable', () => page.getByRole('dialog', { name: 'Disable bob?' }).getByRole('button', { name: 'Disable Account' }).click())
+  const disableBtn = await reasons(page, 'Disable bob?', 'Disable Account')
+  assert.deepEqual((await call(calls, 'POST', '/users/101/disable', () => disableBtn.click())).body, { category: 'spam', ground: 'terms', reason: 'Spam links' })
   await drawer.getByRole('button', { name: 'Force Logout' }).click()
   await call(calls, 'POST', '/users/101/logout', () => page.getByRole('dialog', { name: 'Log out everywhere?' }).getByRole('button', { name: 'Log Out Everywhere' }).click())
   await drawer.getByRole('button', { name: 'Require Password Change' }).click()
@@ -220,8 +229,9 @@ async function run(browser, errors) {
   del = page.getByRole('dialog', { name: 'Delete Nightfall Gaming?' })
   await del.getByLabel('Type the server name to confirm').fill('Nightfall Gaming')
   await del.getByRole('button', { name: 'Continue' }).click()
+  await (await reasons(page, 'Delete Nightfall Gaming?', 'Continue')).click()
   await page.getByRole('dialog', { name: 'Delete Nightfall Gaming?' }).getByLabel('Authentication or backup code').fill('111222')
-  assert.deepEqual((await call(calls, 'DELETE', '/guilds/200', () => page.getByRole('dialog', { name: 'Delete Nightfall Gaming?' }).getByRole('button', { name: 'Delete Server' }).click())).body, { confirm: 'Nightfall Gaming', code: '111222' })
+  assert.deepEqual((await call(calls, 'DELETE', '/guilds/200', () => page.getByRole('dialog', { name: 'Delete Nightfall Gaming?' }).getByRole('button', { name: 'Delete Server' }).click())).body, { confirm: 'Nightfall Gaming', code: '111222', ...{ category: 'spam', ground: 'terms', reason: 'Spam links' } })
   console.log('ok v6-admin 7 - servers: detail (roles, channels, invites, bans, audit log), disable invites, transfer, delete only with the typed name')
 
   // Reports.
@@ -236,9 +246,13 @@ async function run(browser, errors) {
   assert.deepEqual((await call(calls, 'POST', '/reports/8001/resolve', () => card.getByRole('button', { name: 'Dismiss' }).click())).body, { action: 'dismiss' })
   await card.getByRole('button', { name: 'Timeout Author' }).click()
   const to = page.getByRole('dialog', { name: 'Timeout bob' })
-  assert.deepEqual((await call(calls, 'POST', '/reports/8001/resolve', () => to.getByRole('button', { name: 'Timeout' }).click())).body, { action: 'timeout', duration_seconds: 3600 })
+  await to.getByRole('button', { name: 'Timeout' }).click()
+  const toBtn = await reasons(page, 'Author timed out', 'Confirm')
+  assert.deepEqual((await call(calls, 'POST', '/reports/8001/resolve', () => toBtn.click())).body, { action: 'timeout', duration_seconds: 3600, ...{ category: 'spam', ground: 'terms', reason: 'Spam links' } })
   await card.getByRole('button', { name: 'Ban Author' }).click()
-  assert.deepEqual((await call(calls, 'POST', '/reports/8001/resolve', () => page.getByRole('dialog', { name: 'Ban bob?' }).getByRole('button', { name: 'Ban' }).click())).body, { action: 'ban' })
+  await page.getByRole('dialog', { name: 'Ban bob?' }).getByRole('button', { name: 'Ban' }).click()
+  const banBtn = await reasons(page, 'Author banned', 'Confirm')
+  assert.deepEqual((await call(calls, 'POST', '/reports/8001/resolve', () => banBtn.click())).body, { action: 'ban', ...{ category: 'spam', ground: 'terms', reason: 'Spam links' } })
   await page.getByRole('button', { name: 'Resolved' }).click()
   await page.getByRole('listitem').filter({ hasText: /^Author banned · / }).first().waitFor() // the list entry, not the toast with the same words
   console.log('ok v6-admin 8 - reports: reported content as plain text, context link, dismiss/timeout/ban resolve with the right action')
@@ -344,6 +358,7 @@ async function run(browser, errors) {
   await lp.getByLabel('Username').fill('newbie')
   await lp.getByLabel('Password').fill('hunter2hunter2')
   await lp.getByLabel('Registration code').fill('WELCOME1')
+  await lp.getByLabel('I am at least 14 years old.').check()
   await lp.getByRole('button', { name: 'Continue' }).click()
   await lp.getByText('Unknown registration code.').waitFor()
   assert.equal(registered.registration_code, 'WELCOME1')
@@ -430,6 +445,7 @@ async function run(browser, errors) {
   await fp.getByLabel('Email').fill('robin@example.com')
   await fp.getByLabel('Username').fill('robin')
   await fp.getByLabel('Password').fill('hunter2hunter2')
+  await fp.getByLabel('I am at least 14 years old.').check()
   await fp.getByRole('button', { name: 'Continue' }).click()
   await fp.getByText('Complete the captcha.').waitFor()
   assert.equal(sent.register.captcha_key, 'tok-1')

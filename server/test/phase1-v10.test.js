@@ -5,7 +5,7 @@ import { startServer } from './helpers.js';
 test('Custom Soundboard Packs API (Contract v10 §2)', async () => {
   const srv = await startServer();
   try {
-    const { token } = (await srv.api('POST', '/auth/register', null, {
+    const { token } = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'owner@example.com',
       username: 'owner',
       password: 'password123',
@@ -56,7 +56,7 @@ test('Custom Soundboard Packs API (Contract v10 §2)', async () => {
 test('Recurring Messages & Scheduled Announcements API (Contract v10 §3)', async () => {
   const srv = await startServer();
   try {
-    const { token } = (await srv.api('POST', '/auth/register', null, {
+    const { token } = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'organizer@example.com',
       username: 'organizer',
       password: 'password123',

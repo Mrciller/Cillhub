@@ -59,7 +59,7 @@ test('WebAuthn / Passkey: real signatures log in, forged assertions do not', asy
 test('Federated Public Module Catalog (Contract v9 §10)', async () => {
   const srv = await startServer();
   try {
-    const { token } = (await srv.api('POST', '/auth/register', null, {
+    const { token } = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'admin@example.com',
       username: 'admin',
       password: 'password123',
@@ -95,14 +95,14 @@ test('Federated Public Module Catalog (Contract v9 §10)', async () => {
 test('End-to-End Encrypted (E2EE) 1-on-1 DMs (Contract v9 §11)', async () => {
   const srv = await startServer();
   try {
-    const aliceAuth = (await srv.api('POST', '/auth/register', null, {
+    const aliceAuth = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'alice-e2ee@example.com',
       username: 'alice_e2ee',
       password: 'password123',
     })).body;
     const alice = (await srv.api('GET', '/users/@me', aliceAuth.token)).body;
 
-    const bobAuth = (await srv.api('POST', '/auth/register', null, {
+    const bobAuth = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'bob-e2ee@example.com',
       username: 'bob_e2ee',
       password: 'password123',

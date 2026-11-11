@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { t } from '../i18n'
 import { Link } from '../router'
 import { Field, FormError } from './ui'
+import { LegalLinks } from '../legal/LegalPages'
 
 export function ResetPage() {
   const [token] = useState(() => new URLSearchParams(location.hash.slice(1)).get('token') ?? new URLSearchParams(location.search).get('token') ?? '')
@@ -59,6 +60,7 @@ export function ResetPage() {
           </form>
         )}
       </main>
+      <LegalLinks />
     </div>
   )
 }

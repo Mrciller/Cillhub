@@ -3,6 +3,7 @@
 // and need instance_admin + 2FA (403 60003 without 2FA). Destructive ones also want a fresh 2FA `code` (401 60003 without).
 import { api, ApiError, qs, upload } from '../api'
 import type { Role, User } from '../types'
+import type { Statement } from '../components/dialogs'
 
 export type Registration = 'open' | 'invite' | 'closed'
 export type Announcement = { id: string; content: string; created_at: string }
@@ -19,6 +20,8 @@ export type PublicInstance = {
   password_reset?: boolean
   /** 7.10: reCAPTCHA v2 at sign-up and password reset. */
   captcha?: { service: 'recaptcha'; sitekey: string } | null
+  /** 7.11: which legal documents exist, the version a sign-up accepts and the DSA contact point. */
+  legal?: import('../legal/api').LegalInfo
 }
 export type InstanceSettings = {
   registration_mode: Registration; instance_name: string; motd: string | null; max_upload_bytes: number; gifs_enabled: boolean
@@ -29,6 +32,8 @@ export type InstanceSettings = {
   captcha_site_key: string | null
   /** The secrets themselves never come back. */
   smtp_password_set: boolean; captcha_secret_set: boolean
+  /** 7.11: the operator's own details (empty on a fresh server), sign-up age and the AGPL source link. */
+  legal_operator?: import('../legal/api').Operator; min_age?: number; source_url?: string | null
 }
 /** PATCH: a secret left out is kept, null clears it. */
 export type SettingsPatch = Partial<Omit<InstanceSettings, 'announcement' | 'voice' | 'public_url_effective' | 'public_url_env' | 'smtp_password_set' | 'captcha_secret_set'>> & {
@@ -44,6 +49,8 @@ export type Overview = {
     backends: { configured: string[]; default: string | null; livekit: { configured: boolean; reachable: boolean | null }; cillvoice: { configured: boolean; running?: boolean; rooms?: number } }
   }
   reports_open: number
+  /** 7.11: open appeals; true while an imprint, privacy notice, terms, operator name or contact email is missing. */
+  appeals_open?: number; legal_incomplete?: boolean
   storage: { uploads_bytes: number; database_bytes: number }
   disk: { total_bytes: number; free_bytes: number } | null
   version: string; uptime_seconds: number
@@ -78,11 +85,15 @@ export type ReportReason = 'spam' | 'harassment' | 'hate' | 'nsfw' | 'violence' 
 export type ReportAction = 'dismiss' | 'delete_message' | 'timeout' | 'kick' | 'ban' | 'disable_account'
 export type Report = {
   id: string; status: 'open' | 'resolved'; reason: ReportReason; note: string | null; created_at: string
-  actions: { action: ReportAction; admin_id: string; at: string; note: string | null }[]
-  reporter: User; author: User | null; guild: { id: string; name: string } | null; channel: { id: string; type?: number; name?: string | null }
+  /** 7.11: user = in-app report, public = notice from the open form (DSA Art. 16), removal = removed by link and preserved. */
+  source: 'user' | 'public' | 'removal'; resolved_at?: string | null
+  notice?: { url: string | null; description: string | null; link_kind: string | null; name: string | null; email: string | null; decision: string | null }
+  preserve_until?: string | null; url?: string | null; server?: { id: string; name: string } | null
+  actions: { action: ReportAction | 'action_taken' | 'remove_message' | 'remove_server'; admin_id: string; at: string; note: string | null }[]
+  reporter: User | null; author: User | null; guild: { id: string; name: string } | null; channel: { id: string; type?: number; name?: string | null }
   /** A copy taken when the report was made; `exists` is false once the original is deleted. */
-  message: { id: string; content: string; timestamp: string; attachments?: { filename: string }[]; exists: boolean }
-  link: string
+  message: { id: string; content: string; timestamp: string; attachments?: { filename: string }[]; exists: boolean } | null
+  link: string | null
 }
 export type RegistrationCode = { code: string; created_by: string; created_at: string; expires_at: string | null; max_uses: number; uses: number; note: string | null }
 
@@ -100,7 +111,7 @@ export const getOverview = () => admin<Overview>('/overview')
 
 export const listUsers = (query: string, before?: string) => admin<AdminUser[]>(`/users${qs({ query, limit: 50, before })}`)
 export const getUser = (id: string) => admin<AdminUserDetail>(`/users/${id}`)
-export const disableUser = (id: string) => post(`/users/${id}/disable`)
+export const disableUser = (id: string, why: Statement) => post(`/users/${id}/disable`, why)
 export const enableUser = (id: string) => post(`/users/${id}/enable`)
 export const logoutUser = (id: string) => post(`/users/${id}/logout`)
 export const resetUserMfa = (id: string, code: string) => post(`/users/${id}/reset-mfa`, { code })
@@ -111,10 +122,24 @@ export const listGuilds = (query: string, before?: string) => admin<AdminGuild[]
 export const getGuild = (id: string) => admin<AdminGuildDetail>(`/guilds/${id}`)
 export const transferGuild = (id: string, owner_id: string, code: string) => post<AdminGuild>(`/guilds/${id}/transfer`, { owner_id, code })
 export const setInvitesDisabled = (id: string, disabled: boolean) => admin<AdminGuild>(`/guilds/${id}/invites-disabled`, { method: 'PUT', body: { disabled } })
-export const deleteGuild = (id: string, confirm: string, code: string) => admin<void>(`/guilds/${id}`, { method: 'DELETE', body: { confirm, code } })
+export const deleteGuild = (id: string, confirm: string, code: string, why: Statement) => admin<void>(`/guilds/${id}`, { method: 'DELETE', body: { confirm, code, ...why } })
 
-export const listReports = (status: Report['status']) => admin<Report[]>(`/reports${qs({ status })}`)
-export const resolveReport = (id: string, action: ReportAction, duration_seconds?: number) => post<Report>(`/reports/${id}/resolve`, { action, duration_seconds })
+export const listReports = (status: Report['status'] | 'all', source: Report['source'] | 'all' = 'all') => admin<Report[]>(`/reports${qs({ status, source })}`)
+export const resolveReport = (id: string, action: ReportAction | 'action_taken', extra: { duration_seconds?: number; note?: string } & Partial<Statement> = {}) => post<Report>(`/reports/${id}/resolve`, { action, ...extra })
+export type ReportStats = {
+  year: number; notices: { by_source: Record<string, number>; by_category: Record<string, number> }; actions: Record<string, number>
+  removals_by_link: number; appeals: Record<string, number>; median_handling_hours: number | null
+}
+export type AdminDecision = import('../legal/api').Decision & { user: User | null; target: { guild_id?: string; name?: string }; admin_id: string | null }
+export const reportStats = (year: number) => admin<ReportStats>(`/reports/stats${qs({ year })}`)
+export const listAppeals = (status: 'open' | 'decided') => admin<AdminDecision[]>(`/appeals${qs({ status })}`)
+export const decideAppeal = (id: string, outcome: 'upheld' | 'reversed', text: string) => post<AdminDecision>(`/appeals/${id}`, { outcome, text })
+export type RemovalPreview = {
+  type: 'message' | 'server'; guild: { id: string; name: string }; channel?: { id: string; name: string }; author?: User | null; owner?: User | null
+  content?: string; timestamp?: string; attachments?: { filename: string; size: number }[]; member_count?: number
+}
+export const previewRemoval = (url: string) => post<RemovalPreview>('/removals/preview', { url })
+export const removeByLink = (url: string, why: Statement, mfa?: string) => admin<{ id: string; preserve_until: string }>('/removals', { method: 'POST', body: { url, ...why }, headers: elevation(mfa) })
 
 export const getSettings = () => admin<InstanceSettings>('/settings')
 // address, mail and captcha changes and the test mail need a fresh 2FA step-up (elevated())
@@ -199,7 +224,7 @@ export const getRelease = () => getHubFederation().then((f) => f.release)
 export const putRelease = (version: string, notes: string, mfa?: string) => admin<Release>('/federation/release', { method: 'PUT', body: { version, notes }, headers: elevation(mfa) })
 
 export const listDirectory = (query: string, filter: 'all' | 'reported' | 'hidden') => admin<DirectoryEntry[]>(`/directory${qs({ query, filter })}`)
-export const setListingHidden = (guildId: string, hidden: boolean, reason?: string) => admin<DirectoryEntry>(`/directory/${guildId}`, { method: 'PATCH', body: { hidden, reason } })
+export const setListingHidden = (guildId: string, hidden: boolean, why?: Statement) => admin<DirectoryEntry>(`/directory/${guildId}`, { method: 'PATCH', body: { hidden, ...why } })
 export const dismissListingReports = (guildId: string) => admin<void>(`/directory/${guildId}/reports`, { method: 'DELETE' })
 
 export const getFederation = () => admin<Federation>('/federation')

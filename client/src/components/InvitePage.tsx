@@ -7,6 +7,7 @@ import { displayName, useStore } from '../store'
 import type { Invite } from '../types'
 import { FormError, GuildIcon, initials } from './ui'
 import { accentVars, splashUrl } from '../custom/ServerCustomize'
+import { LegalLinks } from '../legal/LegalPages'
 
 export function InvitePage({ code }: { code: string }) {
   const token = useStore((s) => s.token)
@@ -45,6 +46,7 @@ export function InvitePage({ code }: { code: string }) {
         )}
         <FormError error={error} />
       </main>
+      <LegalLinks />
     </div>
   )
 }

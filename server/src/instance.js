@@ -15,6 +15,10 @@ export const DEFAULTS = {
   public_url: null, // origin; null = CILLCORD_PUBLIC_URL, else the request's own (federation.js publicUrl)
   smtp_host: null, smtp_port: 587, smtp_security: 'starttls', smtp_user: null, smtp_password: null, smtp_from: null,
   captcha_site_key: null, captcha_secret: null, // reCAPTCHA v2 checkbox
+  // 7.11 legal: the operator's own details (every instance fills in its own; nothing is inherited from a hub)
+  legal_operator: {}, // {name, legal_form, address, email, phone, register, representatives, purpose, authority, languages}
+  min_age: 14, // sign-up asks "I am at least N years old"
+  source_url: 'https://github.com/TCCiller/Cillhub', // AGPL §13: where users get the source of the running version
 };
 // never sent anywhere: the admin API shows only whether they are set
 export const SECRET_SETTINGS = ['smtp_password', 'captcha_secret'];
@@ -44,7 +48,39 @@ export const publicInstance = () => ({
   gifs_enabled: setting('gifs_enabled'), max_upload_bytes: maxUpload(), announcement: setting('announcement'),
   password_reset: resetAvailable(),
   captcha: captchaOn() ? { service: 'recaptcha', sitekey: setting('captcha_site_key') } : null,
+  legal: legalInfo(),
 });
+
+// --- 7.11 legal documents: the newest row per doc is current; an empty text means "not provided" --------------------
+export const LEGAL_DOCS = ['imprint', 'privacy', 'terms'];
+const docCache = new Map();
+export function legalDoc(doc) {
+  if (!docCache.has(doc)) docCache.set(doc, get('SELECT * FROM legal_documents WHERE doc = ? ORDER BY id DESC LIMIT 1', doc) ?? null);
+  return docCache.get(doc);
+}
+export const forgetLegalDocs = () => docCache.clear();
+export const docProvided = doc => !!(legalDoc(doc)?.en.trim() || legalDoc(doc)?.de.trim());
+// the version a sign-up accepts: the terms, else the privacy notice (null when neither is provided)
+export const acceptVersion = () => (docProvided('terms') ? legalDoc('terms').id : docProvided('privacy') ? legalDoc('privacy').id : null);
+// existing accounts below this version must accept again (the newest terms/privacy version saved with "require re-acceptance")
+let requiredCache;
+export function requiredVersion() {
+  requiredCache ??= get("SELECT MAX(id) AS v FROM legal_documents WHERE doc IN ('terms', 'privacy') AND reaccept = 1").v ?? 0;
+  return requiredCache;
+}
+export const forgetRequiredVersion = () => (requiredCache = undefined);
+// the account must accept before it can use the API: a new version with re-acceptance, or made without the sign-up checks
+export const legalGate = u => !u.bot && !u.system && (!!u.legal_pending || (u.terms_version ?? 0) < requiredVersion());
+
+// public part of the operator details (what an imprint shows anyway); contact = DSA Art. 11/12 single point of contact
+export function legalInfo() {
+  const o = setting('legal_operator') ?? {};
+  return {
+    imprint: docProvided('imprint'), privacy: docProvided('privacy'), terms: docProvided('terms'), accept_version: acceptVersion(),
+    operator_name: o.name || null, contact_email: o.email || null, contact_languages: o.languages || null,
+    min_age: setting('min_age'), source_url: setting('source_url'),
+  };
+}
 
 // the account announcements are DMed from; created on first use, cannot log in (random password, system flag)
 export function systemUser() {

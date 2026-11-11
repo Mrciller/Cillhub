@@ -21,7 +21,7 @@ import { recheck, configuredBackends, defaultBackend, voiceStateCount } from '..
 import { mediaStats } from '../media/index.js';
 import { insertMessage, bumpMentions, broadcastMessage, deleteMessages, attachmentUrl } from '../message.js';
 import {
-  setting, setSetting, DEFAULTS, SECRET_SETTINGS, UPLOAD_RANGE, publicInstance, systemUser, adminAudit, adminAuditObj, recentErrors, startedAt,
+  setting, setSetting, DEFAULTS, SECRET_SETTINGS, UPLOAD_RANGE, publicInstance, systemUser, adminAudit, adminAuditObj, recentErrors, startedAt, docProvided,
 } from '../instance.js';
 import { sendMail, mailError } from '../mail.js';
 import { settingsOf } from '../userdata.js';
@@ -29,6 +29,7 @@ import { anonymize } from './account.js';
 import { removeMember, destroyGuild } from './guilds.js';
 import { loadMessage } from './messages.js';
 import { fedState, isHub, publicUrl, publicUrlSetting, PUBLIC_URL } from '../federation.js';
+import { decide, statement, noticeDecided } from './legal.js';
 
 // --- the gate ------------------------------------------------------------------------------------------------------------
 const deniedLogged = new Map(); // user id -> last time a refusal was written to the audit log (at most one a minute each)
@@ -127,8 +128,11 @@ export function disableUser(userId) {
 
 function setDisabled(ctx, disabled) {
   const u = targetUser(ctx);
-  if (disabled) ctx.audit = { action: 'user.disable', details: { sessions_closed: disableUser(u.id) } };
-  else {
+  if (disabled) {
+    const s = statement(ctx.body); // DSA Art. 17: the account sees why at its next login
+    ctx.audit = { action: 'user.disable', details: { sessions_closed: disableUser(u.id), category: s.category, ground: s.ground } };
+    decide(ctx, { userId: u.id, action: 'disable_account', ...s });
+  } else {
     run('UPDATE users SET disabled = 0 WHERE id = ?', u.id);
     ctx.audit = { action: 'user.enable' };
   }
@@ -236,9 +240,11 @@ function transferGuild(ctx) {
 function deleteGuild(ctx) {
   const g = loadGuildRow(ctx.params.guild_id);
   confirm(ctx.body, g.name);
+  const s = statement(ctx.body);
   requireMfa(ctx);
   destroyGuild(g);
-  ctx.audit = { action: 'guild.delete', details: { name: g.name, owner_id: g.owner_id } };
+  decide(ctx, { userId: g.owner_id, action: 'delete_server', ...s, target: { guild_id: g.id, name: g.name } });
+  ctx.audit = { action: 'guild.delete', details: { name: g.name, owner_id: g.owner_id, category: s.category, ground: s.ground } };
 }
 
 function setInvitesDisabled(ctx) {
@@ -270,6 +276,10 @@ function createReport(ctx) {
   const id = snowflake();
   run(`INSERT INTO reports (id, reporter_id, message_id, channel_id, guild_id, author_id, reason, note, snapshot, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, ctx.user.id, m.id, ch.id, ch.guild_id ?? null, m.author_id, body.reason, note, JSON.stringify(snapshot), Date.now());
+  // DSA Art. 16(4): a receipt, and later the outcome, in the reporter's DMs from the system account
+  systemDm(ctx.user.id, settingsOf(ctx.user.id).locale === 'de'
+    ? `Deine Meldung ${id} ist eingegangen. Die Administration prüft sie; das Ergebnis bekommst du hier.`
+    : `We received your report ${id}. The administrators will review it; you will get the outcome here.`);
   ctx.status = 201;
   return { id, message_id: m.id, channel_id: ch.id, reason: body.reason, created_at: iso(Date.now()) };
 }
@@ -280,35 +290,62 @@ const loadReport = id => {
   return r;
 };
 function reportObj(r) {
-  const ch = get('SELECT id, type, name, guild_id FROM channels WHERE id = ?', r.channel_id);
+  const ch = r.channel_id && get('SELECT id, type, name, guild_id FROM channels WHERE id = ?', r.channel_id);
   const g = r.guild_id && get('SELECT id, name FROM guilds WHERE id = ?', r.guild_id);
   const author = r.author_id && userById(r.author_id);
+  const reporter = r.reporter_id && userById(r.reporter_id);
+  const snap = json(r.snapshot, {});
   return {
-    id: r.id, reason: r.reason, note: r.note, status: r.status, created_at: iso(r.created_at), actions: json(r.actions, []),
-    reporter: userObj(userById(r.reporter_id)), author: author ? userObj(author) : null,
+    id: r.id, source: r.source, reason: r.reason, note: r.note, status: r.status, created_at: iso(r.created_at), resolved_at: iso(r.resolved_at), actions: json(r.actions, []),
+    reporter: reporter ? userObj(reporter) : null, author: author ? userObj(author) : null,
     guild: g ? { id: g.id, name: g.name } : null, channel: ch ? { id: ch.id, type: ch.type, name: ch.name ?? null } : { id: r.channel_id },
-    message: { id: r.message_id, ...json(r.snapshot), exists: !!get('SELECT 1 FROM messages WHERE id = ?', r.message_id) },
-    link: `/channels/${r.guild_id ?? '@me'}/${r.channel_id}/${r.message_id}`,
+    // a public notice names a message by link; its content is only what a user's report or a removal copied
+    message: r.source === 'public' ? null : { id: r.message_id, ...snap, exists: !!(r.message_id && get('SELECT 1 FROM messages WHERE id = ?', r.message_id)) },
+    link: r.message_id ? `/channels/${r.guild_id ?? '@me'}/${r.channel_id}/${r.message_id}` : null,
+    ...(r.source === 'public' && { notice: { url: r.target_url, description: snap.description ?? null, link_kind: snap.link ?? null, name: r.reporter_name, email: r.reporter_email, decision: r.decision } }),
+    ...(r.source === 'removal' && { preserve_until: iso(r.preserve_until), url: r.target_url, server: snap.server ?? null }),
   };
 }
 
 function listReports({ query }) {
   const status = query.get('status') ?? 'open';
   if (!['open', 'resolved', 'all'].includes(status)) throw invalid('status', 'BASE_TYPE_CHOICES', 'Must be open, resolved or all.');
+  const source = query.get('source') ?? 'all';
+  if (!['user', 'public', 'removal', 'all'].includes(source)) throw invalid('source', 'BASE_TYPE_CHOICES', 'Must be user, public, removal or all.');
   const limit = intParam(query, 'limit', 50, 1, 200);
   const before = idParam(query, 'before');
-  return all(`SELECT * FROM reports WHERE (? = 'all' OR status = ?) AND (? IS NULL OR CAST(id AS INTEGER) < CAST(? AS INTEGER))
-              ORDER BY CAST(id AS INTEGER) DESC LIMIT ?`, status, status, before, before, limit).map(reportObj);
+  return all(`SELECT * FROM reports WHERE (? = 'all' OR status = ?) AND (? = 'all' OR source = ?) AND (? IS NULL OR CAST(id AS INTEGER) < CAST(? AS INTEGER))
+              ORDER BY CAST(id AS INTEGER) DESC LIMIT ?`, status, status, source, source, before, before, limit).map(reportObj);
 }
 
 const REPORT_ACTIONS = ['dismiss', 'delete_message', 'timeout', 'kick', 'ban', 'disable_account'];
+const NOTICE_ACTIONS = ['dismiss', 'action_taken'];
+const OUTCOME = {
+  dismiss: ['no action was taken', 'es wurde nichts unternommen'], delete_message: ['the message was removed', 'die Nachricht wurde entfernt'],
+  timeout: ['the author was timed out', 'der Autor wurde stummgeschaltet'], kick: ['the author was removed from the server', 'der Autor wurde aus dem Server entfernt'],
+  ban: ['the author was banned from the server', 'der Autor wurde aus dem Server gesperrt'], disable_account: ["the author's account was disabled", 'das Konto des Autors wurde gesperrt'],
+};
+// a public notice (DSA Art. 16) gets a decision text that goes back to the notifier; removals are already final
+function resolveNotice(ctx, r) {
+  const action = ctx.body?.action;
+  if (!NOTICE_ACTIONS.includes(action)) throw invalid('action', 'BASE_TYPE_CHOICES', `Must be one of ${NOTICE_ACTIONS.join(', ')}.`);
+  const decision = str(ctx.body, 'note', 3, 2000);
+  const actions = [...json(r.actions, []), { action, admin_id: ctx.user.id, at: iso(Date.now()), note: decision }];
+  run("UPDATE reports SET status = 'resolved', actions = ?, decision = ?, resolved_at = ? WHERE id = ?", JSON.stringify(actions), decision, Date.now(), r.id);
+  noticeDecided(r, decision);
+  ctx.audit = { action: `notice.${action}`, target_type: 'report', target_id: r.id, details: { category: r.reason } };
+  return reportObj(loadReport(r.id));
+}
 // one action per call; the report is resolved and remembers every action taken on it
 function resolveReport(ctx) {
   const r = loadReport(ctx.params.report_id);
+  if (r.source === 'public') return resolveNotice(ctx, r);
+  if (r.source !== 'user') throw new HttpError(400, 0, 'A removal is final; it needs no resolving.');
   const body = ctx.body ?? {};
   const action = body.action;
   if (!REPORT_ACTIONS.includes(action)) throw invalid('action', 'BASE_TYPE_CHOICES', `Must be one of ${REPORT_ACTIONS.join(', ')}.`);
   const note = body.note == null ? null : str(body, 'note', 0, 500) || null;
+  const s = action === 'dismiss' ? null : statement(body); // DSA Art. 17: every action against the author needs its reasons
   const actor = { user: ctx.user, req: ctx.req };
   const author = r.author_id && userById(r.author_id);
   const inGuild = () => {
@@ -351,8 +388,16 @@ function resolveReport(ctx) {
     if (author.instance_admin) throw new HttpError(400, 0, 'The author is an instance administrator; revoke that with the admin CLI first.');
     disableUser(author.id);
   }
-  const actions = [...json(r.actions, []), { action, admin_id: ctx.user.id, at: iso(Date.now()), note }];
-  run("UPDATE reports SET status = 'resolved', actions = ? WHERE id = ?", JSON.stringify(actions), r.id);
+  if (s) {
+    const g = r.guild_id && get('SELECT name FROM guilds WHERE id = ?', r.guild_id);
+    decide(ctx, { userId: r.author_id, action, ...s, reportId: r.id, target: { guild_id: r.guild_id, channel_id: r.channel_id, message_id: r.message_id, name: g?.name } });
+  }
+  const actions = [...json(r.actions, []), { action, admin_id: ctx.user.id, at: iso(Date.now()), note, ...(s && { category: s.category, ground: s.ground }) }];
+  run("UPDATE reports SET status = 'resolved', actions = ?, resolved_at = ? WHERE id = ?", JSON.stringify(actions), Date.now(), r.id);
+  if (r.reporter_id && userById(r.reporter_id)) {
+    const L = settingsOf(r.reporter_id).locale === 'de' ? 1 : 0;
+    systemDm(r.reporter_id, L ? `Deine Meldung ${r.id} ist abgeschlossen: ${OUTCOME[action][1]}.` : `Your report ${r.id} is closed: ${OUTCOME[action][0]}.`);
+  }
   ctx.audit = { action: `report.${action}`, target_type: 'report', target_id: r.id, details: { author_id: r.author_id, guild_id: r.guild_id } };
   return reportObj(loadReport(r.id));
 }
@@ -372,6 +417,24 @@ function optLine(body, k, max, trim = true) {
   if (v === null || v === '') return null;
   if (typeof v === 'string' && /[\r\n]/.test(v)) throw invalid(k, 'BASE_TYPE_BAD_CHARACTERS', 'Must be a single line.');
   return str(body, k, 1, max, trim);
+}
+
+// the operator's own details; every field optional (a person has no register number, an organisation may have no phone)
+const OPERATOR_FIELDS = { name: 200, legal_form: 100, address: 500, email: 254, phone: 50, register: 200, representatives: 500, purpose: 500, authority: 300, languages: 100 };
+function operatorField(body) {
+  const v = body.legal_operator;
+  if (v === null) return {};
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw invalid('legal_operator', 'BASE_TYPE_DICT', 'Must be an object.');
+  const out = {};
+  for (const [k, x] of Object.entries(v)) {
+    if (!(k in OPERATOR_FIELDS)) throw invalid(`legal_operator.${k}`, 'UNKNOWN_SETTING', 'This field does not exist.');
+    if (x === null || x === '') continue;
+    if (typeof x !== 'string' || x.length > OPERATOR_FIELDS[k]) throw invalid(`legal_operator.${k}`, 'BASE_TYPE_BAD_LENGTH', `Must be text of at most ${OPERATOR_FIELDS[k]} characters.`);
+    if (k !== 'address' && k !== 'representatives' && /[\r\n]/.test(x)) throw invalid(`legal_operator.${k}`, 'BASE_TYPE_BAD_CHARACTERS', 'Must be a single line.');
+    if (k === 'email' && !plainEmail(x.trim())) throw invalid('legal_operator.email', 'EMAIL_TYPE_INVALID_EMAIL', 'Not a valid email address.');
+    if (x.trim()) out[k] = x.trim();
+  }
+  return out;
 }
 
 function patchSettings(ctx) {
@@ -403,6 +466,11 @@ function patchSettings(ctx) {
       // one address, optionally with a display name: nothing a mailer could read as a second recipient
       const named = next[k] && /^([^<>@,;"\x00-\x1f]*)<([^<>]+)>$/.exec(next[k]);
       if (next[k] && !plainEmail(named ? named[2].trim() : next[k])) throw invalid(k, 'EMAIL_TYPE_INVALID_EMAIL', 'Must be one address, e.g. Cillhub <no-reply@example.org>.');
+    } else if (k === 'legal_operator') next[k] = operatorField(body);
+    else if (k === 'min_age') next[k] = int(body, k, 13, 18);
+    else if (k === 'source_url') {
+      next[k] = optLine(body, k, 300);
+      if (next[k] && !/^https:\/\/[^\s]+$/.test(next[k])) throw invalid(k, 'URL_TYPE_INVALID_URL', 'Must be an https:// address.');
     } else throw invalid(k, 'UNKNOWN_SETTING', 'This setting does not exist.');
   }
   // where mail and reset links go, and who may sign up: a stolen admin session alone must not change these
@@ -458,7 +526,7 @@ function deleteCode(ctx) {
 }
 
 // a DM from the system account into its DM with the user (created when needed)
-function systemDm(sys, userId, content) {
+export function systemDm(userId, content, sys = systemUser()) {
   let ch = get(`SELECT c.* FROM channels c JOIN dm_recipients a ON a.channel_id = c.id AND a.user_id = ?
                 JOIN dm_recipients b ON b.channel_id = c.id AND b.user_id = ? WHERE c.type = 1`, sys.id, userId);
   if (!ch) {
@@ -485,7 +553,7 @@ function announce(ctx) {
   if (dm) {
     const sys = systemUser();
     for (const u of all('SELECT id FROM users WHERE bot = 0 AND deleted = 0 AND disabled = 0 AND system = 0')) {
-      systemDm(sys, u.id, content);
+      systemDm(u.id, content, sys);
       dmCount++;
     }
   }
@@ -561,6 +629,9 @@ async function overview() {
       backends: { ...voiceInfo(), livekit: await livekitHealth(), cillvoice: cv ? { configured: true, running: true, rooms: cv.rooms } : { configured: false } },
     },
     reports_open: n("SELECT COUNT(*) AS n FROM reports WHERE status = 'open'"),
+    appeals_open: n("SELECT COUNT(*) AS n FROM moderation_decisions WHERE appeal_status = 'open'"),
+    // the imprint, privacy notice and terms, the operator's name and contact address all exist
+    legal_incomplete: !(['imprint', 'privacy', 'terms'].every(docProvided) && setting('legal_operator')?.name && setting('legal_operator')?.email),
     storage: await storage(), disk,
     version: process.env.CILLCORD_VERSION ?? 'dev', node: process.version,
     started_at: iso(startedAt), uptime_seconds: Math.round(process.uptime()),

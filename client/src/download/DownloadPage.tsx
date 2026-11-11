@@ -4,6 +4,7 @@ import { useStore } from '../store'
 import { t } from '../i18n'
 import { Icon, ICONS } from '../components/ui'
 import './download.css'
+import { LegalLinks } from '../legal/LegalPages'
 
 export function DownloadPage() {
   const token = useStore((s) => s.token)
@@ -128,6 +129,7 @@ export function DownloadPage() {
 
       <footer className="download-footer">
         <p>Cillhub · AGPL-3.0 · © Pascal Oraze</p>
+        <LegalLinks />
       </footer>
     </div>
   )

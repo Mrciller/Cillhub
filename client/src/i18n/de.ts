@@ -8,5 +8,6 @@ import { v5 } from './de/v5'
 import { v6 } from './de/v6'
 import { v7 } from './de/v7'
 import { v8 } from './de/v8'
+import { legal } from './de/legal'
 
-export const de: Record<string, string> = { ...admin, ...chat, ...settings, ...shell, ...v4, ...v5, ...v6, ...v7, ...v8 }
+export const de: Record<string, string> = { ...legal, ...admin, ...chat, ...settings, ...shell, ...v4, ...v5, ...v6, ...v7, ...v8 } // legal first: an older translation of the same English text wins

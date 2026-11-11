@@ -1,7 +1,8 @@
 // Small helpers shared by the admin pages.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { askText } from '../components/dialogs'
+import { askStatement, askText } from '../components/dialogs'
+import { DECISION_CATEGORIES } from '../legal/LegalPages'
 import { intlLocale, t } from '../i18n'
 
 /** Loads on mount and whenever `deps` change; `reload()` refetches. */
@@ -36,3 +37,7 @@ export function bytes(n: number) {
 /** Destructive admin actions need a fresh 2FA code (TOTP or backup); resolves the code, or null when cancelled. */
 export const askCode = (title: string, body: ReactNode, confirm: string) =>
   askText({ title, body, confirm, danger: true, label: t('Authentication or backup code') }).then((c) => c?.replace(/[\s-]/g, '') || null)
+
+/** 7.11: the statement of reasons for a moderation action (category, legal ground, explanation); null when cancelled. */
+export const askReasons = (title: string, confirm: string, body?: ReactNode, initial?: string) =>
+  askStatement({ title, confirm, body, initial, categories: DECISION_CATEGORIES.map(([k, label]) => [k, t(label)]) })

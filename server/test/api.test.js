@@ -15,16 +15,16 @@ const s = {}; // state shared by the sequential tests below
 
 test('register two users', async () => {
   for (const name of ['alice', 'bob']) {
-    const r = await api('POST', '/auth/register', null, { email: `${name}@example.com`, username: name, password: 'hunter2hunter2' });
+    const r = await api('POST', '/auth/register', null, { age_confirmed: true, email: `${name}@example.com`, username: name, password: 'hunter2hunter2' });
     assert.equal(r.status, 201);
     assert.match(r.body.token, /^[A-Za-z0-9_-]{43}$/);
     s[name] = { token: r.body.token };
   }
-  const dup = await api('POST', '/auth/register', null, { email: 'x@example.com', username: 'ALICE', password: 'hunter2hunter2' });
+  const dup = await api('POST', '/auth/register', null, { age_confirmed: true, email: 'x@example.com', username: 'ALICE', password: 'hunter2hunter2' });
   assert.equal(dup.status, 400);
   assert.equal(dup.body.code, 50035);
   assert.ok(dup.body.errors.username._errors[0].code);
-  const short = await api('POST', '/auth/register', null, { email: 'y@example.com', username: 'yy', password: 'short' });
+  const short = await api('POST', '/auth/register', null, { age_confirmed: true, email: 'y@example.com', username: 'yy', password: 'short' });
   assert.equal(short.status, 400);
   assert.ok(short.body.errors.password);
 });

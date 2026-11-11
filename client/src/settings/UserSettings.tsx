@@ -20,6 +20,7 @@ import { Sessions } from '../security/Sessions'
 import { KeybindSettings } from '../custom/KeybindSettings'
 import { SoundSettings } from '../custom/SoundSettings'
 import { WhatsNewPage } from '../whatsnew/WhatsNew'
+import { About } from '../legal/About'
 import { deviceZoom, setDeviceZoom } from '../appearance/apply'
 
 export function UserSettings({ tab: initial, onClose }: { tab?: string; onClose: () => void }) {
@@ -52,7 +53,7 @@ export function UserSettings({ tab: initial, onClose }: { tab?: string; onClose:
         { id: 'appearance', label: t('Appearance'), section: app }, { id: 'accessibility', label: t('Accessibility'), section: app }, { id: 'voice', label: t('Voice & Video'), section: app },
         { id: 'notifications', label: t('Notifications'), section: app }, { id: 'sounds', label: t('Sounds'), section: app }, { id: 'keybinds', label: t('Keybinds'), section: app },
         { id: 'language', label: t('Language'), section: app }, { id: 'advanced', label: t('Advanced'), section: app },
-        { id: 'whats-new', label: t("What's New"), section: app },
+        { id: 'whats-new', label: t("What's New"), section: app }, { id: 'about', label: t('About'), section: app },
       ]}
       tab={tab}
       setTab={setTab}
@@ -61,7 +62,7 @@ export function UserSettings({ tab: initial, onClose }: { tab?: string; onClose:
     >
       {{
         account: <><Account /><AccountSecurity /></>, profiles: <ProfileSettings />, connections: <ConnectionsSettings />, devices: <Sessions />, appearance: <Appearance />, accessibility: <Accessibility />,
-        voice: <VoiceVideo />, notifications: <NotificationPrefs />, sounds: <SoundSettings />, keybinds: <KeybindSettings />, language: <Language />, advanced: <Advanced />, 'whats-new': <WhatsNewPage />,
+        voice: <VoiceVideo />, notifications: <NotificationPrefs />, sounds: <SoundSettings />, keybinds: <KeybindSettings />, language: <Language />, advanced: <Advanced />, 'whats-new': <WhatsNewPage />, about: <About />,
       }[tab] ?? <Account />}
     </SettingsLayout>
   )

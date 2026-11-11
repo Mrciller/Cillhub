@@ -16,7 +16,7 @@ function totp(at = Date.now()) {
 test('Interactive Collaborative Whiteboard (Contract v10 §10)', async () => {
   const srv = await startServer();
   try {
-    const { token } = (await srv.api('POST', '/auth/register', null, {
+    const { token } = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'whiteboard@example.com',
       username: 'wbuser',
       password: 'password123',
@@ -58,7 +58,7 @@ test('Interactive Collaborative Whiteboard (Contract v10 §10)', async () => {
 test('Unsigned federation routes are gone; telemetry (Contract v10 §13)', async () => {
   const srv = await startServer();
   try {
-    const { token } = (await srv.api('POST', '/auth/register', null, {
+    const { token } = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
       email: 'fedadmin@example.com',
       username: 'fedadmin',
       password: 'password123',

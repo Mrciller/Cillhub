@@ -13,6 +13,8 @@ import { requireCaptcha } from '../captcha.js';
 import { endSessions } from './admin.js';
 import { localLoginOpen, configuredUrl } from '../federation.js';
 import { setupOpen } from './setup.js';
+import { checkSignUp, disabledInfo } from './legal.js';
+import { acceptVersion } from '../instance.js';
 
 // v6 registration modes: open, invite (an admin-issued registration_code is needed) or closed
 function registrationCode(body) {
@@ -32,6 +34,7 @@ async function register(ctx) {
   if (setupOpen()) throw new HttpError(403, 0, 'This instance is not set up yet.');
   if (!localLoginOpen()) throw hubOnlyLogin(); // v7: a connected node whose admin chose hub sign-in only
   if (setting('registration_mode') === 'closed') registrationCode({}); // says "closed" before asking for a captcha
+  checkSignUp(ctx.body); // 7.11: terms + privacy checkbox (when the operator published them) and the minimum age
   await requireCaptcha(ctx); // before the hash and before any answer about taken names
   registrationCode(ctx.body ?? {});
   const email = emailField(ctx.body);
@@ -44,7 +47,9 @@ async function register(ctx) {
   if (get('SELECT 1 FROM users WHERE username = ?', username)) throw invalid('username', 'USERNAME_ALREADY_TAKEN', 'Username is unavailable.');
   const code = registrationCode(ctx.body); // again after the await: a single-use code cannot be spent twice
   const id = snowflake();
-  run('INSERT INTO users (id, email, username, password_hash, salt) VALUES (?, ?, ?, ?, ?)', id, email, username, hash, salt);
+  const version = acceptVersion();
+  run('INSERT INTO users (id, email, username, password_hash, salt, terms_version, terms_accepted_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    id, email, username, hash, salt, version, version ? Date.now() : null);
   if (code) run('UPDATE registration_codes SET uses = uses + 1 WHERE code = ?', code);
   ctx.status = 201;
   return { token: issueToken(id) };
@@ -109,7 +114,13 @@ async function reset(ctx) {
 const loginSettings = userId => { const s = settingsOf(userId); return { locale: s.locale, theme: s.theme }; };
 // login response tail: settings, and required_actions (docs) when an admin asked for a new password
 const loginTail = user => ({ user_settings: loginSettings(user.id), ...(user.require_password_change && { required_actions: ['update_password'] }) });
-const disabled = () => new HttpError(400, 20013, 'This account has been disabled.');
+// 7.11 (DSA Art. 17): the reason, the ground and how to appeal, after the password was right
+const disabled = (user, req) => {
+  const e = new HttpError(400, 20013, 'This account has been disabled.');
+  const moderation = user && disabledInfo(user.id, req);
+  if (moderation) e.body.moderation = moderation;
+  return e;
+};
 
 // from the 3rd failure in a row an account+IP pair waits longer each time (1 s doubling to 60 s); 10 failures per account+IP or per IP in
 // 15 minutes lock that pair / that IP out (429 with retry_after), so a stranger cannot lock an account for everyone;
@@ -127,7 +138,7 @@ async function login(ctx) {
   const attempt = loginFailed(keys); // counted before the hash so parallel requests see each other; taken back on success
   if (!(await checkPassword(password, user))) throw unauthorized();
   loginSucceeded(keys, attempt);
-  if (user.disabled) throw disabled();
+  if (user.disabled) throw disabled(user, ctx.req);
   if (!localLoginOpen() && !user.instance_admin) throw hubOnlyLogin(); // admins keep local sign-in, so they cannot lock themselves out
   if (user.mfa_secret) {
     return { user_id: user.id, mfa: true, ticket: newTicket(user.id, 'login'), totp: true, backup: true, sms: false, webauthn: null };
@@ -138,7 +149,7 @@ async function login(ctx) {
 // /auth/mfa/totp and /auth/mfa/backup: the ticket from login plus a TOTP or backup code
 function mfaLogin(ctx) {
   const user = redeemTicket(str(ctx.body, 'ticket', 1, 200, false), 'login', str(ctx.body, 'code', 6, 16));
-  if (user.disabled) throw disabled();
+  if (user.disabled) throw disabled(user, ctx.req);
   return { token: issueToken(user.id), ...loginTail(user) };
 }
 

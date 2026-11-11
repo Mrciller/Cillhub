@@ -8,6 +8,7 @@ import * as A from './api'
 import type { InstanceSettings, Registration, SettingsPatch } from './api'
 import { useInstance } from './instance'
 import { askCode, useLoad, when } from './util'
+import { LegalSettings } from './LegalSettings'
 
 const MB = 1024 * 1024
 const MODES: [Registration, string, string][] = [
@@ -140,6 +141,7 @@ export function InstanceSettingsPage() {
         </div>
       </form>
       {(form.registration_mode === 'invite' || data?.registration_mode === 'invite') && <Codes />}
+      <LegalSettings />
     </>
   )
 }

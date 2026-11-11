@@ -13,6 +13,7 @@ import { startServer, guildWith, tempDir } from './helpers.js';
 process.env.DATA_DIR = await tempDir(); // instance.js (scrub) opens its own database in-process
 const { scrub } = await import('../src/instance.js');
 
+const why = { category: 'spam', reason: 'Spam links in several channels' };
 const SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
 function totp(at = Date.now()) {
   const key = Buffer.from([0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x21, 0xde, 0xad, 0xbe, 0xef, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x21, 0xde, 0xad, 0xbe, 0xef]); // = SECRET
@@ -35,7 +36,7 @@ const flag = id => { const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sql
 const mfa = () => ({ code: backup.shift() });
 
 // every /admin route the server has, read from its source so a new route cannot slip past these tests
-const ADMIN_ROUTES = [...readFileSync(new URL('../src/routes/admin.js', import.meta.url), 'utf8').matchAll(/\['(GET|POST|PUT|PATCH|DELETE)', '(\/admin[^']*)'/g)].map(m => [m[1], m[2]]);
+const ADMIN_ROUTES = [...['admin', 'legal'].map(f => readFileSync(new URL(`../src/routes/${f}.js`, import.meta.url), 'utf8')).join('\n').matchAll(/\['(GET|POST|PUT|PATCH|DELETE)', '(\/admin[^']*)'/g)].map(m => [m[1], m[2]]);
 
 before(async () => {
   srv = await startServer();
@@ -164,14 +165,14 @@ test('reports: user rules, then delete, timeout and ban from the dashboard', asy
   const gw = await srv.gateway(rowner.token);
   const resolve = body => api('POST', `/admin/reports/${r.id}/resolve`, root.token, body);
   assert.equal((await resolve({ action: 'explode' })).status, 400);
-  const del = await resolve({ action: 'delete_message', note: 'spam' });
+  const del = await resolve({ action: 'delete_message', note: 'spam', ...why });
   assert.deepEqual([del.status, del.body.status, del.body.message.exists, del.body.message.content], [200, 'resolved', false, 'buy cheap stuff']);
   assert.equal((await gw.event('MESSAGE_DELETE')).id, bad.id);
-  const timeout = await resolve({ action: 'timeout', duration_seconds: 600 });
+  const timeout = await resolve({ action: 'timeout', duration_seconds: 600, ...why });
   assert.equal(timeout.status, 200);
   const member = await gw.event('GUILD_MEMBER_UPDATE', d => d.user.id === rbad.id);
   assert.ok(Date.parse(member.communication_disabled_until) > Date.now());
-  assert.equal((await resolve({ action: 'ban' })).status, 200);
+  assert.equal((await resolve({ action: 'ban', ...why })).status, 200);
   assert.equal((await gw.event('GUILD_MEMBER_REMOVE')).user.id, rbad.id);
   const bans = (await api('GET', `/guilds/${g.guild.id}/bans`, rowner.token)).body;
   assert.deepEqual(bans.map(b => b.user.id), [rbad.id]);
@@ -184,7 +185,7 @@ test('reports: user rules, then delete, timeout and ban from the dashboard', asy
   const own = (await api('POST', `/channels/${g.general.id}/messages`, rowner.token, { content: 'owner msg' })).body;
   await api('POST', `/channels/${g.general.id}/messages/${own.id}/report`, rmember.token, { reason: 'other' });
   const r2 = (await api('GET', '/admin/reports', root.token)).body.find(x => x.message.id === own.id);
-  assert.equal((await api('POST', `/admin/reports/${r2.id}/resolve`, root.token, { action: 'kick' })).status, 400);
+  assert.equal((await api('POST', `/admin/reports/${r2.id}/resolve`, root.token, { action: 'kick', ...why })).status, 400);
   assert.equal((await api('POST', `/admin/reports/${r2.id}/resolve`, root.token, { action: 'dismiss' })).body.status, 'resolved');
 });
 
@@ -192,7 +193,7 @@ test('registration modes: closed, invite-only with admin codes, open; public ins
   const watcher = await srv.register('watcher');
   const gw = await srv.gateway(watcher.token);
   assert.equal(gw.ready.instance.registration_mode, 'open');
-  const reg = (name, extra = {}) => api('POST', '/auth/register', null, { email: `${name}@example.com`, username: name, password: 'hunter2hunter2', ...extra });
+  const reg = (name, extra = {}) => api('POST', '/auth/register', null, { age_confirmed: true, email: `${name}@example.com`, username: name, password: 'hunter2hunter2', ...extra });
   assert.equal((await api('PATCH', '/admin/settings', root.token, { registration_mode: 'sometimes' })).status, 400);
   assert.equal((await api('PATCH', '/admin/settings', root.token, { registration_mode: 'closed', instance_name: 'Nightfall', motd: 'Scrims at 8' })).status, 200);
   const upd = await gw.event('INSTANCE_SETTINGS_UPDATE');
@@ -219,7 +220,7 @@ test('disable closes sessions and blocks login; force logout; reset 2FA; require
   const v = await srv.register('victim');
   const gw = await srv.gateway(v.token);
   assert.equal((await api('POST', `/admin/users/${root.id}/disable`, root.token, {})).status, 400, 'admins cannot act on admins');
-  const dis = await api('POST', `/admin/users/${v.id}/disable`, root.token, {});
+  const dis = await api('POST', `/admin/users/${v.id}/disable`, root.token, why);
   assert.deepEqual([dis.status, dis.body.disabled], [200, true]);
   assert.equal(await gw.closed, 4004);
   assert.equal((await api('GET', '/users/@me', v.token)).status, 401);
@@ -293,7 +294,7 @@ test('servers: list and detail without messages, invites disabled, transfer and 
   assert.equal((await api('POST', `/admin/guilds/${g.guild.id}/transfer`, root.token, { owner_id: root.id, ...mfa() })).status, 400, 'members only');
   assert.equal((await api('POST', `/admin/guilds/${g.guild.id}/transfer`, root.token, { owner_id: smember.id, ...mfa() })).body.owner.id, smember.id);
   assert.equal((await api('DELETE', `/admin/guilds/${g.guild.id}`, root.token, { confirm: 'nope', ...mfa() })).status, 400);
-  assert.equal((await api('DELETE', `/admin/guilds/${g.guild.id}`, root.token, { confirm: 'Test Guild', ...mfa() })).status, 204);
+  assert.equal((await api('DELETE', `/admin/guilds/${g.guild.id}`, root.token, { confirm: 'Test Guild', ...why, ...mfa() })).status, 204);
   assert.equal((await gw.event('GUILD_DELETE')).id, g.guild.id);
   assert.equal((await api('GET', `/guilds/${g.guild.id}`, smember.token)).status, 404);
 });

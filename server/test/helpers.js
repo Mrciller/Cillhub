@@ -100,7 +100,7 @@ export async function startServer({ env = {}, dataDir } = {}) {
   }
 
   async function register(name) {
-    const r = await api('POST', '/auth/register', null, { email: `${name}@example.com`, username: name, password: 'hunter2hunter2' });
+    const r = await api('POST', '/auth/register', null, { age_confirmed: true, terms_accepted: true, email: `${name}@example.com`, username: name, password: 'hunter2hunter2' });
     assert.equal(r.status, 201);
     const me = await api('GET', '/users/@me', r.body.token);
     return { token: r.body.token, id: me.body.id, name };

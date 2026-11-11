@@ -11,6 +11,7 @@ import { Link, navigate } from '../router'
 import { useStore } from '../store'
 import { categories, FALLBACK_CATEGORIES, joinListed, LANGUAGES, report, search, type Category, type Listing } from './api'
 import './directory.css'
+import { LegalLinks } from '../legal/LegalPages'
 
 export function Directory() {
   const [cats, setCats] = useState<Category[]>(FALLBACK_CATEGORIES)
@@ -61,6 +62,7 @@ export function Directory() {
         </ul>
         {list && list.length < total && <button className="secondary" onClick={() => void load(list.length)}>{t('Load more')}</button>}
         {list?.length === 0 && <p className="hint">{t('No servers match. Try another search or category.')}</p>}
+        <LegalLinks />
       </main>
       <DialogHost />
     </div>

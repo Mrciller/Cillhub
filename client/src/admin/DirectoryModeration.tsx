@@ -1,12 +1,12 @@
 // Hub: directory moderation (CONTRACT-v7 §5/§6). Listed servers (hub and node), user reports about them, hide/unhide, dismiss reports.
 import { useState } from 'react'
 import { cdn } from '../api'
-import { askText, toast, toastError } from '../components/dialogs'
+import { toast, toastError } from '../components/dialogs'
 import { cls, FormError, initials } from '../components/ui'
 import { t } from '../i18n'
 import * as A from './api'
 import { SearchBox, useSearch } from './Users'
-import { num, useLoad, when } from './util'
+import { askReasons, num, useLoad, when } from './util'
 
 const FILTERS = [['all', 'All listings'], ['reported', 'Reported'], ['hidden', 'Hidden']] as const
 
@@ -14,8 +14,8 @@ export function DirectoryModeration() {
   const [text, query, setText] = useSearch()
   const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>('reported')
   const { data, error, reload } = useLoad(() => A.listDirectory(query, filter), [query, filter])
-  const hide = (e: A.DirectoryEntry) => void askText({ title: t('Hide {name} from the directory?', { name: e.guild.name }), label: t('Reason (the server owner sees it)'), confirm: t('Hide'), danger: true })
-    .then((reason) => void (reason !== null && A.setListingHidden(e.guild.id, true, reason).then(() => (toast(t('Hidden from the directory.')), void reload()), toastError)))
+  const hide = (e: A.DirectoryEntry) => void askReasons(t('Hide {name} from the directory?', { name: e.guild.name }), t('Hide'))
+    .then((why) => void (why && A.setListingHidden(e.guild.id, true, why).then(() => (toast(t('Hidden from the directory.')), void reload()), toastError)))
   const show = (e: A.DirectoryEntry) => void A.setListingHidden(e.guild.id, false).then(() => (toast(t('Listed again.')), void reload()), toastError)
   const dismiss = (e: A.DirectoryEntry) => void A.dismissListingReports(e.guild.id).then(() => (toast(t('Reports dismissed.')), void reload()), toastError)
   return (

@@ -9,7 +9,7 @@ import { startServer, guildWith } from './helpers.js';
 let srv, api;
 const from = ip => ({ 'X-Forwarded-For': ip }); // the test client is a trusted proxy (loopback), so this is the client address
 const reg = (name, ip, email = `${name}@example.com`) =>
-  api('POST', '/auth/register', null, { email, username: name, password: 'hunter2hunter2' }, from(ip));
+  api('POST', '/auth/register', null, { age_confirmed: true, email, username: name, password: 'hunter2hunter2' }, from(ip));
 const dbRun = (sql, ...args) => { const db = new DatabaseSync(join(srv.dataDir, 'cillcord.sqlite')); try { return db.prepare(sql).run(...args); } finally { db.close(); } };
 
 before(async () => {

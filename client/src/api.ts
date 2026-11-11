@@ -85,6 +85,8 @@ export class ApiError extends Error {
   retryAfter: number
   /** The elevation ticket of a 401 60003 answer (trade it with a code at POST /mfa/finish). */
   ticket?: string
+  /** The whole answer body (e.g. `moderation` on a disabled login). */
+  body: Record<string, unknown> | null
   constructor(status: number, body: { code?: number; message?: string; errors?: FieldErrors; retry_after?: number; mfa?: { ticket?: string } } | null) {
     // Show the field's reason instead of the bare "Invalid Form Body".
     super((body?.code === 50035 && firstFieldError(body.errors)) || body?.message || (status ? t('Request failed ({status})', { status }) : t("Can't reach the server.")))
@@ -93,6 +95,7 @@ export class ApiError extends Error {
     this.errors = body?.errors ?? {}
     this.retryAfter = body?.retry_after ?? 0
     this.ticket = body?.mfa?.ticket
+    this.body = body as Record<string, unknown> | null
   }
 }
 

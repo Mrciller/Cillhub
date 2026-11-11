@@ -157,7 +157,8 @@ function newLinkedAccount(claims) {
   let name = base.length >= 2 ? base : `${base}_hub`;
   for (let i = 2; get('SELECT 1 FROM users WHERE username = ?', name); i++) name = `${base}_${i}`;
   const id = snowflake();
-  run(`INSERT INTO users (id, email, username, password_hash, salt, home, hub_user_id) VALUES (?, ?, ?, ?, ?, 'hub', ?)`,
+  // legal_pending: this node's own terms and minimum age are asked on first use (the hub's sign-up asked the hub's)
+  run(`INSERT INTO users (id, email, username, password_hash, salt, home, hub_user_id, legal_pending) VALUES (?, ?, ?, ?, ?, 'hub', ?, 1)`,
     id, `hub-${claims.sub}@hub.invalid`, name, randomBytes(64).toString('hex'), randomBytes(16).toString('hex'), claims.sub);
   return userById(id);
 }

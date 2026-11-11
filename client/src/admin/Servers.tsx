@@ -7,7 +7,7 @@ import { t } from '../i18n'
 import { ACTIONS } from '../settings/AuditLog'
 import * as A from './api'
 import { SearchBox, usePaged, useSearch } from './Users'
-import { askCode, bytes, num, useLoad, when } from './util'
+import { askCode, askReasons, bytes, num, useLoad, when } from './util'
 
 const TYPES: Record<number, string> = { 0: 'Text', 2: 'Voice', 4: 'Category', 5: 'Announcement', 13: 'Stage', 15: 'Forum' }
 
@@ -61,8 +61,8 @@ function ServerDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
     .then((typed) => {
       if (typed === null) return
       if (typed.trim() !== g!.name) return void toast(t('The name did not match. Nothing was deleted.'))
-      return askCode(t('Delete {name}?', { name: g!.name }), <p>{t('Confirm with your own two-factor code.')}</p>, t('Delete Server')).then((code) =>
-        void (code && A.deleteGuild(id, typed.trim(), code).then(() => (toast(t('Server deleted.')), onChanged(), onClose()), toastError)))
+      return askReasons(t('Delete {name}?', { name: g!.name }), t('Continue')).then((why) => why && askCode(t('Delete {name}?', { name: g!.name }), <p>{t('Confirm with your own two-factor code.')}</p>, t('Delete Server')).then((code) =>
+        void (code && A.deleteGuild(id, typed.trim(), code, why).then(() => (toast(t('Server deleted.')), onChanged(), onClose()), toastError))))
     })
 
   return (

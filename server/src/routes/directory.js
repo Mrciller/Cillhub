@@ -13,6 +13,7 @@ import { REPORT_REASONS } from './admin.js';
 import { hubOnly, clean, listingInput, nodePublic, CATEGORIES, rememberedHide, rememberHide, forgetHide } from './hub.js';
 import { loadGuild } from './guilds.js';
 import { addToGuild } from './invites.js';
+import { decide, statement } from './legal.js';
 
 const iso = ms => (ms ? new Date(ms).toISOString() : null);
 const CATEGORY_NAMES = { esports: 'Esports', gaming: 'Gaming', community: 'Community', music: 'Music', education: 'Education', tech: 'Science & Tech', art: 'Art', entertainment: 'Entertainment', other: 'Other' };
@@ -172,11 +173,14 @@ function setHidden(ctx) {
   const d = loadEntry(ctx.params.guild_id);
   if (typeof ctx.body?.hidden !== 'boolean') throw invalid('hidden', 'BASE_TYPE_BOOLEAN', 'Must be a boolean.');
   const hidden = ctx.body.hidden;
-  const reason = hidden ? clean(ctx.body.reason, 200) || null : null;
+  const s = hidden ? statement(ctx.body) : null; // DSA Art. 17: the owner learns why (hub servers: by DM)
+  const reason = hidden ? s.reason.slice(0, 200) : null;
   run('UPDATE directory_entries SET hidden = ?, hidden_reason = ? WHERE id = ?', Number(hidden), reason, d.id);
   if (hidden) rememberHide(d.node_id, d.guild_id, reason);
   else forgetHide(d.node_id, d.guild_id);
   if (hidden) run(`UPDATE directory_reports SET status = 'resolved', action = 'hide', resolved_by = ?, resolved_at = ? WHERE entry_id = ? AND status = 'open'`, ctx.user.id, Date.now(), d.id);
+  const owner = hidden && !d.node_id && get('SELECT owner_id FROM guilds WHERE id = ?', d.guild_id)?.owner_id;
+  if (hidden) decide(ctx, { userId: owner || null, action: 'hide_listing', ...s, target: { guild_id: d.guild_id, node_id: d.node_id || null, name: d.name } });
   ctx.audit = { action: hidden ? 'directory.hide' : 'directory.unhide', target_type: 'directory_entry', target_id: d.id, details: { guild_id: d.guild_id, node_id: d.node_id || null, reason: ctx.body.reason ?? null } };
   return adminEntry(loadEntry(d.guild_id));
 }

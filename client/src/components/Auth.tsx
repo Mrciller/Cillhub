@@ -7,6 +7,8 @@ import { Field, FormError } from './ui'
 import { Captcha } from './Captcha'
 import { useInstance, reloadInstance } from '../admin/instance'
 import { signInHere } from '../instances/nodes'
+import { DecisionView, LegalLinks, SignUpChecks } from '../legal/LegalPages'
+import type { Decision } from '../legal/api'
 
 type Mfa = { ticket: string; totp?: boolean; backup?: boolean }
 type LoginAnswer = { token: string; required_actions?: string[] }
@@ -99,6 +101,8 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
     </div>
   ) : <Captcha key={captchaRound} sitekey={sitekey} onToken={setCaptchaKey} />)
   const withCaptcha = (body: Record<string, unknown>) => (captchaKey ? { ...body, captcha_key: captchaKey } : body)
+  // 7.11: a disabled account sees why, on which ground, and where to appeal (DSA Art. 17)
+  const moderation = error?.body?.moderation as (Decision & { appeal_url: string | null; appeal_status: string | null; appeal_decision: string | null }) | undefined
   const message = wait ? t('Too many attempts. Try again in {n} seconds.', { n: wait }) : error && Object.keys(error.errors).length === 0 ? error.message : ''
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -106,7 +110,9 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
     setBusy(true)
     setError(null)
     try {
-      const r = await api<Partial<LoginAnswer> & { mfa?: boolean; ticket?: string; totp?: boolean; backup?: boolean }>(`/auth/${mode}`, { method: 'POST', body: withCaptcha(Object.fromEntries(new FormData(e.currentTarget))) })
+      const form: Record<string, unknown> = Object.fromEntries(new FormData(e.currentTarget))
+      for (const k of ['terms_accepted', 'age_confirmed']) if (k in form) form[k] = true // checked boxes; the server wants booleans
+      const r = await api<Partial<LoginAnswer> & { mfa?: boolean; ticket?: string; totp?: boolean; backup?: boolean }>(`/auth/${mode}`, { method: 'POST', body: withCaptcha(form) })
       // User docs: with 2FA the login answers { mfa: true, ticket } and the code goes to /auth/mfa/totp.
       if (r.mfa && r.ticket) return setMfa({ ticket: r.ticket, totp: r.totp, backup: r.backup }), setBusy(false)
       if (r.token) finish(r as LoginAnswer)
@@ -384,11 +390,20 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
           {!login && instance?.registration_mode === 'invite' && (
             <Field label={t('Registration code')} name="registration_code" autoComplete="off" required maxLength={64} error={fieldError('registration_code')} />
           )}
+          {!login && !closed && <SignUpChecks />}
           {!login && !closed && captcha}
           {login && instance?.password_reset && (
             <p className="switch"><button type="button" className="link" onClick={() => (setForgot('form'), setError(null))}>{t('Forgot password?')}</button></p>
           )}
           <FormError error={message} />
+          {moderation && (
+            <div className="legal-moderation" role="note">
+              <DecisionView d={moderation} />
+              {moderation.appeal_url
+                ? <a href={moderation.appeal_url}>{t('Appeal this decision')}</a>
+                : moderation.appeal_status && <p>{moderation.appeal_status === 'open' ? t('Your appeal is under review.') : moderation.appeal_decision}</p>}
+            </div>
+          )}
           <button className="primary wide" disabled={busy || wait > 0 || closed || (!login && !!sitekey && !captchaKey)}>{login ? t('Log In') : t('Continue')}</button>
           {login && (
             <button type="button" className="secondary wide" style={{ marginTop: '0.5rem' }} disabled={busy || wait > 0} onClick={() => void passkeySignIn()}>
@@ -406,6 +421,7 @@ export function Auth({ mode }: { mode: 'login' | 'register' }) {
           </p>
         </form>
       </main>
+      <LegalLinks />
     </div>
   )
 }

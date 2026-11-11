@@ -5,7 +5,7 @@ import { FormError, Modal } from '../components/ui'
 import { t } from '../i18n'
 import * as A from './api'
 import type { AdminUser } from './api'
-import { askCode, num, useLoad, when } from './util'
+import { askCode, askReasons, num, useLoad, when } from './util'
 
 /** Debounced search text. */
 export function useSearch(): [string, string, (v: string) => void] {
@@ -110,7 +110,7 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
           {u.instance_admin ? <p className="hint">{t('Admin actions are not available for instance administrators. Revoke admin rights with the admin CLI first.')}</p> : !u.deleted && (
             <div className="admin-actions" role="group" aria-label={t('Account actions')}>
               {u.disabled ? <button className="primary admin-btn" onClick={() => void run(A.enableUser(id), t('Account enabled.'))}>{t('Enable Account')}</button>
-                : <button className="danger-btn" onClick={() => confirm(t('Disable {name}?', { name }), t('{name} can no longer log in and all their sessions are closed. You can enable the account again later.', { name }), t('Disable Account'), () => A.disableUser(id), t('Account disabled.'))}>{t('Disable Account')}</button>}
+                : <button className="danger-btn" onClick={() => void askReasons(t('Disable {name}?', { name }), t('Disable Account'), <p>{t('{name} can no longer log in and all their sessions are closed. You can enable the account again later.', { name })}</p>).then((why) => why && run(A.disableUser(id, why), t('Account disabled.')))}>{t('Disable Account')}</button>}
               <button className="secondary admin-btn" onClick={() => confirm(t('Log out everywhere?'), t('All of {name}’s sessions and devices are logged out.', { name }), t('Log Out Everywhere'), () => A.logoutUser(id), t('Sessions closed.'))}>{t('Force Logout')}</button>
               {u.mfa_enabled && <button className="secondary admin-btn" onClick={resetMfa}>{t('Reset 2FA')}</button>}
               {!u.require_password_change && <button className="secondary admin-btn" onClick={() => confirm(t('Require a new password?'), t('{name} must choose a new password at the next login.', { name }), t('Require Password Change'), () => A.requirePasswordChange(id), t('Password change required.'))}>{t('Require Password Change')}</button>}

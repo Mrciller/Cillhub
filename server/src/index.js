@@ -15,7 +15,7 @@ import { isProxyPath, serveExternal } from './proxy.js';
 import { isEphemeralPath, serveEphemeral } from './interactions.js';
 import { startTimers } from './timers.js';
 import { parseMultipart } from './multipart.js';
-import { publicInstance, maxUpload, setting, captchaOn } from './instance.js';
+import { publicInstance, maxUpload, setting, captchaOn, legalGate } from './instance.js';
 import { configuredBackends, defaultBackend } from './voice.js';
 import { requireAdmin, auditAdminRequest } from './routes/admin.js';
 import auth from './routes/auth.js';
@@ -74,6 +74,7 @@ import savedFolders from './routes/savedFolders.js';
 import connections from './routes/connections.js';
 import { startModules } from './modules/registry.js';
 import setup, { setupOpen } from './routes/setup.js';
+import legal from './routes/legal.js';
 import { originOf, wellKnownCillcord, fedState, startHeartbeat, corsOrigin, publicUrl, ROLE, isHub, mode, HUB_URL, answerSignature, tlsAllowed } from './federation.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -176,7 +177,7 @@ const routes = [
     return { ok: true };
   }, { open: true }],
   ['GET', '/policies/instance', spacebarPolicies, { open: true }], ['GET', '/policies/instance/domains', spacebarDomains, { open: true }],
-  ...setup, ...hub, ...node, ...directory, ...admin, ...modules, ...canvas, ...onboarding, ...guide, ...analytics, ...webauthn, ...customization, ...templates, ...watch, ...later, ...savedFolders, ...connections, ...cillbot,
+  ...setup, ...legal, ...hub, ...node, ...directory, ...admin, ...modules, ...canvas, ...onboarding, ...guide, ...analytics, ...webauthn, ...customization, ...templates, ...watch, ...later, ...savedFolders, ...connections, ...cillbot,
   ...auth, ...account, ...relationships, ...profiles, ...settings, ...inbox, ...push, ...users, ...guilds, ...roles, ...community,
   ...members, ...bans, ...groups, ...channels, ...reads, ...search, ...messages, ...threads, ...reactions, ...pins, ...polls, ...invites,
   ...emojis, ...stickers, ...soundboard, ...interactions, ...webhooks, ...stage, ...events, ...automod, ...auditlog, ...gifs, ...snippets,
@@ -186,6 +187,8 @@ const API_PREFIX = /^\/api(\/v\d+)?(?=\/)/; // /api/v9 (the client), /api/v10 (b
 
 // while an admin requires a new password, only these work (plus the gateway): change it, read yourself, log out
 const PASSWORD_CHANGE_ROUTES = new Set(['GET /users/@me', 'PATCH /users/@me', 'POST /mfa/finish', 'POST /auth/logout', 'GET /instance']); // mfa/finish: the 2FA step-up of that change
+
+const LEGAL_GATE_ROUTES = new Set(['GET /users/@me', 'POST /auth/logout', 'GET /instance', 'GET /users/@me/settings']);
 
 const tooLarge = () => new HttpError(413, 0, 'Request entity too large');
 
@@ -231,6 +234,12 @@ async function api(req, url, headers) {
       if (ctx.user.require_password_change && !PASSWORD_CHANGE_ROUTES.has(`${route.method} ${route.pattern}`)) {
         const e = new HttpError(403, 0, 'You must change your password before continuing.');
         e.body.required_actions = ['update_password'];
+        throw e;
+      }
+      // 7.11: new terms with re-acceptance, or an account made without the sign-up checks: accept first (or log out)
+      if (legalGate(ctx.user) && !route.pattern.startsWith('/legal/') && !LEGAL_GATE_ROUTES.has(`${route.method} ${route.pattern}`)) {
+        const e = new HttpError(403, 0, 'Accept the terms of use to continue.');
+        e.body.required_actions = ['accept_terms'];
         throw e;
       }
     }
