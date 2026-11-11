@@ -478,17 +478,8 @@ impl CillhubApp {
                                 });
                             }
                             SettingsTab::Desktop => {
-                                ui.heading("Desktop Shell & Ed25519 Auto-Updater");
+                                ui.heading("Desktop");
                                 ui.add_space(6.0);
-                                if ui
-                                    .checkbox(
-                                        &mut self.settings.close_to_tray,
-                                        "Minimize to System Tray on Close",
-                                    )
-                                    .changed()
-                                {
-                                    report(&mut self.status_banner, self.settings.save());
-                                }
                                 if ui
                                     .checkbox(
                                         &mut self.settings.open_on_startup,
