@@ -35,6 +35,7 @@ export function Captcha({ sitekey, onToken }: { sitekey: string; onToken: (token
   return (
     <div className="field">
       <div ref={box} />
+      <p className="hint small">{t('This check is Google reCAPTCHA: Google receives your IP address and browser data.')}</p>
       {failed && <p className="form-error" role="alert">{t('The captcha could not be loaded. Check your connection and reload the page.')}</p>}
     </div>
   )

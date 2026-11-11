@@ -31,3 +31,5 @@ p.watch-overlay { background: var(--menu); padding: 8px 12px; border-radius: var
 .watch-audio { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .watch-volume { width: min(180px, 40%); accent-color: var(--accent); }
 .watch-duck .input { padding: 4px 8px; }
+.watch-consent { display: grid; place-content: center; gap: 12px; padding: 20px; text-align: center; color: var(--text); }
+.watch-consent .modal-actions { justify-content: center; }

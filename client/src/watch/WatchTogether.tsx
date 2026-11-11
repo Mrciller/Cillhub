@@ -1,5 +1,5 @@
 // Watch Together panel in the voice view (CONTRACT-v5 section 1): link entry, synced YouTube player, queue, host controls.
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react'
 import { fetchWatch, patchWatch, startWatch, stopWatch, type WatchAction } from '../actions'
 import { ask, toastError } from '../components/dialogs'
 import { cls, FormError, Icon, ICONS } from '../components/ui'
@@ -129,6 +129,25 @@ function Player({ session, host, audio, onPosition }: { session: WatchSession; h
   )
 }
 
+// 7.11: the YouTube player is third-party content; it loads only after a click, remembered on this device
+const CONSENT_KEY = 'watch-youtube-ok'
+const consented = () => { try { return localStorage.getItem(CONSENT_KEY) === '1' } catch { return false } }
+function YouTubeConsent({ children }: { children: ReactNode }) {
+  const [ok, setOk] = useState(consented)
+  const [later, setLater] = useState(false)
+  if (ok) return <>{children}</>
+  const load = () => { try { localStorage.setItem(CONSENT_KEY, '1') } catch { /* private mode: ask again next time */ } setOk(true) }
+  return (
+    <div className="watch-player watch-consent" role="group" aria-label={t('YouTube player')}>
+      <p>{later ? t('The YouTube player is not loaded.') : t('This loads the video player from YouTube. Your IP address and browser data go to Google.')}</p>
+      <div className="modal-actions">
+        {!later && <button className="secondary" onClick={() => setLater(true)}>{t('Cancel')}</button>}
+        <button className="primary" onClick={load}>{t('Load player')}</button>
+      </div>
+    </div>
+  )
+}
+
 /** Loudness for this device: mute, volume, and lowering the video while people talk. */
 function AudioControls({ audio, onChange }: { audio: WatchAudio; onChange: (a: WatchAudio) => void }) {
   const set = (patch: Partial<WatchAudio>) => onChange({ ...audio, ...patch })
@@ -211,7 +230,7 @@ export function WatchPanel({ channel, onClose }: { channel: Channel; onClose: ()
         {manage && <button className="danger-btn small-btn" onClick={stop}>{t('Stop')}</button>}
         {!session && <button className="icon-btn" aria-label={t('Close Watch Together')} onClick={onClose}><Icon d={ICONS.close} size={18} /></button>}
       </header>
-      {session && cur && <Player key={session.channel_id} session={session} host={session.host_id === meId} audio={audio} onPosition={(at, duration) => setPos({ at, duration })} />}
+      {session && cur && <YouTubeConsent><Player key={session.channel_id} session={session} host={session.host_id === meId} audio={audio} onPosition={(at, duration) => setPos({ at, duration })} /></YouTubeConsent>}
       {session && !cur && <p className="hint watch-empty">{t('The queue is empty. Add a video to keep watching.')}</p>}
       {session && cur && (
         <div className="watch-controls" role="group" aria-label={t('Playback controls')}>
