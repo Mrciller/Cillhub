@@ -32,10 +32,10 @@ impl CillhubApp {
 
         // 1. `.chat-header` (Chat.tsx): 44px, padding 0 14px, title left, topic after a rule
         //    (cut to fit), the web's buttons right: threads, pins, canvas, members, search, inbox.
-        let header_bg = BG_CHAT.lerp_to_gamma(BG_SIDEBAR, 0.06);
+        let header_bg = BG_CHAT().lerp_to_gamma(BG_SIDEBAR(), 0.06);
         let (hdr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::hover());
         ui.painter().rect_filled(hdr, 0.0, header_bg);
-        ui.painter().hline(hdr.x_range(), hdr.max.y - 0.5, Stroke::new(1.0_f32, BORDER));
+        ui.painter().hline(hdr.x_range(), hdr.max.y - 0.5, Stroke::new(1.0_f32, BORDER()));
         let in_guild = channel.guild_id.is_some();
         let text_like = matches!(channel.kind, 0 | 5);
         let n_btns = 2 + usize::from(text_like) + usize::from(in_guild) + 1; // pins, canvas, threads, members, inbox
@@ -52,25 +52,25 @@ impl CillhubApp {
             match ch_icon {
                 IconKind::Hash => {
                     let hash = if matches!(channel.kind, 1 | 3) { "@" } else { "#" };
-                    ui.label(RichText::new(hash).font(ui_font(20.0)).color(TEXT_MUTED));
+                    ui.label(RichText::new(hash).font(ui_font(20.0)).color(TEXT_MUTED()));
                 }
                 k => {
                     let (r, _) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::hover());
-                    draw_icon(ui.painter(), r, k, OFFLINE);
+                    draw_icon(ui.painter(), r, k, OFFLINE());
                 }
             }
             let max_title = ui.available_width() * 0.5;
             ui.allocate_ui(Vec2::new(max_title, 44.0), |ui| {
                 ui.add(
-                    egui::Label::new(RichText::new(ch_name.to_uppercase()).font(display_font(20.0)).color(TEXT_HEADER))
+                    egui::Label::new(RichText::new(ch_name.to_uppercase()).font(display_font(20.0)).color(TEXT_HEADER()))
                         .truncate(),
                 )
             });
             if let Some(topic) = channel.topic.as_deref().filter(|s| !s.is_empty()) {
                 ui.add_space(0.0);
                 let (div_r, _) = ui.allocate_exact_size(Vec2::new(1.0, 20.0), Sense::hover());
-                ui.painter().vline(div_r.center().x, div_r.y_range(), Stroke::new(1.0_f32, BORDER));
-                ui.add(egui::Label::new(RichText::new(topic.replace('\n', " ")).font(ui_font(13.0)).color(TEXT_MUTED)).truncate());
+                ui.painter().vline(div_r.center().x, div_r.y_range(), Stroke::new(1.0_f32, BORDER()));
+                ui.add(egui::Label::new(RichText::new(topic.replace('\n', " ")).font(ui_font(13.0)).color(TEXT_MUTED())).truncate());
             }
         });
         hui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -83,19 +83,19 @@ impl CillhubApp {
             let (sr, _) = ui.allocate_exact_size(Vec2::new(168.0, 30.0), Sense::hover());
             let sid = ui.id().with("header_search");
             let focused = ui.memory(|m| m.has_focus(sid));
-            ui.painter().rect(sr, CornerRadius::same(2), BG_RAIL, Stroke::new(1.0_f32, if focused { FOCUS } else { BORDER }), egui::StrokeKind::Inside);
+            ui.painter().rect(sr, CornerRadius::same(2), BG_RAIL(), Stroke::new(1.0_f32, if focused { FOCUS() } else { BORDER() }), egui::StrokeKind::Inside);
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sr.min + Vec2::new(10.0, 7.0), sr.max - Vec2::new(28.0, 6.0))));
             let resp = child.add(
                 TextEdit::singleline(&mut self.search_query)
                     .id(sid)
                     .font(ui_font(13.5))
-                    .text_color(TEXT)
-                    .hint_text(RichText::new(tr("Search")).font(ui_font(13.5)).color(TEXT_MUTED))
+                    .text_color(TEXT())
+                    .hint_text(RichText::new(tr("Search")).font(ui_font(13.5)).color(TEXT_MUTED()))
                     .frame(false)
                     .margin(Margin::ZERO)
                     .desired_width(sr.width() - 38.0),
             );
-            draw_icon(ui.painter(), Rect::from_center_size(Pos2::new(sr.max.x - 14.0, sr.center().y), Vec2::splat(16.0)), IconKind::Search, TEXT_MUTED);
+            draw_icon(ui.painter(), Rect::from_center_size(Pos2::new(sr.max.x - 14.0, sr.center().y), Vec2::splat(16.0)), IconKind::Search, TEXT_MUTED());
             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !self.search_query.trim().is_empty() {
                 self.active_drawer = Some(DrawerKind::Search);
                 self.run_search();
@@ -148,14 +148,14 @@ impl CillhubApp {
                 format!("In this channel: {}", here.join(", "))
             };
             Frame::new()
-                .fill(BG_PANEL)
+                .fill(BG_PANEL())
                 .inner_margin(Margin::symmetric(16, 10))
                 .show(ui, |ui| {
-                    ui.label(RichText::new(who).font(bold_font(13.0)).color(TEXT_HEADER));
+                    ui.label(RichText::new(who).font(bold_font(13.0)).color(TEXT_HEADER()));
                     ui.label(
                         RichText::new(super::VOICE_UNAVAILABLE)
                             .font(ui_font(12.5))
-                            .color(TEXT_MUTED),
+                            .color(TEXT_MUTED()),
                     );
                 });
         }
@@ -164,7 +164,7 @@ impl CillhubApp {
         egui::TopBottomPanel::bottom("chat_composer_panel")
             .frame(
                 Frame::new()
-                    .fill(BG_CHAT)
+                    .fill(BG_CHAT())
                     .inner_margin(Margin { left: 16, right: 16, top: 0, bottom: 24 }),
             )
             .show_inside(ui, |ui| {
@@ -186,7 +186,7 @@ impl CillhubApp {
             .unwrap_or_default();
 
         Frame::new()
-            .fill(BG_CHAT)
+            .fill(BG_CHAT())
             .inner_margin(Margin::symmetric(0, 8))
             .show(ui, |ui| {
                 ScrollArea::vertical()
@@ -200,11 +200,11 @@ impl CillhubApp {
                             .show(ui, |ui| {
                                 show_notched_card(
                                     ui,
-                                    BG_SIDEBAR,
-                                    BORDER,
+                                    BG_SIDEBAR(),
+                                    BORDER(),
                                     10.0,
                                     None,
-                                    Some(ACCENT),
+                                    Some(ACCENT()),
                                     Margin::symmetric(20, 16),
                                     |ui| {
                                         ui.set_width(ui.available_width());
@@ -220,7 +220,7 @@ impl CillhubApp {
                                                     ch_name.to_uppercase()
                                                 ))
                                                 .font(display_font(30.0))
-                                                .color(TEXT_HEADER),
+                                                .color(TEXT_HEADER()),
                                             );
                                             if !messages.is_empty() {
                                                 ui.with_layout(
@@ -230,7 +230,7 @@ impl CillhubApp {
                                                             .button(
                                                                 RichText::new("Load older")
                                                                     .font(ui_font(12.0))
-                                                                    .color(INTERACTIVE),
+                                                                    .color(INTERACTIVE()),
                                                             )
                                                             .clicked()
                                                         {
@@ -253,7 +253,7 @@ impl CillhubApp {
                                         ui.label(
                                             RichText::new(sub)
                                                 .font(ui_font(14.0))
-                                                .color(TEXT_MUTED),
+                                                .color(TEXT_MUTED()),
                                         );
                                     },
                                 );
@@ -279,34 +279,34 @@ impl CillhubApp {
     fn render_stage_banner(&mut self, ui: &mut Ui, channel: &Channel) {
         let stage = self.state.stage_instances.get(&channel.id).cloned();
         Frame::new()
-            .fill(BG_PANEL)
-            .stroke(Stroke::new(1.0_f32, ACCENT))
+            .fill(BG_PANEL())
+            .stroke(Stroke::new(1.0_f32, ACCENT()))
             .inner_margin(Margin::symmetric(16, 10))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("STAGE CHANNEL")
                             .font(display_font(14.0))
-                            .color(ACCENT),
+                            .color(ACCENT()),
                     );
                     if let Some(st) = &stage {
                         ui.label(
                             RichText::new(&st.topic)
                                 .font(bold_font(13.5))
-                                .color(TEXT_HEADER),
+                                .color(TEXT_HEADER()),
                         );
                     } else {
                         ui.label(
                             RichText::new("No active stage topic")
                                 .font(ui_font(13.0))
-                                .color(TEXT_MUTED),
+                                .color(TEXT_MUTED()),
                         );
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.label(
                             RichText::new(super::VOICE_UNAVAILABLE)
                                 .font(ui_font(12.5))
-                                .color(TEXT_MUTED),
+                                .color(TEXT_MUTED()),
                         );
                     });
                 });
@@ -336,7 +336,7 @@ impl CillhubApp {
         if is_head {
             ui.add_space(10.0); // `.msg.head { margin-top: 10px }`
         }
-        let name_color = self.member_color(&author_id).unwrap_or(TEXT_HEADER);
+        let name_color = self.member_color(&author_id).unwrap_or(TEXT_HEADER());
         let bg_idx = ui.painter().add(egui::Shape::Noop);
 
         // `.msg`: padding 2px 28px 2px 58px, avatar at left 12px
@@ -352,7 +352,7 @@ impl CillhubApp {
                         ui.add_space(46.0);
                         let (r_rect, _) =
                             ui.allocate_exact_size(Vec2::splat(13.0), Sense::hover());
-                        draw_icon(ui.painter(), r_rect, IconKind::Reply, TEXT_MUTED);
+                        draw_icon(ui.painter(), r_rect, IconKind::Reply, TEXT_MUTED());
                         let rep_author = replied
                             .author
                             .as_ref()
@@ -361,13 +361,13 @@ impl CillhubApp {
                         ui.label(
                             RichText::new(format!("@{rep_author}"))
                                 .font(bold_font(12.5))
-                                .color(TEXT_HEADER),
+                                .color(TEXT_HEADER()),
                         );
                         ui.add(
                             egui::Label::new(
                                 RichText::new(replied.content.replace('\n', " "))
                                     .font(ui_font(12.5))
-                                    .color(TEXT_MUTED),
+                                    .color(TEXT_MUTED()),
                             )
                             .truncate(),
                         );
@@ -383,7 +383,7 @@ impl CillhubApp {
                         ui.add_space(0.0);
                         let (r, _) = ui.allocate_exact_size(Vec2::new(36.0, 38.0), Sense::hover());
                         let mut av = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(r.min + Vec2::new(0.0, 2.0), Vec2::splat(36.0))));
-                        draw_avatar(&mut av, 36.0, &author_id, &author_name, None, BG_CHAT);
+                        draw_avatar(&mut av, 36.0, &author_id, &author_name, None, BG_CHAT());
                     } else {
                         ui.allocate_exact_size(Vec2::new(36.0, 20.0), Sense::hover());
                     }
@@ -405,14 +405,14 @@ impl CillhubApp {
                                 if let Some(gname) = author_game {
                                     Frame::new()
                                         .fill(Color32::from_rgba_unmultiplied(0x2f, 0xd3, 0x6a, 28))
-                                        .stroke(Stroke::new(1.0_f32, GREEN))
+                                        .stroke(Stroke::new(1.0_f32, GREEN()))
                                         .corner_radius(CornerRadius::same(2))
                                         .inner_margin(Margin::symmetric(5, 1))
                                         .show(ui, |ui| {
                                             ui.label(
                                                 RichText::new(format!("🎮 {}", gname.to_uppercase()))
                                                     .font(display_font(11.0))
-                                                    .color(GREEN),
+                                                    .color(GREEN()),
                                             );
                                         });
                                 }
@@ -421,7 +421,7 @@ impl CillhubApp {
                                     ui.label(
                                         RichText::new(stamp(ts))
                                             .font(ui_font(11.5))
-                                            .color(TEXT_MUTED),
+                                            .color(TEXT_MUTED()),
                                     );
                                 }
                             });
@@ -440,7 +440,7 @@ impl CillhubApp {
                                 ui.label(
                                     RichText::new(clean_text.trim())
                                         .font(ui_font(14.5))
-                                        .color(TEXT),
+                                        .color(TEXT()),
                                 );
                                 ui.add_space(6.0);
                             }
@@ -459,8 +459,8 @@ impl CillhubApp {
                                 if self.images.get(&uri) == Some(&super::ImageLoad::Ready) {
                                     // `.att-image`: 1px border, sidebar behind transparent pixels
                                     let resp = Frame::new()
-                                        .fill(BG_SIDEBAR)
-                                        .stroke(Stroke::new(1.0_f32, BORDER.gamma_multiply(0.7)))
+                                        .fill(BG_SIDEBAR())
+                                        .stroke(Stroke::new(1.0_f32, BORDER().gamma_multiply(0.7)))
                                         .corner_radius(CornerRadius::same(3))
                                         .inner_margin(Margin::same(1))
                                         .show(ui, |ui| {
@@ -474,13 +474,13 @@ impl CillhubApp {
                                 }
                                 if self.images.get(&uri) == Some(&super::ImageLoad::Loading) {
                                     let (r, _) = ui.allocate_exact_size(size, Sense::hover());
-                                                    ui.painter().rect_filled(r, CornerRadius::same(3), BG_SIDEBAR);
+                                                    ui.painter().rect_filled(r, CornerRadius::same(3), BG_SIDEBAR());
                                     continue;
                                 }
                             }
                             Frame::new()
-                                .fill(BG_SIDEBAR)
-                                .stroke(Stroke::new(1.0_f32, BORDER))
+                                .fill(BG_SIDEBAR())
+                                .stroke(Stroke::new(1.0_f32, BORDER()))
                                 .corner_radius(CornerRadius::same(2))
                                 .inner_margin(Margin::symmetric(10, 6))
                                 .show(ui, |ui| {
@@ -488,7 +488,7 @@ impl CillhubApp {
                                         ui.label(
                                             RichText::new(&att.filename)
                                                 .font(bold_font(13.0))
-                                                .color(FOCUS),
+                                                .color(FOCUS()),
                                         );
                                         ui.label(
                                             RichText::new(format!(
@@ -496,7 +496,7 @@ impl CillhubApp {
                                                 (att.size / 1024).max(1)
                                             ))
                                             .font(mono_font(11.0))
-                                            .color(TEXT_MUTED),
+                                            .color(TEXT_MUTED()),
                                         );
                                         if ui.small_button("Open").clicked() {
                                             report(&mut self.status_banner, open::that(&url));
@@ -509,8 +509,8 @@ impl CillhubApp {
                         if let Some(poll) = &msg.poll {
                             ui.add_space(6.0);
                             Frame::new()
-                                .fill(BG_SIDEBAR)
-                                .stroke(Stroke::new(1.0_f32, BORDER))
+                                .fill(BG_SIDEBAR())
+                                .stroke(Stroke::new(1.0_f32, BORDER()))
                                 .corner_radius(CornerRadius::same(2))
                                 .inner_margin(Margin::same(12))
                                 .show(ui, |ui| {
@@ -524,7 +524,7 @@ impl CillhubApp {
                                                 .to_uppercase()
                                         ))
                                         .font(display_font(15.0))
-                                        .color(TEXT_HEADER),
+                                        .color(TEXT_HEADER()),
                                     );
                                     ui.add_space(6.0);
                                     for ans in &poll.answers {
@@ -558,7 +558,7 @@ impl CillhubApp {
                         }
 
                         if msg.edited_timestamp.is_some() {
-                            ui.label(RichText::new(tr("(edited)")).font(ui_font(11.0)).color(TEXT_MUTED));
+                            ui.label(RichText::new(tr("(edited)")).font(ui_font(11.0)).color(TEXT_MUTED()));
                         }
 
                         // `.reactions`: 26px chips, 5px gap
@@ -569,16 +569,16 @@ impl CillhubApp {
                                 for r in &msg.reactions {
                                     let ename = r.emoji.name.as_deref().unwrap_or("👍");
                                     let count = r.count.to_string();
-                                    let cg = ui.painter().layout_no_wrap(count, bold_font(12.5), if r.me { TEXT_HEADER } else { TEXT });
+                                    let cg = ui.painter().layout_no_wrap(count, bold_font(12.5), if r.me { TEXT_HEADER() } else { TEXT() });
                                     let (rect, resp) = ui.allocate_exact_size(Vec2::new(18.0 + 16.0 + 6.0 + cg.size().x, 26.0), Sense::click());
                                     let (fill, border) = match (r.me, resp.hovered()) {
-                                        (true, _) => (ACCENT.gamma_multiply(0.16), ACCENT),
-                                        (false, true) => (BG_HOVER, BTN_SECONDARY_HOVER),
-                                        _ => (BG_SIDEBAR, BORDER),
+                                        (true, _) => (ACCENT().gamma_multiply(0.16), ACCENT()),
+                                        (false, true) => (BG_HOVER(), BTN_SECONDARY_HOVER()),
+                                        _ => (BG_SIDEBAR(), BORDER()),
                                     };
                                     ui.painter().rect(rect, CornerRadius::same(2), fill, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
                                     crate::theme::draw_emoji(ui.painter(), Rect::from_min_size(rect.min + Vec2::new(9.0, 5.0), Vec2::splat(16.0)), ename);
-                                    ui.painter().galley(rect.min + Vec2::new(31.0, (26.0 - cg.size().y) / 2.0), cg, TEXT);
+                                    ui.painter().galley(rect.min + Vec2::new(31.0, (26.0 - cg.size().y) / 2.0), cg, TEXT());
                                     let btn = resp;
                                     if btn.clicked() {
                                         self.toggle_reaction(channel_id, &msg.id, ename);
@@ -608,9 +608,9 @@ impl CillhubApp {
             || matches!(&self.emoji_picker, Some((EmojiTarget::Reaction(_, id), _)) if id == &msg.id);
         let hovered = !busy && (ui.rect_contains_pointer(rect) || over_tb) || menu_open;
         let fill = if msg.mention_everyone {
-            MENTION_BG
+            MENTION_BG()
         } else if hovered {
-            BG_HOVER.gamma_multiply(0.72)
+            BG_HOVER().gamma_multiply(0.72)
         } else {
             Color32::TRANSPARENT
         };
@@ -623,7 +623,7 @@ impl CillhubApp {
                         Align2::CENTER_CENTER,
                         clock(&t),
                         ui_font(11.0),
-                        TEXT_MUTED,
+                        TEXT_MUTED(),
                     );
                 }
             }
@@ -669,10 +669,10 @@ impl CillhubApp {
             .fixed_pos(tb.min)
             .show(ctx, |ui| {
                 Frame::new()
-                    .fill(BG_MENU)
-                    .stroke(Stroke::new(1.0_f32, BORDER))
+                    .fill(BG_MENU())
+                    .stroke(Stroke::new(1.0_f32, BORDER()))
                     .corner_radius(CornerRadius::same(3))
-                    .shadow(egui::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(128) })
+                    .shadow(SHADOW())
                     .inner_margin(Margin::same(3))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
@@ -808,10 +808,10 @@ impl CillhubApp {
             .fixed_pos(pos)
             .show(ctx, |ui| {
                 Frame::new()
-                    .fill(BG_SIDEBAR)
-                    .stroke(Stroke::new(1.0_f32, BORDER))
+                    .fill(BG_SIDEBAR())
+                    .stroke(Stroke::new(1.0_f32, BORDER()))
                     .corner_radius(CornerRadius::same(3))
-                    .shadow(egui::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(128) })
+                    .shadow(SHADOW())
                     .inner_margin(Margin::same(12))
                     .show(ui, |ui| {
                         ui.set_width(size.x - 24.0);
@@ -842,7 +842,7 @@ impl CillhubApp {
                                         for (ch, kw) in chunk {
                                             let (r, resp) = ui.allocate_exact_size(Vec2::new(38.0, 40.0), Sense::click());
                                             if resp.hovered() {
-                                                ui.painter().rect_filled(r, CornerRadius::same(2), BG_SELECTED);
+                                                ui.painter().rect_filled(r, CornerRadius::same(2), BG_SELECTED());
                                             }
                                             crate::theme::draw_emoji(ui.painter(), Rect::from_center_size(r.center(), Vec2::splat(24.0)), ch);
                                             if resp.on_hover_text(format!(":{}:", kw.split(' ').next().unwrap_or(""))).clicked() {
@@ -877,23 +877,23 @@ impl CillhubApp {
         let mut close = false;
         let mut delete = false;
         let (_, dim_clicked) = super::modals::overlay(ctx, "confirm_delete", 448.0, |ui| {
-            ui.label(RichText::new(tr("Delete Message").to_uppercase()).font(display_font(28.0)).color(TEXT_HEADER));
+            ui.label(RichText::new(tr("Delete Message").to_uppercase()).font(display_font(28.0)).color(TEXT_HEADER()));
             ui.add_space(16.0);
-            ui.label(RichText::new(tr("Are you sure you want to delete this message?")).font(ui_font(15.0)).color(TEXT));
+            ui.label(RichText::new(tr("Are you sure you want to delete this message?")).font(ui_font(15.0)).color(TEXT()));
             if !msg.content.is_empty() {
                 ui.add_space(8.0);
                 let quote: String = msg.content.chars().take(300).collect();
                 let r = Frame::new()
-                    .fill(BG_SIDEBAR)
+                    .fill(BG_SIDEBAR())
                     .corner_radius(CornerRadius::same(2))
                     .inner_margin(Margin { left: 16, right: 12, top: 10, bottom: 10 })
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
-                        ui.label(RichText::new(quote).font(ui_font(15.0)).color(TEXT));
+                        ui.label(RichText::new(quote).font(ui_font(15.0)).color(TEXT()));
                     })
                     .response
                     .rect;
-                ui.painter().rect_filled(Rect::from_min_size(r.min, Vec2::new(4.0, r.height())), 0.0, ACCENT);
+                ui.painter().rect_filled(Rect::from_min_size(r.min, Vec2::new(4.0, r.height())), 0.0, ACCENT());
             }
             ui.add_space(18.0);
             super::modals::actions_row(ui, |ui| {
@@ -944,32 +944,32 @@ impl CillhubApp {
     pub fn render_game_invite_card(&mut self, ui: &mut Ui, invite: &GameInviteData) {
         show_notched_card(
             ui,
-            LEAGUE_BG,
-            LEAGUE_TEAL,
+            LEAGUE_BG(),
+            LEAGUE_TEAL(),
             8.0,
             None,
-            Some(LEAGUE_TEAL),
+            Some(LEAGUE_TEAL()),
             Margin::symmetric(14, 12),
             |ui| {
                 ui.set_max_width(360.0);
                 ui.horizontal(|ui| {
                     let (ic_r, _) = ui.allocate_exact_size(Vec2::splat(16.0), Sense::hover());
-                    draw_icon(ui.painter(), ic_r, IconKind::Gamepad, LEAGUE_TEAL);
+                    draw_icon(ui.painter(), ic_r, IconKind::Gamepad, LEAGUE_TEAL());
                     ui.label(
                         RichText::new(invite.game.to_uppercase())
                             .font(display_font(15.5))
-                            .color(TEXT_HEADER),
+                            .color(TEXT_HEADER()),
                     );
                     Frame::new()
                         .fill(Color32::from_rgb(0x06, 0x3b, 0x38))
-                        .stroke(Stroke::new(1.0_f32, LEAGUE_TEAL))
+                        .stroke(Stroke::new(1.0_f32, LEAGUE_TEAL()))
                         .corner_radius(CornerRadius::same(2))
                         .inner_margin(Margin::symmetric(6, 2))
                         .show(ui, |ui| {
                             ui.label(
                                 RichText::new(tr("Open Party").to_uppercase())
                                     .font(display_font(11.0))
-                                    .color(LEAGUE_TEAL),
+                                    .color(LEAGUE_TEAL()),
                             );
                         });
                 });
@@ -978,22 +978,22 @@ impl CillhubApp {
                 ui.label(
                     RichText::new(&invite.queue_name)
                         .font(bold_font(15.0))
-                        .color(LEAGUE_TEAL),
+                        .color(LEAGUE_TEAL()),
                 );
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(format!("Host: {}", invite.host_name))
                             .font(ui_font(12.5))
-                            .color(TEXT),
+                            .color(TEXT()),
                     );
-                    ui.label(RichText::new("•").color(TEXT_MUTED));
+                    ui.label(RichText::new("•").color(TEXT_MUTED()));
                     ui.label(
                         RichText::new(format!(
                             "Party: {}/{}",
                             invite.members, invite.max_members
                         ))
                         .font(mono_font(12.0))
-                        .color(TEXT),
+                        .color(TEXT()),
                     );
                 });
 
@@ -1006,7 +1006,7 @@ impl CillhubApp {
                     if btn_resp.hovered() {
                         Color32::from_rgb(0x22, 0xe0, 0xd0)
                     } else {
-                        LEAGUE_TEAL
+                        LEAGUE_TEAL()
                     },
                 );
                 ui.painter().text(
@@ -1047,25 +1047,25 @@ impl CillhubApp {
         use crate::markdown::Block;
         for b in blocks {
             match b {
-                Block::Text(spans) => self.md_line(ui, msg_id, spans, ui_font(15.0), TEXT),
+                Block::Text(spans) => self.md_line(ui, msg_id, spans, ui_font(15.0), TEXT()),
                 Block::Heading(level, spans) => {
                     ui.add_space(6.0);
                     let size = [22.5, 18.75, 15.0][(*level as usize - 1).min(2)];
-                    self.md_line(ui, msg_id, spans, bold_font(size), TEXT_HEADER);
+                    self.md_line(ui, msg_id, spans, bold_font(size), TEXT_HEADER());
                     ui.add_space(2.0);
                 }
-                Block::Sub(spans) => self.md_line(ui, msg_id, spans, ui_font(12.0), TEXT_MUTED),
+                Block::Sub(spans) => self.md_line(ui, msg_id, spans, ui_font(12.0), TEXT_MUTED()),
                 Block::Item(depth, marker, spans) => {
                     ui.horizontal_top(|ui| {
                         ui.add_space(8.0 + 24.0 * *depth as f32);
                         ui.spacing_mut().item_spacing.x = 6.0;
-                        ui.label(RichText::new(marker).font(ui_font(15.0)).color(TEXT));
-                        ui.vertical(|ui| self.md_line(ui, msg_id, spans, ui_font(15.0), TEXT));
+                        ui.label(RichText::new(marker).font(ui_font(15.0)).color(TEXT()));
+                        ui.vertical(|ui| self.md_line(ui, msg_id, spans, ui_font(15.0), TEXT()));
                     });
                 }
                 Block::Quote(inner) => {
                     // `.content blockquote`: 3px accent bar, light sidebar tint
-                    let fill = BG_SIDEBAR.gamma_multiply(0.55);
+                    let fill = BG_SIDEBAR().gamma_multiply(0.55);
                     let resp = Frame::new()
                         .fill(fill)
                         .inner_margin(Margin { left: 12, right: 10, top: 2, bottom: 2 })
@@ -1076,19 +1076,19 @@ impl CillhubApp {
                         });
                     let r = resp.response.rect;
                     let bar = Rect::from_min_size(r.min, Vec2::new(3.0, r.height()));
-                    ui.painter().rect_filled(bar, 0.0, ACCENT);
+                    ui.painter().rect_filled(bar, 0.0, ACCENT());
                 }
                 Block::Code { lang, code } => {
                     // `.code-block`: rail fill, border, 13.5px mono, language head with a copy button
                     Frame::new()
-                        .fill(BG_RAIL)
-                        .stroke(Stroke::new(1.0_f32, BORDER))
+                        .fill(BG_RAIL())
+                        .stroke(Stroke::new(1.0_f32, BORDER()))
                         .corner_radius(CornerRadius::same(2))
                         .outer_margin(Margin::symmetric(0, 6))
                         .show(ui, |ui| {
                             ui.set_max_width(ui.available_width() * 0.9);
                             Frame::new()
-                                .fill(BG_SIDEBAR.lerp_to_gamma(BG_RAIL, 0.35))
+                                .fill(BG_SIDEBAR().lerp_to_gamma(BG_RAIL(), 0.35))
                                 .inner_margin(Margin { left: 12, right: 10, top: 5, bottom: 5 })
                                 .show(ui, |ui| {
                                     ui.set_width(ui.available_width());
@@ -1096,12 +1096,12 @@ impl CillhubApp {
                                         ui.label(
                                             RichText::new(lang.as_deref().unwrap_or("").to_lowercase())
                                                 .font(bold_font(12.0))
-                                                .color(TEXT_MUTED),
+                                                .color(TEXT_MUTED()),
                                         );
                                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                             let copy = ui.add(
                                                 egui::Label::new(
-                                                    RichText::new(tr("Copy")).font(ui_font(12.0)).color(TEXT_MUTED),
+                                                    RichText::new(tr("Copy")).font(ui_font(12.0)).color(TEXT_MUTED()),
                                                 )
                                                 .sense(Sense::click()),
                                             );
@@ -1112,7 +1112,7 @@ impl CillhubApp {
                                     });
                                 });
                             let r = ui.min_rect();
-                            ui.painter().hline(r.x_range(), r.max.y, Stroke::new(1.0_f32, BORDER));
+                            ui.painter().hline(r.x_range(), r.max.y, Stroke::new(1.0_f32, BORDER()));
                             Frame::new().inner_margin(Margin::symmetric(12, 8)).show(ui, |ui| {
                                 let lines: Vec<&str> = code.split('\n').collect();
                                 let numbered = lines.len() >= 3;
@@ -1126,10 +1126,10 @@ impl CillhubApp {
                                                 Align2::RIGHT_CENTER,
                                                 (i + 1).to_string(),
                                                 mono_font(11.5),
-                                                TEXT_MUTED.gamma_multiply(0.55),
+                                                TEXT_MUTED().gamma_multiply(0.55),
                                             );
                                         }
-                                        ui.label(RichText::new(*l).font(mono_font(13.5)).color(TEXT));
+                                        ui.label(RichText::new(*l).font(mono_font(13.5)).color(TEXT()));
                                     });
                                 }
                             });
@@ -1168,15 +1168,15 @@ impl CillhubApp {
                 ..Default::default()
             };
             if st.code {
-                f.background = BG_SIDEBAR;
+                f.background = BG_SIDEBAR();
             }
             if st.mention {
-                f.background = ACCENT.gamma_multiply(0.18);
-                f.color = TEXT_HEADER;
+                f.background = ACCENT().gamma_multiply(0.18);
+                f.color = TEXT_HEADER();
             }
             if sp.link.is_some() {
-                f.color = FOCUS;
-                f.underline = Stroke::new(1.0_f32, FOCUS);
+                f.color = FOCUS();
+                f.underline = Stroke::new(1.0_f32, FOCUS());
             }
             if st.underline {
                 f.underline = Stroke::new(1.0_f32, f.color);
@@ -1185,10 +1185,10 @@ impl CillhubApp {
                 f.strikethrough = Stroke::new(1.0_f32, f.color);
             }
             if st.spoiler.is_some() {
-                f.background = if hidden { BG_RAIL } else { Color32::from_white_alpha(23) };
+                f.background = if hidden { BG_RAIL() } else { Color32::from_white_alpha(23) };
             }
             if hidden {
-                f.color = BG_RAIL;
+                f.color = BG_RAIL();
                 f.underline = Stroke::NONE;
                 f.strikethrough = Stroke::NONE;
             }
@@ -1245,22 +1245,22 @@ impl CillhubApp {
         let attached = bar.is_some() || !self.pending_files.is_empty();
         if let Some((label, who)) = bar {
             Frame::new()
-                .fill(BG_SIDEBAR)
-                .stroke(Stroke::new(1.0_f32, BORDER))
+                .fill(BG_SIDEBAR())
+                .stroke(Stroke::new(1.0_f32, BORDER()))
                 .corner_radius(CornerRadius { nw: 3, ne: 3, sw: 0, se: 0 })
                 .inner_margin(Margin { left: 16, right: 12, top: 5, bottom: 5 })
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.label(RichText::new(label).font(ui_font(13.5)).color(INTERACTIVE));
-                        ui.label(RichText::new(who).font(bold_font(13.5)).color(TEXT_HEADER));
+                        ui.label(RichText::new(label).font(ui_font(13.5)).color(INTERACTIVE()));
+                        ui.label(RichText::new(who).font(bold_font(13.5)).color(TEXT_HEADER()));
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             let (r, resp) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
                             if resp.hovered() {
-                                ui.painter().rect_filled(r, CornerRadius::same(2), BG_HOVER);
+                                ui.painter().rect_filled(r, CornerRadius::same(2), BG_HOVER());
                             }
-                            draw_icon(ui.painter(), Rect::from_center_size(r.center(), Vec2::splat(16.0)), IconKind::Close, INTERACTIVE);
+                            draw_icon(ui.painter(), Rect::from_center_size(r.center(), Vec2::splat(16.0)), IconKind::Close, INTERACTIVE());
                             if resp.on_hover_text(tr("Cancel")).clicked() {
                                 if self.editing_message_id.take().is_some() {
                                     self.composer_text.clear();
@@ -1275,8 +1275,8 @@ impl CillhubApp {
         let te_id = ui.make_persistent_id(("composer_text", &cid));
         let focused = ui.memory(|m| m.has_focus(te_id));
         let box_resp = Frame::new()
-            .fill(BG_INPUT)
-            .stroke(Stroke::new(1.0_f32, if focused { FOCUS } else { BORDER }))
+            .fill(BG_INPUT())
+            .stroke(Stroke::new(1.0_f32, if focused { FOCUS() } else { BORDER() }))
             .corner_radius(if attached { CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 } } else { CornerRadius::same(3) })
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -1291,15 +1291,15 @@ impl CillhubApp {
                                     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                                     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
                                     Frame::new()
-                                        .fill(BG_SIDEBAR)
-                                        .stroke(Stroke::new(1.0_f32, BORDER))
+                                        .fill(BG_SIDEBAR())
+                                        .stroke(Stroke::new(1.0_f32, BORDER()))
                                         .corner_radius(CornerRadius::same(2))
                                         .inner_margin(Margin::same(8))
                                         .show(ui, |ui| {
                                             ui.set_width(182.0);
                                             ui.spacing_mut().item_spacing.y = 4.0;
                                             let (r, _) = ui.allocate_exact_size(Vec2::new(182.0, 120.0), Sense::hover());
-                                            ui.painter().rect_filled(r, CornerRadius::same(2), BG_RAIL);
+                                            ui.painter().rect_filled(r, CornerRadius::same(2), BG_RAIL());
                                             let is_img = matches!(
                                                 path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(),
                                                 Some("png" | "jpg" | "jpeg" | "gif" | "webp")
@@ -1319,11 +1319,11 @@ impl CillhubApp {
                                             if is_img && self.images.get(&uri) == Some(&super::ImageLoad::Ready) {
                                                 egui::Image::new(uri).fit_to_exact_size(r.size()).maintain_aspect_ratio(true).paint_at(ui, r);
                                             } else {
-                                                draw_icon(ui.painter(), Rect::from_center_size(r.center(), Vec2::splat(40.0)), IconKind::File, INTERACTIVE);
+                                                draw_icon(ui.painter(), Rect::from_center_size(r.center(), Vec2::splat(40.0)), IconKind::File, INTERACTIVE());
                                             }
-                                            ui.add(egui::Label::new(RichText::new(&name).font(ui_font(13.5)).color(TEXT)).truncate());
+                                            ui.add(egui::Label::new(RichText::new(&name).font(ui_font(13.5)).color(TEXT())).truncate());
                                             ui.horizontal(|ui| {
-                                                ui.label(RichText::new(format_size(size)).font(ui_font(12.0)).color(TEXT_MUTED));
+                                                ui.label(RichText::new(format_size(size)).font(ui_font(12.0)).color(TEXT_MUTED()));
                                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                                     if toolbar_btn(ui, IconKind::Trash, false, true).on_hover_text(tr("Remove Attachment")).clicked() {
                                                         remove = Some(i);
@@ -1336,7 +1336,7 @@ impl CillhubApp {
                         });
                     });
                     let r = ui.min_rect();
-                    ui.painter().hline(r.x_range(), r.max.y, Stroke::new(1.0_f32, BORDER));
+                    ui.painter().hline(r.x_range(), r.max.y, Stroke::new(1.0_f32, BORDER()));
                     if let Some(i) = remove {
                         self.pending_files.remove(i);
                     }
@@ -1369,8 +1369,8 @@ impl CillhubApp {
                                 TextEdit::multiline(&mut self.composer_text)
                                     .id(te_id)
                                     .font(ui_font(15.0))
-                                    .text_color(TEXT)
-                                    .hint_text(RichText::new(hint).font(ui_font(15.0)).color(TEXT_MUTED))
+                                    .text_color(TEXT())
+                                    .hint_text(RichText::new(hint).font(ui_font(15.0)).color(TEXT_MUTED()))
                                     .desired_rows(1)
                                     .desired_width(w - 16.0)
                                     .frame(false)
@@ -1750,7 +1750,7 @@ impl CillhubApp {
 /// `.composer-row .icon-btn`: 40x44, interactive colour, hover header colour.
 fn composer_btn(ui: &mut Ui, icon: IconKind, size: f32, active: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(40.0, 44.0), Sense::click());
-    let fg = if resp.hovered() || active { TEXT_HEADER } else { INTERACTIVE };
+    let fg = if resp.hovered() || active { TEXT_HEADER() } else { INTERACTIVE() };
     draw_icon(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(size)), icon, fg);
     resp
 }
@@ -1787,13 +1787,13 @@ pub fn toolbar_btn(ui: &mut Ui, icon: IconKind, pressed: bool, danger: bool) -> 
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::click());
     let hov = resp.hovered();
     let (bg, fg) = if hov && danger {
-        (DANGER.gamma_multiply(0.15).blend(BG_HOVER.gamma_multiply(0.85)), DANGER)
+        (DANGER().gamma_multiply(0.15).blend(BG_HOVER().gamma_multiply(0.85)), DANGER())
     } else if hov {
-        (BG_HOVER, TEXT_HEADER)
+        (BG_HOVER(), TEXT_HEADER())
     } else if pressed {
-        (ACCENT.gamma_multiply(0.14), ACCENT)
+        (ACCENT().gamma_multiply(0.14), ACCENT())
     } else {
-        (Color32::TRANSPARENT, INTERACTIVE)
+        (Color32::TRANSPARENT, INTERACTIVE())
     };
     ui.painter().rect_filled(rect, CornerRadius::same(2), bg);
     draw_icon(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(18.0)), icon, fg);
@@ -1803,10 +1803,10 @@ pub fn toolbar_btn(ui: &mut Ui, icon: IconKind, pressed: bool, danger: bool) -> 
 /// `.menu` popover frame.
 pub fn menu_frame<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     Frame::new()
-        .fill(BG_MENU)
-        .stroke(Stroke::new(1.0_f32, BORDER))
+        .fill(BG_MENU())
+        .stroke(Stroke::new(1.0_f32, BORDER()))
         .corner_radius(CornerRadius::same(3))
-        .shadow(egui::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(128) })
+        .shadow(SHADOW())
         .inner_margin(Margin::same(6))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
@@ -1820,13 +1820,13 @@ pub fn menu_item(ui: &mut Ui, label: &str, danger: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::click());
     let hov = resp.hovered();
     if hov {
-        ui.painter().rect_filled(rect, CornerRadius::same(2), if danger { DANGER } else { BG_HOVER });
+        ui.painter().rect_filled(rect, CornerRadius::same(2), if danger { DANGER() } else { BG_HOVER() });
     }
     let fg = match (danger, hov) {
         (true, true) => Color32::WHITE,
-        (true, false) => DANGER,
-        (false, true) => TEXT_HEADER,
-        _ => TEXT,
+        (true, false) => DANGER(),
+        (false, true) => TEXT_HEADER(),
+        _ => TEXT(),
     };
     ui.painter().text(rect.left_center() + Vec2::new(10.0, 0.0), Align2::LEFT_CENTER, label, ui_font(14.0), fg);
     resp
@@ -1835,7 +1835,7 @@ pub fn menu_item(ui: &mut Ui, label: &str, danger: bool) -> egui::Response {
 pub fn menu_sep(ui: &mut Ui) {
     ui.add_space(4.0);
     let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
-    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0_f32, BORDER));
+    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0_f32, BORDER()));
     ui.add_space(4.0);
 }
 

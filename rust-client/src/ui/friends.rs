@@ -19,25 +19,25 @@ impl CillhubApp {
     pub fn render_friends_view(&mut self, ui: &mut Ui) {
         // 1. `.chat-header` (`44px` height, `border-bottom: 1px solid #2c3038`, `padding: 0 12px`)
         Frame::new()
-            .fill(BG_CHAT)
+            .fill(BG_CHAT())
             .inner_margin(Margin::symmetric(12, 6))
             .show(ui, |ui| {
                 ui.set_height(32.0);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     let (ic_r, _) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover());
-                    draw_icon(ui.painter(), ic_r, IconKind::People, TEXT_MUTED);
+                    draw_icon(ui.painter(), ic_r, IconKind::People, TEXT_MUTED());
                     ui.label(
                         RichText::new(tr("Friends").to_uppercase())
                             .font(display_font(20.0))
-                            .color(TEXT_HEADER),
+                            .color(TEXT_HEADER()),
                     );
 
                     let (div_r, _) = ui.allocate_exact_size(Vec2::new(6.0, 18.0), Sense::hover());
                     ui.painter().vline(
                         div_r.center().x,
                         div_r.y_range(),
-                        Stroke::new(1.0_f32, BORDER),
+                        Stroke::new(1.0_f32, BORDER()),
                     );
 
                     for (tab, label) in [
@@ -83,19 +83,19 @@ impl CillhubApp {
 
         let hr = ui.min_rect();
         ui.painter()
-            .hline(hr.x_range(), hr.max.y, Stroke::new(1.0_f32, BORDER));
+            .hline(hr.x_range(), hr.max.y, Stroke::new(1.0_f32, BORDER()));
 
         // 2. Right `.active-now-shelf` (`330px` wide, `border-left: 1px solid #2c3038`) matching `ActiveNow.tsx`
         SidePanel::right("friends_active_now_shelf")
             .exact_width(330.0)
             .resizable(false)
-            .frame(Frame::new().fill(BG_CHAT))
+            .frame(Frame::new().fill(BG_CHAT()))
             .show_inside(ui, |ui| {
                 let s_rect = ui.max_rect();
                 ui.painter().vline(
                     s_rect.min.x + 0.5,
                     s_rect.y_range(),
-                    Stroke::new(1.0_f32, BORDER),
+                    Stroke::new(1.0_f32, BORDER()),
                 );
                 Frame::new()
                     .inner_margin(Margin::symmetric(16, 16))
@@ -106,18 +106,18 @@ impl CillhubApp {
                                 ui.label(
                                     RichText::new("ACTIVE NOW")
                                         .font(display_font(22.0))
-                                        .color(TEXT_HEADER),
+                                        .color(TEXT_HEADER()),
                                 );
                                 ui.add_space(10.0);
 
                                 // Card 1: Local Game Activity
                                 show_notched_card(
                                     ui,
-                                    BG_SIDEBAR,
-                                    BORDER,
+                                    BG_SIDEBAR(),
+                                    BORDER(),
                                     8.0,
                                     None,
-                                    Some(ACCENT),
+                                    Some(ACCENT()),
                                     Margin::same(14),
                                     |ui| {
                                         ui.set_width(ui.available_width());
@@ -125,7 +125,7 @@ impl CillhubApp {
                                             ui.label(
                                                 RichText::new("YOUR GAME ACTIVITY")
                                                     .font(display_font(13.5))
-                                                    .color(ACCENT),
+                                                    .color(ACCENT()),
                                             );
                                             ui.with_layout(
                                                 Layout::right_to_left(Align::Center),
@@ -142,20 +142,20 @@ impl CillhubApp {
                                             ui.label(
                                                 RichText::new(format!("🎮 Playing {}", g.name))
                                                     .font(bold_font(14.5))
-                                                    .color(GREEN),
+                                                    .color(GREEN()),
                                             );
                                             ui.label(
                                                 RichText::new(
                                                     "Broadcasting via Gateway Opcode 3",
                                                 )
                                                 .font(ui_font(11.5))
-                                                .color(TEXT_MUTED),
+                                                .color(TEXT_MUTED()),
                                             );
                                         } else {
                                             ui.label(
                                                 RichText::new("No active game process detected.")
                                                     .font(ui_font(12.5))
-                                                    .color(TEXT_MUTED),
+                                                    .color(TEXT_MUTED()),
                                             );
                                         }
                                         ui.add_space(8.0);
@@ -176,18 +176,18 @@ impl CillhubApp {
                                 // Card 2: Game Lobby & League Party Invites
                                 show_notched_card(
                                     ui,
-                                    LEAGUE_BG,
-                                    LEAGUE_TEAL,
+                                    LEAGUE_BG(),
+                                    LEAGUE_TEAL(),
                                     8.0,
                                     None,
-                                    Some(LEAGUE_TEAL),
+                                    Some(LEAGUE_TEAL()),
                                     Margin::same(14),
                                     |ui| {
                                         ui.set_width(ui.available_width());
                                         ui.label(
                                             RichText::new("GAME LOBBY & PARTY INVITES")
                                                 .font(display_font(13.5))
-                                                .color(LEAGUE_TEAL),
+                                                .color(LEAGUE_TEAL()),
                                         );
                                         ui.add_space(4.0);
                                         if let Some(lobby) = &self.league_lobby {
@@ -197,7 +197,7 @@ impl CillhubApp {
                                                     lobby.queue_name
                                                 ))
                                                 .font(bold_font(13.5))
-                                                .color(TEXT_HEADER),
+                                                .color(TEXT_HEADER()),
                                             );
                                             ui.label(
                                                 RichText::new(format!(
@@ -205,7 +205,7 @@ impl CillhubApp {
                                                     lobby.member_count, lobby.max_party_size
                                                 ))
                                                 .font(ui_font(11.5))
-                                                .color(TEXT_MUTED),
+                                                .color(TEXT_MUTED()),
                                             );
                                         } else {
                                             ui.label(
@@ -213,7 +213,7 @@ impl CillhubApp {
                                                     "Share an interactive Open Party card or connect to LeagueClientUx.",
                                                 )
                                                 .font(ui_font(12.0))
-                                                .color(TEXT_MUTED),
+                                                .color(TEXT_MUTED()),
                                             );
                                         }
                                         ui.add_space(8.0);
@@ -227,7 +227,7 @@ impl CillhubApp {
                                             if btn_resp.hovered() {
                                                 Color32::from_rgb(0x22, 0xe0, 0xd0)
                                             } else {
-                                                LEAGUE_TEAL
+                                                LEAGUE_TEAL()
                                             },
                                         );
                                         ui.painter().text(
@@ -264,8 +264,8 @@ impl CillhubApp {
                                 for (friend, gname) in active_friends {
                                     let st = self.state.user_status(&friend.id).to_string();
                                     Frame::new()
-                                        .fill(BG_SIDEBAR)
-                                        .stroke(Stroke::new(1.0_f32, BORDER))
+                                        .fill(BG_SIDEBAR())
+                                        .stroke(Stroke::new(1.0_f32, BORDER()))
                                         .corner_radius(CornerRadius::same(2))
                                         .inner_margin(Margin::same(12))
                                         .show(ui, |ui| {
@@ -277,18 +277,18 @@ impl CillhubApp {
                                                     &friend.id,
                                                     friend.display_name(),
                                                     Some(&st),
-                                                    BG_SIDEBAR,
+                                                    BG_SIDEBAR(),
                                                 );
                                                 ui.vertical(|ui| {
                                                     ui.label(
                                                         RichText::new(friend.display_name())
                                                             .font(bold_font(13.5))
-                                                            .color(TEXT_HEADER),
+                                                            .color(TEXT_HEADER()),
                                                     );
                                                     ui.label(
                                                         RichText::new(format!("🎮 {gname}"))
                                                             .font(bold_font(12.0))
-                                                            .color(GREEN),
+                                                            .color(GREEN()),
                                                     );
                                                 });
                                                 ui.with_layout(
@@ -312,27 +312,27 @@ impl CillhubApp {
 
         // 3. Left `.friends-body` (`padding: 16px 24px`) matching `Friends.tsx`
         Frame::new()
-            .fill(BG_CHAT)
+            .fill(BG_CHAT())
             .inner_margin(Margin::symmetric(24, 18))
             .show(ui, |ui| {
                 if self.friends_tab == FriendsTab::Add {
                     ui.label(
                         RichText::new("ADD FRIEND")
                             .font(display_font(22.0))
-                            .color(TEXT_HEADER),
+                            .color(TEXT_HEADER()),
                     );
                     ui.add_space(2.0);
                     ui.label(
                         RichText::new("You can add friends with their Cillhub username.")
                             .font(ui_font(13.5))
-                            .color(TEXT_MUTED),
+                            .color(TEXT_MUTED()),
                     );
                     ui.add_space(14.0);
 
                     // `.add-friend-box` (`#0b0c0f` fill, `1px` `#2c3038` border)
                     Frame::new()
-                        .fill(BG_RAIL)
-                        .stroke(Stroke::new(1.0_f32, BORDER))
+                        .fill(BG_RAIL())
+                        .stroke(Stroke::new(1.0_f32, BORDER()))
                         .corner_radius(CornerRadius::same(2))
                         .inner_margin(Margin::symmetric(12, 8))
                         .show(ui, |ui| {
@@ -342,11 +342,11 @@ impl CillhubApp {
                                     Vec2::new(avail_w, 32.0),
                                     TextEdit::singleline(&mut self.add_friend_input)
                                         .font(ui_font(14.5))
-                                        .text_color(TEXT)
+                                        .text_color(TEXT())
                                         .hint_text(
                                             RichText::new("You can add friends with their Cillhub username.")
                                                 .font(ui_font(14.0))
-                                                .color(TEXT_MUTED),
+                                                .color(TEXT_MUTED()),
                                         )
                                         .frame(false),
                                 );
@@ -365,9 +365,9 @@ impl CillhubApp {
                                         b_rect,
                                         CornerRadius::same(2),
                                         if b_resp.hovered() {
-                                            ACCENT_HOVER
+                                            ACCENT_HOVER()
                                         } else {
-                                            ACCENT
+                                            ACCENT()
                                         },
                                     );
                                     ui.painter().text(
@@ -375,7 +375,7 @@ impl CillhubApp {
                                         Align2::CENTER_CENTER,
                                         "SEND FRIEND REQUEST",
                                         display_font(13.5),
-                                        ON_ACCENT,
+                                        ON_ACCENT(),
                                     );
                                     if b_resp.clicked() {
                                         self.send_friend_request();
@@ -422,7 +422,7 @@ impl CillhubApp {
                                         _ => "You have no friends yet. Add some with their username!",
                                     })
                                         .font(ui_font(14.0))
-                                        .color(TEXT_MUTED),
+                                        .color(TEXT_MUTED()),
                                 );
                             });
                         }
@@ -461,7 +461,7 @@ impl CillhubApp {
                             let hovered = row_resp.hovered();
                             if hovered {
                                 ui.painter()
-                                    .rect_filled(row_r, CornerRadius::same(2), BG_HOVER);
+                                    .rect_filled(row_r, CornerRadius::same(2), BG_HOVER());
                             }
 
                             let mut row_ui = ui.new_child(
@@ -478,7 +478,7 @@ impl CillhubApp {
                                 &user.id,
                                 user.display_name(),
                                 Some(&status),
-                                if hovered { BG_HOVER } else { BG_CHAT },
+                                if hovered { BG_HOVER() } else { BG_CHAT() },
                             );
 
                             row_ui.vertical(|ui| {
@@ -488,13 +488,13 @@ impl CillhubApp {
                                     ui.label(
                                         RichText::new(user.display_name())
                                             .font(bold_font(15.0))
-                                            .color(TEXT_HEADER),
+                                            .color(TEXT_HEADER()),
                                     );
                                     if hovered {
                                         ui.label(
                                             RichText::new(format!("@{}", user.username))
                                                 .font(ui_font(12.5))
-                                                .color(TEXT_MUTED),
+                                                .color(TEXT_MUTED()),
                                         );
                                     }
                                 });
@@ -502,7 +502,7 @@ impl CillhubApp {
                                     ui.label(
                                         RichText::new(format!("🎮 Playing {}", g.name))
                                             .font(ui_font(12.5))
-                                            .color(GREEN),
+                                            .color(GREEN()),
                                     );
                                 } else {
                                     let st_label = match rel.kind {
@@ -514,7 +514,7 @@ impl CillhubApp {
                                     ui.label(
                                         RichText::new(st_label)
                                             .font(ui_font(12.5))
-                                            .color(TEXT_MUTED),
+                                            .color(TEXT_MUTED()),
                                     );
                                 }
                             });
@@ -592,9 +592,9 @@ impl CillhubApp {
             let fill = if active {
                  Color32::from_rgba_unmultiplied(0x2f, 0xd3, 0x6a, 40)
             } else {
-                GREEN
+                GREEN()
             };
-            let fg = if active { GREEN } else { Color32::BLACK };
+            let fg = if active { GREEN() } else { Color32::BLACK };
             painter.rect_filled(rect, CornerRadius::same(2), fill);
             painter.text(
                 rect.center(),
@@ -608,9 +608,9 @@ impl CillhubApp {
                 painter.rect(
                     rect,
                     CornerRadius::same(2),
-                    if active { BG_SELECTED } else { BG_HOVER },
+                    if active { BG_SELECTED() } else { BG_HOVER() },
                     if active {
-                        Stroke::new(1.0_f32, ACCENT)
+                        Stroke::new(1.0_f32, ACCENT())
                     } else {
                         Stroke::NONE
                     },
@@ -627,9 +627,9 @@ impl CillhubApp {
                     ui_font(13.5)
                 },
                 if active || hovered {
-                    TEXT_HEADER
+                    TEXT_HEADER()
                 } else {
-                    INTERACTIVE
+                    INTERACTIVE()
                 },
             );
         }

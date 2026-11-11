@@ -9,42 +9,288 @@ use egui::{
 
 #[cfg(feature = "native-gui")]
 pub mod palette {
+    //! The web client's CSS variables (index.css `:root`, appearance.css themes) as the colours
+    //! of the active theme. `BG_CHAT()` etc. read the theme set by `set_theme`.
+    #![allow(non_snake_case)]
     use egui::Color32;
+    use std::sync::RwLock;
 
-    // Exact CSS custom properties from `client/src/index.css`
-    pub const BG_RAIL: Color32 = Color32::from_rgb(0x0b, 0x0c, 0x0f); // --rail: #0b0c0f
-    pub const BG_SIDEBAR: Color32 = Color32::from_rgb(0x12, 0x14, 0x18); // --sidebar: #121418
-    pub const BG_CHAT: Color32 = Color32::from_rgb(0x17, 0x19, 0x1e); // --chat: #17191e
-    pub const BG_PANEL: Color32 = Color32::from_rgb(0x0e, 0x0f, 0x12); // --panel: #0e0f12
-    pub const BG_INPUT: Color32 = Color32::from_rgb(0x1f, 0x22, 0x28); // --input: #1f2228
-    pub const BG_HOVER: Color32 = Color32::from_rgb(0x20, 0x23, 0x29); // --hover: #202329
-    pub const BG_SELECTED: Color32 = Color32::from_rgb(0x2a, 0x2e, 0x36); // --selected: #2a2e36
-    pub const BG_CARD: Color32 = Color32::from_rgb(0x1a, 0x1d, 0x23); // --card: #1a1d23
-    pub const BG_MENU: Color32 = Color32::from_rgb(0x15, 0x17, 0x1c); // --menu: #15171c
-    pub const BG_FLOATING: Color32 = Color32::from_rgb(0x15, 0x17, 0x1c); // --menu: #15171c
-    pub const BTN_SECONDARY: Color32 = Color32::from_rgb(0x2b, 0x2f, 0x38); // --btn-secondary: #2b2f38
-    pub const BTN_SECONDARY_HOVER: Color32 = Color32::from_rgb(0x36, 0x3b, 0x46); // --btn-secondary-hover: #363b46
-    pub const BORDER: Color32 = Color32::from_rgb(0x2c, 0x30, 0x38); // --border: #2c3038
-    pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(0x22, 0x26, 0x2e); // subtle border
-    pub const TEXT: Color32 = Color32::from_rgb(0xe3, 0xe6, 0xec); // --text: #e3e6ec
-    pub const TEXT_HEADER: Color32 = Color32::from_rgb(0xf7, 0xf8, 0xfa); // --header: #f7f8fa
-    pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x9a, 0xa1, 0xad); // --muted: #9aa1ad
-    pub const INTERACTIVE: Color32 = Color32::from_rgb(0xc0, 0xc6, 0xd0); // --interactive: #c0c6d0
-    pub const ACCENT: Color32 = Color32::from_rgb(0xff, 0x6a, 0x1f); // --accent: #ff6a1f
-    pub const ACCENT_HOVER: Color32 = Color32::from_rgb(0xff, 0x87, 0x47); // --accent-hover: #ff8747
-    pub const ON_ACCENT: Color32 = Color32::from_rgb(0x17, 0x09, 0x00); // --on-accent: #170900
-    pub const ACCENT_SOFT: Color32 = Color32::from_rgb(0x3a, 0x20, 0x14);
-    pub const ARGON_ACCENT: Color32 = Color32::from_rgb(0x00, 0xd2, 0xeb); // #00d2eb
-    pub const GREEN: Color32 = Color32::from_rgb(0x2f, 0xd3, 0x6a); // --online: #2fd36a
-    pub const YELLOW: Color32 = Color32::from_rgb(0xff, 0xb0, 0x20); // --idle: #ffb020
-    pub const DANGER: Color32 = Color32::from_rgb(0xff, 0x4d, 0x4d); // --danger: #ff4d4d
-    pub const DANGER_STRONG: Color32 = Color32::from_rgb(0xc8, 0x22, 0x2c); // --danger-strong: #c8222c
-    pub const SIGNAL_STRONG: Color32 = Color32::from_rgb(0xe1, 0x1d, 0x3c); // --signal-strong: #e11d3c
-    pub const OFFLINE: Color32 = Color32::from_rgb(0x7d, 0x85, 0x91); // --offline: #7d8591
-    pub const FOCUS: Color32 = Color32::from_rgb(0x7c, 0xc4, 0xff); // --focus: #7cc4ff
-    pub const LEAGUE_TEAL: Color32 = Color32::from_rgb(0x0a, 0xc8, 0xb9); // #0ac8b9
-    pub const LEAGUE_BG: Color32 = Color32::from_rgb(0x0d, 0x22, 0x26);
-    pub const MENTION_BG: Color32 = Color32::from_rgb(0x33, 0x22, 0x18);
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct Palette {
+        pub bg_rail: Color32,
+        pub bg_sidebar: Color32,
+        pub bg_chat: Color32,
+        pub bg_panel: Color32,
+        pub bg_input: Color32,
+        pub bg_hover: Color32,
+        pub bg_selected: Color32,
+        pub bg_card: Color32,
+        pub bg_menu: Color32,
+        pub bg_floating: Color32,
+        pub btn_secondary: Color32,
+        pub btn_secondary_hover: Color32,
+        pub border: Color32,
+        pub border_subtle: Color32,
+        pub text: Color32,
+        pub text_header: Color32,
+        pub text_muted: Color32,
+        pub interactive: Color32,
+        pub accent: Color32,
+        pub accent_hover: Color32,
+        pub on_accent: Color32,
+        pub accent_soft: Color32,
+        pub argon_accent: Color32,
+        pub green: Color32,
+        pub yellow: Color32,
+        pub danger: Color32,
+        pub danger_strong: Color32,
+        pub signal_strong: Color32,
+        pub offline: Color32,
+        pub focus: Color32,
+        pub league_teal: Color32,
+        pub league_bg: Color32,
+        pub mention_bg: Color32,
+    }
+
+    const fn hex(v: u32) -> Color32 {
+        Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
+    }
+
+    /// `:root` (the dark "Arena" theme).
+    pub const DARK: Palette = Palette {
+        bg_rail: hex(0x0b0c0f),
+        bg_sidebar: hex(0x121418),
+        bg_chat: hex(0x17191e),
+        bg_panel: hex(0x0e0f12),
+        bg_input: hex(0x1f2228),
+        bg_hover: hex(0x202329),
+        bg_selected: hex(0x2a2e36),
+        bg_card: hex(0x1a1d23),
+        bg_menu: hex(0x15171c),
+        bg_floating: hex(0x15171c),
+        btn_secondary: hex(0x2b2f38),
+        btn_secondary_hover: hex(0x363b46),
+        border: hex(0x2c3038),
+        border_subtle: hex(0x22262e),
+        text: hex(0xe3e6ec),
+        text_header: hex(0xf7f8fa),
+        text_muted: hex(0x9aa1ad),
+        interactive: hex(0xc0c6d0),
+        accent: hex(0xff6a1f),
+        accent_hover: hex(0xff8747),
+        on_accent: hex(0x170900),
+        accent_soft: hex(0x3a2014),
+        argon_accent: hex(0x00d2eb),
+        green: hex(0x2fd36a),
+        yellow: hex(0xffb020),
+        danger: hex(0xff4d4d),
+        danger_strong: hex(0xc8222c),
+        signal_strong: hex(0xe11d3c),
+        offline: hex(0x7d8591),
+        focus: hex(0x7cc4ff),
+        league_teal: hex(0x0ac8b9),
+        league_bg: hex(0x0d2226),
+        mention_bg: Color32::from_rgba_premultiplied(26, 6, 9, 26), // rgb(255 61 87 / .1)
+    };
+
+    /// `:root[data-theme="light"]`
+    pub const LIGHT: Palette = Palette {
+        bg_rail: hex(0xe3e6eb),
+        bg_sidebar: hex(0xeef0f3),
+        bg_chat: hex(0xfbfbfc),
+        bg_panel: hex(0xe8ebef),
+        bg_input: hex(0xeceef2),
+        bg_hover: hex(0xe4e7ec),
+        bg_selected: hex(0xd8dce3),
+        bg_card: hex(0xf2f4f7),
+        bg_menu: hex(0xffffff),
+        bg_floating: hex(0xffffff),
+        btn_secondary: hex(0x4b5464),
+        btn_secondary_hover: hex(0x384050),
+        border: hex(0xc8cdd6),
+        border_subtle: hex(0xd8dce3),
+        text: hex(0x1d2128),
+        text_header: hex(0x0d1016),
+        text_muted: hex(0x596271),
+        interactive: hex(0x3d4555),
+        accent: hex(0xc2410c),
+        accent_hover: hex(0x9a3412),
+        on_accent: hex(0xffffff),
+        accent_soft: hex(0xf6dfd3),
+        argon_accent: hex(0x00d2eb),
+        green: hex(0x15803d),
+        yellow: hex(0x8a5a00),
+        danger: hex(0xd93a42),
+        danger_strong: hex(0xc8222c),
+        signal_strong: hex(0x9f1239),
+        offline: hex(0x6b7380),
+        focus: hex(0x0b5fd6),
+        league_teal: hex(0x0a8c82),
+        league_bg: hex(0xe0f4f2),
+        mention_bg: Color32::from_rgba_premultiplied(15, 1, 5, 20), // rgb(190 18 60 / .08)
+    };
+
+    /// `:root[data-theme="ash"]`
+    pub const ASH: Palette = Palette {
+        bg_rail: hex(0x17181c),
+        bg_sidebar: hex(0x1d1f25),
+        bg_chat: hex(0x24262d),
+        bg_panel: hex(0x1a1b20),
+        bg_input: hex(0x2d3038),
+        bg_hover: hex(0x2c2f37),
+        bg_selected: hex(0x363a44),
+        bg_card: hex(0x22252c),
+        bg_menu: hex(0x25282f),
+        bg_floating: hex(0x25282f),
+        border: hex(0x3a3e48),
+        border_subtle: hex(0x2c2f37),
+        text: hex(0xe8eaef),
+        text_muted: hex(0xaab0bb),
+        ..DARK
+    };
+
+    /// `:root[data-theme="onyx"]`
+    pub const ONYX: Palette = Palette {
+        bg_rail: hex(0x000000),
+        bg_sidebar: hex(0x060607),
+        bg_chat: hex(0x0a0a0c),
+        bg_panel: hex(0x030304),
+        bg_input: hex(0x15161a),
+        bg_hover: hex(0x141518),
+        bg_selected: hex(0x1e1f24),
+        bg_card: hex(0x0e0f12),
+        bg_menu: hex(0x0e0f12),
+        bg_floating: hex(0x0e0f12),
+        border: hex(0x24262c),
+        border_subtle: hex(0x141518),
+        ..DARK
+    };
+
+    static CURRENT: RwLock<Palette> = RwLock::new(DARK);
+
+    /// The palette of a theme id (the web's dark, light, ash, onyx; anything else is dark).
+    pub fn for_theme(id: &str) -> Palette {
+        match id {
+            "light" => LIGHT,
+            "ash" => ASH,
+            "onyx" => ONYX,
+            _ => DARK,
+        }
+    }
+
+    /// `--shadow`: soft on the light theme, deep on the dark ones.
+    pub fn SHADOW() -> egui::Shadow {
+        let light = pal().bg_chat.r() > 128;
+        egui::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(if light { 36 } else { 128 }) }
+    }
+
+    pub fn set_theme(id: &str) {
+        *CURRENT.write().unwrap_or_else(|e| e.into_inner()) = for_theme(id);
+    }
+
+    pub fn pal() -> Palette {
+        *CURRENT.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn BG_RAIL() -> Color32 {
+        pal().bg_rail
+    }
+    pub fn BG_SIDEBAR() -> Color32 {
+        pal().bg_sidebar
+    }
+    pub fn BG_CHAT() -> Color32 {
+        pal().bg_chat
+    }
+    pub fn BG_PANEL() -> Color32 {
+        pal().bg_panel
+    }
+    pub fn BG_INPUT() -> Color32 {
+        pal().bg_input
+    }
+    pub fn BG_HOVER() -> Color32 {
+        pal().bg_hover
+    }
+    pub fn BG_SELECTED() -> Color32 {
+        pal().bg_selected
+    }
+    pub fn BG_CARD() -> Color32 {
+        pal().bg_card
+    }
+    pub fn BG_MENU() -> Color32 {
+        pal().bg_menu
+    }
+    pub fn BG_FLOATING() -> Color32 {
+        pal().bg_floating
+    }
+    pub fn BTN_SECONDARY() -> Color32 {
+        pal().btn_secondary
+    }
+    pub fn BTN_SECONDARY_HOVER() -> Color32 {
+        pal().btn_secondary_hover
+    }
+    pub fn BORDER() -> Color32 {
+        pal().border
+    }
+    pub fn BORDER_SUBTLE() -> Color32 {
+        pal().border_subtle
+    }
+    pub fn TEXT() -> Color32 {
+        pal().text
+    }
+    pub fn TEXT_HEADER() -> Color32 {
+        pal().text_header
+    }
+    pub fn TEXT_MUTED() -> Color32 {
+        pal().text_muted
+    }
+    pub fn INTERACTIVE() -> Color32 {
+        pal().interactive
+    }
+    pub fn ACCENT() -> Color32 {
+        pal().accent
+    }
+    pub fn ACCENT_HOVER() -> Color32 {
+        pal().accent_hover
+    }
+    pub fn ON_ACCENT() -> Color32 {
+        pal().on_accent
+    }
+    pub fn ACCENT_SOFT() -> Color32 {
+        pal().accent_soft
+    }
+    pub fn ARGON_ACCENT() -> Color32 {
+        pal().argon_accent
+    }
+    pub fn GREEN() -> Color32 {
+        pal().green
+    }
+    pub fn YELLOW() -> Color32 {
+        pal().yellow
+    }
+    pub fn DANGER() -> Color32 {
+        pal().danger
+    }
+    pub fn DANGER_STRONG() -> Color32 {
+        pal().danger_strong
+    }
+    pub fn SIGNAL_STRONG() -> Color32 {
+        pal().signal_strong
+    }
+    pub fn OFFLINE() -> Color32 {
+        pal().offline
+    }
+    pub fn FOCUS() -> Color32 {
+        pal().focus
+    }
+    pub fn LEAGUE_TEAL() -> Color32 {
+        pal().league_teal
+    }
+    pub fn LEAGUE_BG() -> Color32 {
+        pal().league_bg
+    }
+    pub fn MENTION_BG() -> Color32 {
+        pal().mention_bg
+    }
 }
 
 #[cfg(feature = "native-gui")]
@@ -155,91 +401,52 @@ pub fn mono_font(size: f32) -> FontId {
     FontId::new(size, FontFamily::Monospace)
 }
 
+/// Sets the active theme's palette (the web's CSS variables) and egui's widget colours from it.
 #[cfg(feature = "native-gui")]
 pub fn apply_theme(ctx: &Context, theme_name: &str, font_scale: f32) {
     use palette::*;
-    let is_light = theme_name == "light";
-    let mut visuals = if is_light {
-        Visuals::light()
-    } else {
-        Visuals::dark()
-    };
-
-    if !is_light {
-        let (chat_bg, sidebar_bg, input_bg, accent) = match theme_name {
-            "argon" => (
-                Color32::from_rgb(0x14, 0x1a, 0x26),
-                Color32::from_rgb(0x0f, 0x14, 0x1e),
-                Color32::from_rgb(0x1b, 0x23, 0x33),
-                ARGON_ACCENT,
-            ),
-            "midnight" => (
-                Color32::from_rgb(0x0c, 0x0d, 0x10),
-                BG_SIDEBAR,
-                BG_INPUT,
-                ACCENT,
-            ),
-            "nord" => (
-                Color32::from_rgb(0x2e, 0x34, 0x40),
-                Color32::from_rgb(0x24, 0x29, 0x33),
-                Color32::from_rgb(0x3b, 0x42, 0x52),
-                Color32::from_rgb(0x88, 0xc0, 0xd0),
-            ),
-            "high-contrast" => (Color32::BLACK, Color32::BLACK, BG_INPUT, ACCENT),
-            _ => (BG_CHAT, BG_SIDEBAR, BG_INPUT, ACCENT),
-        };
-        visuals.panel_fill = chat_bg;
-        visuals.window_fill = BG_FLOATING;
-        visuals.faint_bg_color = sidebar_bg;
-        visuals.extreme_bg_color = input_bg;
-        visuals.code_bg_color = BG_RAIL;
-        visuals.override_text_color = Some(TEXT);
-        visuals.hyperlink_color = FOCUS;
-        visuals.warn_fg_color = YELLOW;
-        visuals.error_fg_color = DANGER;
-        visuals.window_stroke = Stroke::new(1.0_f32, BORDER);
-        visuals.window_corner_radius = CornerRadius::same(4);
-
-        visuals.widgets.noninteractive.bg_fill = sidebar_bg;
-        visuals.widgets.noninteractive.weak_bg_fill = sidebar_bg;
-        visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER);
-        visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT);
-        visuals.widgets.noninteractive.corner_radius = CornerRadius::same(3);
-
-        visuals.widgets.inactive.bg_fill = input_bg;
-        visuals.widgets.inactive.weak_bg_fill = input_bg;
-        visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER);
-        visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT);
-        visuals.widgets.inactive.corner_radius = CornerRadius::same(3);
-
-        visuals.widgets.hovered.bg_fill = BG_HOVER;
-        visuals.widgets.hovered.weak_bg_fill = BG_HOVER;
-        visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, accent);
-        visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, TEXT_HEADER);
-        visuals.widgets.hovered.corner_radius = CornerRadius::same(3);
-
-        visuals.widgets.active.bg_fill = BG_SELECTED;
-        visuals.widgets.active.weak_bg_fill = BG_SELECTED;
-        visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, accent);
-        visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, TEXT_HEADER);
-        visuals.widgets.active.corner_radius = CornerRadius::same(3);
-
-        visuals.selection.bg_fill = ACCENT_SOFT;
-        visuals.selection.stroke = Stroke::new(1.0_f32, accent);
+    set_theme(theme_name);
+    let light = theme_name == "light";
+    let mut v = if light { Visuals::light() } else { Visuals::dark() };
+    v.panel_fill = BG_CHAT();
+    v.window_fill = BG_MENU();
+    v.faint_bg_color = BG_SIDEBAR();
+    v.extreme_bg_color = BG_RAIL();
+    v.code_bg_color = BG_RAIL();
+    v.override_text_color = Some(TEXT());
+    v.hyperlink_color = FOCUS();
+    v.warn_fg_color = YELLOW();
+    v.error_fg_color = DANGER();
+    v.window_stroke = Stroke::new(1.0_f32, BORDER());
+    v.window_corner_radius = CornerRadius::same(4);
+    v.text_cursor.stroke = Stroke::new(2.0_f32, TEXT_HEADER());
+    for (w, fill, stroke, fg) in [
+        (&mut v.widgets.noninteractive, BG_SIDEBAR(), BORDER(), TEXT()),
+        (&mut v.widgets.inactive, BG_INPUT(), BORDER(), TEXT()),
+        (&mut v.widgets.hovered, BG_HOVER(), BTN_SECONDARY_HOVER(), TEXT_HEADER()),
+        (&mut v.widgets.active, BG_SELECTED(), ACCENT(), TEXT_HEADER()),
+        (&mut v.widgets.open, BG_SELECTED(), FOCUS(), TEXT_HEADER()),
+    ] {
+        w.bg_fill = fill;
+        w.weak_bg_fill = fill;
+        w.bg_stroke = Stroke::new(1.0_f32, stroke);
+        w.fg_stroke = Stroke::new(1.0_f32, fg);
+        w.corner_radius = CornerRadius::same(2);
     }
-
-    ctx.set_visuals(visuals);
-    ctx.set_pixels_per_point(font_scale.clamp(0.8, 1.5));
+    v.selection.bg_fill = FOCUS().gamma_multiply(0.35);
+    v.selection.stroke = Stroke::new(1.0_f32, FOCUS());
+    ctx.set_visuals(v);
+    ctx.set_pixels_per_point(font_scale.clamp(0.5, 2.0));
 }
 
 #[cfg(feature = "native-gui")]
 pub fn status_color(status: &str) -> Color32 {
     use palette::*;
     match status {
-        "online" => GREEN,
-        "idle" => YELLOW,
-        "dnd" => DANGER,
-        _ => OFFLINE,
+        "online" => GREEN(),
+        "idle" => YELLOW(),
+        "dnd" => DANGER(),
+        _ => OFFLINE(),
     }
 }
 
@@ -277,8 +484,8 @@ pub fn initials(name: &str, max: usize) -> String {
 #[cfg(feature = "native-gui")]
 pub fn draw_auth_grid(painter: &Painter, rect: Rect) {
     use palette::*;
-    painter.rect_filled(rect, 0.0, BG_RAIL);
-    let grid_color = Color32::from_rgba_unmultiplied(0x2c, 0x30, 0x38, 115);
+    painter.rect_filled(rect, 0.0, BG_RAIL());
+    let grid_color = BORDER().gamma_multiply(0.55); // color-mix(var(--border) 55%, transparent)
     let step = 40.0_f32;
     let mut x = (rect.min.x / step).floor() * step;
     while x <= rect.max.x {
@@ -460,13 +667,13 @@ pub fn draw_avatar(
 pub fn draw_list_heading(ui: &mut Ui, label: &str) {
     use palette::*;
     // `.list-heading`: 12px condensed, letter-spacing .12em, rule after
-    let galley = spaced_text(ui, &label.to_uppercase(), 12.0, TEXT_MUTED);
+    let galley = spaced_text(ui, &label.to_uppercase(), 12.0, TEXT_MUTED());
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 16.0), Sense::hover());
     let y = rect.center().y;
     let w = galley.size().x;
-    ui.painter().galley(Pos2::new(rect.min.x, y - galley.size().y / 2.0), galley, TEXT_MUTED);
+    ui.painter().galley(Pos2::new(rect.min.x, y - galley.size().y / 2.0), galley, TEXT_MUTED());
     if rect.min.x + w + 8.0 < rect.max.x {
-        ui.painter().hline((rect.min.x + w + 8.0)..=rect.max.x, y, Stroke::new(1.0_f32, BORDER.gamma_multiply(0.75)));
+        ui.painter().hline((rect.min.x + w + 8.0)..=rect.max.x, y, Stroke::new(1.0_f32, BORDER().gamma_multiply(0.75)));
     }
 }
 
@@ -685,15 +892,15 @@ pub fn icon_btn(
         painter.rect_filled(
             rect,
             CornerRadius::same(2),
-            if active { BG_SELECTED } else { BG_HOVER },
+            if active { BG_SELECTED() } else { BG_HOVER() },
         );
     }
     let fg = if danger_off {
-        DANGER
+        DANGER()
     } else if hovered || active {
-        TEXT_HEADER
+        TEXT_HEADER()
     } else {
-        INTERACTIVE
+        INTERACTIVE()
     };
     let icon_rect = Rect::from_center_size(rect.center(), Vec2::splat(18.0));
     draw_icon(painter, icon_rect, kind, fg);
@@ -714,27 +921,27 @@ pub fn round_icon_btn(
     let hovered = resp.hovered();
     let painter = ui.painter();
     let fill = if hovered && danger {
-        DANGER
+        DANGER()
     } else if hovered && accept {
-        GREEN
+        GREEN()
     } else if hovered {
-        BG_SELECTED
+        BG_SELECTED()
     } else {
-        BG_PANEL
+        BG_PANEL()
     };
     let border = if hovered && danger {
-        DANGER
+        DANGER()
     } else if hovered && accept {
-        GREEN
+        GREEN()
     } else {
-        BORDER
+        BORDER()
     };
     let fg = if hovered && (danger || accept) {
         Color32::BLACK
     } else if hovered {
-        TEXT_HEADER
+        TEXT_HEADER()
     } else {
-        INTERACTIVE
+        INTERACTIVE()
     };
     painter.circle(rect.center(), 17.5, fill, Stroke::new(1.0_f32, border));
     let icon_rect = Rect::from_center_size(rect.center(), Vec2::splat(16.0));

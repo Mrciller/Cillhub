@@ -47,18 +47,18 @@ impl CillhubApp {
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ctx, |ui| {
                 ui.label(
-                    RichText::new("SHARE AN INTERACTIVE GAME LOBBY INVITE CARD IN CHAT")
+                    RichText::new("SHARE AN INTERACTIVE() GAME LOBBY INVITE CARD IN CHAT")
                         .size(11.5)
                         .strong()
-                        .color(LEAGUE_TEAL),
+                        .color(LEAGUE_TEAL()),
                 );
                 ui.add_space(6.0);
 
                 // If a live League LCU lobby is detected, show a one-click sync banner
                 if let Some(l) = self.league_lobby.clone() {
                     Frame::new()
-                        .fill(LEAGUE_BG)
-                        .stroke(Stroke::new(1.0_f32, LEAGUE_TEAL))
+                        .fill(LEAGUE_BG())
+                        .stroke(Stroke::new(1.0_f32, LEAGUE_TEAL()))
                         .corner_radius(CornerRadius::same(4))
                         .inner_margin(Margin::same(10))
                         .show(ui, |ui| {
@@ -70,7 +70,7 @@ impl CillhubApp {
                                             l.queue_name
                                         ))
                                         .strong()
-                                        .color(LEAGUE_TEAL),
+                                        .color(LEAGUE_TEAL()),
                                     );
                                     ui.label(
                                         RichText::new(format!(
@@ -80,7 +80,7 @@ impl CillhubApp {
                                             l.max_party_size
                                         ))
                                         .size(11.5)
-                                        .color(TEXT_MUTED),
+                                        .color(TEXT_MUTED()),
                                     );
                                 });
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -104,35 +104,35 @@ impl CillhubApp {
                     .num_columns(2)
                     .spacing([12.0, 8.0])
                     .show(ui, |ui| {
-                        ui.label(RichText::new("Game Title:").color(TEXT_MUTED));
+                        ui.label(RichText::new("Game Title:").color(TEXT_MUTED()));
                         ui.add_sized(
                             Vec2::new(280.0, 28.0),
                             TextEdit::singleline(&mut self.lobby_form_game),
                         );
                         ui.end_row();
 
-                        ui.label(RichText::new("Queue / Mode:").color(TEXT_MUTED));
+                        ui.label(RichText::new("Queue / Mode:").color(TEXT_MUTED()));
                         ui.add_sized(
                             Vec2::new(280.0, 28.0),
                             TextEdit::singleline(&mut self.lobby_form_queue),
                         );
                         ui.end_row();
 
-                        ui.label(RichText::new("Host Name:").color(TEXT_MUTED));
+                        ui.label(RichText::new("Host Name:").color(TEXT_MUTED()));
                         ui.add_sized(
                             Vec2::new(280.0, 28.0),
                             TextEdit::singleline(&mut self.lobby_form_host),
                         );
                         ui.end_row();
 
-                        ui.label(RichText::new("Party / Lobby ID:").color(TEXT_MUTED));
+                        ui.label(RichText::new("Party / Lobby ID:").color(TEXT_MUTED()));
                         ui.add_sized(
                             Vec2::new(280.0, 28.0),
                             TextEdit::singleline(&mut self.lobby_form_party_id),
                         );
                         ui.end_row();
 
-                        ui.label(RichText::new("Party Size:").color(TEXT_MUTED));
+                        ui.label(RichText::new("Party Size:").color(TEXT_MUTED()));
                         ui.horizontal(|ui| {
                             ui.add(
                                 Slider::new(&mut self.lobby_form_members, 1..=10).text("Current"),
@@ -160,7 +160,7 @@ impl CillhubApp {
                     RichText::new("CARD PREVIEW")
                         .size(11.0)
                         .strong()
-                        .color(TEXT_MUTED),
+                        .color(TEXT_MUTED()),
                 );
                 self.render_game_invite_card(ui, &preview);
 
@@ -173,7 +173,7 @@ impl CillhubApp {
                                 .strong()
                                 .color(Color32::BLACK),
                         )
-                        .fill(LEAGUE_TEAL),
+                        .fill(LEAGUE_TEAL()),
                     )
                     .clicked()
                 {
@@ -191,7 +191,7 @@ impl CillhubApp {
                     RichText::new("DIRECT LEAGUE CLIENT (LCU) SUMMONER INVITE")
                         .size(11.0)
                         .strong()
-                        .color(TEXT_MUTED),
+                        .color(TEXT_MUTED()),
                 );
                 ui.horizontal(|ui| {
                     ui.add_sized(
@@ -200,7 +200,7 @@ impl CillhubApp {
                             .hint_text("Summoner Name or Numeric ID"),
                     );
                     if ui
-                        .button(RichText::new("Send LCU Invite").color(LEAGUE_TEAL))
+                        .button(RichText::new("Send LCU Invite").color(LEAGUE_TEAL()))
                         .clicked()
                     {
                         self.send_direct_lcu_invite();
@@ -223,7 +223,7 @@ impl CillhubApp {
         let (mut create, mut join) = (false, false);
         let (_, dim) = overlay(ctx, "add_server", 448.0, |ui| {
             modal_title(ui, tr("Add a server"));
-            ui.label(RichText::new(tr("Create a server")).font(crate::theme::bold_font(16.0)).color(TEXT_HEADER));
+            ui.label(RichText::new(tr("Create a server")).font(crate::theme::bold_font(16.0)).color(TEXT_HEADER()));
             ui.add_space(12.0);
             field_label(ui, tr("Server name"));
             text_input(ui, &mut self.new_guild_name_input, "");
@@ -233,9 +233,9 @@ impl CillhubApp {
             }
             ui.add_space(16.0);
             let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), egui::Sense::hover());
-            ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0_f32, BORDER));
+            ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0_f32, BORDER()));
             ui.add_space(16.0);
-            ui.label(RichText::new(tr("Join a server")).font(crate::theme::bold_font(16.0)).color(TEXT_HEADER));
+            ui.label(RichText::new(tr("Join a server")).font(crate::theme::bold_font(16.0)).color(TEXT_HEADER()));
             ui.add_space(12.0);
             field_label(ui, tr("Invite link or code"));
             text_input(ui, &mut self.join_invite_code_input, "https://…/invite/hTKzmak");
@@ -335,26 +335,26 @@ impl CillhubApp {
         let future = when.is_some_and(|w| w > chrono::Local::now() + chrono::Duration::seconds(30));
         let (_, dim) = overlay(ctx, "send_later", 448.0, |ui| {
             modal_title(ui, tr("Send Later"));
-            ui.label(RichText::new(trf("Sends to {where}", &[("where", &format!("#{ch_name}"))])).font(ui_font(14.0)).color(TEXT_MUTED));
+            ui.label(RichText::new(trf("Sends to {where}", &[("where", &format!("#{ch_name}"))])).font(ui_font(14.0)).color(TEXT_MUTED()));
             ui.add_space(8.0);
             let r = Frame::new()
-                .fill(BG_SIDEBAR)
+                .fill(BG_SIDEBAR())
                 .corner_radius(CornerRadius::same(2))
                 .inner_margin(Margin { left: 16, right: 12, top: 10, bottom: 10 })
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     let quote: String = self.composer_text.chars().take(300).collect();
-                    ui.label(RichText::new(quote).font(ui_font(15.0)).color(TEXT));
+                    ui.label(RichText::new(quote).font(ui_font(15.0)).color(TEXT()));
                 })
                 .response
                 .rect;
-            ui.painter().rect_filled(egui::Rect::from_min_size(r.min, Vec2::new(4.0, r.height())), 0.0, ACCENT);
+            ui.painter().rect_filled(egui::Rect::from_min_size(r.min, Vec2::new(4.0, r.height())), 0.0, ACCENT());
             ui.add_space(16.0);
             field_label(ui, tr("Date and time"));
             text_input(ui, &mut self.schedule_time_input, "YYYY-MM-DD HH:MM");
             if !future {
                 ui.add_space(6.0);
-                ui.label(RichText::new(tr("Pick a time in the future.")).font(ui_font(14.0)).color(DANGER));
+                ui.label(RichText::new(tr("Pick a time in the future.")).font(ui_font(14.0)).color(DANGER()));
             }
             ui.add_space(18.0);
             actions_row(ui, |ui| {
@@ -407,8 +407,8 @@ impl CillhubApp {
             for (kind, label, icon, note) in types {
                 let on = self.create_channel_kind == kind;
                 let resp = Frame::new()
-                    .fill(if on { BG_SELECTED } else { BG_SIDEBAR })
-                    .stroke(Stroke::new(1.0_f32, if on { ACCENT } else { BORDER }))
+                    .fill(if on { BG_SELECTED() } else { BG_SIDEBAR() })
+                    .stroke(Stroke::new(1.0_f32, if on { ACCENT() } else { BORDER() }))
                     .corner_radius(CornerRadius::same(2))
                     .inner_margin(Margin::symmetric(12, 10))
                     .show(ui, |ui| {
@@ -418,15 +418,15 @@ impl CillhubApp {
                             radio_dot(ui, on);
                             let (r, _) = ui.allocate_exact_size(Vec2::splat(18.0), egui::Sense::hover());
                             match icon {
-                                Some(k) => crate::theme::draw_icon(ui.painter(), r, k, INTERACTIVE),
+                                Some(k) => crate::theme::draw_icon(ui.painter(), r, k, INTERACTIVE()),
                                 None => {
-                                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "#", ui_font(18.0), OFFLINE);
+                                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "#", ui_font(18.0), OFFLINE());
                                 }
                             }
                             ui.vertical(|ui| {
                                 ui.spacing_mut().item_spacing.y = 0.0;
-                                ui.label(RichText::new(label).font(ui_font(15.0)).color(TEXT_HEADER));
-                                ui.label(RichText::new(note).font(ui_font(12.0)).color(TEXT));
+                                ui.label(RichText::new(label).font(ui_font(15.0)).color(TEXT_HEADER()));
+                                ui.label(RichText::new(note).font(ui_font(12.0)).color(TEXT()));
                             });
                         });
                     })
@@ -537,12 +537,12 @@ impl CillhubApp {
             modal_title(ui, tr("Events"));
             let n = self.events.len();
             let count = if n == 1 { tr("{n} Event") } else { tr("{n} Events") };
-            ui.label(RichText::new(count.replace("{n}", &n.to_string())).font(ui_font(14.0)).color(TEXT_MUTED));
+            ui.label(RichText::new(count.replace("{n}", &n.to_string())).font(ui_font(14.0)).color(TEXT_MUTED()));
             ui.add_space(12.0);
             if self.events.is_empty() {
                 ui.add_space(24.0);
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new(tr("There are no upcoming events.")).font(ui_font(14.0)).color(TEXT_MUTED));
+                    ui.label(RichText::new(tr("There are no upcoming events.")).font(ui_font(14.0)).color(TEXT_MUTED()));
                 });
                 ui.add_space(24.0);
             }
@@ -551,8 +551,8 @@ impl CillhubApp {
                     let get = |k: &str| e.get(k).and_then(|v| v.as_str()).unwrap_or("");
                     let live = e.get("status").and_then(|v| v.as_u64()) == Some(2);
                     Frame::new()
-                        .fill(BG_SIDEBAR)
-                        .stroke(if live { Stroke::new(1.0_f32, GREEN) } else { Stroke::NONE })
+                        .fill(BG_SIDEBAR())
+                        .stroke(if live { Stroke::new(1.0_f32, GREEN()) } else { Stroke::NONE })
                         .corner_radius(CornerRadius::same(3))
                         .inner_margin(Margin::same(16))
                         .show(ui, |ui| {
@@ -564,15 +564,15 @@ impl CillhubApp {
                             };
                             ui.horizontal(|ui| {
                                 let (r, _) = ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
-                                crate::theme::draw_icon(ui.painter(), r, crate::theme::IconKind::Calendar, if live { GREEN } else { TEXT_MUTED });
-                                ui.label(RichText::new(when).font(crate::theme::bold_font(13.0)).color(if live { GREEN } else { TEXT_MUTED }));
+                                crate::theme::draw_icon(ui.painter(), r, crate::theme::IconKind::Calendar, if live { GREEN() } else { TEXT_MUTED() });
+                                ui.label(RichText::new(when).font(crate::theme::bold_font(13.0)).color(if live { GREEN() } else { TEXT_MUTED() }));
                             });
-                            ui.label(RichText::new(get("name")).font(crate::theme::bold_font(18.0)).color(TEXT_HEADER));
+                            ui.label(RichText::new(get("name")).font(crate::theme::bold_font(18.0)).color(TEXT_HEADER()));
                             if !get("description").is_empty() {
-                                ui.label(RichText::new(get("description")).font(ui_font(14.0)).color(TEXT));
+                                ui.label(RichText::new(get("description")).font(ui_font(14.0)).color(TEXT()));
                             }
                             let users = e.get("user_count").and_then(|v| v.as_u64()).unwrap_or(0);
-                            ui.label(RichText::new(format!("{users} interested")).font(ui_font(12.0)).color(TEXT_MUTED));
+                            ui.label(RichText::new(format!("{users} interested")).font(ui_font(12.0)).color(TEXT_MUTED()));
                         });
                     ui.add_space(12.0);
                 }
@@ -608,15 +608,15 @@ impl CillhubApp {
             for (label, cid, gid) in &items {
                 let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), egui::Sense::click());
                 if resp.hovered() {
-                    ui.painter().rect_filled(rect, CornerRadius::same(2), BG_HOVER);
+                    ui.painter().rect_filled(rect, CornerRadius::same(2), BG_HOVER());
                 }
-                ui.painter().text(rect.left_center() + Vec2::new(10.0, 0.0), egui::Align2::LEFT_CENTER, label, ui_font(15.0), if resp.hovered() { TEXT_HEADER } else { TEXT });
+                ui.painter().text(rect.left_center() + Vec2::new(10.0, 0.0), egui::Align2::LEFT_CENTER, label, ui_font(15.0), if resp.hovered() { TEXT_HEADER() } else { TEXT() });
                 if resp.clicked() {
                     go = Some((cid.clone(), gid.clone()));
                 }
             }
             if items.is_empty() {
-                ui.label(RichText::new(tr("No results")).font(ui_font(14.0)).color(TEXT_MUTED));
+                ui.label(RichText::new(tr("No results")).font(ui_font(14.0)).color(TEXT_MUTED()));
             }
         });
         if let Some((cid, gid)) = go {
@@ -643,7 +643,7 @@ impl CillhubApp {
             ui.label(
                 RichText::new(title)
                     .font(display_font(18.0))
-                    .color(TEXT_HEADER),
+                    .color(TEXT_HEADER()),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.small_button("✕").clicked() {
@@ -666,7 +666,7 @@ impl CillhubApp {
                         .cloned()
                         .collect();
                     if threads.is_empty() {
-                        ui.label(RichText::new("No threads in this channel yet.").color(TEXT_MUTED));
+                        ui.label(RichText::new("No threads in this channel yet.").color(TEXT_MUTED()));
                     }
                     for th in threads {
                         if ui
@@ -686,31 +686,31 @@ impl CillhubApp {
                         .map(|list| list.iter().filter(|m| m.pinned).cloned().collect())
                         .unwrap_or_default();
                     if pinned.is_empty() {
-                        ui.label(RichText::new("No pinned messages yet.").color(TEXT_MUTED));
+                        ui.label(RichText::new("No pinned messages yet.").color(TEXT_MUTED()));
                     }
                     for m in pinned {
                         Frame::new()
-                            .fill(BG_SIDEBAR)
+                            .fill(BG_SIDEBAR())
                             .inner_margin(Margin::same(8))
                             .show(ui, |ui| {
-                                ui.label(RichText::new(&m.content).color(TEXT));
+                                ui.label(RichText::new(&m.content).color(TEXT()));
                             });
                         ui.add_space(4.0);
                     }
                 }
                 DrawerKind::Saved => {
                     if self.state.saved_messages.is_empty() {
-                        ui.label(RichText::new("No saved messages yet.").color(TEXT_MUTED));
+                        ui.label(RichText::new("No saved messages yet.").color(TEXT_MUTED()));
                     }
                     for sm in &self.state.saved_messages {
                         Frame::new()
-                            .fill(BG_SIDEBAR)
+                            .fill(BG_SIDEBAR())
                             .inner_margin(Margin::same(8))
                             .show(ui, |ui| {
                                 if let Some(m) = &sm.message {
-                                    ui.label(RichText::new(&m.content).color(TEXT));
+                                    ui.label(RichText::new(&m.content).color(TEXT()));
                                 } else {
-                                    ui.label(RichText::new(&sm.message_id).color(TEXT_MUTED));
+                                    ui.label(RichText::new(&sm.message_id).color(TEXT_MUTED()));
                                 }
                             });
                         ui.add_space(4.0);
@@ -733,14 +733,14 @@ impl CillhubApp {
                     ui.label(
                         RichText::new(format!("{} results for '{}'", hits.len(), self.search_query))
                             .size(11.5)
-                            .color(TEXT_MUTED),
+                            .color(TEXT_MUTED()),
                     );
                     for m in hits {
                         Frame::new()
-                            .fill(BG_SIDEBAR)
+                            .fill(BG_SIDEBAR())
                             .inner_margin(Margin::same(8))
                             .show(ui, |ui| {
-                                ui.label(RichText::new(&m.content).color(TEXT));
+                                ui.label(RichText::new(&m.content).color(TEXT()));
                             });
                         ui.add_space(4.0);
                     }
@@ -749,7 +749,7 @@ impl CillhubApp {
                     ui.label(
                         RichText::new("Collaborative Markdown & Sticky Notes")
                             .size(11.5)
-                            .color(TEXT_MUTED),
+                            .color(TEXT_MUTED()),
                     );
                     ui.add_space(6.0);
                     ui.add_sized(
@@ -881,7 +881,7 @@ pub fn overlay<R>(ctx: &Context, id: &str, width: f32, add: impl FnOnce(&mut Ui)
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
         .show(ctx, |ui| {
-            crate::theme::show_notched_card(ui, BG_CHAT, BORDER, 12.0, Some(ACCENT), None, Margin::same(24), |ui| {
+            crate::theme::show_notched_card(ui, BG_CHAT(), BORDER(), 12.0, Some(ACCENT()), None, Margin::same(24), |ui| {
                 ui.set_width(width - 48.0);
                 ui.set_max_height(screen.height() - 96.0);
                 add(ui)
@@ -894,7 +894,7 @@ pub fn overlay<R>(ctx: &Context, id: &str, width: f32, add: impl FnOnce(&mut Ui)
 
 fn button(ui: &mut Ui, label: &str, fill: Color32, hover: Color32, fg: Color32, border: Option<Color32>) -> egui::Response {
     // `.primary:disabled`: secondary fill, muted text
-    let (fill, hover, fg) = if ui.is_enabled() { (fill, hover, fg) } else { (BTN_SECONDARY, BTN_SECONDARY, TEXT_MUTED) };
+    let (fill, hover, fg) = if ui.is_enabled() { (fill, hover, fg) } else { (BTN_SECONDARY(), BTN_SECONDARY(), TEXT_MUTED()) };
     let galley = ui.painter().layout_no_wrap(label.to_uppercase(), display_font(16.0), fg);
     let size = Vec2::new(galley.size().x + 32.0, 36.0);
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
@@ -909,17 +909,17 @@ fn button(ui: &mut Ui, label: &str, fill: Color32, hover: Color32, fg: Color32, 
 
 /// `.primary`
 pub fn primary_btn(ui: &mut Ui, label: &str) -> egui::Response {
-    button(ui, label, ACCENT, ACCENT_HOVER, ON_ACCENT, None)
+    button(ui, label, ACCENT(), ACCENT_HOVER(), ON_ACCENT(), None)
 }
 
 /// `.secondary`
 pub fn secondary_btn(ui: &mut Ui, label: &str) -> egui::Response {
-    button(ui, label, BTN_SECONDARY, BTN_SECONDARY_HOVER, TEXT_HEADER, Some(BORDER))
+    button(ui, label, BTN_SECONDARY(), BTN_SECONDARY_HOVER(), Color32::WHITE, Some(BORDER()))
 }
 
 /// `.danger-btn`
 pub fn danger_btn(ui: &mut Ui, label: &str) -> egui::Response {
-    button(ui, label, DANGER_STRONG, Color32::from_rgb(0xb5, 0x20, 0x2a), Color32::WHITE, None)
+    button(ui, label, DANGER_STRONG(), Color32::from_rgb(0xb5, 0x20, 0x2a), Color32::WHITE, None)
 }
 
 /// `.modal-actions`: buttons right-aligned in one 36px row (add them right to left).
@@ -933,13 +933,13 @@ pub fn actions_row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
 
 /// `.modal-body > h2`: 28px condensed uppercase title.
 pub fn modal_title(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text.to_uppercase()).font(display_font(28.0)).color(TEXT_HEADER));
+    ui.label(RichText::new(text.to_uppercase()).font(display_font(28.0)).color(TEXT_HEADER()));
     ui.add_space(16.0);
 }
 
 /// `.field label`: 13px semibold, interactive colour.
 pub fn field_label(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).font(crate::theme::bold_font(13.0)).color(INTERACTIVE));
+    ui.label(RichText::new(text).font(crate::theme::bold_font(13.0)).color(INTERACTIVE()));
     ui.add_space(6.0);
 }
 
@@ -948,8 +948,8 @@ pub fn text_input(ui: &mut Ui, value: &mut String, hint: &str) -> egui::Response
     let id = ui.next_auto_id();
     let focused = ui.memory(|m| m.has_focus(id));
     Frame::new()
-        .fill(BG_RAIL)
-        .stroke(Stroke::new(1.0_f32, if focused { FOCUS } else { BORDER }))
+        .fill(BG_RAIL())
+        .stroke(Stroke::new(1.0_f32, if focused { FOCUS() } else { BORDER() }))
         .corner_radius(CornerRadius::same(2))
         .inner_margin(Margin::symmetric(12, 10))
         .show(ui, |ui| {
@@ -957,8 +957,8 @@ pub fn text_input(ui: &mut Ui, value: &mut String, hint: &str) -> egui::Response
                 TextEdit::singleline(value)
                     .id(id)
                     .font(crate::theme::ui_font(15.0))
-                    .text_color(TEXT)
-                    .hint_text(RichText::new(hint).color(TEXT_MUTED))
+                    .text_color(TEXT())
+                    .hint_text(RichText::new(hint).color(TEXT_MUTED()))
                     .desired_width(f32::INFINITY)
                     .frame(false)
                     .margin(Margin::ZERO),
@@ -976,15 +976,15 @@ pub fn switch_row(ui: &mut Ui, label: &str, note: Option<&str>, on: &mut bool) -
         ui.allocate_ui(Vec2::new(w, 24.0), |ui| {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                ui.label(RichText::new(label).font(crate::theme::ui_font(15.0)).color(TEXT_HEADER));
+                ui.label(RichText::new(label).font(crate::theme::ui_font(15.0)).color(TEXT_HEADER()));
                 if let Some(n) = note {
-                    ui.label(RichText::new(n).font(crate::theme::ui_font(12.0)).color(TEXT_MUTED));
+                    ui.label(RichText::new(n).font(crate::theme::ui_font(12.0)).color(TEXT_MUTED()));
                 }
             });
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
             let (r, resp) = ui.allocate_exact_size(Vec2::new(42.0, 24.0), egui::Sense::click());
-            ui.painter().rect_filled(r, CornerRadius::same(2), if *on { GREEN } else { OFFLINE });
+            ui.painter().rect_filled(r, CornerRadius::same(2), if *on { GREEN() } else { OFFLINE() });
             let knob_x = if *on { r.max.x - 21.0 } else { r.min.x + 3.0 };
             ui.painter().rect_filled(egui::Rect::from_min_size(egui::pos2(knob_x, r.min.y + 3.0), Vec2::splat(18.0)), CornerRadius::same(2), Color32::WHITE);
             if resp.clicked() {
@@ -995,7 +995,7 @@ pub fn switch_row(ui: &mut Ui, label: &str, note: Option<&str>, on: &mut bool) -
     });
     ui.add_space(14.0);
     let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), egui::Sense::hover());
-    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0_f32, BORDER));
+    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0_f32, BORDER()));
     changed
 }
 
@@ -1004,18 +1004,18 @@ pub fn select_box(ui: &mut Ui, id: &str, current: &str, add: impl FnOnce(&mut Ui
     ui.scope(|ui| {
         let v = ui.visuals_mut();
         for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
-            w.weak_bg_fill = BG_RAIL;
-            w.bg_fill = BG_RAIL;
+            w.weak_bg_fill = BG_RAIL();
+            w.bg_fill = BG_RAIL();
             w.corner_radius = CornerRadius::same(2);
-            w.fg_stroke.color = TEXT;
+            w.fg_stroke.color = TEXT();
         }
-        v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER);
-        v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, BTN_SECONDARY_HOVER);
-        v.widgets.open.bg_stroke = Stroke::new(1.0_f32, FOCUS);
+        v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER());
+        v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, BTN_SECONDARY_HOVER());
+        v.widgets.open.bg_stroke = Stroke::new(1.0_f32, FOCUS());
         ui.spacing_mut().interact_size.y = 40.0;
         ui.spacing_mut().button_padding = Vec2::new(12.0, 10.0);
         egui::ComboBox::from_id_salt(id)
-            .selected_text(RichText::new(current).font(crate::theme::ui_font(15.0)).color(TEXT))
+            .selected_text(RichText::new(current).font(crate::theme::ui_font(15.0)).color(TEXT()))
             .width(ui.available_width())
             .height(320.0)
             .show_ui(ui, add);
@@ -1027,9 +1027,9 @@ pub fn radio_dot(ui: &mut Ui, on: bool) {
     let (r, _) = ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
     let c = r.center();
     if on {
-        ui.painter().circle_filled(c, 7.0, FOCUS);
-        ui.painter().circle_filled(c, 3.0, BG_RAIL);
+        ui.painter().circle_filled(c, 7.0, FOCUS());
+        ui.painter().circle_filled(c, 3.0, BG_RAIL());
     } else {
-        ui.painter().circle(c, 6.5, BG_RAIL, Stroke::new(1.0_f32, INTERACTIVE));
+        ui.painter().circle(c, 6.5, BG_RAIL(), Stroke::new(1.0_f32, INTERACTIVE()));
     }
 }

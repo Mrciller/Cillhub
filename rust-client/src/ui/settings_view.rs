@@ -84,12 +84,12 @@ fn settings_page(
         .show(ctx, |ui| {
             let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click());
             let p = ui.painter();
-            p.rect_filled(rect, 0.0, BG_CHAT);
+            p.rect_filled(rect, 0.0, BG_CHAT());
             // `.settings-nav { flex: 1 0 224px }` beside `.settings-content { max-width: 740px }`
             let nav_w = ((rect.width() - 740.0 - 56.0) * 0.67).max(224.0);
             let nav = Rect::from_min_size(rect.min, Vec2::new(nav_w, rect.height()));
-            p.rect_filled(nav, 0.0, BG_SIDEBAR);
-            p.vline(nav.max.x - 0.5, nav.y_range(), Stroke::new(1.0_f32, BORDER));
+            p.rect_filled(nav, 0.0, BG_SIDEBAR());
+            p.vline(nav.max.x - 0.5, nav.y_range(), Stroke::new(1.0_f32, BORDER()));
 
             let inner = Rect::from_min_max(Pos2::new(nav.max.x - 224.0 + 20.0, nav.min.y), Pos2::new(nav.max.x - 10.0, nav.max.y));
             let mut nui = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(Layout::top_down(Align::Min)));
@@ -100,12 +100,12 @@ fn settings_page(
                 for (heading, tabs) in sections {
                     // `.settings-nav .list-heading { padding: 6px 10px }`
                     ui.add_space(6.0);
-                    let g = spaced_text(ui, &heading.to_uppercase(), 12.0, TEXT_MUTED);
+                    let g = spaced_text(ui, &heading.to_uppercase(), 12.0, TEXT_MUTED());
                     let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 16.0), Sense::hover());
                     let w = g.size().x;
-                    ui.painter().galley(Pos2::new(r.min.x + 10.0, r.center().y - g.size().y / 2.0), g, TEXT_MUTED);
+                    ui.painter().galley(Pos2::new(r.min.x + 10.0, r.center().y - g.size().y / 2.0), g, TEXT_MUTED());
                     if r.min.x + 18.0 + w < r.max.x {
-                        ui.painter().hline((r.min.x + 18.0 + w)..=r.max.x, r.center().y, Stroke::new(1.0_f32, BORDER.gamma_multiply(0.75)));
+                        ui.painter().hline((r.min.x + 18.0 + w)..=r.max.x, r.center().y, Stroke::new(1.0_f32, BORDER().gamma_multiply(0.75)));
                     }
                     ui.add_space(6.0);
                     for label in tabs {
@@ -118,7 +118,7 @@ fn settings_page(
                 if let Some(f) = footer {
                     ui.add_space(8.0);
                     let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
-                    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0_f32, BORDER));
+                    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0_f32, BORDER()));
                     ui.add_space(8.0);
                     if settings_tab(ui, f, false, true).clicked() {
                         out = Some(Nav::Footer);
@@ -143,11 +143,11 @@ fn settings_page(
             let hov = resp.hovered();
             let p = ui.painter();
             if hov {
-                p.rect_filled(x, CornerRadius::same(3), BG_HOVER);
+                p.rect_filled(x, CornerRadius::same(3), BG_HOVER());
             }
-            p.rect_stroke(x, CornerRadius::same(3), Stroke::new(2.0_f32, if hov { INTERACTIVE } else { BORDER }), egui::StrokeKind::Inside);
-            draw_icon(p, Rect::from_center_size(x.center(), Vec2::splat(18.0)), IconKind::Close, if hov { TEXT_HEADER } else { INTERACTIVE });
-            p.text(Pos2::new(x.center().x, x.max.y + 12.0), egui::Align2::CENTER_CENTER, "ESC", bold_font(12.0), TEXT_MUTED);
+            p.rect_stroke(x, CornerRadius::same(3), Stroke::new(2.0_f32, if hov { INTERACTIVE() } else { BORDER() }), egui::StrokeKind::Inside);
+            draw_icon(p, Rect::from_center_size(x.center(), Vec2::splat(18.0)), IconKind::Close, if hov { TEXT_HEADER() } else { INTERACTIVE() });
+            p.text(Pos2::new(x.center().x, x.max.y + 12.0), egui::Align2::CENTER_CENTER, "ESC", bold_font(12.0), TEXT_MUTED());
             if resp.clicked() {
                 out = Some(Nav::Close);
             }
@@ -161,19 +161,19 @@ fn settings_tab(ui: &mut Ui, label: &str, active: bool, danger: bool) -> egui::R
     let hov = resp.hovered();
     let p = ui.painter();
     if active || hov {
-        p.rect_filled(r, CornerRadius::same(2), if active { BG_SELECTED } else { BG_HOVER });
+        p.rect_filled(r, CornerRadius::same(2), if active { BG_SELECTED() } else { BG_HOVER() });
     }
     if active {
-        p.rect_filled(Rect::from_min_size(r.min, Vec2::new(3.0, r.height())), 0.0, ACCENT);
+        p.rect_filled(Rect::from_min_size(r.min, Vec2::new(3.0, r.height())), 0.0, ACCENT());
     }
     let color = if danger {
-        DANGER
+        DANGER()
     } else if active {
-        TEXT_HEADER
+        TEXT_HEADER()
     } else if hov {
-        TEXT_HEADER
+        TEXT_HEADER()
     } else {
-        INTERACTIVE
+        INTERACTIVE()
     };
     let font = if active { bold_font(14.5) } else { ui_font(14.5) };
     p.text(Pos2::new(r.min.x + 12.0, r.center().y), egui::Align2::LEFT_CENTER, label, font, color);
@@ -182,15 +182,15 @@ fn settings_tab(ui: &mut Ui, label: &str, active: bool, danger: bool) -> egui::R
 
 /// `.settings-content h1`: 34px condensed uppercase.
 fn page_title(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text.to_uppercase()).font(display_font(34.0)).color(TEXT_HEADER));
+    ui.label(RichText::new(text.to_uppercase()).font(display_font(34.0)).color(TEXT_HEADER()));
     ui.add_space(20.0);
 }
 
 /// `fieldset.choice` card: sidebar fill, border; `on`: selected fill, accent border.
 fn choice_card<R>(ui: &mut Ui, on: bool, add: impl FnOnce(&mut Ui) -> R) -> egui::Response {
     let resp = Frame::new()
-        .fill(if on { BG_SELECTED } else { BG_SIDEBAR })
-        .stroke(Stroke::new(1.0_f32, if on { ACCENT } else { BORDER }))
+        .fill(if on { BG_SELECTED() } else { BG_SIDEBAR() })
+        .stroke(Stroke::new(1.0_f32, if on { ACCENT() } else { BORDER() }))
         .corner_radius(CornerRadius::same(2))
         .inner_margin(Margin::symmetric(12, 10))
         .show(ui, |ui| {
@@ -243,26 +243,26 @@ impl CillhubApp {
         }
         // `.account-card`: accent banner, big avatar, name and username, then the fields
         Frame::new()
-            .fill(BG_SIDEBAR)
-            .stroke(Stroke::new(1.0_f32, BORDER))
+            .fill(BG_SIDEBAR())
+            .stroke(Stroke::new(1.0_f32, BORDER()))
             .corner_radius(CornerRadius::same(4))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 let (banner, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 72.0), Sense::hover());
-                ui.painter().rect_filled(banner, CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }, ACCENT);
+                ui.painter().rect_filled(banner, CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }, ACCENT());
                 Frame::new().inner_margin(Margin { left: 16, right: 16, top: 0, bottom: 16 }).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.add_space(0.0);
                         let (r, _) = ui.allocate_exact_size(Vec2::new(88.0, 56.0), Sense::hover());
                         let av = Rect::from_min_size(r.min + Vec2::new(0.0, -36.0), Vec2::splat(88.0));
-                        ui.painter().circle_filled(av.center(), 44.0, BG_SIDEBAR);
+                        ui.painter().circle_filled(av.center(), 44.0, BG_SIDEBAR());
                         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(av.shrink(6.0)));
-                        draw_avatar(&mut c, 76.0, &me.id, me.display_name(), None, BG_SIDEBAR);
+                        draw_avatar(&mut c, 76.0, &me.id, me.display_name(), None, BG_SIDEBAR());
                         ui.vertical(|ui| {
                             ui.add_space(8.0);
                             let name = self.account_name_draft.clone().filter(|n| !n.trim().is_empty()).unwrap_or(me.username.clone());
-                            ui.label(RichText::new(name.to_uppercase()).font(display_font(26.0)).color(TEXT_HEADER));
-                            ui.label(RichText::new(&me.username).font(ui_font(14.0)).color(TEXT_MUTED));
+                            ui.label(RichText::new(name.to_uppercase()).font(display_font(26.0)).color(TEXT_HEADER()));
+                            ui.label(RichText::new(&me.username).font(ui_font(14.0)).color(TEXT_MUTED()));
                         });
                     });
                     ui.add_space(16.0);
@@ -273,8 +273,8 @@ impl CillhubApp {
                     ui.add_space(20.0);
                     for (k, v) in [(tr("Username"), Some(me.username.clone())), (tr("Email"), me.email.clone())] {
                         if let Some(v) = v {
-                            ui.label(RichText::new(k).font(bold_font(12.0)).color(TEXT_MUTED));
-                            ui.label(RichText::new(v).font(ui_font(14.0)).color(TEXT));
+                            ui.label(RichText::new(k).font(bold_font(12.0)).color(TEXT_MUTED()));
+                            ui.label(RichText::new(v).font(ui_font(14.0)).color(TEXT()));
                             ui.add_space(8.0);
                         }
                     }
@@ -288,7 +288,7 @@ impl CillhubApp {
             if ui.add_enabled_ui(dirty, |ui| primary_btn(ui, tr("Save Changes"))).inner.clicked() {
                 save = true;
             }
-            if ui.add_enabled(dirty, egui::Button::new(RichText::new(tr("Reset")).color(FOCUS)).frame(false)).clicked() {
+            if ui.add_enabled(dirty, egui::Button::new(RichText::new(tr("Reset")).color(FOCUS())).frame(false)).clicked() {
                 self.account_name_draft = None;
             }
         });
@@ -308,19 +308,19 @@ impl CillhubApp {
         page_title(ui, tr("Appearance"));
         // `.theme-preview`: one message on the chat colour
         Frame::new()
-            .fill(BG_CHAT)
-            .stroke(Stroke::new(1.0_f32, BORDER))
+            .fill(BG_CHAT())
+            .stroke(Stroke::new(1.0_f32, BORDER()))
             .corner_radius(CornerRadius::same(3))
             .inner_margin(Margin { left: 74, right: 16, top: 28, bottom: 28 })
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(tr("Cillhub")).font(bold_font(15.0)).color(TEXT_HEADER));
+                    ui.label(RichText::new(tr("Cillhub")).font(bold_font(15.0)).color(TEXT_HEADER()));
                     let now = chrono::Local::now().naive_local();
                     let t = now.format(if crate::i18n::is_german() { "%H:%M" } else { "%I:%M %p" }).to_string();
-                    ui.label(RichText::new(t).font(ui_font(12.0)).color(TEXT_MUTED));
+                    ui.label(RichText::new(t).font(ui_font(12.0)).color(TEXT_MUTED()));
                 });
-                ui.label(RichText::new(tr("Waiting for the patch to drop? Pick a look you like.")).font(ui_font(15.0)).color(TEXT));
+                ui.label(RichText::new(tr("Waiting for the patch to drop? Pick a look you like.")).font(ui_font(15.0)).color(TEXT()));
             });
         ui.add_space(24.0);
         field_label(ui, tr("Theme"));
@@ -334,8 +334,8 @@ impl CillhubApp {
                 let resp = ui
                     .allocate_ui(Vec2::new(w, 78.0), |ui| {
                         Frame::new()
-                            .fill(BG_SIDEBAR)
-                            .stroke(Stroke::new(1.0_f32, BORDER))
+                            .fill(BG_SIDEBAR())
+                            .stroke(Stroke::new(1.0_f32, BORDER()))
                             .corner_radius(CornerRadius::same(2))
                             .inner_margin(Margin::symmetric(12, 10))
                             .show(ui, |ui| {
@@ -343,10 +343,10 @@ impl CillhubApp {
                                 ui.horizontal(|ui| {
                                     let (r, _) = ui.allocate_exact_size(Vec2::splat(56.0), Sense::hover());
                                     if on {
-                                        ui.painter().circle_stroke(r.center(), 31.5, Stroke::new(3.0_f32, ACCENT));
+                                        ui.painter().circle_stroke(r.center(), 31.5, Stroke::new(3.0_f32, ACCENT()));
                                     }
-                                    ui.painter().circle(r.center(), 27.0, role_color(color), Stroke::new(if on { 0.0_f32 } else { 2.0 }, BORDER));
-                                    ui.label(RichText::new(label).font(ui_font(13.0)).color(TEXT_MUTED));
+                                    ui.painter().circle(r.center(), 27.0, role_color(color), Stroke::new(if on { 0.0_f32 } else { 2.0 }, BORDER()));
+                                    ui.label(RichText::new(label).font(ui_font(13.0)).color(TEXT_MUTED()));
                                 });
                             })
                             .response
@@ -365,8 +365,8 @@ impl CillhubApp {
         // Zoom Level (the web's range, 50-200 %)
         let mut zoom = (self.settings.font_scale * 100.0).round() as i32;
         ui.horizontal(|ui| {
-            ui.label(RichText::new(tr("Zoom Level")).font(bold_font(13.0)).color(INTERACTIVE));
-            ui.label(RichText::new(format!("{zoom}%")).font(ui_font(14.0)).color(TEXT_MUTED));
+            ui.label(RichText::new(tr("Zoom Level")).font(bold_font(13.0)).color(INTERACTIVE()));
+            ui.label(RichText::new(format!("{zoom}%")).font(ui_font(14.0)).color(TEXT_MUTED()));
         });
         ui.add_space(6.0);
         ui.spacing_mut().slider_width = ui.available_width();
@@ -385,7 +385,7 @@ impl CillhubApp {
             let r = choice_card(ui, on, |ui| {
                 ui.horizontal(|ui| {
                     super::modals::radio_dot(ui, on);
-                    ui.label(RichText::new(label).font(ui_font(15.0)).color(TEXT_HEADER));
+                    ui.label(RichText::new(label).font(ui_font(15.0)).color(TEXT_HEADER()));
                 });
             });
             if r.clicked() {
@@ -408,7 +408,7 @@ impl CillhubApp {
             None => tr("No game detected.").to_string(),
         };
         ui.horizontal(|ui| {
-            ui.label(RichText::new(now).font(ui_font(15.0)).color(TEXT));
+            ui.label(RichText::new(now).font(ui_font(15.0)).color(TEXT()));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if secondary_btn(ui, tr("Scan Now")).clicked() {
                     self.poll_game_activity(true);
@@ -439,15 +439,15 @@ impl CillhubApp {
         let mut remove = None;
         for (i, g) in self.settings.custom_games.iter().enumerate() {
             Frame::new()
-                .fill(BG_SIDEBAR)
-                .stroke(Stroke::new(1.0_f32, BORDER))
+                .fill(BG_SIDEBAR())
+                .stroke(Stroke::new(1.0_f32, BORDER()))
                 .corner_radius(CornerRadius::same(2))
                 .inner_margin(Margin::symmetric(12, 8))
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(&g.name).font(bold_font(14.0)).color(TEXT_HEADER));
-                        ui.label(RichText::new(&g.exe).font(crate::theme::mono_font(12.0)).color(TEXT_MUTED));
+                        ui.label(RichText::new(&g.name).font(bold_font(14.0)).color(TEXT_HEADER()));
+                        ui.label(RichText::new(&g.exe).font(crate::theme::mono_font(12.0)).color(TEXT_MUTED()));
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if super::chat::toolbar_btn(ui, IconKind::Trash, false, true).on_hover_text(tr("Remove")).clicked() {
                                 remove = Some(i);
@@ -474,9 +474,9 @@ impl CillhubApp {
             report(&mut self.status_banner, self.settings.save());
         }
         ui.add_space(16.0);
-        ui.label(RichText::new(trf("Version {v}", &[("v", env!("CARGO_PKG_VERSION"))])).font(ui_font(14.0)).color(TEXT_MUTED));
+        ui.label(RichText::new(trf("Version {v}", &[("v", env!("CARGO_PKG_VERSION"))])).font(ui_font(14.0)).color(TEXT_MUTED()));
         if let Some((v, _)) = &self.update_ready {
-            ui.label(RichText::new(trf("A new version of Cillhub is available ({version}).", &[("version", v)])).font(ui_font(14.0)).color(GREEN));
+            ui.label(RichText::new(trf("A new version of Cillhub is available ({version}).", &[("version", v)])).font(ui_font(14.0)).color(GREEN()));
         }
     }
 
@@ -538,7 +538,7 @@ impl CillhubApp {
             if ui.add_enabled_ui(dirty, |ui| primary_btn(ui, tr("Save Changes"))).inner.clicked() {
                 save = true;
             }
-            if ui.add_enabled(dirty, egui::Button::new(RichText::new(tr("Reset")).color(FOCUS)).frame(false)).clicked() {
+            if ui.add_enabled(dirty, egui::Button::new(RichText::new(tr("Reset")).color(FOCUS())).frame(false)).clicked() {
                 self.guild_name_draft = None;
             }
         });
@@ -558,7 +558,7 @@ impl CillhubApp {
     /// switches and the web's permission groups; Delete Role, Reset, Save Changes.
     fn roles_tab(&mut self, ui: &mut Ui, guild: &crate::model::Guild) {
         page_title(ui, tr("Roles"));
-        ui.label(RichText::new(tr("Use roles to group your server members and assign permissions. Members use the color of their highest role. Drag roles or use the arrows to change the hierarchy.")).font(ui_font(14.0)).color(TEXT_MUTED));
+        ui.label(RichText::new(tr("Use roles to group your server members and assign permissions. Members use the color of their highest role. Drag roles or use the arrows to change the hierarchy.")).font(ui_font(14.0)).color(TEXT_MUTED()));
         ui.add_space(16.0);
         let mut roles: Vec<Role> = guild.roles.clone();
         roles.sort_by(|a, b| b.position.cmp(&a.position).then(a.id.cmp(&b.id)));
@@ -582,8 +582,8 @@ impl CillhubApp {
                 ui.set_width(220.0);
                 ui.spacing_mut().item_spacing.y = 2.0;
                 let (r, resp) = ui.allocate_exact_size(Vec2::new(220.0, 36.0), Sense::click());
-                ui.painter().rect_filled(r, CornerRadius::same(2), if resp.hovered() { ACCENT_HOVER } else { ACCENT });
-                ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("Create Role").to_uppercase(), display_font(16.0), ON_ACCENT);
+                ui.painter().rect_filled(r, CornerRadius::same(2), if resp.hovered() { ACCENT_HOVER() } else { ACCENT() });
+                ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("Create Role").to_uppercase(), display_font(16.0), ON_ACCENT());
                 if resp.clicked() {
                     create = true;
                 }
@@ -592,12 +592,12 @@ impl CillhubApp {
                     let on = self.role_draft.as_ref().is_some_and(|d| d.id == role.id);
                     let (r, resp) = ui.allocate_exact_size(Vec2::new(220.0, 33.0), Sense::click());
                     if on || resp.hovered() {
-                        ui.painter().rect_filled(r, CornerRadius::same(2), if on { BG_SELECTED } else { BG_HOVER });
+                        ui.painter().rect_filled(r, CornerRadius::same(2), if on { BG_SELECTED() } else { BG_HOVER() });
                     }
-                    let dot = if role.color != 0 { role_color(role.color) } else { OFFLINE };
+                    let dot = if role.color != 0 { role_color(role.color) } else { OFFLINE() };
                     ui.painter().circle_filled(Pos2::new(r.min.x + 15.0, r.center().y), 5.0, dot);
                     let name = if role.id == guild.id { "@everyone".to_string() } else { role.name.clone() };
-                    ui.painter().text(Pos2::new(r.min.x + 28.0, r.center().y), egui::Align2::LEFT_CENTER, name, ui_font(15.0), TEXT_HEADER);
+                    ui.painter().text(Pos2::new(r.min.x + 28.0, r.center().y), egui::Align2::LEFT_CENTER, name, ui_font(15.0), TEXT_HEADER());
                     // `.role-move`: up / down (swaps position with the neighbour, not past @everyone)
                     let movable: Vec<&Role> = roles.iter().filter(|r| r.id != guild.id).collect();
                     if let Some(i) = movable.iter().position(|r| r.id == role.id) {
@@ -606,7 +606,7 @@ impl CillhubApp {
                             let ok = j >= 0 && (j as usize) < movable.len();
                             let br = Rect::from_center_size(Pos2::new(x, r.center().y), Vec2::splat(20.0));
                             let b = ui.interact(br, egui::Id::new(("role_move", &role.id, dir)), if ok { Sense::click() } else { Sense::hover() });
-                            let c = if !ok { TEXT_MUTED.gamma_multiply(0.4) } else if b.hovered() { TEXT_HEADER } else { TEXT_MUTED };
+                            let c = if !ok { TEXT_MUTED().gamma_multiply(0.4) } else if b.hovered() { TEXT_HEADER() } else { TEXT_MUTED() };
                             draw_icon(ui.painter(), Rect::from_center_size(br.center(), Vec2::splat(14.0)), icon, c);
                             if ok && b.clicked() {
                                 let other = movable[j as usize];
@@ -662,7 +662,7 @@ impl CillhubApp {
         let Some(orig) = guild.roles.iter().find(|r| r.id == d.id).cloned() else { return };
         let everyone = d.id == guild.id;
         let shown = if everyone { "@everyone".to_string() } else { orig.name.clone() };
-        ui.label(RichText::new(trf("Edit Role — {name}", &[("name", &shown)]).to_uppercase()).font(display_font(22.0)).color(TEXT_HEADER));
+        ui.label(RichText::new(trf("Edit Role — {name}", &[("name", &shown)]).to_uppercase()).font(display_font(22.0)).color(TEXT_HEADER()));
         ui.add_space(16.0);
         if !everyone {
             field_label(ui, tr("Role Name"));
@@ -673,11 +673,11 @@ impl CillhubApp {
                 ui.spacing_mut().item_spacing = Vec2::splat(8.0);
                 for c in std::iter::once(0).chain(SWATCHES) {
                     let (r, resp) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::click());
-                    let fill = if c == 0 { OFFLINE } else { role_color(c) };
+                    let fill = if c == 0 { OFFLINE() } else { role_color(c) };
                     let r2 = if resp.hovered() { r.expand(1.0) } else { r };
                     ui.painter().rect_filled(r2, CornerRadius::same(2), fill);
                     if d.color == c {
-                        ui.painter().rect_stroke(r.expand(3.0), CornerRadius::same(3), Stroke::new(2.0_f32, TEXT_HEADER), egui::StrokeKind::Inside);
+                        ui.painter().rect_stroke(r.expand(3.0), CornerRadius::same(3), Stroke::new(2.0_f32, TEXT_HEADER()), egui::StrokeKind::Inside);
                     }
                     if resp.on_hover_text(if c == 0 { tr("Default color").to_string() } else { format!("#{c:06x}") }).clicked() {
                         d.color = c;
@@ -689,7 +689,7 @@ impl CillhubApp {
             switch_row(ui, tr("Allow anyone to @mention this role"), None, &mut d.mentionable);
         }
         ui.add_space(24.0);
-        ui.label(RichText::new(tr("Permissions")).font(bold_font(16.0)).color(TEXT_HEADER));
+        ui.label(RichText::new(tr("Permissions")).font(bold_font(16.0)).color(TEXT_HEADER()));
         let mut bits = crate::permissions::parse_bits(&d.permissions);
         for g in perm_groups() {
             ui.add_space(20.0);
@@ -715,7 +715,7 @@ impl CillhubApp {
                 if ui.add_enabled_ui(dirty && (everyone || !d.name.trim().is_empty()), |ui| primary_btn(ui, tr("Save Changes"))).inner.clicked() {
                     save = true;
                 }
-                if ui.add_enabled(dirty, egui::Button::new(RichText::new(tr("Reset")).color(FOCUS)).frame(false)).clicked() {
+                if ui.add_enabled(dirty, egui::Button::new(RichText::new(tr("Reset")).color(FOCUS())).frame(false)).clicked() {
                     reset = true;
                 }
             });

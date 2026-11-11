@@ -28,10 +28,10 @@ impl CillhubApp {
             let card_width = 440.0_f32.min(full_rect.width() - 32.0);
             show_notched_card(
                 ui,
-                BG_SIDEBAR,
-                BORDER,
+                BG_SIDEBAR(),
+                BORDER(),
                 12.0,
-                Some(ACCENT),
+                Some(ACCENT()),
                 None,
                 Margin::symmetric(32, 34),
                 |ui| {
@@ -42,11 +42,11 @@ impl CillhubApp {
                             ui.spacing_mut().item_spacing.x = 10.0;
                             let (mark_rect, _) =
                                 ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
-                            ui.painter().rect_filled(mark_rect, 0.0, ACCENT);
+                            ui.painter().rect_filled(mark_rect, 0.0, ACCENT());
                             ui.label(
                                 RichText::new("CILLHUB")
                                     .font(display_font(18.0))
-                                    .color(ACCENT),
+                                    .color(ACCENT()),
                             );
                         });
 
@@ -74,21 +74,21 @@ impl CillhubApp {
                         ui.label(
                             RichText::new(heading)
                                 .font(display_font(38.0))
-                                .color(TEXT_HEADER),
+                                .color(TEXT_HEADER()),
                         );
                         ui.add_space(2.0);
                         ui.label(
                             RichText::new(subtitle)
                                 .font(ui_font(15.0))
-                                .color(TEXT_MUTED),
+                                .color(TEXT_MUTED()),
                         );
 
                         ui.add_space(18.0);
 
                         // .server-choice box matching Auth.tsx
                         Frame::new()
-                            .fill(BG_PANEL)
-                            .stroke(Stroke::new(1.0_f32, BORDER))
+                            .fill(BG_PANEL())
+                            .stroke(Stroke::new(1.0_f32, BORDER()))
                             .corner_radius(CornerRadius::same(2))
                             .inner_margin(Margin::same(10))
                             .show(ui, |ui| {
@@ -138,7 +138,7 @@ impl CillhubApp {
                                     ui.label(
                                         RichText::new("Node Server URL")
                                             .font(bold_font(12.5))
-                                            .color(INTERACTIVE),
+                                            .color(INTERACTIVE()),
                                     );
                                     ui.add_space(4.0);
                                     let resp = Self::auth_text_input(
@@ -157,7 +157,7 @@ impl CillhubApp {
                                             "Connect directly to a self-hosted Cillhub node.",
                                         )
                                         .font(ui_font(12.0))
-                                        .color(TEXT_MUTED),
+                                        .color(TEXT_MUTED()),
                                     );
                                 } else {
                                     let host = self
@@ -169,12 +169,12 @@ impl CillhubApp {
                                         ui.label(
                                             RichText::new("Connected to")
                                                 .font(ui_font(12.0))
-                                                .color(TEXT_MUTED),
+                                                .color(TEXT_MUTED()),
                                         );
                                         ui.label(
                                             RichText::new(host)
                                                 .font(bold_font(12.0))
-                                                .color(TEXT),
+                                                .color(TEXT()),
                                         );
                                     });
                                 }
@@ -206,7 +206,7 @@ impl CillhubApp {
                                         egui::Button::new(
                                             RichText::new("← Back to login")
                                                 .font(ui_font(13.0))
-                                                .color(ACCENT),
+                                                .color(ACCENT()),
                                         )
                                         .frame(false),
                                     )
@@ -256,7 +256,7 @@ impl CillhubApp {
                                         egui::Button::new(
                                             RichText::new("← Back to login")
                                                 .font(ui_font(13.0))
-                                                .color(ACCENT),
+                                                .color(ACCENT()),
                                         )
                                         .frame(false),
                                     )
@@ -290,7 +290,7 @@ impl CillhubApp {
                                         ui.label(
                                             RichText::new("Registration is closed on this instance. Ask its admin for an account.")
                                                 .font(ui_font(13.0))
-                                                .color(YELLOW),
+                                                .color(YELLOW()),
                                         );
                                     }
                                     if self.instance_info.as_ref().is_some_and(|i| !i["captcha"].is_null()) {
@@ -298,7 +298,7 @@ impl CillhubApp {
                                         ui.label(
                                             RichText::new("This server asks for a captcha check, which this app cannot show yet. Please register on the website, then log in here.")
                                                 .font(ui_font(13.0))
-                                                .color(YELLOW),
+                                                .color(YELLOW()),
                                         );
                                     }
                                     ui.add_space(12.0);
@@ -330,7 +330,7 @@ impl CillhubApp {
                                     ui.label(
                                         RichText::new(err)
                                             .font(ui_font(13.0))
-                                            .color(DANGER),
+                                            .color(DANGER()),
                                     );
                                 }
 
@@ -354,7 +354,7 @@ impl CillhubApp {
                                             "Need an account?"
                                         })
                                         .font(ui_font(13.0))
-                                        .color(TEXT_MUTED),
+                                        .color(TEXT_MUTED()),
                                     );
                                     if ui
                                         .add(
@@ -365,7 +365,7 @@ impl CillhubApp {
                                                     "Register"
                                                 })
                                                 .font(bold_font(13.0))
-                                                .color(ACCENT),
+                                                .color(ACCENT()),
                                             )
                                             .frame(false),
                                         )
@@ -388,7 +388,7 @@ impl CillhubApp {
                                                         egui::Button::new(
                                                             RichText::new("Forgot your password?")
                                                                 .font(ui_font(13.0))
-                                                                .color(ACCENT),
+                                                                .color(ACCENT()),
                                                         )
                                                         .frame(false),
                                                     )
@@ -413,7 +413,7 @@ impl CillhubApp {
                             ui.label(
                                 RichText::new(game_txt)
                                     .font(ui_font(11.5))
-                                    .color(TEXT_MUTED),
+                                    .color(TEXT_MUTED()),
                             );
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if ui
@@ -421,7 +421,7 @@ impl CillhubApp {
                                         egui::Button::new(
                                             RichText::new("Preview UI Offline →")
                                                 .font(ui_font(11.5))
-                                                .color( TEXT_MUTED ),
+                                                .color( TEXT_MUTED() ),
                                         )
                                         .frame(false),
                                     )
@@ -441,7 +441,7 @@ impl CillhubApp {
         ui.label(
             RichText::new(label)
                 .font(bold_font(13.0))
-                .color(INTERACTIVE),
+                .color(INTERACTIVE()),
         );
         ui.add_space(5.0);
     }
@@ -455,16 +455,16 @@ impl CillhubApp {
         let desired = Vec2::new(ui.available_width(), 40.0);
         let mut resp_out = None;
         Frame::new()
-            .fill(BG_RAIL)
-            .stroke(Stroke::new(1.0_f32, BORDER))
+            .fill(BG_RAIL())
+            .stroke(Stroke::new(1.0_f32, BORDER()))
             .corner_radius(CornerRadius::same(2))
             .inner_margin(Margin::symmetric(12, 9))
             .show(ui, |ui| {
                 ui.set_width(desired.x - 24.0);
                 let edit = TextEdit::singleline(value)
                     .font(ui_font(14.5))
-                    .text_color(TEXT)
-                    .hint_text(RichText::new(hint).font(ui_font(14.0)).color(TEXT_MUTED))
+                    .text_color(TEXT())
+                    .hint_text(RichText::new(hint).font(ui_font(14.0)).color(TEXT_MUTED()))
                     .password(password)
                     .frame(false)
                     .desired_width(f32::INFINITY);
@@ -475,7 +475,7 @@ impl CillhubApp {
             ui.painter().rect_stroke(
                 resp.rect.expand2(Vec2::new(12.0, 9.0)),
                 CornerRadius::same(2),
-                Stroke::new(1.5_f32, FOCUS),
+                Stroke::new(1.5_f32, FOCUS()),
                 StrokeKind::Inside,
             );
         }
@@ -495,15 +495,15 @@ impl CillhubApp {
         let fill = if active {
             Color32::from_rgba_unmultiplied(0xff, 0x6a, 0x1f, 38)
         } else if hovered {
-            BG_HOVER
+            BG_HOVER()
         } else {
-            BG_SIDEBAR
+            BG_SIDEBAR()
         };
-        let border = if active { ACCENT } else { BORDER };
+        let border = if active { ACCENT() } else { BORDER() };
         let fg = if active || hovered {
-            TEXT_HEADER
+            TEXT_HEADER()
         } else {
-            TEXT_MUTED
+            TEXT_MUTED()
         };
         painter.rect(
             rect,
@@ -525,13 +525,13 @@ impl CillhubApp {
                 Pos2::new(rect.max.x - 50.0, rect.center().y - 8.0),
                 Pos2::new(rect.max.x - 5.0, rect.center().y + 8.0),
             );
-            painter.rect_filled(badge_rect, CornerRadius::same(2), ACCENT);
+            painter.rect_filled(badge_rect, CornerRadius::same(2), ACCENT());
             painter.text(
                 badge_rect.center(),
                 Align2::CENTER_CENTER,
                 b,
                 bold_font(9.0),
-                ON_ACCENT,
+                ON_ACCENT(),
             );
         } else {
             painter.text(
@@ -549,9 +549,9 @@ impl CillhubApp {
         let (rect, resp) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
         let fill = if resp.hovered() {
-            ACCENT_HOVER
+            ACCENT_HOVER()
         } else {
-            ACCENT
+            ACCENT()
         };
         ui.painter()
             .rect_filled(rect, CornerRadius::same(2), fill);
@@ -560,7 +560,7 @@ impl CillhubApp {
             Align2::CENTER_CENTER,
             label.to_uppercase(),
             display_font(17.0),
-            ON_ACCENT,
+            ON_ACCENT(),
         );
         resp
     }
@@ -569,15 +569,15 @@ impl CillhubApp {
         let (rect, resp) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 42.0), Sense::click());
         let fill = if resp.hovered() {
-            BTN_SECONDARY_HOVER
+            BTN_SECONDARY_HOVER()
         } else {
-            BTN_SECONDARY
+            BTN_SECONDARY()
         };
         ui.painter().rect(
             rect,
             CornerRadius::same(2),
             fill,
-            Stroke::new(1.0_f32, BORDER),
+            Stroke::new(1.0_f32, BORDER()),
             StrokeKind::Inside,
         );
         ui.painter().text(
@@ -585,7 +585,7 @@ impl CillhubApp {
             Align2::CENTER_CENTER,
             label.to_uppercase(),
             display_font(15.5),
-            TEXT_HEADER,
+            TEXT_HEADER(),
         );
         resp
     }
