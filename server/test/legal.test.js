@@ -299,3 +299,16 @@ test('remove and preserve by link: preview, removal with a kept copy, DMs refuse
   assert.ok(!existsSync(join(srv.dataDir, 'preserved', r.body.id)));
 });
 
+test('data export: reactions, poll votes, filed reports, decisions and the accepted terms', async () => {
+  const g = await guildWith(srv, ['taylor2', 'kim2']);
+  for (const u of Object.values(g.users)) await api('POST', '/legal/accept', u.token, { version: (await api('GET', '/legal/status', u.token)).body.accept_version, age_confirmed: true });
+  const m = (await api('POST', `/channels/${g.general.id}/messages`, g.users.kim2.token, { content: 'react here' })).body;
+  assert.equal((await api('PUT', `/channels/${g.general.id}/messages/${m.id}/reactions/${encodeURIComponent('👍')}/@me`, g.users.taylor2.token)).status, 204);
+  await api('POST', `/channels/${g.general.id}/messages/${m.id}/report`, g.users.taylor2.token, { reason: 'spam' });
+  const res = await fetch(`${srv.base}/users/@me/export`, { headers: { Authorization: g.users.taylor2.token } });
+  const data = await res.json();
+  assert.deepEqual(data.reactions, [{ message_id: m.id, emoji: '👍' }]);
+  assert.equal(data.reports_filed.length, 1);
+  assert.ok(Array.isArray(data.poll_votes) && Array.isArray(data.moderation_decisions));
+  assert.ok(data.terms_accepted.version >= 1 && data.terms_accepted.accepted_at);
+});

@@ -19,14 +19,21 @@ const section = (name, sql) => {
 };
 try {
   db.exec('BEGIN');
-  const current = db.prepare('SELECT deleted, disabled, settings FROM users WHERE id = ?').get(user.id);
+  const current = db.prepare('SELECT deleted, disabled, settings, terms_version, terms_accepted_at FROM users WHERE id = ?').get(user.id);
   if (!current || current.deleted || current.disabled) throw new Error('Account no longer available');
-  write(JSON.stringify({ exported_at: new Date().toISOString(), user, settings: JSON.parse(current.settings) }).slice(0, -1));
+  const terms = { version: current.terms_version, accepted_at: current.terms_accepted_at && new Date(current.terms_accepted_at).toISOString() };
+  write(JSON.stringify({ exported_at: new Date().toISOString(), user, settings: JSON.parse(current.settings), terms_accepted: terms }).slice(0, -1));
   section('guilds', 'SELECT g.id, g.name, m.nick, m.joined_at FROM members m JOIN guilds g ON g.id = m.guild_id WHERE m.user_id = ?');
   section('relationships', 'SELECT other_id, type FROM relationships WHERE user_id = ?');
   for (const [table, column, name, columns] of PRIVATE_DATA) {
     if (name) section(name, `SELECT ${columns} FROM ${table} WHERE ${column} = ?`);
   }
+  // 7.11: shared records that are still the user's own data (GDPR Art. 15)
+  section('reactions', 'SELECT message_id, emoji FROM reactions WHERE user_id = ?');
+  section('poll_votes', 'SELECT message_id, answer_id FROM poll_votes WHERE user_id = ?');
+  section('reports_filed', "SELECT id, message_id, reason, note, status, created_at FROM reports WHERE reporter_id = ? AND source = 'user'");
+  section('directory_reports_filed', 'SELECT id, reason, note, status, created_at FROM directory_reports WHERE reporter_id = ?');
+  section('moderation_decisions', 'SELECT id, action, category, ground, reason, created_at, appeal, appeal_status, appeal_decision FROM moderation_decisions WHERE user_id = ?');
   // Keyset batches: every authored message is included, and attachments use one query per batch, not per message.
   write(',"messages":[');
   let before = Number.MAX_SAFE_INTEGER, first = true;
