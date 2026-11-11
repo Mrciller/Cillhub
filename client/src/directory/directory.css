@@ -7,7 +7,7 @@
 .directory-filters input { flex: 1; }
 .directory-filters select { width: 180px; }
 .directory-cats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.chip { padding: 6px 13px; border-radius: 999px; background: var(--btn-secondary); color: #fff; font-size: 13.5px; font-weight: 500; transition: background-color .14s, color .14s; }
+.chip { padding: 6px 13px; border-radius: var(--radius-s); background: var(--btn-secondary); color: #fff; font-size: 13.5px; font-weight: 500; transition: background-color .14s, color .14s; }
 .chip:hover { background: var(--btn-secondary-hover); }
 .chip.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .chip:focus-visible, .dir-card button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

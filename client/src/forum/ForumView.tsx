@@ -158,7 +158,7 @@ export function ForumView({ channel, guild }: { channel: Channel; guild: Guild }
           <button
             type="button"
             className={cls('chip-btn', solvedFilter === 'all' && 'active')}
-            style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'all' ? 'var(--accent)' : 'var(--card)', color: solvedFilter === 'all' ? 'var(--on-accent)' : 'var(--text)', border: 'none' }}
+            style={{ padding: '4px 10px', borderRadius: 'var(--radius-s)', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'all' ? 'var(--accent)' : 'var(--card)', color: solvedFilter === 'all' ? 'var(--on-accent)' : 'var(--text)', border: 'none' }}
             onClick={() => setSolvedFilter('all')}
           >
             {t('All')}
@@ -166,7 +166,7 @@ export function ForumView({ channel, guild }: { channel: Channel; guild: Guild }
           <button
             type="button"
             className={cls('chip-btn', solvedFilter === 'solved' && 'active')}
-            style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'solved' ? 'var(--online-strong)' : 'var(--card)', color: solvedFilter === 'solved' ? '#fff' : 'var(--text)', border: 'none' }}
+            style={{ padding: '4px 10px', borderRadius: 'var(--radius-s)', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'solved' ? 'var(--online-strong)' : 'var(--card)', color: solvedFilter === 'solved' ? '#fff' : 'var(--text)', border: 'none' }}
             onClick={() => setSolvedFilter('solved')}
           >
             ✓ {t('Solved')}
@@ -174,7 +174,7 @@ export function ForumView({ channel, guild }: { channel: Channel; guild: Guild }
           <button
             type="button"
             className={cls('chip-btn', solvedFilter === 'unsolved' && 'active')}
-            style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'unsolved' ? 'var(--accent)' : 'var(--card)', color: solvedFilter === 'unsolved' ? 'var(--on-accent)' : 'var(--text)', border: 'none' }}
+            style={{ padding: '4px 10px', borderRadius: 'var(--radius-s)', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'unsolved' ? 'var(--accent)' : 'var(--card)', color: solvedFilter === 'unsolved' ? 'var(--on-accent)' : 'var(--text)', border: 'none' }}
             onClick={() => setSolvedFilter('unsolved')}
           >
             {t('Unsolved')}

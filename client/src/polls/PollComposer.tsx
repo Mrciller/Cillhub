@@ -101,7 +101,7 @@ export function PollComposer({ channel, onClose }: { channel: Channel; onClose: 
                     key={r.id}
                     type="button"
                     className={cls('chip-btn', active && 'active')}
-                    style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '12px', background: active ? 'var(--accent)' : 'var(--card)', color: active ? 'var(--on-accent)' : 'var(--text)', border: 'none', cursor: 'pointer' }}
+                    style={{ padding: '3px 8px', borderRadius: 'var(--radius-s)', fontSize: '12px', background: active ? 'var(--accent)' : 'var(--card)', color: active ? 'var(--on-accent)' : 'var(--text)', border: 'none', cursor: 'pointer' }}
                     onClick={() => toggleRole(r.id)}
                   >
                     @{r.name}
