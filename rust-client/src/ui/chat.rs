@@ -98,7 +98,7 @@ impl CillhubApp {
             draw_icon(ui.painter(), Rect::from_center_size(Pos2::new(sr.max.x - 14.0, sr.center().y), Vec2::splat(16.0)), IconKind::Search, TEXT_MUTED());
             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !self.search_query.trim().is_empty() {
                 self.active_drawer = Some(DrawerKind::Search);
-                self.run_search();
+                self.run_search(false);
             }
             if in_guild && !matches!(channel.kind, 2 | 13) && icon_btn(ui, IconKind::People, tr("Show Member List"), self.show_member_list, false).clicked() {
                 self.show_member_list = !self.show_member_list;

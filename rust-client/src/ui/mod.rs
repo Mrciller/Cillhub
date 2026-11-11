@@ -72,6 +72,14 @@ pub fn report<T, E: std::fmt::Display>(banner: &mut Option<String>, r: Result<T,
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SearchResults {
+    pub query: String,
+    pub total: usize,
+    pub hits: Vec<Message>,
+    pub loading: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageLoad {
     Loading,
@@ -219,6 +227,8 @@ pub struct CillhubApp {
     /// Scheduled events of the open server (Events dialog).
     pub events: Vec<Value>,
     pub search_query: String,
+    /// The server's answer to the last search.
+    pub search: Option<SearchResults>,
     pub quick_switcher_query: String,
     pub canvas_doc_input: String,
 
@@ -353,6 +363,7 @@ impl CillhubApp {
             create_channel_kind: 0,
             events: Vec::new(),
             search_query: String::new(),
+            search: None,
             quick_switcher_query: String::new(),
             canvas_doc_input: String::new(),
             self_mute: false,
@@ -493,6 +504,7 @@ impl CillhubApp {
         self.add_friend_result = None;
         self.events.clear();
         self.search_query.clear();
+        self.search = None;
         self.quick_switcher_query.clear();
         self.canvas_doc_input.clear();
         self.custom_status_input.clear();
@@ -931,17 +943,39 @@ impl CillhubApp {
         });
     }
 
-    pub fn run_search(&mut self) {
-        let q = self.search_query.trim().to_string();
-        if q.is_empty() {
+    /// The server's message search (guild-wide in a server, the channel in a DM), 25 hits per page.
+    /// `more` fetches the next page of the current query.
+    pub fn run_search(&mut self, more: bool) {
+        let q = if more { self.search.as_ref().map(|s| s.query.clone()).unwrap_or_default() } else { self.search_query.trim().to_string() };
+        let Some(cid) = self.selected_channel_id.clone() else { return };
+        if q.is_empty() || self.api.is_none() {
             return;
         }
-        if let (Some(api), Some(gid)) = (&self.api, &self.selected_guild_id) {
-            let encoded =
-                percent_encoding::utf8_percent_encode(&q, percent_encoding::NON_ALPHANUMERIC)
-                    .to_string();
-            report(&mut self.status_banner, api.get(&format!("/guilds/{gid}/messages/search?content={encoded}")));
+        let offset = if more { self.search.as_ref().map_or(0, |s| s.hits.len()) } else { 0 };
+        if !more {
+            self.search = Some(SearchResults { query: q.clone(), ..Default::default() });
         }
+        if let Some(s) = self.search.as_mut() {
+            s.loading = true;
+        }
+        let encoded = percent_encoding::utf8_percent_encode(&q, percent_encoding::NON_ALPHANUMERIC).to_string();
+        let scope = match &self.selected_guild_id {
+            Some(gid) => format!("/guilds/{gid}"),
+            None => format!("/channels/{cid}"),
+        };
+        self.api_get(format!("{scope}/messages/search?content={encoded}&offset={offset}"), move |app, r| {
+            let Some(s) = app.search.as_mut().filter(|s| s.query == q) else { return };
+            s.loading = false;
+            let Some(v) = report(&mut app.status_banner, r) else { return };
+            s.total = v.get("total_results").and_then(Value::as_u64).unwrap_or(0) as usize;
+            // each hit is [message, ...context]
+            let hits = v.get("messages").and_then(Value::as_array).into_iter().flatten().filter_map(|h| h.get(0));
+            for m in hits.filter_map(|m| crate::model::parse::<Message>(m.clone()).ok()) {
+                if !s.hits.iter().any(|h| h.id == m.id) {
+                    s.hits.push(m);
+                }
+            }
+        });
     }
 
     fn process_background_events(&mut self) {
@@ -2175,6 +2209,23 @@ mod tests {
         };
         let (few, many) = (shapes(40), shapes(500));
         assert!(many < few * 2, "{few} shapes for 40 messages, {many} for 500");
+    }
+
+    #[test]
+    fn search_shows_the_servers_results() {
+        let mut app = CillhubApp::new(None, true);
+        let (origin, hub) = fake_hub(r#"{"total_results": 30, "messages": [[{"id": "m_old", "channel_id": "c_lfg", "content": "an old one", "author": {"id": "u_kim", "username": "kim"}}]]}"#, 2);
+        app.api = Some(ApiClient::new(origin, None));
+        app.search_query = "old one".into();
+        app.run_search(false);
+        settle(&mut app);
+        let sr = app.search.clone().unwrap();
+        assert_eq!((sr.total, sr.hits.len(), sr.hits[0].content.as_str()), (30, 1, "an old one"));
+        app.run_search(true);
+        settle(&mut app);
+        let seen = hub.join().unwrap();
+        assert!(seen[0].starts_with("GET /api/v9/guilds/g_arena/messages/search?content=old%20one&offset=0 "), "{seen:?}");
+        assert!(seen[1].contains("&offset=1 "), "{seen:?}");
     }
 
     /// Applies background results until no request is in flight.

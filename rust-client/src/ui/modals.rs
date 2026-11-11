@@ -558,32 +558,41 @@ impl CillhubApp {
                     }
                 }
                 DrawerKind::Search => {
-                    let q = self.search_query.to_lowercase();
-                    let cid = self.selected_channel_id.clone().unwrap_or_default();
-                    let hits: Vec<Message> = self
-                        .state
-                        .messages
-                        .get(&cid)
-                        .map(|list| {
-                            list.iter()
+                    // the server's results; without a server (demo) the loaded messages of this channel
+                    let (hits, total, loading) = match &self.search {
+                        Some(sr) => (sr.hits.clone(), sr.total, sr.loading),
+                        None => {
+                            let q = self.search_query.to_lowercase();
+                            let cid = self.selected_channel_id.clone().unwrap_or_default();
+                            let local: Vec<Message> = self.state.messages.get(&cid).into_iter().flatten()
                                 .filter(|m| m.content.to_lowercase().contains(&q))
                                 .cloned()
-                                .collect()
-                        })
-                        .unwrap_or_default();
+                                .collect();
+                            let n = local.len();
+                            (local, n, false)
+                        }
+                    };
                     ui.label(
-                        RichText::new(if hits.len() == 1 { tr("{n} Result") } else { tr("{n} Results") }.replace("{n}", &hits.len().to_string()))
+                        RichText::new(if total == 1 { tr("{n} Result") } else { tr("{n} Results") }.replace("{n}", &total.to_string()))
                             .size(11.5)
                             .color(TEXT_MUTED()),
                     );
-                    for m in hits {
+                    for m in &hits {
                         Frame::new()
                             .fill(BG_SIDEBAR())
                             .inner_margin(Margin::same(8))
                             .show(ui, |ui| {
+                                if let Some(a) = &m.author {
+                                    ui.label(RichText::new(a.display_name()).font(crate::theme::bold_font(13.0)).color(TEXT_HEADER()));
+                                }
                                 ui.label(RichText::new(&m.content).color(TEXT()));
                             });
                         ui.add_space(4.0);
+                    }
+                    if loading {
+                        ui.label(RichText::new(tr("Searching…")).color(TEXT_MUTED()));
+                    } else if hits.len() < total && secondary_btn(ui, tr("Load more")).clicked() {
+                        self.run_search(true);
                     }
                 }
                 DrawerKind::Canvas => {
