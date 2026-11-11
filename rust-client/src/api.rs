@@ -167,13 +167,101 @@ pub fn upload_payload(content: &str, filenames: &[String], reply_to: Option<&str
     payload
 }
 
+/// Which connection a request belongs to: the hub, or the private node that owns the guild or channel it names.
+/// Ids of node servers are recorded in `owner` as their events arrive (the hub wins an id both name). Our user id
+/// differs per node, so node paths, bodies and answers swap it with the hub one (the web's registry.ts aliasing).
+#[derive(Debug, Default)]
+pub struct Routes {
+    pub hub_me: String,
+    /// node origin -> (its token, our user id there; empty before its READY)
+    pub nodes: HashMap<String, (String, String)>,
+    /// guild and channel ids of node servers -> node origin
+    pub owner: HashMap<String, String>,
+}
+
+impl Routes {
+    /// The node origin a REST path (or its guild_id/channel_id in query or body) belongs to; None = the hub.
+    pub fn route(&self, path: &str, body: Option<&Value>) -> Option<&str> {
+        let (p, q) = path.split_once('?').unwrap_or((path, ""));
+        // a node may name any user id, so /users/... goes to a node only through a node guild/channel in the query
+        if !p.starts_with("/users/") {
+            if let Some(o) = p.split('/').find_map(|seg| self.owner.get(seg)) {
+                return Some(o);
+            }
+        }
+        let query = url::form_urlencoded::parse(q.as_bytes());
+        let from_query = query.filter(|(k, _)| k == "guild_id" || k == "channel_id").find_map(|(_, v)| self.owner.get(v.as_ref()));
+        let from_body = || ["guild_id", "channel_id"].iter().find_map(|k| body?.get(k)?.as_str().and_then(|v| self.owner.get(v)));
+        from_query.or_else(from_body).map(String::as_str)
+    }
+}
+
+/// `<@id>` mentions of `from` as `to`.
+fn swap_mentions(s: &str, from: &str, to: &str) -> String {
+    if from.is_empty() || !s.contains(from) {
+        return s.to_string();
+    }
+    s.replace(&format!("<@{from}>"), &format!("<@{to}>")).replace(&format!("<@!{from}>"), &format!("<@{to}>"))
+}
+
+/// A node payload as the hub-centred state expects it: our node user id becomes the hub one, root-relative URLs
+/// point at the node, and media the client would load by itself must come from the node's own origin.
+pub fn inbound(v: &mut Value, origin: &str, node_me: &str, hub_me: &str) {
+    fn walk(v: &mut Value, key: &str, origin: &str, node_me: &str, hub_me: &str) {
+        match v {
+            Value::String(s) => {
+                let on_node = s.starts_with(&format!("{origin}/"));
+                if !node_me.is_empty() && s == node_me {
+                    *s = hub_me.to_string();
+                } else if matches!(key, "url" | "proxy_url" | "icon_url" | "proxy_icon_url" | "avatar_url" | "sound_url") && s.starts_with('/') && !s.starts_with("//") {
+                    *s = format!("{origin}{s}");
+                } else if (key.starts_with("proxy_") || key == "avatar_url" || key == "sound_url") && !on_node {
+                    *v = Value::Null;
+                } else if !node_me.is_empty() && !hub_me.is_empty() {
+                    *s = swap_mentions(s, node_me, hub_me);
+                }
+            }
+            Value::Array(a) => {
+                if key == "attachments" {
+                    // attachments are downloaded by the client: only the node's own
+                    a.retain(|x| x.get("url").and_then(Value::as_str).is_none_or(|u| u.starts_with(&format!("{origin}/")) || (u.starts_with('/') && !u.starts_with("//"))));
+                }
+                a.iter_mut().for_each(|x| walk(x, key, origin, node_me, hub_me));
+            }
+            Value::Object(m) => m.iter_mut().for_each(|(k, x)| walk(x, k, origin, node_me, hub_me)),
+            _ => {}
+        }
+    }
+    walk(v, "", origin, node_me, hub_me)
+}
+
+/// The reverse for a body going to the node: our hub user id becomes the node one.
+pub fn outbound(v: &mut Value, node_me: &str, hub_me: &str) {
+    if node_me.is_empty() || hub_me.is_empty() {
+        return;
+    }
+    match v {
+        Value::String(s) if s == hub_me => *s = node_me.to_string(),
+        Value::String(s) => *s = swap_mentions(s, hub_me, node_me),
+        Value::Array(a) => a.iter_mut().for_each(|x| outbound(x, node_me, hub_me)),
+        Value::Object(m) => m.values_mut().for_each(|x| outbound(x, node_me, hub_me)),
+        _ => {}
+    }
+}
+
 #[cfg(feature = "native-net")]
 #[derive(Clone)]
 pub struct ApiClient {
     pub client: reqwest::blocking::Client,
     pub origin: Url,
     pub token: Option<String>,
+    /// Set on the hub client: requests about node servers go to that node with its token instead.
+    pub routes: Option<std::sync::Arc<std::sync::RwLock<Routes>>>,
 }
+
+/// Where one request goes: (origin, token, path, body, (node origin, our node id, hub id) for node answers).
+#[cfg(feature = "native-net")]
+type Target = (Url, Option<String>, String, Option<Value>, Option<(String, String, String)>);
 
 #[cfg(feature = "native-net")]
 impl ApiClient {
@@ -182,7 +270,28 @@ impl ApiClient {
             client: no_redirect_client(15),
             origin,
             token,
+            routes: None,
         }
+    }
+
+    /// The origin and token for `path`, chosen together: the hub token only for the hub, a node token only for its
+    /// node. A node server whose node is not connected gets an error, never the hub.
+    fn target(&self, path: &str, mut body: Option<Value>) -> Result<Target, ApiError> {
+        let Some(routes) = &self.routes else { return Ok((self.origin.clone(), self.token.clone(), path.to_string(), body, None)) };
+        let r = routes.read().unwrap_or_else(|e| e.into_inner());
+        let Some(origin) = r.route(path, body.as_ref()) else { return Ok((self.origin.clone(), self.token.clone(), path.to_string(), body, None)) };
+        let fail = |m: &str| ApiError { status: 0, code: 0, message: m.to_string(), fields: HashMap::new(), retry_after: None, raw: Value::Null };
+        let (token, me) = r.nodes.get(origin).ok_or_else(|| fail("This node is not connected."))?;
+        let url = Url::parse(origin).map_err(|_| fail("Invalid node address"))?;
+        let path = if me.is_empty() || r.hub_me.is_empty() {
+            path.to_string()
+        } else {
+            path.split('/').map(|s| if s == r.hub_me { me.as_str() } else { s }).collect::<Vec<_>>().join("/")
+        };
+        if let Some(b) = &mut body {
+            outbound(b, me, &r.hub_me);
+        }
+        Ok((url, Some(token.clone()), path, body, Some((origin.to_string(), me.clone(), r.hub_me.clone()))))
     }
 }
 
@@ -206,7 +315,8 @@ impl ApiClient {
         body: Option<Value>,
         extra_headers: Option<&[(&str, &str)]>,
     ) -> Result<Value, ApiError> {
-        let url = api_url(&self.origin, path).ok_or_else(|| ApiError {
+        let (origin, token, path, body, node) = self.target(path, body)?;
+        let url = api_url(&origin, &path).ok_or_else(|| ApiError {
             status: 0,
             code: 0,
             message: "Invalid API path".to_string(),
@@ -215,7 +325,7 @@ impl ApiClient {
             raw: Value::Null,
         })?;
         let mut req = self.client.request(method, url);
-        if let Some(token) = &self.token {
+        if let Some(token) = &token {
             req = req.header("Authorization", token);
         }
         if let Some(headers) = extra_headers {
@@ -238,9 +348,12 @@ impl ApiClient {
         if status == 204 {
             return Ok(Value::Null);
         }
-        let data: Value = resp.json().unwrap_or(Value::Null);
+        let mut data: Value = resp.json().unwrap_or(Value::Null);
         if !(200..300).contains(&status) {
             return Err(parse_api_error(status, data));
+        }
+        if let Some((o, me, hub_me)) = node {
+            inbound(&mut data, &o, &me, &hub_me);
         }
         Ok(data)
     }
@@ -271,8 +384,12 @@ impl ApiClient {
         payload_json: &Value,
         files: &[(String, Vec<u8>)],
     ) -> Result<Value, ApiError> {
-        let path = format!("/channels/{channel_id}/messages");
-        let url = api_url(&self.origin, &path).ok_or_else(|| ApiError {
+        let mut payload_json = payload_json.clone();
+        let (origin, token, path, _, node) = self.target(&format!("/channels/{channel_id}/messages"), None)?;
+        if let Some((_, me, hub_me)) = &node {
+            outbound(&mut payload_json, me, hub_me);
+        }
+        let url = api_url(&origin, &path).ok_or_else(|| ApiError {
             status: 0,
             code: 0,
             message: "Invalid API path".to_string(),
@@ -290,7 +407,7 @@ impl ApiClient {
             form = form.part(format!("files[{idx}]"), part);
         }
         let mut req = self.client.post(url).multipart(form);
-        if let Some(token) = &self.token {
+        if let Some(token) = &token {
             req = req.header("Authorization", token);
         }
         let resp = req.send().map_err(|e| ApiError {
@@ -302,11 +419,53 @@ impl ApiClient {
             raw: Value::Null,
         })?;
         let status = resp.status().as_u16();
-        let data: Value = resp.json().unwrap_or(Value::Null);
+        let mut data: Value = resp.json().unwrap_or(Value::Null);
         if !(200..300).contains(&status) {
             return Err(parse_api_error(status, data));
         }
+        if let Some((o, me, hub_me)) = node {
+            inbound(&mut data, &o, &me, &hub_me);
+        }
         Ok(data)
+    }
+}
+
+/// A local HTTP server for tests: answers `n` requests with `answer(request)` -> (status, JSON body), returns them all.
+#[cfg(all(test, feature = "native-net"))]
+pub mod testing {
+    use std::io::{Read, Write};
+    pub fn serve(n: usize, answer: impl Fn(&str) -> (u16, String) + Send + 'static) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let t = std::thread::spawn(move || {
+            let mut seen = Vec::new();
+            for _ in 0..n {
+                let Ok((mut sock, _)) = listener.accept() else { break };
+                sock.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+                let mut req = Vec::new();
+                let mut buf = [0u8; 4096];
+                while let Ok(k) = sock.read(&mut buf) {
+                    if k == 0 {
+                        break;
+                    }
+                    req.extend_from_slice(&buf[..k]);
+                    let text = String::from_utf8_lossy(&req).to_string();
+                    let Some(end) = text.find("\r\n\r\n") else { continue };
+                    let len = text.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length: ").and_then(|v| v.trim().parse::<usize>().ok())).unwrap_or(0);
+                    if req.len() >= end + 4 + len {
+                        break;
+                    }
+                }
+                let req = String::from_utf8_lossy(&req).to_string();
+                let (status, body) = answer(&req);
+                let head = format!("HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                let _ = sock.write_all(head.as_bytes());
+                let _ = sock.write_all(body.as_bytes());
+                seen.push(req);
+            }
+            seen
+        });
+        (origin, t)
     }
 }
 
@@ -314,6 +473,37 @@ impl ApiClient {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn each_request_carries_only_its_own_origins_token() {
+        use std::sync::{Arc, RwLock};
+        let (hub, hub_seen) = testing::serve(2, |_| (200, "{}".into()));
+        let (node, node_seen) = testing::serve(1, |_| {
+            (200, r#"{"author":{"id":"9"},"content":"hi <@9>","attachments":[{"url":"/attachments/a.png"},{"url":"https://evil.example/b.png"}]}"#.into())
+        });
+        let mut routes = Routes { hub_me: "1".into(), ..Default::default() };
+        routes.nodes.insert(node.clone(), ("node-token".into(), "9".into()));
+        routes.owner.insert("77".into(), node.clone());
+        routes.owner.insert("78".into(), "http://127.0.0.1:1".into()); // a node server whose node is not connected
+        let mut api = ApiClient::new(Url::parse(&hub).unwrap(), Some("hub-token".into()));
+        api.routes = Some(Arc::new(RwLock::new(routes)));
+
+        let out = api.post("/channels/77/messages", json!({ "content": "hey <@1>" })).unwrap();
+        assert_eq!((out["author"]["id"].as_str(), out["content"].as_str()), (Some("1"), Some("hi <@1>")), "our node id reads as the hub one");
+        assert_eq!(out["attachments"].as_array().unwrap().len(), 1, "media only from the node itself");
+        assert_eq!(out["attachments"][0]["url"], format!("{node}/attachments/a.png"));
+        api.get("/channels/5/messages").unwrap();
+        api.get("/users/@me/settings?guild_id=5").unwrap();
+        assert_eq!(api.get("/channels/78/messages").unwrap_err().status, 0, "never sent to the hub instead");
+
+        let node_seen = node_seen.join().unwrap();
+        assert!(node_seen[0].starts_with("POST /api/v9/channels/77/messages "));
+        assert!(node_seen[0].contains("node-token") && !node_seen[0].contains("hub-token"));
+        assert!(node_seen[0].contains("hey <@9>"), "the body names our node account");
+        let hub_seen = hub_seen.join().unwrap();
+        assert!(hub_seen.iter().all(|r| r.contains("hub-token") && !r.contains("node-token")));
+    }
 
     #[test]
     fn server_address_policy() {

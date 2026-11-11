@@ -55,6 +55,21 @@ pub fn spawn_with_commands(
     sender: Sender<GatewayEvent>,
     commands: Receiver<GatewayCommand>,
 ) -> thread::JoinHandle<()> {
+    spawn_inner(origin, token, sender, commands, false)
+}
+
+/// A private node's gateway: the node names its gateway URL, and our node token goes only to the node's own host.
+pub fn spawn_node(origin: Url, token: String, sender: Sender<GatewayEvent>, commands: Receiver<GatewayCommand>) -> thread::JoinHandle<()> {
+    spawn_inner(origin, token, sender, commands, true)
+}
+
+fn spawn_inner(
+    origin: Url,
+    token: String,
+    sender: Sender<GatewayEvent>,
+    commands: Receiver<GatewayCommand>,
+    pin: bool,
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let client = crate::api::no_redirect_client(10);
         let mut backoff = 1u64;
@@ -71,6 +86,7 @@ pub fn spawn_with_commands(
                 &commands,
                 &mut last_presence,
                 &mut outbox,
+                pin,
             ) {
                 Ok(true) => break, // clean shutdown
                 Ok(false) => backoff = 1,
@@ -111,6 +127,7 @@ fn run_once(
     commands: &Receiver<GatewayCommand>,
     last_presence: &mut (String, Option<CustomStatus>, Option<GameActivity>),
     outbox: &mut Outbox,
+    pin: bool,
 ) -> io::Result<bool> {
     let endpoint = api_url(origin, "/gateway").ok_or_else(|| invalid("Invalid gateway API URL"))?;
     let data: Value = client
@@ -127,6 +144,9 @@ fn run_once(
         .and_then(Value::as_str)
         .ok_or_else(|| invalid("Gateway URL missing"))?;
     let address = Url::parse(address).map_err(|_| invalid("Gateway URL invalid"))?;
+    if pin && address.host_str() != origin.host_str() {
+        return Err(invalid("Gateway on another host"));
+    }
     let mut socket = WebSocket::connect(&address)?;
     let _ = sender.send(GatewayEvent::Connected);
     let mut protocol = Gateway::default();

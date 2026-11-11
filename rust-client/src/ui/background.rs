@@ -111,6 +111,7 @@ impl CillhubApp {
     /// Ends the session for background work: results still in flight are dropped.
     pub fn new_session(&mut self) {
         self.session_gen += 1;
+        self.session_live.store(self.session_gen, std::sync::atomic::Ordering::SeqCst);
         // their lookups are dropped with the session, and the next one may be another hub
         self.invite_cards.clear();
         self.invite_lookups = 0;

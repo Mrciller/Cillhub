@@ -17,6 +17,9 @@ use serde_json::json;
 use crate::i18n::{tr, trf};
 use crate::theme::ui_font;
 
+/// What adding a private node agrees to (the add-link dialog and Settings › Private Nodes).
+pub const SIGN_IN_NOTE: &str = "Cillhub signs you in there with your account here: the node gets your user name and avatar, never your password. Its servers then show up in your server list.";
+
 impl CillhubApp {
     pub fn render_modals(&mut self, ctx: &Context) {
         if let Some(invite) = self.pending_game_invite.clone() {
@@ -79,7 +82,8 @@ impl CillhubApp {
             ui.label(RichText::new(&p.origin).font(crate::theme::mono_font(13.0)).color(TEXT()));
             ui.add_space(10.0);
             if !p.added {
-                ui.label(RichText::new(tr("This is a separate server with its own accounts and admins. Adding it only saves it to the list on this device.")).font(ui_font(14.0)).color(TEXT_MUTED()));
+                ui.label(RichText::new(tr("This is a separate server with its own accounts and admins.")).font(ui_font(14.0)).color(TEXT_MUTED()));
+                ui.label(RichText::new(tr(SIGN_IN_NOTE)).font(ui_font(14.0)).color(TEXT_MUTED()));
             }
             if let Some(e) = &error {
                 ui.add_space(8.0);
@@ -93,7 +97,7 @@ impl CillhubApp {
                 }
                 if error.is_none() {
                     let ready = matches!(p.check, Some(NodeCheck::Up(_))) && !self.node_busy;
-                    add = ui.add_enabled_ui(ready, |ui| primary_btn(ui, tr("Add"))).inner.clicked();
+                    add = ui.add_enabled_ui(ready, |ui| primary_btn(ui, tr("Add and sign in"))).inner.clicked();
                 }
                 close = secondary_btn(ui, tr("Cancel")).clicked();
             });

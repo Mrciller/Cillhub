@@ -4,6 +4,7 @@
 pub mod auth;
 pub mod background;
 pub mod chat;
+pub mod connections;
 pub mod friends;
 pub mod images;
 pub mod modals;
@@ -147,6 +148,14 @@ pub struct CillhubApp {
     pub api: Option<ApiClient>,
     pub gateway_rx: Option<Receiver<GatewayEvent>>,
     pub gateway_cmd_tx: Option<Sender<GatewayCommand>>,
+    /// Which connection each request belongs to; shared with the hub ApiClient (api::Routes).
+    pub routes: std::sync::Arc<std::sync::RwLock<crate::api::Routes>>,
+    /// Saved private nodes connected next to the hub, by origin (connections.rs).
+    pub conns: std::collections::HashMap<String, connections::NodeConn>,
+    signin_tx: Sender<connections::SignInDone>,
+    signin_rx: Receiver<connections::SignInDone>,
+    /// session_gen for workers: a sign-in checks it before it posts the consent to the hub
+    session_live: std::sync::Arc<std::sync::atomic::AtomicU64>,
 
     // Auth state
     pub authenticated: bool,
@@ -332,6 +341,7 @@ impl CillhubApp {
         };
         let (image_tx, image_rx) = mpsc::channel();
         let (picked_tx, picked_rx) = mpsc::channel();
+        let (signin_tx, signin_rx) = mpsc::channel();
         let (theme_name, locale) = (settings.theme.clone(), settings.locale.clone());
         let mut app = Self {
             settings,
@@ -339,6 +349,11 @@ impl CillhubApp {
             api: None,
             gateway_rx: None,
             gateway_cmd_tx: None,
+            routes: Default::default(),
+            conns: Default::default(),
+            signin_tx,
+            signin_rx,
+            session_live: Default::default(),
             authenticated: false,
             auth_mode: AuthMode::Login,
             auth_server_url: server_url,
@@ -499,7 +514,9 @@ impl CillhubApp {
     pub fn complete_login(&mut self, origin: Url, token: String) {
         self.new_session();
         report(&mut self.status_banner, self.settings.set_token(Some(&token)));
-        self.api = Some(ApiClient::new(origin.clone(), Some(token.clone())));
+        let mut api = ApiClient::new(origin.clone(), Some(token.clone()));
+        api.routes = Some(self.routes.clone());
+        self.api = Some(api);
         let (ev_tx, ev_rx) = mpsc::channel();
         let (cmd_tx, cmd_rx) = mpsc::channel();
         spawn_with_commands(origin, token, ev_tx, cmd_rx);
@@ -528,6 +545,7 @@ impl CillhubApp {
         }
         self.gateway_rx = None;
         self.gateway_cmd_tx = None;
+        self.forget_nodes();
         self.api = None;
         self.authenticated = false;
         // nothing of this account may show up in the next session
@@ -961,10 +979,11 @@ impl CillhubApp {
             return;
         }
         let cid = channel_id.to_string();
-        let scope = self.scope_now("history"); // only READY starts a new one: older answers belong to the old state
+        let key = self.history_key(&cid);
+        let scope = self.scope_now(&key); // only READY (of the channel's connection) starts a new one
         self.state.begin_history(&cid);
         let sent = self.api_get(format!("/channels/{cid}/messages?limit=50"), move |app, r| {
-            if !app.in_scope("history", scope) {
+            if !app.in_scope(&key, scope) {
                 return;
             }
             app.loading_history.remove(&cid);
@@ -1001,9 +1020,10 @@ impl CillhubApp {
             return;
         }
         let cid = channel_id.to_string();
-        let scope = self.scope_now("history");
+        let key = self.history_key(&cid);
+        let scope = self.scope_now(&key);
         self.api_get(format!("/channels/{cid}/messages?limit=50&before={before}"), move |app, r| {
-            if !app.in_scope("history", scope) {
+            if !app.in_scope(&key, scope) {
                 return; // a page of the state before READY
             }
             let Some(older) = report(&mut app.status_banner, r).map(|v| parse_messages(&v)) else { return };
@@ -1079,9 +1099,21 @@ impl CillhubApp {
                         .flatten();
                     let str_of = |k: &str| payload.get(k).and_then(Value::as_str).map(String::from);
                     let vote = name.starts_with("MESSAGE_POLL_VOTE_").then(|| str_of("channel_id").zip(str_of("message_id"))).flatten();
+                    let nodes_changed = name == "USER_SETTINGS_UPDATE" && payload.get("private_nodes").is_some();
+                    if let Some(id) = &new_guild {
+                        self.routes.write().unwrap_or_else(|e| e.into_inner()).owner.remove(id); // the hub wins an id a node named first
+                    }
+                    let kept = if is_ready { self.keep_node_guilds() } else { Vec::new() };
                     if let Err(e) = self.state.apply(&name, payload) {
                         eprintln!("cillhub: {name} not applied: {e}");
                         self.status_banner = Some(format!("Could not apply {name}: {e}"));
+                    }
+                    if is_ready {
+                        self.restore_node_guilds(kept);
+                        self.routes.write().unwrap_or_else(|e| e.into_inner()).hub_me = self.state.me.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+                    }
+                    if is_ready || nodes_changed {
+                        self.sync_private_nodes();
                     }
                     if let Some((cid, mid)) = vote {
                         self.settle_poll(&cid, &mid);
@@ -1146,6 +1178,7 @@ impl CillhubApp {
             }
         }
 
+        self.tick_nodes();
         self.poll_update();
         self.maybe_check_for_update(self.api.is_none() && self.authenticated);
         if self.last_game_scan.elapsed() >= Duration::from_secs(5) {
@@ -1192,10 +1225,25 @@ impl CillhubApp {
             for (gid, gname) in guilds {
                 let active = self.selected_guild_id.as_deref() == Some(gid.as_str());
                 let abbr = initials(&gname, 2);
+                // `.node-marker`: servers that are not on the hub carry their node's initial; greyed while it is down
+                let mark = self.node_mark(&gid);
+                let down = mark.as_ref().is_some_and(|(_, l)| *l != crate::nodes::NodeLink::Ready);
                 let resp = Self::rail_icon_slot(ui, rail_rect.min.x, active, false, |painter, rect, fg| {
-                    painter.text(rect.center(), Align2::CENTER_CENTER, &abbr, display_font(20.0), fg);
+                    painter.text(rect.center(), Align2::CENTER_CENTER, &abbr, display_font(20.0), if down { fg.gamma_multiply(0.4) } else { fg });
+                    if let Some((name, link)) = &mark {
+                        let m = Rect::from_min_size(Pos2::new(rect.min.x + 1.0, rect.max.y - 17.0), Vec2::splat(18.0));
+                        let (bg, ink) = if *link == crate::nodes::NodeLink::Ready { (GREEN(), Color32::WHITE) } else { (YELLOW(), Color32::BLACK) };
+                        painter.rect(m, CornerRadius::same(2), bg, Stroke::new(3.0_f32, BG_RAIL()), StrokeKind::Outside);
+                        let initial: String = name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+                        painter.text(m.center(), Align2::CENTER_CENTER, initial, bold_font(11.0), ink);
+                    }
                 });
-                if resp.on_hover_text(&gname).clicked() {
+                let hover = match &mark {
+                    Some((node, crate::nodes::NodeLink::Down(why))) => format!("{gname} · {node}\n{why}"),
+                    Some((node, _)) => format!("{gname} · {node}"),
+                    None => gname.clone(),
+                };
+                if resp.on_hover_text(hover).clicked() {
                     self.open_guild(&gid);
                 }
             }

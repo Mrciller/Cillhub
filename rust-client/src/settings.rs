@@ -63,6 +63,9 @@ pub struct AppSettings {
     /// Settings › Private Nodes (sanitized on load).
     #[serde(default)]
     pub private_nodes: Vec<crate::nodes::SavedNode>,
+    /// Node tokens by origin, only where the keyring failed (like saved_token).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub node_tokens: HashMap<String, String>,
     #[serde(default)]
     pub audio_config: AudioConfig,
     #[serde(default)]
@@ -126,6 +129,7 @@ impl Default for AppSettings {
             server_target: default_target(),
             custom_node_url: String::new(),
             private_nodes: Vec::new(),
+            node_tokens: HashMap::new(),
             audio_config: AudioConfig::default(),
             drafts: HashMap::new(),
             show_members: true,
@@ -158,7 +162,7 @@ impl AppSettings {
             .unwrap_or_default();
         s.private_nodes = crate::nodes::sanitize(std::mem::take(&mut s.private_nodes));
         if let Some(token) = s.saved_token.clone() {
-            if keyring_entry().is_some_and(|k| k.set_password(&token).is_ok()) {
+            if keyring_entry(SESSION).is_some_and(|k| k.set_password(&token).is_ok()) {
                 s.saved_token = None;
             }
             if let Err(e) = s.save_to(path) {
@@ -216,40 +220,65 @@ impl AppSettings {
 
     /// The saved session token: keyring first, then the settings file fallback.
     pub fn token(&self) -> Option<String> {
-        keyring_entry()
+        keyring_entry(SESSION)
             .and_then(|k| k.get_password().ok())
             .or_else(|| self.saved_token.clone())
     }
 
     /// Stores (Some) or forgets (None) the session token and saves the settings.
     pub fn set_token(&mut self, token: Option<&str>) -> std::io::Result<()> {
-        let keyring = keyring_entry();
-        self.saved_token = match (token, &keyring) {
-            (Some(t), Some(k)) if k.set_password(t).is_ok() => None,
-            (Some(t), _) => {
-                // Keyring failed: drop any older keyring copy so token() does not return it.
-                if let Some(k) = &keyring {
-                    let _ = k.delete_credential();
-                }
-                Some(t.to_string())
-            }
-            (None, k) => {
-                if let Some(k) = k {
-                    let _ = k.delete_credential(); // NoEntry is fine
-                }
-                None
-            }
+        self.saved_token = keep(SESSION, token);
+        self.save()
+    }
+
+    /// A private node's token: its own keyring entry per origin, then the file fallback.
+    pub fn node_token(&self, origin: &str) -> Option<String> {
+        keyring_entry(&node_account(origin))
+            .and_then(|k| k.get_password().ok())
+            .or_else(|| self.node_tokens.get(origin).cloned())
+    }
+
+    pub fn set_node_token(&mut self, origin: &str, token: Option<&str>) -> std::io::Result<()> {
+        match keep(&node_account(origin), token) {
+            Some(t) => self.node_tokens.insert(origin.to_string(), t),
+            None => self.node_tokens.remove(origin),
         };
         self.save()
     }
 }
 
+const SESSION: &str = "session-token";
+fn node_account(origin: &str) -> String {
+    format!("node-token:{origin}")
+}
+
+/// Puts `token` into the keyring entry `account` (or deletes it); returns what the settings file must keep instead.
+fn keep(account: &str, token: Option<&str>) -> Option<String> {
+    let keyring = keyring_entry(account);
+    match (token, &keyring) {
+        (Some(t), Some(k)) if k.set_password(t).is_ok() => None,
+        (Some(t), _) => {
+            // Keyring failed: drop any older keyring copy so the getter does not return it.
+            if let Some(k) = &keyring {
+                let _ = k.delete_credential();
+            }
+            Some(t.to_string())
+        }
+        (None, k) => {
+            if let Some(k) = k {
+                let _ = k.delete_credential(); // NoEntry is fine
+            }
+            None
+        }
+    }
+}
+
 /// None in tests (they must not touch the developer's keyring) and when no keyring backend exists.
-fn keyring_entry() -> Option<keyring::Entry> {
+fn keyring_entry(account: &str) -> Option<keyring::Entry> {
     if cfg!(test) {
         return None;
     }
-    keyring::Entry::new("Cillhub", "session-token").ok()
+    keyring::Entry::new("Cillhub", account).ok()
 }
 
 pub fn default_config_dir() -> PathBuf {

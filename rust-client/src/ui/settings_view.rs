@@ -474,9 +474,10 @@ impl CillhubApp {
     /// whether they answered when the tab opened; add (checked first), copy add link, remove (asks first).
     fn nodes_tab(&mut self, ui: &mut Ui) {
         page_title(ui, tr("Private Nodes"));
-        ui.label(RichText::new(tr("Private nodes you use besides the Main Hub. Each node is a separate server with its own accounts and admins. The list stays on this device.")).font(ui_font(14.0)).color(TEXT_MUTED()));
+        ui.label(RichText::new(tr("Private nodes you use besides the Main Hub, all connected at once. Each node is a separate server with its own accounts and admins. The list is saved with your account.")).font(ui_font(14.0)).color(TEXT_MUTED()));
         ui.add_space(16.0);
-        let hub = crate::nodes::node_origin(crate::config::HUB_URL).unwrap_or_default();
+        // the hub this app is signed in to (else the default one)
+        let hub = self.api.as_ref().map_or_else(|| crate::nodes::node_origin(crate::config::HUB_URL).unwrap_or_default(), |a| a.origin.origin().ascii_serialization());
         if self.node_status.is_none() {
             self.node_status = Some(Default::default());
             let all: Vec<String> = std::iter::once(hub.clone()).chain(self.settings.private_nodes.iter().map(|n| n.origin.clone())).collect();
@@ -496,6 +497,9 @@ impl CillhubApp {
         }
         ui.add_space(8.0);
         field_label(ui, tr("Node address"));
+        // adding is the consent to the background sign-in
+        ui.label(RichText::new(tr(super::modals::SIGN_IN_NOTE)).font(ui_font(13.0)).color(TEXT_MUTED()));
+        ui.add_space(6.0);
         let mut submit = false;
         ui.horizontal(|ui| {
             let w = ui.available_width() - 160.0;
@@ -526,10 +530,19 @@ impl CillhubApp {
             NodeCheck::Up(n) if !n.is_empty() => n.clone(),
             _ => fallback.to_string(),
         };
-        let (dot, state) = match check {
-            NodeCheck::Checking => (TEXT_MUTED(), tr("Checking…")),
-            NodeCheck::Up(_) => (GREEN(), tr("Reachable")),
-            NodeCheck::Down => (DANGER(), tr("Not reachable")),
+        use crate::nodes::NodeLink;
+        // signed in to the hub: a saved node shows its connection, else whether it answered when the tab opened
+        let link = saved.and(self.api.as_ref()).and_then(|_| self.conns.get(origin)).map(|c| c.link.clone());
+        let own_login = tr("Needs its own login · not connected").to_string();
+        let (dot, state, hint) = match (link, check) {
+            (Some(NodeLink::Ready), _) => (GREEN(), tr("Connected").to_string(), None),
+            (Some(NodeLink::Connecting), _) => (YELLOW(), tr("Connecting…").to_string(), None),
+            (Some(NodeLink::Down(why)), _) => (YELLOW(), trf("Not connected: {reason} Retrying…", &[("reason", &why)]), None),
+            (Some(NodeLink::OwnLogin), _) => (TEXT_MUTED(), own_login, None),
+            (Some(NodeLink::Old), _) => (TEXT_MUTED(), own_login, Some(tr("Update the node so this app can sign you in there."))),
+            (None, NodeCheck::Checking) => (TEXT_MUTED(), tr("Checking…").to_string(), None),
+            (None, NodeCheck::Up(_)) => (GREEN(), tr("Reachable").to_string(), None),
+            (None, NodeCheck::Down) => (DANGER(), tr("Not reachable").to_string(), None),
         };
         Frame::new()
             .fill(BG_SIDEBAR())
@@ -540,6 +553,8 @@ impl CillhubApp {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
+                        // long reasons wrap left of the buttons
+                        ui.set_max_width(ui.available_width() - if saved.is_some() { 250.0 } else { 0.0 });
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(name).font(bold_font(15.0)).color(TEXT_HEADER()));
                             if saved.is_none() {
@@ -550,8 +565,11 @@ impl CillhubApp {
                         ui.horizontal(|ui| {
                             let (r, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
                             ui.painter().circle_filled(r.center(), 4.0, dot);
-                            ui.label(RichText::new(state).font(ui_font(12.5)).color(TEXT_MUTED()));
+                            ui.add(egui::Label::new(RichText::new(state).font(ui_font(12.5)).color(TEXT_MUTED())).wrap());
                         });
+                        if let Some(h) = hint {
+                            ui.label(RichText::new(h).font(ui_font(12.5)).color(TEXT_MUTED()));
+                        }
                     });
                     if let Some(n) = saved {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -575,7 +593,7 @@ impl CillhubApp {
         let (mut remove, mut close) = (false, false);
         let (_, dim) = super::modals::overlay_top(ctx, "confirm_remove_node", 448.0, |ui| {
             super::modals::modal_title(ui, &trf("Remove {name}?", &[("name", if n.name.is_empty() { &n.origin } else { &n.name })]));
-            ui.label(RichText::new(trf("{address} leaves this list. Your account there stays as it is.", &[("address", &n.origin)])).font(ui_font(15.0)).color(TEXT()));
+            ui.label(RichText::new(trf("{address} leaves the list on all your devices. Cillhub signs you out there and its servers leave your server list. Your account there stays as it is.", &[("address", &n.origin)])).font(ui_font(15.0)).color(TEXT()));
             ui.add_space(18.0);
             actions_row(ui, |ui| {
                 remove = danger_btn(ui, tr("Remove")).clicked();
@@ -583,8 +601,7 @@ impl CillhubApp {
             });
         });
         if remove {
-            self.settings.private_nodes.retain(|x| x.origin != n.origin);
-            report(&mut self.status_banner, self.settings.save());
+            self.remove_saved_node(&n.origin);
         }
         if remove || close || dim || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.confirm_remove_node = None;
@@ -607,7 +624,7 @@ impl CillhubApp {
     /// Validates, checks the node off the UI thread, then saves it under the name it gives itself.
     /// `from_tab`: errors go to the tab's field, else to the add-link dialog.
     pub fn add_node(&mut self, address: String, from_tab: bool) {
-        let hub = crate::config::HUB_URL;
+        let hub = self.api.as_ref().map_or_else(|| crate::config::HUB_URL.to_string(), |a| a.origin.origin().ascii_serialization());
         let fail = move |app: &mut CillhubApp, e: String| {
             if from_tab {
                 app.node_error = Some(e);
@@ -615,7 +632,7 @@ impl CillhubApp {
                 p.error = Some(e);
             }
         };
-        let origin = match crate::nodes::add_node(&self.settings.private_nodes, &address, "", hub) {
+        let origin = match crate::nodes::add_node(&self.settings.private_nodes, &address, "", &hub) {
             Ok(n) => n.origin,
             Err(r) => return fail(self, trf(r.message(), &[("n", &crate::nodes::MAX_NODES.to_string())])),
         };
@@ -625,10 +642,9 @@ impl CillhubApp {
             app.node_busy = false;
             let Some(name) = name else { return fail(app, tr("Could not connect to node at this address.").to_string()) };
             let name = if name.is_empty() { origin.split("://").nth(1).unwrap_or(&origin).to_string() } else { name };
-            match crate::nodes::add_node(&app.settings.private_nodes, &origin, &name, hub) {
+            match crate::nodes::add_node(&app.settings.private_nodes, &origin, &name, &hub) {
                 Ok(n) => {
-                    app.settings.private_nodes.push(n);
-                    report(&mut app.status_banner, app.settings.save());
+                    app.save_added_node(n);
                     if from_tab {
                         app.node_input.clear();
                         if let Some(m) = &mut app.node_status {
