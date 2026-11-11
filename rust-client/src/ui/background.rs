@@ -88,6 +88,14 @@ impl CillhubApp {
         // their lookups are dropped with the session, and the next one may be another hub
         self.invite_cards.clear();
         self.invite_lookups = 0;
+        // node checks in flight are dropped too: run them again
+        self.node_status = None;
+        self.node_busy = false;
+        if let Some(p) = &mut self.pending_add_node {
+            if p.check == Some(crate::nodes::NodeCheck::Checking) {
+                p.check = None;
+            }
+        }
     }
 }
 

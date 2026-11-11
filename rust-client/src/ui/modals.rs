@@ -31,6 +31,9 @@ impl CillhubApp {
             }
             return;
         }
+        if self.pending_add_node.is_some() {
+            return self.render_add_node(ctx);
+        }
         let Some(modal) = self.active_modal else {
             return;
         };
@@ -44,6 +47,62 @@ impl CillhubApp {
             ModalKind::QuickSwitcher => self.render_quick_switcher_modal(ctx),
             ModalKind::CreateChannel => self.render_create_channel(ctx),
             ModalKind::Events => self.render_events(ctx),
+        }
+    }
+
+    /// `cillhub://add-node#<address>`: the node's name and full address, that it is a separate server; only Add saves it.
+    fn render_add_node(&mut self, ctx: &Context) {
+        use crate::nodes::NodeCheck;
+        let Some(p) = self.pending_add_node.clone() else { return };
+        if p.check.is_none() {
+            if let Some(q) = &mut self.pending_add_node {
+                q.check = Some(NodeCheck::Checking);
+            }
+            let origin = p.origin.clone();
+            self.spawn_bg(false, move || crate::nodes::fetch_name(&origin), |app, name| {
+                if let Some(q) = &mut app.pending_add_node {
+                    q.check = Some(name.map_or(NodeCheck::Down, NodeCheck::Up));
+                }
+            });
+        }
+        let host = p.origin.split("://").nth(1).unwrap_or(&p.origin).to_string();
+        let error = p.error.clone().or_else(|| (p.check == Some(NodeCheck::Down)).then(|| tr("Could not connect to node at this address.").to_string()));
+        let (mut add, mut close) = (false, false);
+        let (_, dim) = overlay(ctx, "add_node", 448.0, |ui| {
+            ui.label(RichText::new(if p.added { tr("Node added") } else { tr("Add a private node?") }).font(ui_font(15.0)).color(TEXT_MUTED()));
+            ui.add_space(4.0);
+            let name = match &p.check {
+                Some(NodeCheck::Up(n)) if !n.is_empty() => n.clone(),
+                _ => host.clone(),
+            };
+            modal_title(ui, &name);
+            ui.label(RichText::new(&p.origin).font(crate::theme::mono_font(13.0)).color(TEXT()));
+            ui.add_space(10.0);
+            if !p.added {
+                ui.label(RichText::new(tr("This is a separate server with its own accounts and admins. Adding it only saves it to the list on this device.")).font(ui_font(14.0)).color(TEXT_MUTED()));
+            }
+            if let Some(e) = &error {
+                ui.add_space(8.0);
+                ui.label(RichText::new(e).font(ui_font(13.0)).color(DANGER()));
+            }
+            ui.add_space(18.0);
+            actions_row(ui, |ui| {
+                if p.added {
+                    close = primary_btn(ui, tr("Done")).clicked();
+                    return;
+                }
+                if error.is_none() {
+                    let ready = matches!(p.check, Some(NodeCheck::Up(_))) && !self.node_busy;
+                    add = ui.add_enabled_ui(ready, |ui| primary_btn(ui, tr("Add"))).inner.clicked();
+                }
+                close = secondary_btn(ui, tr("Cancel")).clicked();
+            });
+        });
+        if add {
+            self.add_node(p.origin.clone(), false);
+        }
+        if close || dim || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.pending_add_node = None;
         }
     }
 
@@ -734,9 +793,21 @@ impl CillhubApp {
 /// A dialog like the web's `.modal`: page dimmed (rgb 0 0 0 / .72), centred notched card with
 /// the 4px accent top, `--chat` fill, 24px padding. Returns whether the dim area was clicked.
 pub fn overlay<R>(ctx: &Context, id: &str, width: f32, add: impl FnOnce(&mut Ui) -> R) -> (R, bool) {
+    overlay_in(ctx, id, width, egui::Order::Middle, add)
+}
+
+/// `overlay` above a full-screen settings page (both in the Foreground layer, moved on top every frame).
+pub fn overlay_top<R>(ctx: &Context, id: &str, width: f32, add: impl FnOnce(&mut Ui) -> R) -> (R, bool) {
+    let r = overlay_in(ctx, id, width, egui::Order::Foreground, add);
+    ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, egui::Id::new((id, "dim"))));
+    ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, egui::Id::new((id, "card"))));
+    r
+}
+
+fn overlay_in<R>(ctx: &Context, id: &str, width: f32, dim_order: egui::Order, add: impl FnOnce(&mut Ui) -> R) -> (R, bool) {
     let screen = ctx.screen_rect();
     let dim = egui::Area::new(egui::Id::new((id, "dim")))
-        .order(egui::Order::Middle)
+        .order(dim_order)
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
             let (r, resp) = ui.allocate_exact_size(screen.size(), egui::Sense::click());

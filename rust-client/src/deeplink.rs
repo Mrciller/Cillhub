@@ -1,5 +1,6 @@
 //! cillhub://invite/<code> (or the older cillcord://) → "/invite/<code>";
-//! cillhub://game-invite?... → parsed game lobby invite; plus unread badge count.
+//! cillhub://game-invite?... → parsed game lobby invite; cillhub://add-node#<address> → a node to confirm;
+//! plus unread badge count.
 
 use crate::config::DEEP_LINK_SCHEMES;
 use crate::league::{parse_game_invite, GameInviteData};
@@ -8,6 +9,8 @@ use crate::league::{parse_game_invite, GameInviteData};
 pub enum DeepLinkTarget {
     Invite(String),
     GameInvite(GameInviteData),
+    /// cillhub://add-node#<address>: the node origin, shown for confirmation first.
+    AddNode(String),
 }
 
 pub fn deep_link_path(raw: &str) -> Option<String> {
@@ -24,6 +27,9 @@ pub fn deep_link_path(raw: &str) -> Option<String> {
 pub fn parse_deep_link(raw: &str) -> Option<DeepLinkTarget> {
     if let Some(invite) = parse_game_invite(raw) {
         return Some(DeepLinkTarget::GameInvite(invite));
+    }
+    if let Some(origin) = crate::nodes::parse_add_deep_link(raw) {
+        return Some(DeepLinkTarget::AddNode(origin));
     }
     if let Some(path) = deep_link_path(raw) {
         let code = path.strip_prefix("/invite/")?.to_string();

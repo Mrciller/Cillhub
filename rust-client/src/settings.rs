@@ -60,6 +60,9 @@ pub struct AppSettings {
     pub server_target: String,
     #[serde(default)]
     pub custom_node_url: String,
+    /// Settings › Private Nodes (sanitized on load).
+    #[serde(default)]
+    pub private_nodes: Vec<crate::nodes::SavedNode>,
     #[serde(default)]
     pub audio_config: AudioConfig,
     #[serde(default)]
@@ -122,6 +125,7 @@ impl Default for AppSettings {
             saved_token: None,
             server_target: default_target(),
             custom_node_url: String::new(),
+            private_nodes: Vec::new(),
             audio_config: AudioConfig::default(),
             drafts: HashMap::new(),
             show_members: true,
@@ -152,6 +156,7 @@ impl AppSettings {
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
+        s.private_nodes = crate::nodes::sanitize(std::mem::take(&mut s.private_nodes));
         if let Some(token) = s.saved_token.clone() {
             if keyring_entry().is_some_and(|k| k.set_password(&token).is_ok()) {
                 s.saved_token = None;

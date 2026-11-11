@@ -12,6 +12,7 @@ pub mod invites;
 pub mod league;
 pub mod markdown;
 pub mod model;
+pub mod nodes;
 #[cfg(feature = "native-net")]
 pub mod native_gateway;
 pub mod permissions;

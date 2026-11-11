@@ -252,6 +252,14 @@ pub struct CillhubApp {
     pub lobby_form_party_id: String,
     /// A game invite from a deep link, waiting for the user to click Join.
     pub pending_game_invite: Option<GameInviteData>,
+    /// Settings › Private Nodes: address field, its error, an add in flight, checks of this opening, remove to confirm.
+    pub node_input: String,
+    pub node_error: Option<String>,
+    pub node_busy: bool,
+    pub node_status: Option<std::collections::HashMap<String, crate::nodes::NodeCheck>>,
+    pub confirm_remove_node: Option<crate::nodes::SavedNode>,
+    /// A node from an add link, shown for confirmation; only Add saves it.
+    pub pending_add_node: Option<crate::nodes::PendingNode>,
     pub lobby_form_members: u32,
     pub lobby_form_max_members: u32,
     pub custom_game_exe_input: String,
@@ -384,6 +392,12 @@ impl CillhubApp {
             lobby_form_host: String::new(),
             lobby_form_party_id: "arena-party-77".to_string(),
             pending_game_invite: None,
+            node_input: String::new(),
+            node_error: None,
+            node_busy: false,
+            node_status: None,
+            confirm_remove_node: None,
+            pending_add_node: None,
             lobby_form_members: 2,
             lobby_form_max_members: 5,
             custom_game_exe_input: String::new(),
@@ -439,6 +453,10 @@ impl CillhubApp {
                 }
                 // shown first: only the user's click on Join accepts it
                 DeepLinkTarget::GameInvite(invite) => self.pending_game_invite = Some(invite),
+                // shown first: only the user's click on Add saves it
+                DeepLinkTarget::AddNode(origin) => {
+                    self.pending_add_node = Some(crate::nodes::PendingNode { origin, check: None, added: false, error: None })
+                }
             }
         }
     }
@@ -514,6 +532,7 @@ impl CillhubApp {
         self.canvas_doc_input.clear();
         self.custom_status_input.clear();
         self.pending_game_invite = None;
+        self.confirm_remove_node = None;
         self.show_composer_plus_menu = false;
     }
 

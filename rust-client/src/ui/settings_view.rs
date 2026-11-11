@@ -20,6 +20,7 @@ pub enum SettingsTab {
     Account,
     Appearance,
     Language,
+    Nodes,
     Games,
     Desktop,
 }
@@ -211,19 +212,24 @@ fn role_color(c: u32) -> Color32 {
 
 impl CillhubApp {
     pub fn render_user_settings(&mut self, ctx: &Context) {
-        let tabs = [SettingsTab::Account, SettingsTab::Appearance, SettingsTab::Language, SettingsTab::Games, SettingsTab::Desktop];
+        let tabs = [SettingsTab::Account, SettingsTab::Appearance, SettingsTab::Language, SettingsTab::Nodes, SettingsTab::Games, SettingsTab::Desktop];
         let sections = vec![
             (tr("User Settings").to_string(), vec![tr("My Account")]),
-            (tr("App Settings").to_string(), vec![tr("Appearance"), tr("Language"), tr("Game Activity"), tr("Desktop")]),
+            (tr("App Settings").to_string(), vec![tr("Appearance"), tr("Language"), tr("Private Nodes"), tr("Game Activity"), tr("Desktop")]),
         ];
         let current = tabs.iter().position(|t| *t == self.settings_tab).unwrap_or(0);
         let nav = settings_page(ctx, "user_settings", &sections, current, Some(tr("Log Out")), |ui| match self.settings_tab {
             SettingsTab::Account => self.account_tab(ui),
             SettingsTab::Appearance => self.appearance_tab(ui),
             SettingsTab::Language => self.language_tab(ui),
+            SettingsTab::Nodes => self.nodes_tab(ui),
             SettingsTab::Games => self.games_tab(ui),
             SettingsTab::Desktop => self.desktop_tab(ui),
         });
+        self.render_confirm_remove_node(ctx);
+        if nav.is_some() {
+            self.node_status = None; // checked again the next time the tab opens
+        }
         match nav {
             Some(Nav::Tab(i)) => self.settings_tab = tabs[i],
             Some(Nav::Close) => self.active_modal = None,
@@ -462,6 +468,179 @@ impl CillhubApp {
             report(&mut self.status_banner, self.settings.save());
             self.poll_game_activity(true);
         }
+    }
+
+    /// Settings › Private Nodes (the web's settings/PrivateNodes.tsx): the Main Hub, then the saved nodes with
+    /// whether they answered when the tab opened; add (checked first), copy add link, remove (asks first).
+    fn nodes_tab(&mut self, ui: &mut Ui) {
+        page_title(ui, tr("Private Nodes"));
+        ui.label(RichText::new(tr("Private nodes you use besides the Main Hub. Each node is a separate server with its own accounts and admins. The list stays on this device.")).font(ui_font(14.0)).color(TEXT_MUTED()));
+        ui.add_space(16.0);
+        let hub = crate::nodes::node_origin(crate::config::HUB_URL).unwrap_or_default();
+        if self.node_status.is_none() {
+            self.node_status = Some(Default::default());
+            let all: Vec<String> = std::iter::once(hub.clone()).chain(self.settings.private_nodes.iter().map(|n| n.origin.clone())).collect();
+            for origin in all {
+                self.check_node(origin);
+            }
+        }
+        let host = |o: &str| o.split("://").nth(1).unwrap_or(o).to_string();
+        self.node_row(ui, &hub, &host(&hub), None);
+        for n in self.settings.private_nodes.clone() {
+            let fallback = if n.name.is_empty() { host(&n.origin) } else { n.name.clone() };
+            self.node_row(ui, &n.origin, &fallback, Some(&n));
+        }
+        if self.settings.private_nodes.is_empty() {
+            ui.label(RichText::new(tr("No private nodes saved yet.")).font(ui_font(14.0)).color(TEXT_MUTED()));
+            ui.add_space(8.0);
+        }
+        ui.add_space(8.0);
+        field_label(ui, tr("Node address"));
+        let mut submit = false;
+        ui.horizontal(|ui| {
+            let w = ui.available_width() - 160.0;
+            let r = ui.allocate_ui(Vec2::new(w, 40.0), |ui| text_input(ui, &mut self.node_input, "https://chat.example.org")).inner;
+            if r.changed() {
+                self.node_error = None;
+            }
+            submit = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let ok = !self.node_busy && !self.node_input.trim().is_empty();
+            if ui.add_enabled_ui(ok, |ui| secondary_btn(ui, if self.node_busy { tr("Checking…") } else { tr("Add node") })).inner.clicked() {
+                submit = true;
+            }
+        });
+        if let Some(e) = &self.node_error {
+            ui.add_space(6.0);
+            ui.label(RichText::new(e).font(ui_font(13.0)).color(DANGER()));
+        }
+        if submit && !self.node_busy && !self.node_input.trim().is_empty() {
+            let address = self.node_input.clone();
+            self.add_node(address, true);
+        }
+    }
+
+    fn node_row(&mut self, ui: &mut Ui, origin: &str, fallback: &str, saved: Option<&crate::nodes::SavedNode>) {
+        use crate::nodes::NodeCheck;
+        let check = self.node_status.as_ref().and_then(|m| m.get(origin)).cloned().unwrap_or(NodeCheck::Checking);
+        let name = match &check {
+            NodeCheck::Up(n) if !n.is_empty() => n.clone(),
+            _ => fallback.to_string(),
+        };
+        let (dot, state) = match check {
+            NodeCheck::Checking => (TEXT_MUTED(), tr("Checking…")),
+            NodeCheck::Up(_) => (GREEN(), tr("Reachable")),
+            NodeCheck::Down => (DANGER(), tr("Not reachable")),
+        };
+        Frame::new()
+            .fill(BG_SIDEBAR())
+            .stroke(Stroke::new(1.0_f32, BORDER()))
+            .corner_radius(CornerRadius::same(2))
+            .inner_margin(Margin::symmetric(12, 10))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(name).font(bold_font(15.0)).color(TEXT_HEADER()));
+                            if saved.is_none() {
+                                ui.label(RichText::new(tr("Main Hub")).font(bold_font(11.5)).color(TEXT_MUTED()));
+                            }
+                        });
+                        ui.label(RichText::new(origin).font(crate::theme::mono_font(12.0)).color(TEXT_MUTED()));
+                        ui.horizontal(|ui| {
+                            let (r, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
+                            ui.painter().circle_filled(r.center(), 4.0, dot);
+                            ui.label(RichText::new(state).font(ui_font(12.5)).color(TEXT_MUTED()));
+                        });
+                    });
+                    if let Some(n) = saved {
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if super::chat::toolbar_btn(ui, IconKind::Trash, false, true).on_hover_text(tr("Remove")).clicked() {
+                                self.confirm_remove_node = Some(n.clone());
+                            }
+                            if secondary_btn(ui, tr("Copy add link")).clicked() {
+                                let base = self.api.as_ref().map_or_else(|| crate::config::HUB_URL.to_string(), |a| a.origin.origin().ascii_serialization());
+                                ui.ctx().copy_text(crate::nodes::add_link(&base, &n.origin));
+                                self.status_banner = Some(tr("Link copied.").to_string());
+                            }
+                        });
+                    }
+                });
+            });
+        ui.add_space(6.0);
+    }
+
+    fn render_confirm_remove_node(&mut self, ctx: &Context) {
+        let Some(n) = self.confirm_remove_node.clone() else { return };
+        let (mut remove, mut close) = (false, false);
+        let (_, dim) = super::modals::overlay_top(ctx, "confirm_remove_node", 448.0, |ui| {
+            super::modals::modal_title(ui, &trf("Remove {name}?", &[("name", if n.name.is_empty() { &n.origin } else { &n.name })]));
+            ui.label(RichText::new(trf("{address} leaves this list. Your account there stays as it is.", &[("address", &n.origin)])).font(ui_font(15.0)).color(TEXT()));
+            ui.add_space(18.0);
+            actions_row(ui, |ui| {
+                remove = danger_btn(ui, tr("Remove")).clicked();
+                close = secondary_btn(ui, tr("Cancel")).clicked();
+            });
+        });
+        if remove {
+            self.settings.private_nodes.retain(|x| x.origin != n.origin);
+            report(&mut self.status_banner, self.settings.save());
+        }
+        if remove || close || dim || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.confirm_remove_node = None;
+        }
+    }
+
+    /// Checks one node off the UI thread; the result lands in this opening's status map.
+    fn check_node(&mut self, origin: String) {
+        if let Some(m) = &mut self.node_status {
+            m.insert(origin.clone(), crate::nodes::NodeCheck::Checking);
+        }
+        let o = origin.clone();
+        self.spawn_bg(false, move || crate::nodes::fetch_name(&o), move |app, name| {
+            if let Some(m) = &mut app.node_status {
+                m.insert(origin, name.map_or(crate::nodes::NodeCheck::Down, crate::nodes::NodeCheck::Up));
+            }
+        });
+    }
+
+    /// Validates, checks the node off the UI thread, then saves it under the name it gives itself.
+    /// `from_tab`: errors go to the tab's field, else to the add-link dialog.
+    pub fn add_node(&mut self, address: String, from_tab: bool) {
+        let hub = crate::config::HUB_URL;
+        let fail = move |app: &mut CillhubApp, e: String| {
+            if from_tab {
+                app.node_error = Some(e);
+            } else if let Some(p) = &mut app.pending_add_node {
+                p.error = Some(e);
+            }
+        };
+        let origin = match crate::nodes::add_node(&self.settings.private_nodes, &address, "", hub) {
+            Ok(n) => n.origin,
+            Err(r) => return fail(self, trf(r.message(), &[("n", &crate::nodes::MAX_NODES.to_string())])),
+        };
+        self.node_busy = true;
+        let o = origin.clone();
+        self.spawn_bg(false, move || crate::nodes::fetch_name(&o), move |app, name| {
+            app.node_busy = false;
+            let Some(name) = name else { return fail(app, tr("Could not connect to node at this address.").to_string()) };
+            let name = if name.is_empty() { origin.split("://").nth(1).unwrap_or(&origin).to_string() } else { name };
+            match crate::nodes::add_node(&app.settings.private_nodes, &origin, &name, hub) {
+                Ok(n) => {
+                    app.settings.private_nodes.push(n);
+                    report(&mut app.status_banner, app.settings.save());
+                    if from_tab {
+                        app.node_input.clear();
+                        if let Some(m) = &mut app.node_status {
+                            m.insert(origin, crate::nodes::NodeCheck::Up(name));
+                        }
+                    } else if let Some(p) = &mut app.pending_add_node {
+                        p.added = true;
+                    }
+                }
+                Err(r) => fail(app, trf(r.message(), &[("n", &crate::nodes::MAX_NODES.to_string())])),
+            }
+        });
     }
 
     /// This app's own: start with the system, version, update.
