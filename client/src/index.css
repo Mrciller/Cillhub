@@ -832,7 +832,7 @@ a.mention { text-decoration: none; }
   align-items: center;
   gap: 3px;
   padding: 3px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-s);
   background: rgb(7 9 14 / .82);
   backdrop-filter: blur(8px);
   border: 1px solid rgb(255 255 255 / .12);

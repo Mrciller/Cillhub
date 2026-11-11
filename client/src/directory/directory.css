@@ -26,7 +26,7 @@
 .node-chip { display: inline-block; padding: 1px 6px; border-radius: var(--radius-s); background: var(--btn-secondary); color: #fff; font-weight: 600; }
 .dir-node.down .node-chip { background: var(--danger); }
 .dir-tags { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
-.dir-tags li { padding: 2px 8px; border-radius: 999px; background: var(--chat); border: 1px solid var(--border); font-size: 12px; color: var(--interactive); }
+.dir-tags li { padding: 2px 8px; border-radius: var(--radius-s); background: var(--chat); border: 1px solid var(--border); font-size: 12px; color: var(--interactive); }
 .dir-tags .dir-cat { color: var(--header); font-weight: 600; }
 .dir-actions { margin-top: auto; padding-top: 8px; display: flex; align-items: center; justify-content: space-between; }
 .listing-form textarea.input { height: auto; resize: vertical; }

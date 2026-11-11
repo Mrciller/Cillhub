@@ -71,7 +71,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-s);
   background: rgba(235, 160, 0, 0.9);
   color: #000;
   font-size: 11px;
@@ -102,7 +102,7 @@
   color: #fff;
   background: rgba(0, 0, 0, 0.4);
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-s);
 }
 .fullscreen-volume-range {
   width: 70px;
