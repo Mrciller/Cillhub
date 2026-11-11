@@ -159,9 +159,9 @@ fn run_once(
                         return Ok(false);
                     }
                     if ready {
-                        for env in outbox.ready(last_presence) {
-                            socket.send(Opcode::Text, &serde_json::to_vec(&env).map_err(io::Error::other)?)?;
-                        }
+                        outbox.ready(last_presence, |env| {
+                            socket.send(Opcode::Text, &serde_json::to_vec(env).map_err(io::Error::other)?)
+                        })?;
                     }
                 }
                 Opcode::Ping => socket.send(Opcode::Pong, &frame.payload)?,
@@ -251,15 +251,19 @@ impl Outbox {
         self.ready = false;
     }
 
-    /// READY arrived: everything held, in order.
-    fn ready(&mut self, presence: &Presence) -> Vec<Envelope> {
+    /// READY arrived: writes everything held, in order. Each command leaves the queue only after its write
+    /// succeeded, so a write error keeps the rest for the next connection.
+    fn ready(&mut self, presence: &Presence, mut write: impl FnMut(&Envelope) -> io::Result<()>) -> io::Result<()> {
         self.ready = true;
-        let mut out = Vec::new();
-        if std::mem::take(&mut self.presence_changed) {
-            out.push(Gateway::presence_envelope(&presence.0, presence.1.as_ref(), presence.2.as_ref()));
+        if self.presence_changed {
+            write(&Gateway::presence_envelope(&presence.0, presence.1.as_ref(), presence.2.as_ref()))?;
+            self.presence_changed = false;
         }
-        out.append(&mut self.held);
-        out
+        while let Some(env) = self.held.first() {
+            write(env)?;
+            self.held.remove(0);
+        }
+        Ok(())
     }
 }
 
@@ -312,11 +316,11 @@ mod tests {
         let voice = GatewayCommand::UpdateVoiceState { guild_id: None, channel_id: None, self_mute: false, self_deaf: false, self_video: false, self_stream: false };
         assert_eq!(out.command(voice, &mut presence), None);
         assert_eq!(out.command(set("dnd"), &mut presence), None);
-        let sent = out.ready(&presence);
+        let sent = flush(&mut out, &presence);
         assert_eq!(sent.iter().map(|e| e.op).collect::<Vec<_>>(), vec![3, 4]);
         assert_eq!(sent[0].d["status"], "dnd");
         assert_eq!(out.command(set("online"), &mut presence).map(|e| e.op), Some(3));
-        assert!(Outbox::default().ready(&presence).is_empty(), "an unchanged presence is not sent twice");
+        assert!(flush(&mut Outbox::default(), &presence).is_empty(), "an unchanged presence is not sent twice");
     }
 
     #[test]
@@ -328,8 +332,26 @@ mod tests {
             assert_eq!(out.command(send(i), &mut presence), None);
         }
         out.reconnect();
-        let sent = out.ready(&presence);
-        assert_eq!(sent.len(), MAX_HELD);
-        assert_eq!(sent[0].d, serde_json::json!(5), "the oldest went first");
+        // the third write fails: the two written are gone, the rest waits for the next READY
+        let mut n = 0;
+        let r = out.ready(&presence, |_| {
+            n += 1;
+            if n == 3 { Err(io::ErrorKind::BrokenPipe.into()) } else { Ok(()) }
+        });
+        assert!(r.is_err());
+        out.reconnect();
+        let sent = flush(&mut out, &presence);
+        assert_eq!(sent.len(), MAX_HELD - 2);
+        assert_eq!(sent[0].d, serde_json::json!(7), "the oldest went first, none lost after the failed write");
+    }
+
+    fn flush(out: &mut Outbox, presence: &Presence) -> Vec<Envelope> {
+        let mut sent = Vec::new();
+        out.ready(presence, |e| {
+            sent.push(e.clone());
+            Ok(())
+        })
+        .unwrap();
+        sent
     }
 }
