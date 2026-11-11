@@ -100,7 +100,7 @@ internal val Onyx = Dark.copy(
 /** The notch: the HUD cut on the top-left and bottom-right corner of cards, dialogs and sheets. Never on rows, buttons or fields. */
 val Hud = CutCornerShape(topStart = 12.dp, bottomEnd = 12.dp)
 
-/** radius-s: buttons, fields, chips, list rows. M3 buttons default to pills, so they take this explicitly. */
+/** radius-s: buttons, fields, chips, list rows (M3 buttons default to pills: call sites pass MaterialTheme.shapes.small). */
 val Sharp = RoundedCornerShape(2.dp)
 
 // radius-s / radius-m / radius-l; extraLarge carries the notch because M3 draws dialogs and bottom sheets with it
@@ -114,14 +114,13 @@ val ArenaShapes = Shapes(
 
 private fun inter(w: Int) = Font(R.font.inter, FontWeight(w), variationSettings = FontVariation.Settings(FontVariation.weight(w)))
 val Inter = FontFamily(inter(400), inter(500), inter(600), inter(700))
-/** display: Barlow Condensed 600, for headings and labels (uppercase by the caller). */
-val Condensed = FontFamily(Font(R.font.barlow_condensed_semibold, FontWeight.SemiBold))
+/** display: Barlow Condensed, 700 for headings and buttons, 600 for small labels (uppercase by the caller). */
+val Condensed = FontFamily(Font(R.font.barlow_condensed_semibold, FontWeight.SemiBold), Font(R.font.barlow_condensed_bold, FontWeight.Bold))
 val Mono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))))
 
-private val display = TextStyle(fontFamily = Condensed, fontWeight = FontWeight.SemiBold, letterSpacing = 0.02.em)
-private val label = TextStyle(fontFamily = Condensed, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.08.em)
+private val display = TextStyle(fontFamily = Condensed, fontWeight = FontWeight.Bold, letterSpacing = 0.02.em)
 
-// display-xl -> headlineMedium, display-l -> titleLarge, label -> labelLarge (and labelMedium, the section headers here),
+// display-xl -> headlineMedium, display-l -> titleLarge, button -> labelLarge, label -> labelMedium,
 // title -> titleMedium, body -> bodyLarge, body-s -> bodyMedium, caption -> labelSmall; the rest fill the gaps
 val ArenaTypography = Typography(
     displayLarge = display.copy(fontSize = 57.sp, lineHeight = 60.sp),
@@ -136,8 +135,8 @@ val ArenaTypography = Typography(
     bodyLarge = TextStyle(fontFamily = Inter, fontSize = 15.sp, lineHeight = 21.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.006).em),
     bodyMedium = TextStyle(fontFamily = Inter, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal),
     bodySmall = TextStyle(fontFamily = Inter, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
-    labelLarge = label,
-    labelMedium = label,
+    labelLarge = TextStyle(fontFamily = Condensed, fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.06.em),
+    labelMedium = TextStyle(fontFamily = Condensed, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.08.em),
     labelSmall = TextStyle(fontFamily = Inter, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
 )
 
