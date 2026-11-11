@@ -213,8 +213,12 @@ pub struct CillhubApp {
     /// Results of the file dialog, which runs off the UI thread (a stuck portal must not freeze the app).
     pub picked_tx: Sender<Vec<std::path::PathBuf>>,
     picked_rx: Receiver<Vec<std::path::PathBuf>>,
-    /// Files picked or dropped, sent with the next message.
-    pub pending_files: Vec<std::path::PathBuf>,
+    /// Files picked or dropped, sent with the next message. Each attach is its own instance (Arc identity), so an
+    /// upload finishing removes only what it sent, not the same file attached again.
+    pub pending_files: Vec<std::sync::Arc<std::path::PathBuf>>,
+    /// Sends and edits that failed while their channel was not open or its composer was busy, oldest first.
+    /// They come back into the composer once it is empty in their channel.
+    pub failed_drafts: std::collections::HashMap<String, Vec<chat::FailedDraft>>,
     pub show_composer_plus_menu: bool,
     pub plus_anchor: Pos2,
     pub poll_answers: Vec<String>,
@@ -364,6 +368,7 @@ impl CillhubApp {
             terms_gate: None,
             composer_text: String::new(),
             pending_files: Vec::new(),
+            failed_drafts: Default::default(),
             picked_tx,
             picked_rx,
             images: Default::default(),
@@ -527,6 +532,7 @@ impl CillhubApp {
         self.reply_to_message = None;
         self.editing_message_id = None;
         self.pending_files.clear();
+        self.failed_drafts.clear();
         self.composer_text.clear();
         report(&mut self.status_banner, self.settings.set_token(None));
         self.active_modal = None;
@@ -944,7 +950,7 @@ impl CillhubApp {
             return;
         }
         let cid = channel_id.to_string();
-        let scope = self.new_scope("history"); // READY starts a new one: older answers belong to the old state
+        let scope = self.scope_now("history"); // only READY starts a new one: older answers belong to the old state
         self.state.begin_history(&cid);
         let sent = self.api_get(format!("/channels/{cid}/messages?limit=50"), move |app, r| {
             if !app.in_scope("history", scope) {
@@ -980,18 +986,13 @@ impl CillhubApp {
             return;
         }
         let cid = channel_id.to_string();
+        let scope = self.scope_now("history");
         self.api_get(format!("/channels/{cid}/messages?limit=50&before={before}"), move |app, r| {
-            let Some(mut older) = report(&mut app.status_banner, r).map(|v| parse_messages(&v)) else { return };
-            for m in &older {
-                if let Some(a) = &m.author {
-                    app.state.users.entry(a.id.clone()).or_insert_with(|| a.clone());
-                }
+            if !app.in_scope("history", scope) {
+                return; // a page of the state before READY
             }
-            // still the same window (no reload in between)
-            if let Some(existing) = app.state.messages.get_mut(&cid).filter(|l| l.first().is_some_and(|m| m.id == before)) {
-                older.append(existing);
-                *existing = older;
-            }
+            let Some(older) = report(&mut app.status_banner, r).map(|v| parse_messages(&v)) else { return };
+            app.state.prepend_history(&cid, &before, older); // only onto the same window (no reload in between)
         });
     }
 
@@ -1061,9 +1062,14 @@ impl CillhubApp {
                     let new_guild = (name == "GUILD_CREATE")
                         .then(|| payload.get("id").and_then(Value::as_str).map(String::from))
                         .flatten();
+                    let str_of = |k: &str| payload.get(k).and_then(Value::as_str).map(String::from);
+                    let vote = name.starts_with("MESSAGE_POLL_VOTE_").then(|| str_of("channel_id").zip(str_of("message_id"))).flatten();
                     if let Err(e) = self.state.apply(&name, payload) {
                         eprintln!("cillhub: {name} not applied: {e}");
                         self.status_banner = Some(format!("Could not apply {name}: {e}"));
+                    }
+                    if let Some((cid, mid)) = vote {
+                        self.settle_poll(&cid, &mid);
                     }
                     if (is_ready || name == "USER_SETTINGS_UPDATE")
                         && self.settings.adopt_server_appearance(&self.state.user_settings)
@@ -1935,7 +1941,10 @@ impl CillhubApp {
         self.pump_bg();
         self.process_background_events();
         while let Ok(paths) = self.picked_rx.try_recv() {
-            self.pending_files.extend(paths);
+            self.pending_files.extend(paths.into_iter().map(std::sync::Arc::new));
+        }
+        if !self.failed_drafts.is_empty() {
+            self.restore_failed_draft();
         }
         if std::mem::take(&mut self.forget_images) {
             ctx.forget_all_images();
@@ -2421,13 +2430,52 @@ mod tests {
     fn a_failed_send_never_lands_in_another_channels_draft() {
         let mut app = CillhubApp::new(None, true);
         let err = || crate::api::parse_api_error(500, serde_json::json!({ "message": "boom" }));
+        let draft = |t: &str, edit: Option<&str>| super::chat::FailedDraft { text: t.into(), edit_id: edit.map(String::from), reply: None };
         app.selected_channel_id = Some("b".into());
-        app.keep_failed("a", "for a".into(), err(), |_| {});
-        assert!(app.composer_text.is_empty() && app.status_banner.as_deref().is_some_and(|b| b.contains("for a")));
-        app.keep_failed("b", "for b".into(), err(), |_| {});
+        let long = "x".repeat(1000);
+        app.keep_failed("a", draft(&long, Some("m1")), err());
+        assert!(app.composer_text.is_empty() && app.status_banner.as_deref().is_some_and(|b| b.contains("xxx")));
+        app.keep_failed("b", draft("for b", None), err());
         assert_eq!(app.composer_text, "for b");
-        app.keep_failed("b", "again".into(), err(), |_| {});
+        app.keep_failed("b", draft("again", None), err());
         assert_eq!(app.composer_text, "for b", "a newer draft is kept");
+        app.composer_text.clear();
+        app.restore_failed_draft();
+        assert_eq!(app.composer_text, "again", "and the failed one comes back once the composer is free");
+        app.composer_text.clear();
+        app.selected_channel_id = Some("a".into());
+        app.restore_failed_draft();
+        assert_eq!((app.composer_text.len(), app.editing_message_id.as_deref()), (1000, Some("m1")), "the whole edit, with its target");
+        assert!(app.failed_drafts.is_empty());
+    }
+
+    #[test]
+    fn opening_another_channel_does_not_strand_a_history_load() {
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(crate::api::ApiClient::new(normalize_server_url("http://127.0.0.1:9").unwrap(), None));
+        app.load_channel_history("a");
+        app.load_channel_history("b");
+        settle(&mut app);
+        assert!(app.loading_history.is_empty() && app.state.pending_history.is_empty(), "both answers count");
+        app.load_channel_history("a");
+        assert!(app.loading_history.contains("a"), "a can be asked again");
+    }
+
+    #[test]
+    fn a_poll_choice_waits_for_the_gateway_and_ends_with_the_session() {
+        let mut app = CillhubApp::new(None, true);
+        app.state.me = Some(crate::model::parse(serde_json::json!({ "id": "me", "username": "me" })).unwrap());
+        let poll = serde_json::json!({ "question": { "text": "q" }, "answers": [], "allow_multiselect": true });
+        app.state.set_history("c".into(), vec![crate::model::parse(serde_json::json!({ "id": "m", "channel_id": "c", "poll": poll })).unwrap()]);
+        app.poll_pending.insert("m".into(), vec![1]); // HTTP said yes, the gateway has not yet
+        app.settle_poll("c", "m");
+        assert!(app.poll_pending.contains_key("m"), "kept until the gateway shows it");
+        report(&mut app.status_banner, app.state.apply("MESSAGE_POLL_VOTE_ADD", serde_json::json!({ "channel_id": "c", "message_id": "m", "user_id": "me", "answer_id": 1 })));
+        app.settle_poll("c", "m");
+        assert!(app.poll_pending.is_empty());
+        app.poll_pending.insert("m".into(), vec![2]);
+        app.new_session();
+        assert!(app.poll_pending.is_empty(), "never the next account's vote");
     }
 
     #[test]

@@ -88,6 +88,11 @@ impl CillhubApp {
         *g
     }
 
+    /// The current generation of `key`, for requests that share it (all history requests of one READY).
+    pub fn scope_now(&mut self, key: &str) -> u64 {
+        *self.scopes.entry(key.to_string()).or_default()
+    }
+
     /// Whether `generation` is still the newest request for `key`.
     pub fn in_scope(&self, key: &str, generation: u64) -> bool {
         self.scopes.get(key) == Some(&generation)
@@ -110,6 +115,7 @@ impl CillhubApp {
         self.invite_cards.clear();
         self.invite_lookups = 0;
         self.terms_gate = None; // it belongs to the session's server
+        self.poll_pending.clear(); // votes chosen by the previous account
         // node checks in flight are dropped too: run them again
         self.node_status = None;
         self.node_busy = false;

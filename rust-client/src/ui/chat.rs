@@ -1343,7 +1343,7 @@ impl CillhubApp {
             let dropped: Vec<_> = ui
                 .ctx()
                 .input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
-            self.pending_files.extend(dropped);
+            self.pending_files.extend(dropped.into_iter().map(std::sync::Arc::new));
         }
 
         // `.reply-bar` (also used while editing a message here)
@@ -1402,7 +1402,7 @@ impl CillhubApp {
                                 ui.spacing_mut().item_spacing.x = 14.0;
                                 for (i, path) in self.pending_files.iter().enumerate() {
                                     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                                    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+                                    let size = std::fs::metadata(path.as_path()).map(|m| m.len()).unwrap_or(0);
                                     Frame::new()
                                         .fill(BG_SIDEBAR())
                                         .stroke(Stroke::new(1.0_f32, BORDER()))
@@ -1420,10 +1420,10 @@ impl CillhubApp {
                                             let uri = format!("bytes://pending/{}", path.display());
                                             if is_img && !self.images.contains_key(&uri) {
                                                 // read once; egui keeps the bytes under the uri
-                                                let bytes = std::fs::metadata(path)
+                                                let bytes = std::fs::metadata(path.as_path())
                                                     .ok()
                                                     .filter(|m| m.len() <= super::images::MAX_IMAGE_BYTES)
-                                                    .and_then(|_| std::fs::read(path).ok())
+                                                    .and_then(|_| std::fs::read(path.as_path()).ok())
                                                     .filter(|b| super::images::check(b).is_ok());
                                                 let state = match bytes {
                                                     Some(b) => {
@@ -1590,7 +1590,7 @@ impl CillhubApp {
                 let (path, body) = (format!("/channels/{cid}/messages/{edit_id}"), json!({ "content": content }));
                 self.api_bg(true, move |api| api.patch(&path, body), move |app, r| {
                     if let Err(e) = r {
-                        app.keep_failed(&cid, content, e, |app| app.editing_message_id = Some(edit_id));
+                        app.keep_failed(&cid, FailedDraft { text: content, edit_id: Some(edit_id), reply: None }, e);
                     }
                 });
                 return;
@@ -1625,7 +1625,7 @@ impl CillhubApp {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "file".to_string());
-            match std::fs::read(path) {
+            match std::fs::read(path.as_path()) {
                 Ok(bytes) => files.push((name, bytes)),
                 Err(e) => {
                     self.status_banner = Some(format!("{}: {e}", path.display()));
@@ -1642,11 +1642,13 @@ impl CillhubApp {
         let upload = move |api: &crate::api::ApiClient| api.upload_message(&upload_cid, &payload, &files);
         self.api_bg(true, upload, move |app, r| {
             let Some(val) = report(&mut app.status_banner, r) else { return };
-            app.pending_files.retain(|p| !sent.contains(p));
+            app.pending_files.retain(|p| !sent.iter().any(|s| std::sync::Arc::ptr_eq(s, p)));
             // only the draft that was sent goes: a newer one (or another channel's) stays
             if app.selected_channel_id.as_deref() == Some(cid.as_str()) && app.composer_text.trim() == text {
                 app.composer_text.clear();
-                app.reply_to_message = None;
+                if app.reply_to_message.as_ref().map(|m| &m.id) == reply.as_ref() {
+                    app.reply_to_message = None;
+                }
             }
             if let Some(msg) = report(&mut app.status_banner, crate::model::parse::<Message>(val)) {
                 app.state.push_message(msg);
@@ -1673,7 +1675,7 @@ impl CillhubApp {
                     }
                 }
                 // keep the text so the user can retry; never show it as sent
-                Err(e) => app.keep_failed(&cid, content, e, |app| app.reply_to_message = reply_ref),
+                Err(e) => app.keep_failed(&cid, FailedDraft { text: content, edit_id: None, reply: reply_ref }, e),
             });
             return;
         }
@@ -1691,17 +1693,27 @@ impl CillhubApp {
         self.state.messages.entry(cid).or_default().push(msg);
     }
 
-    /// A send or edit failed: its text goes back into the composer only in its own channel and only over an empty
-    /// draft (`restore` puts back the reply or edit target too); otherwise the banner keeps the text.
-    pub fn keep_failed(&mut self, cid: &str, content: String, e: crate::api::ApiError, restore: impl FnOnce(&mut CillhubApp)) {
-        if self.selected_channel_id.as_deref() == Some(cid) && self.composer_text.is_empty() && self.editing_message_id.is_none() {
-            self.composer_text = content;
-            restore(self);
-            self.status_banner = Some(e.to_string());
-        } else {
-            let short: String = content.chars().take(200).collect();
-            self.status_banner = Some(format!("{e} ({}: {short})", tr("Not sent")));
+    /// A send or edit failed: the whole operation is kept as its channel's draft. It goes into the composer right
+    /// away only in its own channel over an empty composer; otherwise later (restore_failed_draft).
+    pub fn keep_failed(&mut self, cid: &str, draft: FailedDraft, e: crate::api::ApiError) {
+        let short: String = draft.text.chars().take(200).collect();
+        self.status_banner = Some(format!("{e} ({}: {short})", tr("Not sent")));
+        self.failed_drafts.entry(cid.to_string()).or_default().push(draft);
+        self.restore_failed_draft();
+    }
+
+    /// Puts the oldest failed draft of the open channel back once its composer is empty (no edit, reply or file).
+    pub fn restore_failed_draft(&mut self) {
+        let Some(cid) = self.selected_channel_id.clone() else { return };
+        if !self.composer_text.is_empty() || self.editing_message_id.is_some() || self.reply_to_message.is_some() || !self.pending_files.is_empty() {
+            return;
         }
+        let Some(list) = self.failed_drafts.get_mut(&cid) else { return };
+        let d = list.remove(0);
+        if list.is_empty() {
+            self.failed_drafts.remove(&cid);
+        }
+        (self.composer_text, self.editing_message_id, self.reply_to_message) = (d.text, d.edit_id, d.reply);
     }
 
     pub fn delete_message(&mut self, channel_id: &str, message_id: &str) {
@@ -1845,18 +1857,17 @@ impl CillhubApp {
             // like the web's votePoll: PUT the whole set of my answers
             let poll = self.state.messages.get(channel_id).and_then(|l| l.iter().find(|m| m.id == message_id)).and_then(|m| m.poll.clone());
             // a click before the gateway confirmed the last one builds on that click, not on the old state
-            let mine = self.poll_pending.get(message_id).cloned().unwrap_or_else(|| {
-                poll.as_ref().and_then(|p| p.results.as_ref()).map(|r| r.answer_counts.iter().filter(|c| c.me_voted).map(|c| c.id).collect()).unwrap_or_default()
-            });
+            let mine = self.poll_pending.get(message_id).cloned().unwrap_or_else(|| self.my_poll_answers(channel_id, message_id));
             let ids = next_answers(mine, answer_id, add, poll.is_some_and(|p| p.allow_multiselect));
             self.poll_pending.insert(message_id.to_string(), ids.clone());
-            let (path, mid, sent) = (format!("/channels/{channel_id}/polls/{message_id}/answers/@me"), message_id.to_string(), ids.clone());
+            let (path, cid, mid, sent) = (format!("/channels/{channel_id}/polls/{message_id}/answers/@me"), channel_id.to_string(), message_id.to_string(), ids.clone());
             // the gateway's MESSAGE_POLL_VOTE_ADD/REMOVE updates the count (no double count)
             self.api_bg(true, move |api| api.put(&path, Some(json!({ "answer_ids": ids }))), move |app, r| {
-                if app.poll_pending.get(&mid) == Some(&sent) {
-                    app.poll_pending.remove(&mid); // the newest click is done; the state has it from here
+                match report(&mut app.status_banner, r) {
+                    Some(_) => app.settle_poll(&cid, &mid), // the gateway may have confirmed it already
+                    None if app.poll_pending.get(&mid) == Some(&sent) => drop(app.poll_pending.remove(&mid)),
+                    None => {}
                 }
-                report(&mut app.status_banner, r);
             });
             return;
         }
@@ -2124,6 +2135,33 @@ mod tests {
         assert_eq!(inline_image_size(&att("image/svg+xml", Some(10), Some(10))), None);
         assert_eq!(inline_image_size(&att("application/pdf", None, None)), None);
     }
+}
+
+impl CillhubApp {
+    /// My answers to a poll as the gateway last told them.
+    fn my_poll_answers(&self, channel_id: &str, message_id: &str) -> Vec<u32> {
+        let poll = self.state.messages.get(channel_id).and_then(|l| l.iter().find(|m| m.id == message_id)).and_then(|m| m.poll.as_ref());
+        poll.and_then(|p| p.results.as_ref()).map(|r| r.answer_counts.iter().filter(|c| c.me_voted).map(|c| c.id).collect()).unwrap_or_default()
+    }
+
+    /// Drops the chosen answers once the gateway's state shows them (not on HTTP success: its events may lag).
+    pub fn settle_poll(&mut self, channel_id: &str, message_id: &str) {
+        let Some(want) = self.poll_pending.get(message_id) else { return };
+        let (mut want, mut have) = (want.clone(), self.my_poll_answers(channel_id, message_id));
+        want.sort_unstable();
+        have.sort_unstable();
+        if want == have {
+            self.poll_pending.remove(message_id);
+        }
+    }
+}
+
+/// A send or edit that failed: everything needed to try it again.
+#[derive(Clone, Debug)]
+pub struct FailedDraft {
+    pub text: String,
+    pub edit_id: Option<String>,
+    pub reply: Option<Message>,
 }
 
 /// The whole set of my answers after a click (the server takes the full set, like the web's votePoll).
