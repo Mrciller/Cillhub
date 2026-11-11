@@ -155,6 +155,9 @@ pub struct CillhubApp {
     image_rx: Receiver<(String, Option<Vec<u8>>)>,
     /// Full-size image view: (egui URI, file name, absolute URL).
     pub lightbox: Option<(String, String, String)>,
+    /// Results of the file dialog, which runs off the UI thread (a stuck portal must not freeze the app).
+    pub picked_tx: Sender<Vec<std::path::PathBuf>>,
+    picked_rx: Receiver<Vec<std::path::PathBuf>>,
     /// Files picked or dropped, sent with the next message.
     pub pending_files: Vec<std::path::PathBuf>,
     pub show_composer_plus_menu: bool,
@@ -233,6 +236,7 @@ impl CillhubApp {
             });
 
         let (image_tx, image_rx) = mpsc::channel();
+        let (picked_tx, picked_rx) = mpsc::channel();
         let (theme_name, locale) = (settings.theme.clone(), settings.locale.clone());
         let mut app = Self {
             settings,
@@ -263,6 +267,8 @@ impl CillhubApp {
             status_banner: None,
             composer_text: String::new(),
             pending_files: Vec::new(),
+            picked_tx,
+            picked_rx,
             images: Default::default(),
             image_tx,
             image_rx,
@@ -365,6 +371,14 @@ impl CillhubApp {
         self.gateway_cmd_tx = None;
         self.api = None;
         self.authenticated = false;
+        // nothing of this account may show up in the next session
+        self.state = State::default();
+        self.selected_guild_id = None;
+        self.selected_channel_id = None;
+        self.reply_to_message = None;
+        self.editing_message_id = None;
+        self.pending_files.clear();
+        self.composer_text.clear();
         report(&mut self.status_banner, self.settings.set_token(None));
         self.active_modal = None;
     }
@@ -1230,13 +1244,24 @@ impl CillhubApp {
                 self.active_modal = Some(ModalKind::ServerSettings);
             }
 
-            let channels: Vec<Channel> = self
+            let mut channels: Vec<Channel> = self
                 .state
                 .channels
                 .values()
                 .filter(|c| c.guild_id.as_deref() == Some(gid.as_str()) && c.kind != 4)
                 .cloned()
                 .collect();
+            // shortcut: flat list in category order (no category headers yet, round 2 = look)
+            let snowflake = |id: &str| id.parse::<u64>().unwrap_or(u64::MAX);
+            let cat_key = |c: &Channel| {
+                c.parent_id
+                    .as_deref()
+                    .and_then(|p| self.state.channels.get(p))
+                    .map_or((-1, 0), |p| (p.position, snowflake(&p.id)))
+            };
+            channels.sort_by_key(|c| {
+                (cat_key(c), matches!(c.kind, 2 | 13), c.position, snowflake(&c.id))
+            });
 
             ScrollArea::vertical()
                 .id_salt("guild_channels_scroll")
@@ -1473,6 +1498,8 @@ impl CillhubApp {
                                         .max_rect(rect.shrink2(Vec2::new(8.0, 4.0)))
                                         .layout(Layout::left_to_right(Align::Center)),
                                 );
+                                // the labels must not take the row's click
+                                row_ui.style_mut().interaction.selectable_labels = false;
                                 draw_avatar(
                                     &mut row_ui,
                                     26.0,
@@ -1694,6 +1721,7 @@ impl CillhubApp {
                 .max_rect(rect.shrink2(Vec2::new(6.0, 4.0)))
                 .layout(Layout::left_to_right(Align::Center)),
         );
+        row_ui.style_mut().interaction.selectable_labels = false;
         draw_avatar(
             &mut row_ui,
             28.0,
@@ -1854,6 +1882,9 @@ impl CillhubApp {
         crate::theme::set_custom_families_ready(families_ready);
 
         self.process_background_events();
+        while let Ok(paths) = self.picked_rx.try_recv() {
+            self.pending_files.extend(paths);
+        }
         while let Ok((uri, bytes)) = self.image_rx.try_recv() {
             let state = match bytes {
                 Some(b) => {
@@ -2025,6 +2056,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn failed_actions_change_nothing_locally() {
+        let mut app = CillhubApp::new(None, true);
+        // A server that refuses every connection.
+        app.api = Some(ApiClient::new(Url::parse("http://localhost:9/").unwrap(), None));
+        let before = app.state.messages["c_general"].clone();
+        let id = before[0].id.clone();
+        app.toggle_reaction("c_general", &id, "🔥");
+        app.delete_message("c_general", &id);
+        app.selected_channel_id = Some("c_general".into());
+        app.send_message_to_selected("not sent");
+        assert_eq!(app.state.messages["c_general"], before);
+        assert_eq!(app.composer_text, "not sent", "the draft stays for a retry");
+        assert!(app.status_banner.is_some());
+    }
+
+    #[test]
     fn voice_channel_never_claims_a_call() {
         let mut app = CillhubApp::new(None, true);
         let (tx, rx) = mpsc::channel();
@@ -2040,6 +2087,14 @@ mod tests {
         assert!(rx.try_recv().is_err(), "no voice state may be sent");
         assert!(!app.state.voice_states.contains_key("u_me"));
         assert_eq!(app.status_banner.as_deref(), Some(VOICE_UNAVAILABLE));
+    }
+
+    #[test]
+    fn logout_forgets_the_session() {
+        let mut app = CillhubApp::new(None, true);
+        app.logout();
+        assert!(app.state.guilds.is_empty() && app.state.me.is_none());
+        assert!(app.selected_guild_id.is_none() && app.selected_channel_id.is_none());
     }
 
     #[test]

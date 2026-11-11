@@ -469,6 +469,7 @@ impl CillhubApp {
                                     .max_rect(row_r.shrink2(Vec2::new(10.0, 8.0)))
                                     .layout(Layout::left_to_right(Align::Center)),
                             );
+                            row_ui.style_mut().interaction.selectable_labels = false;
                             row_ui.spacing_mut().item_spacing.x = 12.0;
 
                             draw_avatar(

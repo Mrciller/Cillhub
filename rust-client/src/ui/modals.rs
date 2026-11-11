@@ -232,7 +232,7 @@ impl CillhubApp {
                             for (tab, label) in [
                                 (SettingsTab::Account, "👤 My Account & Profile"),
                                 (SettingsTab::Games, "🎮 Game Activity & Lobby"),
-                                (SettingsTab::Voice, "🎙 Voice & Audio DSP"),
+                                (SettingsTab::Voice, "🎙 Voice"),
                                 (SettingsTab::Appearance, "🎨 Appearance & Locale"),
                                 (SettingsTab::Desktop, "🖥 Desktop & Updates"),
                             ] {

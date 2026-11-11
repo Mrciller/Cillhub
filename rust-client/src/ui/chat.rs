@@ -517,6 +517,13 @@ impl CillhubApp {
                                     {
                                         self.delete_message(channel_id, &msg.id);
                                     }
+                                    if is_me
+                                        && Self::mini_toolbar_btn(ui, IconKind::Edit, "Edit")
+                                            .clicked()
+                                    {
+                                        self.editing_message_id = Some(msg.id.clone());
+                                        self.composer_text = msg.content.clone();
+                                    }
                                     if Self::mini_toolbar_btn(ui, IconKind::Inbox, "Bookmark")
                                         .clicked()
                                     {
@@ -938,9 +945,12 @@ impl CillhubApp {
                         }
 
                         if ui.button("📎 Upload a File").clicked() {
-                            if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                                self.pending_files.extend(paths);
-                            }
+                            let tx = self.picked_tx.clone();
+                            std::thread::spawn(move || {
+                                if let Some(paths) = rfd::FileDialog::new().pick_files() {
+                                    let _ = tx.send(paths); // the app may have closed
+                                }
+                            });
                             self.show_composer_plus_menu = false;
                         }
                     });
@@ -970,7 +980,7 @@ impl CillhubApp {
                                         .font(ui_font(12.5))
                                         .color(TEXT),
                                 );
-                                if ui.small_button("✕").on_hover_text("Remove").clicked() {
+                                if ui.small_button("x").on_hover_text("Remove").clicked() {
                                     remove = Some(i);
                                 }
                             });
@@ -1069,10 +1079,16 @@ impl CillhubApp {
         if let Some(edit_id) = self.editing_message_id.take() {
             self.composer_text.clear();
             if let Some(api) = &self.api {
-                report(&mut self.status_banner, api.patch(
+                // The gateway's MESSAGE_UPDATE shows the edit; on failure keep the draft.
+                let r = api.patch(
                     &format!("/channels/{cid}/messages/{edit_id}"),
                     json!({ "content": content }),
-                ));
+                );
+                if report(&mut self.status_banner, r).is_none() {
+                    self.editing_message_id = Some(edit_id);
+                    self.composer_text = content;
+                }
+                return;
             }
             if let Some(list) = self.state.messages.get_mut(&cid) {
                 if let Some(m) = list.iter_mut().find(|m| m.id == edit_id) {
@@ -1177,7 +1193,10 @@ impl CillhubApp {
 
     pub fn delete_message(&mut self, channel_id: &str, message_id: &str) {
         if let Some(api) = &self.api {
-            report(&mut self.status_banner, api.delete(&format!("/channels/{channel_id}/messages/{message_id}")));
+            let r = api.delete(&format!("/channels/{channel_id}/messages/{message_id}"));
+            if report(&mut self.status_banner, r).is_none() {
+                return; // still there on the server
+            }
         }
         if let Some(list) = self.state.messages.get_mut(channel_id) {
             list.retain(|m| m.id != message_id);
@@ -1186,6 +1205,8 @@ impl CillhubApp {
 
     pub fn toggle_reaction(&mut self, channel_id: &str, message_id: &str, emoji_name: &str) {
         let mut already_me = false;
+        // With a server the gateway's MESSAGE_REACTION_ADD/REMOVE updates the count (no double count).
+        let local = self.api.is_none();
         if let Some(list) = self.state.messages.get_mut(channel_id) {
             if let Some(msg) = list.iter_mut().find(|m| m.id == message_id) {
                 if let Some(r) = msg
@@ -1194,14 +1215,11 @@ impl CillhubApp {
                     .find(|r| r.emoji.name.as_deref() == Some(emoji_name))
                 {
                     already_me = r.me;
-                    if r.me {
-                        r.count = r.count.saturating_sub(1);
-                        r.me = false;
-                    } else {
-                        r.count += 1;
-                        r.me = true;
+                    if local {
+                        r.count = if r.me { r.count.saturating_sub(1) } else { r.count + 1 };
+                        r.me = !r.me;
                     }
-                } else {
+                } else if local {
                     msg.reactions.push(Reaction {
                         count: 1,
                         me: true,

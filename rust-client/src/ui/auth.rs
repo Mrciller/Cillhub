@@ -344,18 +344,6 @@ impl CillhubApp {
                                     self.submit_auth();
                                 }
 
-                                if !is_reg {
-                                    ui.add_space(8.0);
-                                    if Self::secondary_wide_btn(ui, "🔑 SIGN IN WITH PASSKEY")
-                                        .clicked()
-                                    {
-                                        self.auth_error = Some(
-                                            "Enter your username above or use password login on desktop."
-                                                .to_string(),
-                                        );
-                                    }
-                                }
-
                                 ui.add_space(14.0);
                                 ui.horizontal(|ui| {
                                     ui.spacing_mut().item_spacing.x = 4.0;

@@ -514,6 +514,7 @@ pub enum IconKind {
     Gamepad,
     Lock,
     Globe,
+    Edit,
 }
 
 /// Renders crisp vector icons matching `ICONS` in `client/src/components/ui.tsx`.
@@ -713,6 +714,13 @@ pub fn draw_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32) 
                 [Pos2::new(sc.x + r * 0.38, sc.y + r * 0.38), Pos2::new(c.x + r * 0.78, c.y + r * 0.78)],
                 stroke,
             );
+        }
+        IconKind::Edit => {
+            // pencil: shaft from top-right to bottom-left plus the tip
+            let a = Pos2::new(c.x + r * 0.7, c.y - r * 0.7);
+            let b = Pos2::new(c.x - r * 0.45, c.y + r * 0.45);
+            painter.line_segment([a, b], Stroke::new(3.0_f32, color));
+            painter.line_segment([b, Pos2::new(c.x - r * 0.75, c.y + r * 0.75)], thin);
         }
         IconKind::Inbox => {
             let box_r = Rect::from_center_size(c, Vec2::new(r * 1.6, r * 1.45));

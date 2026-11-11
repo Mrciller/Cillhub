@@ -147,6 +147,7 @@ pub fn run_desktop_app() -> Result<(), String> {
             let mut app = crate::ui::CillhubApp::new(deep_link, demo_mode);
             crate::theme::install_fonts(&cc.egui_ctx, app.state.user_settings.dyslexic_font);
             crate::theme::apply_theme(&cc.egui_ctx, &app.theme_name, app.settings.font_scale);
+            egui_extras::install_image_loaders(&cc.egui_ctx);
             app.mark_fonts_installed();
             Ok(Box::new(app))
         }),
