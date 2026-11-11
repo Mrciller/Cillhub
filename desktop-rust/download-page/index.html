@@ -10,6 +10,7 @@
   @font-face { font-family: "Inter"; font-weight: 400; font-display: swap; src: url(/fonts/inter-latin-400-normal.woff2) format("woff2"); }
   @font-face { font-family: "Inter"; font-weight: 700; font-display: swap; src: url(/fonts/inter-latin-700-normal.woff2) format("woff2"); }
   @font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap; src: url(/fonts/barlow-condensed-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Barlow Condensed"; font-weight: 700; font-display: swap; src: url(/fonts/barlow-condensed-latin-700-normal.woff2) format("woff2"); }
   @font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(/fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2"); }
   :root { --rail: #0b0c0f; --chat: #17191e; --card: #1a1d23; --hover: #202329; --border: #2c3038; --text: #e3e6ec; --header: #f7f8fa; --muted: #9aa1ad;
     --interactive: #c0c6d0; --accent: #ff6a1f; --accent-hover: #ff8747; --on-accent: #170900; --focus: #7cc4ff; --radius-s: 2px; --radius-l: 4px; --notch: 12px;
@@ -33,9 +34,9 @@
   h2 { font-size: 22px; line-height: 26px; margin: 0 0 12px; }
   .lead { color: var(--muted); margin: 0 auto 28px; max-width: 34em; }
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 24px; border-radius: var(--radius-s);
-    background: var(--card); color: var(--header); text-decoration: none; font-weight: 700; border: 1px solid var(--border); transition: background-color 120ms, border-color 120ms; }
+    background: var(--card); color: var(--header); text-decoration: none; font: 700 16px/1 var(--font-display); letter-spacing: .06em; text-transform: uppercase; border: 1px solid var(--border); transition: background-color 120ms, border-color 120ms; }
   .btn:hover { background: var(--hover); border-color: var(--interactive); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-size: 18px; min-height: 56px; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); min-height: 56px; }
   .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
   .buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
   .meta { color: var(--muted); font-size: 14px; margin-top: 18px; }
