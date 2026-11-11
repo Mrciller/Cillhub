@@ -6,56 +6,69 @@
 <meta name="color-scheme" content="dark">
 <title>Download Cillhub</title>
 <style>
-  :root { --bg: #313338; --panel: #2b2d31; --deep: #1e1f22; --text: #dbdee1; --muted: #b5bac1; --head: #f2f3f5; --brand: #5865f2; --brand-hover: #4752c4; --link: #00a8fc; }
+  /* Arena: the app's tokens and bundled fonts (served by the hub next to this page) */
+  @font-face { font-family: "Inter"; font-weight: 400; font-display: swap; src: url(/fonts/inter-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Inter"; font-weight: 700; font-display: swap; src: url(/fonts/inter-latin-700-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap; src: url(/fonts/barlow-condensed-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(/fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2"); }
+  :root { --rail: #0b0c0f; --chat: #17191e; --card: #1a1d23; --hover: #202329; --border: #2c3038; --text: #e3e6ec; --header: #f7f8fa; --muted: #9aa1ad;
+    --interactive: #c0c6d0; --accent: #ff6a1f; --accent-hover: #ff8747; --on-accent: #170900; --focus: #7cc4ff; --radius-s: 2px; --radius-l: 4px; --notch: 12px;
+    --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; --font-display: "Barlow Condensed", "Arial Narrow", var(--font-ui);
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 "gg sans", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
-  a { color: var(--link); }
-  a:focus-visible, .btn:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; }
-  .wrap { max-width: 920px; margin: 0 auto; padding: 0 20px; }
-  header { background: var(--deep); }
+  body { margin: 0; background: var(--chat); color: var(--text); font: 16px/1.55 var(--font-ui); }
+  a { color: var(--focus); text-underline-offset: 2px; }
+  a:focus-visible, .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 16px; }
+  .mark rect { fill: var(--accent); }
+  .mark path { stroke: var(--on-accent); }
+  header { background: var(--rail); border-bottom: 1px solid var(--border); }
   header .wrap { display: flex; align-items: center; gap: 12px; padding-block: 16px; }
-  header strong { color: var(--head); font-size: 20px; letter-spacing: .01em; }
+  header strong { color: var(--header); font: 600 22px/1 var(--font-display); letter-spacing: .02em; text-transform: uppercase; }
   header a { margin-left: auto; }
-  .hero { text-align: center; padding: 56px 0 40px; }
+  .hero { text-align: center; padding: 56px 16px 40px; }
   .hero svg { width: 96px; height: 96px; }
-  h1 { color: var(--head); font-size: clamp(28px, 5vw, 44px); line-height: 1.15; margin: 18px 0 8px; }
-  h2 { color: var(--head); font-size: 22px; margin: 0 0 12px; }
+  h1, h2 { font-family: var(--font-display); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--header); }
+  h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.05; margin: 18px 0 8px; }
+  h2 { font-size: 22px; line-height: 26px; margin: 0 0 12px; }
   .lead { color: var(--muted); margin: 0 auto 28px; max-width: 34em; }
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 28px; border-radius: 28px;
-    background: var(--panel); color: var(--head); text-decoration: none; font-weight: 600; border: 2px solid #4e5058; }
-  .btn:hover { border-color: var(--muted); }
-  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-size: 18px; min-height: 56px; }
-  .btn.primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 24px; border-radius: var(--radius-s);
+    background: var(--card); color: var(--header); text-decoration: none; font-weight: 700; border: 1px solid var(--border); transition: background-color 120ms, border-color 120ms; }
+  .btn:hover { background: var(--hover); border-color: var(--interactive); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-size: 18px; min-height: 56px; }
+  .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
   .buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
   .meta { color: var(--muted); font-size: 14px; margin-top: 18px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; padding-bottom: 56px; }
-  section.card { background: var(--panel); border-radius: 8px; padding: 22px 24px; }
+  section.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-l); padding: 24px;
+    clip-path: polygon(var(--notch) 0, 100% 0, 100% calc(100% - var(--notch)), calc(100% - var(--notch)) 100%, 0 100%, 0 var(--notch)); }
   section.card p, section.card li { color: var(--muted); }
   ol { padding-left: 1.2em; margin: 0; }
   li + li { margin-top: 6px; }
-  kbd, b { color: var(--head); }
-  kbd { background: var(--deep); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 14px; }
-  footer { color: var(--muted); font-size: 14px; text-align: center; padding: 24px 0 40px; }
+  kbd, b { color: var(--header); }
+  kbd { background: var(--rail); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 1px 6px; font: 13px var(--font-mono); }
+  footer { color: var(--muted); font-size: 14px; text-align: center; padding: 24px 16px 40px; border-top: 1px solid var(--border); }
   .server { padding-bottom: 56px; }
   .server .card + .card { margin-top: 16px; }
-  pre { background: var(--deep); color: var(--head); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font-size: 14px; margin: 0 0 12px; }
-  code.fp { display: block; color: var(--head); font-size: 13px; word-break: break-all; }
+  pre { background: var(--rail); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius-s); padding: 12px 14px; overflow-x: auto; font: 13px/19px var(--font-mono); margin: 0 0 12px; }
+  code.fp { display: block; color: var(--header); font: 13px/19px var(--font-mono); word-break: break-all; }
   dl.modes { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
-  dl.modes dt { color: var(--head); font-weight: 600; }
+  dl.modes dt { color: var(--header); font-weight: 700; }
   dl.modes dd { color: var(--muted); margin: 0; }
+  @media (max-width: 560px) { dl.modes { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <header>
   <div class="wrap">
-    <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden="true"><rect x="4" y="4" width="92" height="92" rx="22" fill="#5865f2"/><path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke="#fff" stroke-width="13.5" stroke-linecap="butt"/></svg>
+    <svg class="mark" width="32" height="32" viewBox="0 0 100 100" aria-hidden="true"><rect x="4" y="4" width="92" height="92" rx="12"/><path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke-width="13.5" stroke-linecap="butt"/></svg>
     <strong>Cillhub</strong>
     <a href="/">Open in browser</a>
   </div>
 </header>
 <main>
   <div class="hero wrap">
-    <svg viewBox="0 0 100 100" role="img" aria-label="Cillhub logo"><rect x="4" y="4" width="92" height="92" rx="22" fill="#5865f2"/><path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke="#fff" stroke-width="13.5"/></svg>
+    <svg class="mark" viewBox="0 0 100 100" role="img" aria-label="Cillhub logo"><rect x="4" y="4" width="92" height="92" rx="12"/><path d="M71 29.5A30 30 0 1 0 71 70.5" fill="none" stroke-width="13.5"/></svg>
     <h1>Get Cillhub for your desktop</h1>
     <p class="lead">Notifications, screen sharing and a tray icon, with the same chat as the website. The app updates itself.</p>
     <div class="buttons">
