@@ -154,7 +154,7 @@ export function SavedMessages({ close }: { close?: () => void }) {
                 >
                   <span
                     className="folder-color-dot"
-                    style={{ background: f.color || 'var(--accent, #5865f2)' }}
+                    style={{ background: f.color || 'var(--accent)' }}
                     aria-hidden="true"
                   />
                   <span className="folder-name ellipsis">{f.name}</span>

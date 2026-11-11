@@ -142,7 +142,7 @@ function ActiveThreadsTab({ close }: { close: () => void }) {
                       {th.message_count ? ` · ${t('{n} messages', { n: th.message_count })}` : ''}
                     </div>
                   </div>
-                  {unread && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent, #5865f2)', flexShrink: 0 }} />}
+                  {unread && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
                   {n > 0 && <span className="badge" aria-label={t('{n} mentions', { n })}>{n}</span>}
                 </button>
               </li>

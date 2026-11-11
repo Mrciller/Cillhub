@@ -105,12 +105,12 @@ export function PollView({ m, canVote }: { m: Message; canVote: boolean }) {
           </span>
         )}
         {(poll.is_quiz || poll.correct_answer_id != null) && (
-          <span style={{ fontSize: '11px', background: 'rgba(240, 178, 50, 0.2)', color: '#f0b232', padding: '1px 6px', borderRadius: '4px' }}>
+          <span style={{ fontSize: '11px', background: 'color-mix(in srgb, var(--idle) 20%, transparent)', color: 'var(--idle)', padding: '1px 6px', borderRadius: '4px' }}>
             💡 {t('Quiz')}
           </span>
         )}
         {poll.allowed_role_ids && poll.allowed_role_ids.length > 0 && (
-          <span style={{ fontSize: '11px', background: 'rgba(88, 101, 242, 0.2)', color: '#85b0ff', padding: '1px 6px', borderRadius: '4px' }}>
+          <span style={{ fontSize: '11px', background: 'color-mix(in srgb, var(--focus) 20%, transparent)', color: 'var(--focus)', padding: '1px 6px', borderRadius: '4px' }}>
             🛡️ {t('Role-Restricted')}
           </span>
         )}
@@ -128,13 +128,13 @@ export function PollView({ m, canVote }: { m: Message; canVote: boolean }) {
                 key={a.answer_id}
                 role="listitem"
                 className={cls('poll-answer result', c?.me_voted && 'mine', ended && n === top && top > 0 && 'winner')}
-                style={isCorrect ? { border: '2px solid #23a55a', background: 'rgba(35, 165, 90, 0.1)' } : undefined}
+                style={isCorrect ? { border: '2px solid var(--online)', background: 'color-mix(in srgb, var(--online) 10%, transparent)' } : undefined}
               >
                 <span className="poll-bar" style={{ width: `${pct}%`, background: isCorrect ? 'rgba(35, 165, 90, 0.3)' : undefined }} aria-hidden="true" />
                 <PollEmoji e={a.poll_media.emoji} />
                 <span className="poll-text ellipsis">{label}</span>
                 {isCorrect && (
-                  <span style={{ color: '#23a55a', fontWeight: 600, fontSize: '11px', marginLeft: '6px', whiteSpace: 'nowrap' }}>
+                  <span style={{ color: 'var(--online)', fontWeight: 600, fontSize: '11px', marginLeft: '6px', whiteSpace: 'nowrap' }}>
                     ✓ {t('Correct')}
                   </span>
                 )}

@@ -183,10 +183,10 @@ export function MediaGalleryGrid({ channel, msgs, ctx, label, hasMore, onToggleV
               <div className="gallery-lightbox-author-info">
                 <Avatar user={lightbox.message.author} size={32} />
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--strong, #fff)' }}>
+                  <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--strong)' }}>
                     {displayName(lightbox.message.author)}
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--muted, #949ba4)' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
                     {relative(snowflakeTime(lightbox.message.id))}
                   </div>
                 </div>

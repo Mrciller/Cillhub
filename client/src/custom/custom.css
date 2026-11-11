@@ -106,7 +106,7 @@ li.nameplate > * { position: relative; z-index: 1; }
 .theme-card.on { border-color: var(--accent); }
 .theme-card:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .theme-card-art { position: relative; display: block; height: 56px; border-radius: var(--radius-s); overflow: hidden; }
-.theme-card-art.builtin { background: linear-gradient(135deg, #111829 50%, #ffffff 50%); }
+.theme-card-art.builtin { background: linear-gradient(135deg, #17191e 50%, #fbfbfc 50%); }
 .theme-card-art i { position: absolute; inset: 0 auto 0 0; width: 30%; }
 .theme-card-art b { position: absolute; right: 8px; bottom: 8px; width: 24px; height: 8px; border-radius: var(--radius-s); }
 .theme-card-art em { position: absolute; left: 38%; top: 8px; font-style: normal; font-weight: 700; }

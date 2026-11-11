@@ -255,7 +255,7 @@ export function SnippetsPage({ guild }: { guild: Guild }) {
       </div>
 
       {creating && (
-        <form onSubmit={handleCreate} style={{ background: 'var(--bg-secondary, #2b2d31)', padding: '16px', borderRadius: '8px', marginBottom: '20px' }}>
+        <form onSubmit={handleCreate} style={{ background: 'var(--card)', padding: '16px', borderRadius: '8px', marginBottom: '20px' }}>
           <h3>{t('Create New Snippet')}</h3>
           <div className="field">
             <label htmlFor="snip-name">{t('Trigger Name')}</label>
@@ -302,9 +302,9 @@ export function SnippetsPage({ guild }: { guild: Guild }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {snippets.map((snip) => (
-            <div key={snip.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '12px', borderRadius: '6px', background: 'var(--bg-secondary, #2b2d31)', gap: '12px' }}>
+            <div key={snip.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '12px', borderRadius: '6px', background: 'var(--card)', gap: '12px' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 600, color: 'var(--accent, #5865f2)', fontSize: '15px', marginBottom: '4px' }}>
+                <div style={{ fontWeight: 600, color: 'var(--accent)', fontSize: '15px', marginBottom: '4px' }}>
                   !{snip.name}
                 </div>
                 <div style={{ fontSize: '13px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', opacity: 0.9 }}>

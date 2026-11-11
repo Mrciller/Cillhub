@@ -17,7 +17,7 @@ function favicon(count: number) {
     const g = c.getContext('2d')
     if (!g || !icon) return
     g.drawImage(icon, 0, 0, 64, 64)
-    g.fillStyle = '#f23f43'
+    g.fillStyle = '#e11d3c'
     g.beginPath()
     g.arc(46, 46, 18, 0, Math.PI * 2)
     g.fill()
