@@ -2160,6 +2160,23 @@ mod tests {
         assert!(app.bg.pending >= 3);
     }
 
+    #[test]
+    fn only_visible_message_rows_are_drawn() {
+        let shapes = |n: usize| {
+            let mut app = CillhubApp::new(None, true);
+            let m = app.state.messages["c_general"][0].clone();
+            let list = (0..n).map(|i| Message { id: format!("m{i}"), content: format!("line {i}"), ..m.clone() }).collect();
+            app.state.messages.insert("c_general".into(), list);
+            let ctx = egui::Context::default();
+            install_fonts(&ctx, false);
+            let mut input = egui::RawInput::default();
+            input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
+            (0..3).map(|_| ctx.run(input.clone(), |ctx| app.headless_tick(ctx)).shapes.len()).last().unwrap()
+        };
+        let (few, many) = (shapes(40), shapes(500));
+        assert!(many < few * 2, "{few} shapes for 40 messages, {many} for 500");
+    }
+
     /// Applies background results until no request is in flight.
     fn settle(app: &mut CillhubApp) {
         let t = Instant::now();

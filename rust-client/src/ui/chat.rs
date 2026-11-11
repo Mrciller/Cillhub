@@ -284,7 +284,21 @@ impl CillhubApp {
                                 .unwrap_or_default();
                             let is_head = prev_author_id.as_deref() != Some(cur_author.as_str())
                                 || msg.referenced_message.is_some();
-                            self.render_message_row(ui, &cid, msg, is_head);
+                            // rows off screen take their height from the last time they were drawn
+                            let h_id = egui::Id::new(("msg_h", &msg.id, is_head, ui.available_width() as i32));
+                            let top = ui.cursor().top();
+                            let known = ui.data(|d| d.get_temp::<f32>(h_id));
+                            let view = ui.clip_rect().expand(400.0);
+                            match known {
+                                Some(h) if top + h < view.top() || top > view.bottom() => {
+                                    ui.allocate_space(Vec2::new(ui.available_width(), h));
+                                }
+                                _ => {
+                                    self.render_message_row(ui, &cid, msg, is_head);
+                                    let h = ui.cursor().top() - top - ui.spacing().item_spacing.y;
+                                    ui.data_mut(|d| d.insert_temp(h_id, h.max(0.0)));
+                                }
+                            }
                             prev_author_id = Some(cur_author);
                         }
                         ui.add_space(8.0);

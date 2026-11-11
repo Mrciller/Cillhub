@@ -760,6 +760,21 @@ fn merge_existing<T: serde::Serialize>(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_busy_channel_keeps_only_its_newest_messages() {
+        let mut st = State::default();
+        st.set_history("c".into(), Vec::new());
+        for i in 0..MAX_WINDOW + 20 {
+            st.apply("MESSAGE_CREATE", serde_json::json!({"id": i.to_string(), "channel_id": "c", "content": "x"})).unwrap();
+        }
+        let list = &st.messages["c"];
+        assert_eq!(list.len(), MAX_WINDOW);
+        assert_eq!(list[0].id, "20");
+        st.apply("MESSAGE_CREATE", serde_json::json!({"id": "x", "channel_id": "other", "content": "x"})).unwrap();
+        assert!(!st.messages.contains_key("other"), "no history is made up for a channel never opened");
+    }
+
     use super::*;
     use serde_json::json;
 
