@@ -24,7 +24,7 @@ export function shouldNotify(s: State, m: Message) {
 }
 
 const plain = (s: State, m: Message) =>
-  m.content.replace(/<@!?(\d+)>/g, (_, id: string) => '@' + displayName(s.users[id])).replace(/<a?:(\w+):\d+>/g, ':$1:') || (m.attachments.length ? t('Sent an attachment') : m.sticker_items?.length ? t('Sent a sticker') : '')
+  m.content.replace(/<@!?(\d+(?::\d+)?)>/g, (_, id: string) => '@' + displayName(s.users[id])).replace(/<a?:(\w+):\d+(?::\d+)?>/g, ':$1:') || (m.attachments.length ? t('Sent an attachment') : m.sticker_items?.length ? t('Sent a sticker') : '')
 
 export function desktop(title: string, body: string, tag: string, url: string, icon?: string) {
   if (!desktopEnabled() || document.hasFocus()) return

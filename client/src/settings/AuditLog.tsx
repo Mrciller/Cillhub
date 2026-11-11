@@ -1,3 +1,4 @@
+import { snowflakeTime } from '../threads/util'
 // Server Settings > Audit Log (audit-log.mdx): filters, readable entries, change lists, paging with `before`.
 import { useEffect, useState } from 'react'
 import { auditLog } from '../actions'
@@ -102,7 +103,7 @@ export function AuditLogPage({ guild }: { guild: Guild }) {
           const verb = ACTIONS[e.action_type] ? t(ACTIONS[e.action_type][0]) : t('performed action {n}', { n: e.action_type })
           const tgt = target(e)
           const expanded = open === e.id
-          const time = new Date(Number(BigInt(e.id) >> 22n) + 1420070400000).toISOString()
+          const time = new Date(snowflakeTime(e.id)).toISOString()
           return (
             <li key={e.id} className={cls('audit-entry', expanded && 'open')}>
               <button className="audit-head" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : e.id)}>

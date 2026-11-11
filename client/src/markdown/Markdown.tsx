@@ -92,19 +92,19 @@ const RULES: Rule[] = [
     const url = safeUrl(m[2])
     return url ? <MaskedLink key={k} href={url}>{inline(m[1], c, d + 1)}</MaskedLink> : m[0]
   } },
-  { re: /<(a?):(\w{2,32}):(\d+)>/y, render: (m, _c, k) => <CustomEmoji key={k} id={m[3]} name={m[2]} animated={!!m[1]} /> },
+  { re: /<(a?):(\w{2,32}):(\d+(?::\d+)?)>/y, render: (m, _c, k) => <CustomEmoji key={k} id={m[3]} name={m[2]} animated={!!m[1]} /> },
   { re: /<t:(-?\d{1,13})(?::([tTdDfFR]))?>/y, render: (m, _c, k) => {
     const unix = Number(m[1])
     if (!Number.isFinite(unix) || Math.abs(unix) > 8_640_000_000_000) return m[0]
     return <time key={k} className="md-time" dateTime={new Date(unix * 1000).toISOString()} title={formatTimestamp(unix, 'F')}>{formatTimestamp(unix, m[2])}</time>
   } },
   { re: /https?:\/\/[^\s<]+[^<.,:;"')\]\s]/y, ok: (s, i) => !wordBefore(s, i), render: (m, _c, k) => link(m[0], k) },
-  { re: /<@!?(\d+)>/y, render: (m, c, k) => <span key={k} className="mention">@{c.user(m[1]) ?? t('unknown-user')}</span> },
-  { re: /<@&(\d+)>/y, render: (m, c, k) => {
+  { re: /<@!?(\d+(?::\d+)?)>/y, render: (m, c, k) => <span key={k} className="mention">@{c.user(m[1]) ?? t('unknown-user')}</span> },
+  { re: /<@&(\d+(?::\d+)?)>/y, render: (m, c, k) => {
     const r = c.role(m[1])
     return <span key={k} className="mention" style={r?.color ? { color: r.color, background: r.color + '1a' } : undefined}>@{r?.name ?? t('deleted-role')}</span>
   } },
-  { re: /<#(\d+)>/y, render: (m, c, k) => {
+  { re: /<#(\d+(?::\d+)?)>/y, render: (m, c, k) => {
     const ch = c.channel(m[1])
     return ch ? <Link key={k} to={ch.href} className="mention">#{ch.name}</Link> : <span key={k} className="mention">#{t('unknown')}</span>
   } },
@@ -381,8 +381,8 @@ export function Markdown({ content, ctx }: { content: string; ctx: MdContext }) 
     if (content[last] === '\n') last++ // the block already ends the line
   }
   out.push(...blocks(content.slice(last), ctx, `b${out.length}`))
-  const plain = content.replace(/<a?:\w{2,32}:\d+>/g, '')
-  const count = [...plain.matchAll(/\p{Extended_Pictographic}/gu)].length + (content.length - plain.length ? content.match(/<a?:\w{2,32}:\d+>/g)!.length : 0)
+  const plain = content.replace(/<a?:\w{2,32}:\d+(?::\d+)?>/g, '')
+  const count = [...plain.matchAll(/\p{Extended_Pictographic}/gu)].length + (content.length - plain.length ? content.match(/<a?:\w{2,32}:\d+(?::\d+)?>/g)!.length : 0)
   const jumbo = (plain.trim() === '' || EMOJI_ONLY.test(plain)) && count > 0 && count <= 27
   return jumbo ? <span className="jumbo">{out}</span> : <>{out}</>
 }

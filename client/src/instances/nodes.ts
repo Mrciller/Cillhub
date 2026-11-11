@@ -8,11 +8,11 @@ import { createGateway, type Gateway } from '../gateway'
 import { t } from '../i18n'
 import { notifyEvent } from '../notifications/notify'
 import { navigate } from '../router'
-import { gatewayOk, inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revoker } from '../privateNodes'
+import { gatewayOk, inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revocations } from '../privateNodes'
 import { apply, byId, getState, setState, setToken } from '../store'
 import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
-import { admit, admitGuild, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
+import { admit, outbound, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
 
 /** The hub's node directory record (§2), from GET /federation/nodes. */
 export type NodeRecord = {
@@ -28,15 +28,12 @@ const NODE_FRAME_BYTES = 4 * 1024 * 1024 // a node gateway frame above this clos
 
 // What the node boundary (registry.ts admit) may ask about the client's state.
 setView({
-  channel: (id) => getState().channels[id],
   user: (id) => getState().users[id],
-  interaction: (nonce, iid) => {
-    const s = getState()
-    const p = (nonce && s.interactions[nonce]) || (iid ? Object.values(s.interactions).find((x) => x.id === iid) : undefined)
-    if (p) return { channelId: p.channelId }
-    const ch = nonce && sentInteractions.get(nonce)
-    return ch ? { channelId: ch } : undefined
+  interaction: (nonce) => {
+    const p = typeof nonce === 'string' ? sentInteractions.get(nonce) : undefined
+    return p && Date.now() - p.at < 15 * 60_000 ? p : undefined
   },
+  consume: (nonce) => void sentInteractions.delete(nonce),
   voiceGuild: () => getState().voice.guildId,
 })
 const statusOf = (id: string) => instanceById(id)?.status
@@ -53,8 +50,9 @@ export function stopNodes() {
 }
 /** Sends an op to one node (or to every ready node with `null`, for presence). */
 export function nodeSend(id: string | null, op: number, d: unknown) {
-  if (id === null) return [...conns.values()].map((g) => g.send(op, d)).some(Boolean)
-  return conns.get(id)?.send(op, d) ?? false
+  // ops go out in the node's own ids (scoped ones bare, our hub id as our node id)
+  if (id === null) return [...conns].map(([n, g]) => g.send(op, outbound(n, d))).some(Boolean)
+  return conns.get(id)?.send(op, outbound(id, d)) ?? false
 }
 
 function open(i: InstanceInfo) {
@@ -222,8 +220,8 @@ async function finish(id: string, then: Then): Promise<string> {
     ? await api<GuildPayload>(`/invites/${encodeURIComponent(then.invite)}`, { method: 'POST', instance: id })
     : then.guild ? await api<GuildPayload | undefined>(`/guilds/${then.guild}/members/@me`, { method: 'PUT', instance: id }) : undefined
   // 204 (already a member) or a partial answer: the node's GUILD_CREATE brings the server.
-  if (g?.channels && admitGuild(id, g)) enterGuild(g, undefined, true)
-  const guildId = g?.id ?? then.guild
+  if (g?.channels) enterGuild(g, undefined, true)
+  const guildId = g?.id ?? (then.guild && scoped(id, then.guild)) // the directory names node servers by their bare id
   return guildId ? `/channels/${guildId}` : '/channels/@me'
 }
 
@@ -272,12 +270,15 @@ const session = () => localStorage.getItem('token') ?? ''
 // List changes go to the hub one at a time; their answers are not merged (an older answer could undo a newer change):
 // USER_SETTINGS_UPDATE on the gateway brings the list, in order.
 const changeNodes = (path: string, method: 'PUT' | 'DELETE', body?: unknown) => api(`/users/@me/settings/private-nodes${path}`, { method, body })
-/** Ends a node session we will not keep (retried a few times). Only the node's own origin, no cookies, no redirects. */
-// keepalive: the first try survives a reload (another tab changed the hub session).
-const revokeOnNode = revoker((url, token) =>
+/** Ends a node session we will not keep. Only the node's own origin, no cookies, no redirects; kept in storage until the
+ *  node confirmed, so a reload (another tab changed the hub session) resumes it. keepalive: a try under way survives too. */
+const revokes = revocations({ get: () => localStorage.getItem(REVOKES_KEY), set: (v) => localStorage.setItem(REVOKES_KEY, v) }, (url, token) =>
   fetch(url, { method: 'POST', headers: { Authorization: token }, credentials: 'omit', redirect: 'error', keepalive: true, signal: AbortSignal.timeout(10_000) }).then((r) => r.status))
+const REVOKES_KEY = 'cillhub_pending_revokes'
 const revoke = (node: InstanceInfo, token: string) =>
-  void revokeOnNode(node.url, token).then((ok) => ok || console.warn(`Could not end the unused session on ${node.url}; it expires there on its own.`))
+  void revokes.add({ owner: `${apiOrigin()} ${getState().me?.id ?? ''}`, origin: node.url, token })
+    .then((ok) => ok || console.warn(`Could not end the unused session on ${node.url}; it expires there on its own.`))
+if (typeof window !== 'undefined') queueMicrotask(() => void revokes.resume())
 
 /** On the hub's READY and on USER_SETTINGS_UPDATE: the hub copy wins (removals on another device too); an account that never
  *  saved a list takes this device's. Then every saved node that is not connected gets a try. */
@@ -402,9 +403,9 @@ if (typeof window !== 'undefined') window.addEventListener('storage', (e) => {
 })
 
 /** Removes a node from the account's list (all devices), signs out there and drops its servers and token. */
-export async function removePrivateNode(origin: string) {
-  const started = session()
-  await changeNodes(qs({ origin }), 'DELETE')
+/** `started`: the session the user opened the confirmation in; nothing happens when it ended meanwhile. */
+export async function removePrivateNode(origin: string, started: string) {
+  if (!(await inSession(started, session, [() => changeNodes(qs({ origin }), 'DELETE')]))) return
   if (session() === started) forget(origin, true) // after a logout or account change the node may be someone else's now
 }
 

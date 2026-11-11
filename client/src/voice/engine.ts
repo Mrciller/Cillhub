@@ -1,3 +1,4 @@
+import { nodeOf } from '../instances/registry'
 // Voice connection: gateway op 4 / VOICE_SERVER_UPDATE handling and the LiveKit room (CONTRACT-v2 section 10).
 // livekit-client is imported lazily so it only loads once someone joins voice. When VOICE_SERVER_UPDATE names the
 // endpoint "cillvoice", Cillhub's own media server is used instead: every action below then goes to ./cillvoice.
@@ -721,7 +722,9 @@ export function voiceEvent(t: string, d: any) {
       return void connectRoom(d.endpoint, d.token)
     case 'VOICE_STATE_UPDATE': {
       if (d.user_id !== s.me?.id || !v.channelId) return
-      if (d.channel_id && d.session_id !== s.sessionId) return void (teardown(), setVoice({ ...idleVoice, selfMute: v.selfMute, selfDeaf: v.selfDeaf })) // joined elsewhere
+      // Joined elsewhere on the same server (hub or one node); a voice state from another node never ends this call.
+      if (nodeOf(d.guild_id) !== nodeOf(v.guildId)) return
+      if (d.channel_id && d.session_id !== s.sessionId) return void (teardown(), setVoice({ ...idleVoice, selfMute: v.selfMute, selfDeaf: v.selfDeaf }))
       if ((d.guild_id ?? null) !== v.guildId) return
       if (ringOnJoin && d.channel_id === ringOnJoin) (api(`/channels/${ringOnJoin}/call/ring`, { method: 'POST', body: { recipients: null } }).catch(() => {}), (ringOnJoin = null))
       if (!d.channel_id) return void (teardown(), setVoice({ ...idleVoice, selfMute: v.selfMute, selfDeaf: v.selfDeaf })) // disconnected by someone or something

@@ -257,7 +257,12 @@ export function mergeSettings(patch: UserSettings) {
 
 export const byId = <T extends { id: string }>(xs: T[]) => Object.fromEntries(xs.map((x) => [x.id, x]))
 const omit = <T,>(r: Record<string, T>, key: string) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== key))
-export const cmpId = (a: string, b: string) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0)
+/** Snowflake order (node ids compare by their snowflake part). */
+export const cmpId = (a: string, b: string) => {
+  const x = a.slice(a.indexOf(':') + 1)
+  const y = b.slice(b.indexOf(':') + 1)
+  return x.length - y.length || (x < y ? -1 : x > y ? 1 : 0)
+}
 export const displayName = (u?: User | null) => (u ? u.global_name || u.username : 'Unknown')
 const byUser = (ps: Presence[]) => Object.fromEntries(ps.map((p) => [p.user.id, p.status]))
 const activitiesOf = (ps: Presence[]) => Object.fromEntries(ps.filter((p) => p.activities).map((p) => [p.user.id, p.activities!]))
@@ -332,6 +337,7 @@ export function mentionsMe(s: State, m: Message) {
 }
 const EPHEMERAL = 1 << 6
 
+export const MAX_LIVE_MESSAGES = 2000
 function addMessage(s: State, m: Message): Partial<State> {
   const ch = s.channels[m.channel_id]
   const typing = s.typing[m.channel_id]
@@ -345,14 +351,20 @@ function addMessage(s: State, m: Message): Partial<State> {
   }
   const fresh = ch && !m.pending && (!ch.last_message_id || cmpId(m.id, ch.last_message_id) > 0)
   // A thread's counters are not dispatched per message; count new ones locally.
+  let trimmed = false
   const counted = fresh && ch.thread_metadata ? { message_count: (ch.message_count ?? 0) + 1, total_message_sent: (ch.total_message_sent ?? 0) + 1 } : {}
   return {
     // While a jumped-to window is shown, new messages are not appended (there is a gap); "Jump to Present" loads them.
     ...(s.hasNewer[m.channel_id] && !m.pending && !mine ? {} : patchList(s, m.channel_id, (list) => {
       // Our own echo replaces the optimistic copy carrying the same nonce.
       const i = !m.pending && m.nonce ? list.findIndex((x) => x.pending !== undefined && x.nonce === m.nonce && x.id !== m.id) : -1
-      return upsert(i < 0 ? list : list.toSpliced(i, 1), m)
+      const next = upsert(i < 0 ? list : list.toSpliced(i, 1), m)
+      // A live channel keeps its newest messages only; older ones load again when scrolled to (a flood cannot fill memory).
+      if (next.length <= MAX_LIVE_MESSAGES) return next
+      trimmed = true
+      return next.slice(-MAX_LIVE_MESSAGES)
     })),
+    ...(trimmed ? { hasMore: { ...s.hasMore, [m.channel_id]: true } } : {}),
     channels: fresh ? { ...s.channels, [ch.id]: { ...ch, last_message_id: m.id, ...counted } } : s.channels,
     typing: typing?.[m.author.id] ? { ...s.typing, [m.channel_id]: omit(typing, m.author.id) } : s.typing,
     users: s.users[m.author.id] ? s.users : { ...s.users, [m.author.id]: m.author },

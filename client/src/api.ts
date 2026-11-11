@@ -66,7 +66,12 @@ export async function testNode(origin: string): Promise<{ name: string }> {
 }
 
 /** Root-relative CDN paths (avatars, icons, attachments) resolved against the API origin, or the node's origin for node ids (v7). */
-export const cdn = (path: string) => (/^https?:\/\//.test(path) || path.startsWith('data:') ? path : (instanceById(route(path))?.url ?? apiOrigin()) + path)
+export const cdn = (path: string) => {
+  if (/^https?:\/\//.test(path) || path.startsWith('data:')) return path
+  if (!safePath(path)) return '' // an id that walks out of its segment never becomes a request
+  const node = instanceById(route(path))
+  return node ? node.url + outboundPath(node.id, path) : apiOrigin() + path
+}
 
 type FieldErrors = Record<string, { _errors?: { code: string; message: string }[] }>
 
@@ -116,6 +121,7 @@ function target(path: string, body: unknown, instance?: string) {
   if (!safePath(path)) throw new ApiError(0, { message: t('Request failed ({status})', { status: 0 }) })
   const node = instance ?? route(path, body)
   const info = instanceById(node)
+  if (node && !info) throw new ApiError(0, null) // a node id of a node we no longer have: never to the hub
   const base = apiOrigin() + '/api/v9'
   return info ? { node: info.id, url: info.url + '/api/v9' + outboundPath(info.id, path), body: outbound(info.id, body) } : { node: undefined, url: base + path, body }
 }
@@ -146,9 +152,23 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
 const NODE_ANSWER_BYTES = 8 * 1024 * 1024
 async function nodeJson(res: Response) {
   if (Number(res.headers.get('Content-Length') ?? 0) > NODE_ANSWER_BYTES) return null
-  const text = await res.text().catch(() => '')
-  if (text.length > NODE_ANSWER_BYTES) return null
-  try { return JSON.parse(text) } catch { return null }
+  // Counted while it streams in: a node cannot make us buffer more than the limit.
+  const reader = res.body?.getReader()
+  if (!reader) return null
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.length
+      if (size > NODE_ANSWER_BYTES) return void reader.cancel().catch(() => {}), null
+      chunks.push(value)
+    }
+    return JSON.parse(await new Blob(chunks as BlobPart[]).text())
+  } catch {
+    return null
+  }
 }
 function admitted(node: string, data: unknown) {
   const d = admitRest(node, data)

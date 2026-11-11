@@ -1,4 +1,3 @@
-import { hubSaw, nodeOf } from './instances/registry'
 import { api, ApiError, qs, upload } from './api'
 import { toastError } from './components/dialogs'
 import { sendOp } from './gateway'
@@ -250,7 +249,6 @@ export async function loadMembers(guildId: string) {
 
 /** After joining: the welcome screen (WELCOME_SCREEN_ENABLED) and, for pending members, the rules screening. */
 export function enterGuild(g: GuildPayload, channelId?: string, joined = false) {
-  if (!nodeOf(g.id)) hubSaw('GUILD_CREATE', g) // a hub answer (node answers were claimed by instances/nodes.ts first)
   apply('GUILD_CREATE', g)
   navigate(`/channels/${g.id}${channelId ? `/${channelId}` : ''}`)
   const me = getState().me
@@ -730,12 +728,13 @@ export function commandIndex(scope: { guildId?: string; channelId: string }) {
   }
   return p
 }
-/** Nonce -> channel of the last interactions we sent (autocomplete too): a node may only answer those (instances/registry.ts). */
-export const sentInteractions = new Map<string, string>()
+/** The interactions we sent and that are still open (autocomplete too), by nonce: a node may only answer those, once
+ *  for a terminal answer, within 15 minutes (instances/registry.ts). */
+export const sentInteractions = new Map<string, { channelId: string; appId: string; type: number; at: number }>()
 /** POST /interactions (user docs). The nonce ties the gateway's INTERACTION_* events to this request. */
 export async function sendInteraction(body: { type: number; application_id: string; guild_id?: string; channel_id: string; message_id?: string; message_flags?: number; data: unknown }, track?: Omit<import('./store').PendingInteraction, 'nonce' | 'state' | 'at'>, files: File[] = []) {
   const n = nonce()
-  sentInteractions.set(n, body.channel_id)
+  sentInteractions.set(n, { channelId: body.channel_id, appId: body.application_id, type: body.type, at: Date.now() })
   if (sentInteractions.size > 100) sentInteractions.delete(sentInteractions.keys().next().value!)
   if (track) setState((s) => ({ interactions: { ...s.interactions, [n]: { ...track, nonce: n, state: 'sending', at: Date.now() } } }))
   const payload = { ...body, nonce: n, session_id: getState().sessionId }

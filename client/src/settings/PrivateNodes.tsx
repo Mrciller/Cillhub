@@ -66,10 +66,10 @@ export function PrivateNodes() {
   }
   const fromHub = useStore((s) => s.settings.private_nodes)
   useEffect(() => setNodes(savedNodes()), [instances.length, issues, fromHub]) // the gateway brings every list change
-  const remove = (n: SavedNode) =>
+  const remove = (n: SavedNode, started = hubSession()) =>
     void ask({ title: t('Remove {name}?', { name: n.name }), confirm: t('Remove'), danger: true,
       body: <p>{t('{address} leaves the list on all your devices. Cillhub signs you out there and its servers leave your server list. Your account there stays as it is.', { address: n.origin })}</p> })
-      .then((ok) => void (ok && removePrivateNode(n.origin).then(() => setNodes(savedNodes()), toastError)))
+      .then((ok) => void (ok && removePrivateNode(n.origin, started).then(() => setNodes(savedNodes()), toastError)))
   const copy = (n: SavedNode) => void navigator.clipboard.writeText(addLink(hub, n.origin)).then(() => toast(t('Link copied.')), toastError)
 
   const row = (url: string, name: string, saved?: SavedNode) => {

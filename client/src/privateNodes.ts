@@ -82,19 +82,46 @@ export function tokenFor(url: string, hub: { origin: string; token: string | nul
  *  still saved; otherwise its token is revoked on the node. */
 export const keepSignIn = (started: string, now: string, saved: SavedNode[], origin: string) => started === now && saved.some((n) => n.origin === origin)
 
-/** Ends node sessions we will not keep: done on 2xx or 401 (already gone); retried on no answer (0: network error or
- *  timeout), 429 and 5xx (2 s doubling, `tries` times); any other answer is final. Resolves false when it did not end it.
- *  `send` posts and resolves the status. */
-export const revoker = (send: (url: string, token: string) => Promise<number>, wait = (ms: number) => new Promise((r) => setTimeout(r, ms)), tries = 5) =>
-  async (origin: string, token: string) => {
-    for (let i = 0; i < tries; i++) {
-      const status = await send(`${origin}/api/v9/auth/logout`, token).catch(() => 0)
-      if ((status >= 200 && status < 300) || status === 401) return true
-      if (status !== 0 && status !== 429 && status < 500) return false
-      if (i < tries - 1) await wait(Math.min(60_000, 2000 * 2 ** i))
+/** A node session to end: the node's origin, its token, which hub account it was for (`owner`: hub origin and user). */
+export type PendingRevoke = { owner: string; origin: string; token: string; tries: number }
+
+/** Ends node sessions we will not keep. Each stays in `store` until the node confirmed (2xx, or 401: already gone) or
+ *  gave a final answer (any other 4xx), so a reload resumes it; no answer (0: network error or timeout), 429 and 5xx are
+ *  retried, 2 s doubling, `tries` times in all. At most 50 are kept. `send` posts and resolves the status. */
+export function revocations(store: { get: () => string | null; set: (v: string) => void }, send: (url: string, token: string) => Promise<number>,
+  wait = (ms: number) => new Promise((r) => setTimeout(r, ms)), tries = 5) {
+  const read = (): PendingRevoke[] => {
+    try {
+      const v = JSON.parse(store.get() ?? '[]')
+      return Array.isArray(v) ? v.filter((e) => e && normalizeServerUrl(String(e.origin), true) === e.origin && typeof e.token === 'string' && Number.isInteger(e.tries)).slice(-50) : []
+    } catch {
+      return []
     }
-    return false
   }
+  const write = (list: PendingRevoke[]) => { try { store.set(JSON.stringify(list.slice(-50))) } catch { /* storage full or off */ } }
+  const drop = (token: string) => write(read().filter((e) => e.token !== token))
+  const running = new Set<string>()
+  async function run(e: PendingRevoke): Promise<boolean> {
+    if (running.has(e.token)) return true
+    running.add(e.token)
+    try {
+      for (let i = e.tries; i < tries; i++) {
+        const status = await send(`${e.origin}/api/v9/auth/logout`, e.token).catch(() => 0)
+        if ((status >= 200 && status < 300) || status === 401) return drop(e.token), true
+        if (status !== 0 && status !== 429 && status < 500) return drop(e.token), false
+        write(read().map((x) => (x.token === e.token ? { ...x, tries: i + 1 } : x)))
+        if (i < tries - 1) await wait(Math.min(60_000, 2000 * 2 ** i))
+      }
+      return drop(e.token), false
+    } finally {
+      running.delete(e.token)
+    }
+  }
+  return {
+    add: (e: Omit<PendingRevoke, 'tries'>) => (write([...read().filter((x) => x.token !== e.token), { ...e, tries: 0 }]), run({ ...e, tries: 0 })),
+    resume: () => Promise.all(read().map(run)),
+  }
+}
 
 /** Runs `steps` one after another, each only while the session it started in (`started`, read again with `now` right
  *  before each step) is still current; false when one was skipped. */
