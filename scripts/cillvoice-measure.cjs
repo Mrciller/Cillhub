@@ -181,7 +181,7 @@ async function main() {
     }
     const sfx = Math.random().toString(36).slice(2, 7)
     const users = []
-    for (let i = 0; i < PEOPLE; i++) users.push((await api('POST', '/auth/register', null, { email: `m${i}${sfx}@example.com`, username: `m${i}_${sfx}`, password: 'measure measure' })).token)
+    for (let i = 0; i < PEOPLE; i++) users.push((await api('POST', '/auth/register', null, { age_confirmed: true, email: `m${i}${sfx}@example.com`, username: `m${i}_${sfx}`, password: 'measure measure' })).token)
     const guild = await api('POST', '/guilds', users[0], { name: 'Measure' })
     const voice = guild.channels.find((c) => c.type === 2)
     const general = guild.channels.find((c) => c.type === 0)

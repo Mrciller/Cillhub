@@ -5,7 +5,7 @@ const B = (process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3300').replace(/\/$/, '
 const j = (m, p, b, tok) => fetch(API + p, { method: m, headers: { 'content-type': 'application/json', ...(tok && { authorization: tok }) }, body: b && JSON.stringify(b) }).then((r) => r.json())
 ;(async () => {
   const n = Date.now() % 1e6
-  const reg = (u) => j('POST', '/auth/register', { email: u + '@example.com', username: u, password: 'Very-long-pass-123', date_of_birth: '2000-01-01', consent: true })
+  const reg = (u) => j('POST', '/auth/register', { age_confirmed: true, email: u + '@example.com', username: u, password: 'Very-long-pass-123', date_of_birth: '2000-01-01', consent: true })
   const a = await reg('ddalice' + n), b = await reg('ddbob' + n)
   const g = await j('POST', '/guilds', { name: 'Drag' }, a.token)
   const inv = await j('POST', `/channels/${g.system_channel_id}/invites`, {}, a.token)

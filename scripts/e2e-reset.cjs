@@ -141,10 +141,10 @@ async function main() {
     }
 
     await step('1. Jordan is instance admin and sets SMTP; Alex has an account', async () => {
-      jordan = (await api('POST', '/auth/register', null, { email: 'jordan@example.com', username: 'jordan', password: 'hunter2hunter2' })).token
+      jordan = (await api('POST', '/auth/register', null, { age_confirmed: true, email: 'jordan@example.com', username: 'jordan', password: 'hunter2hunter2' })).token
       backup = (await api('POST', '/users/@me/mfa/totp/enable', jordan, { password: 'hunter2hunter2', secret: SECRET, code: totp(SECRET) })).backup_codes.map((c) => c.code)
       execFileSync(process.execPath, ['src/admin-cli.js', 'grant', 'jordan'], { cwd: SERVER_DIR, env: { ...process.env, DATA_DIR: dataDir } })
-      alex = (await api('POST', '/auth/register', null, { email: 'alex@example.com', username: 'alex', password: 'old-pass-alex' })).token
+      alex = (await api('POST', '/auth/register', null, { age_confirmed: true, email: 'alex@example.com', username: 'alex', password: 'old-pass-alex' })).token
       await stepUp('PATCH', '/admin/settings', { smtp_host: '127.0.0.1', smtp_port: SMTP_PORT, smtp_security: 'none', smtp_from: 'Cillhub <no-reply@example.org>', public_url: BASE })
       check((await api('GET', '/instance')).password_reset === true, 'password_reset offered')
     })
@@ -201,7 +201,7 @@ async function main() {
 
     await step('5. with captcha keys set, Robin signs up through the checkbox (server checks the token)', async () => {
       await stepUp('PATCH', '/admin/settings', { captcha_site_key: 'site-jordan', captcha_secret: 'secret-jordan' })
-      const refused = await fetch(`${BASE}/api/v9/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'kim@example.com', username: 'kim', password: 'hunter2hunter2' }) })
+      const refused = await fetch(`${BASE}/api/v9/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ age_confirmed: true, email: 'kim@example.com', username: 'kim', password: 'hunter2hunter2' }) })
       check(refused.status === 400 && (await refused.json()).captcha_sitekey === 'site-jordan', 'register without a token answers with the site key')
       const fresh = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' })
       page = await fresh.newPage()
@@ -212,6 +212,7 @@ async function main() {
       await page.getByLabel('Email').fill('robin@example.com')
       await page.getByLabel('Username').fill('robin')
       await page.getByLabel('Password').fill('hunter2hunter2')
+      await page.getByLabel(/I am at least/).check() // 7.10.3 sign-up check
       await page.getByRole('button', { name: 'Continue' }).click()
       await page.waitForURL('**/channels/@me')
       check(verified.includes('checkbox-ticked'), 'the server asked the verify endpoint')

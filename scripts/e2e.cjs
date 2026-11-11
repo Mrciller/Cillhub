@@ -51,6 +51,7 @@ async function register(page, name) {
   await page.getByLabel('Email').fill(`${name.toLowerCase()}@example.com`)
   await page.getByLabel('Username').fill(name)
   await page.getByLabel('Password').fill('correct horse battery')
+  await page.getByLabel(/I am at least/).check() // 7.10.3 sign-up check
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.waitForURL('**/channels/@me')
   await ready(page)

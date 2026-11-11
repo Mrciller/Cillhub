@@ -114,6 +114,7 @@ async function register(page, name) {
   await page.getByLabel('Email').fill(`${name.toLowerCase()}@example.com`)
   await page.getByLabel('Username').fill(name)
   await page.getByLabel('Password').fill(PASSWORD)
+  await page.getByLabel(/I am at least/).check() // 7.10.3 sign-up check
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.waitForURL('**/channels/@me')
   await ready(page)
@@ -592,7 +593,7 @@ async function main() {
       await sleep(1000)
       check((await bob.getByRole('listbox', { name: 'Commands' }).getByRole('option', { name: /^\/scrims\b/ }).count()) === 0, '/scrims still offered')
       await composer(bob, 'general').fill('')
-      const dave = await rest(null, 'POST', '/auth/register', { email: `${NAME.dave.toLowerCase()}@example.com`, username: NAME.dave, password: PASSWORD })
+      const dave = await rest(null, 'POST', '/auth/register', { age_confirmed: true, email: `${NAME.dave.toLowerCase()}@example.com`, username: NAME.dave, password: PASSWORD })
       const daveId = (await rest(dave.token, 'GET', '/users/@me')).id
       await rest(dave.token, 'POST', `/invites/${ids.invite}`)
       await sleep(3000)

@@ -238,7 +238,7 @@ async function runBackend(backend, [aliceBrowser, bobBrowser]) {
       await sleep(100)
     }
     const sfx = Math.random().toString(36).slice(2, 7)
-    const reg = (n) => api('POST', '/auth/register', null, { email: `${n}${sfx}@example.com`, username: `${n}_${sfx}`, password: 'measure measure' }).then((r) => r.token)
+    const reg = (n) => api('POST', '/auth/register', null, { age_confirmed: true, email: `${n}${sfx}@example.com`, username: `${n}_${sfx}`, password: 'measure measure' }).then((r) => r.token)
     const [ta, tb] = [await reg('alice'), await reg('bob')]
     const guild = await api('POST', '/guilds', ta, { name: 'Stream Lab' })
     const voice = guild.channels.find((c) => c.type === 2)

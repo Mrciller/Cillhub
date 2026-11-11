@@ -176,6 +176,7 @@ async function register(page, name, code) {
   await page.getByLabel('Username').fill(name)
   await page.getByLabel('Password').fill(PASSWORD)
   if (code) await page.getByLabel('Registration code').fill(code)
+  await page.getByLabel(/I am at least/).check() // 7.10.3 sign-up check
   await page.getByRole('button', { name: 'Continue' }).click()
 }
 async function loginForm(page, name, password = PASSWORD) {
@@ -834,7 +835,7 @@ async function main() {
 
     await step(`25. entrance sound with cillvoice: instance B on :${CV_PORT} (UDP ${CV_UDP}); Xena hears Yuri's entrance sound when he joins`, async () => {
       const B = await startServer(tmp, 'cillvoice', CV_PORT, cvEnv)
-      const reg = (n) => rest(B.base, null, 'POST', '/auth/register', { email: `${n.toLowerCase()}@example.com`, username: n, password: PASSWORD }).then((r) => r.token)
+      const reg = (n) => rest(B.base, null, 'POST', '/auth/register', { age_confirmed: true, email: `${n.toLowerCase()}@example.com`, username: n, password: PASSWORD }).then((r) => r.token)
       const [tx, ty] = [await reg(NAME.x), await reg(NAME.y)]
       const g = await rest(B.base, tx, 'POST', '/guilds', { name: GUILD })
       const chans = await rest(B.base, tx, 'GET', `/guilds/${g.id}/channels`)

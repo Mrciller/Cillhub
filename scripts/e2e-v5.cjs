@@ -136,6 +136,7 @@ async function register(page, name) {
   await page.getByLabel('Email').fill(`${name.toLowerCase()}@example.com`)
   await page.getByLabel('Username').fill(name)
   await page.getByLabel('Password').fill(PASSWORD)
+  await page.getByLabel(/I am at least/).check() // 7.10.3 sign-up check
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.waitForURL('**/channels/@me')
   await ready(page)
@@ -638,7 +639,7 @@ async function main() {
 
     // ---- 7. Game activity from the desktop bridge ----
     await step(`7. game activity: Dave's desktop bridge reports "Counter-Strike 2"; Alice sees "Playing Counter-Strike 2" in the member list`, async () => {
-      const r = await fetch(`${BASE}/api/v9/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: `${NAME.dave.toLowerCase()}@example.com`, username: NAME.dave, password: PASSWORD }) })
+      const r = await fetch(`${BASE}/api/v9/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ age_confirmed: true, email: `${NAME.dave.toLowerCase()}@example.com`, username: NAME.dave, password: PASSWORD }) })
       const { token } = await r.json()
       check(token, `register Dave: ${r.status}`)
       const invite = await ok(api(alice, 'POST', `/channels/${ids.general}/invites`, { max_age: 0 }))
