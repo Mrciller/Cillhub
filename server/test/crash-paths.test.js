@@ -148,3 +148,28 @@ test('a scheduled forward whose copy fails while its source file is there stays 
   assert.equal(get("SELECT 1 FROM scheduled_messages WHERE id = '9006'"), undefined);
   assert.ok(get("SELECT 1 FROM messages WHERE channel_id = '9005' AND snapshot IS NOT NULL"), 'sent on the retry');
 });
+
+test('copying files stops cleanly when a later folder cannot be made', async () => {
+  const { run } = await import('../src/db.js');
+  const { copyAttachments } = await import('../src/message.js');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const fs = (await import('node:fs')).default;
+  run("INSERT OR IGNORE INTO users (id, email, username, password_hash, salt) VALUES ('9001', 'taylor@example.com', 'taylor', 'x', 'x')");
+  run("INSERT OR IGNORE INTO channels (id, type) VALUES ('9020', 1)");
+  run("INSERT INTO messages (id, channel_id, author_id, content, timestamp) VALUES ('9021', '9020', '9001', 'two', ?)", new Date().toISOString());
+  run("INSERT INTO attachments (id, message_id, channel_id, filename, size, content_type) VALUES ('9022', '9021', '9020', 'a', 1, 'text/plain'), ('9023', '9021', '9020', 'b', 1, 'text/plain')");
+  fs.mkdirSync(join(process.env.DATA_DIR, 'attachments', '9020'), { recursive: true });
+  for (const id of ['9022', '9023']) fs.writeFileSync(join(process.env.DATA_DIR, 'attachments', '9020', id), 'x');
+  const mk = fs.mkdirSync;
+  let calls = 0;
+  fs.mkdirSync = (...a) => { if (++calls === 2) throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' }); return mk(...a); };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(copyAttachments('9021', '9024', true), /EIO/);
+  } finally {
+    fs.mkdirSync = mk;
+    syncBuiltinESMExports();
+  }
+  assert.deepEqual(readdirSync(join(process.env.DATA_DIR, 'attachments', '9024')), []);
+});
+

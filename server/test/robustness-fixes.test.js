@@ -69,6 +69,29 @@ test('a forward whose second file is missing leaves no copy of the first behind'
   assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], []);
 });
 
+test('a forward that fails after its files were copied leaves no copy behind', async () => {
+  const src = (await srv.upload(g.general.id, alex.token, { content: 'snapshot fails' }, [['s.txt', Buffer.from('s'), 'text/plain']])).body;
+  db(d => d.prepare("UPDATE messages SET mention_roles = 'not json' WHERE id = ?").run(src.id)); // the snapshot cannot be built
+  const target = (await api('POST', `/guilds/${g.guild.id}/channels`, alex.token, { name: 'snapshots' })).body;
+  const r = await api('POST', `/channels/${target.id}/messages`, alex.token, { message_reference: { type: 1, message_id: src.id, channel_id: g.general.id } });
+  assert.equal(r.status, 500);
+  const dir = join(srv.dataDir, 'attachments', target.id);
+  assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], []);
+});
+
+test('a crosspost that cannot be stored leaves no copied file behind', async () => {
+  const news = (await api('POST', `/guilds/${g.guild.id}/channels`, alex.token, { name: 'announcements', type: 5 })).body;
+  const target = (await api('POST', `/guilds/${g.guild.id}/channels`, alex.token, { name: 'followers' })).body;
+  assert.equal((await api('POST', `/channels/${news.id}/followers`, alex.token, { webhook_channel_id: target.id })).status, 200);
+  const m = (await srv.upload(news.id, alex.token, { content: 'news' }, [['n.txt', Buffer.from('n'), 'text/plain']])).body;
+  db(d => d.exec(`CREATE TRIGGER no_crosspost BEFORE INSERT ON messages WHEN NEW.channel_id = '${target.id}' BEGIN SELECT RAISE(ABORT, 'refused'); END`));
+  try {
+    assert.equal((await api('POST', `/channels/${news.id}/messages/${m.id}/crosspost`, alex.token)).status, 500);
+  } finally { db(d => d.exec('DROP TRIGGER no_crosspost')); }
+  const dir = join(srv.dataDir, 'attachments', target.id);
+  assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], []);
+});
+
 test('a scheduled message is sent under the id fixed before the send, and never twice', async () => {
   const path = `/channels/${g.general.id}/scheduled-messages`;
   const gw = await srv.gateway(alex.token);

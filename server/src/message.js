@@ -158,9 +158,9 @@ export async function copyAttachments(fromMessageId, toChannelId, inSnapshot) {
   const out = [];
   for (const a of all('SELECT * FROM attachments WHERE message_id = ? AND in_snapshot = 0 ORDER BY rowid', fromMessageId)) {
     const id = snowflake();
-    mkdirSync(join(DATA_DIR, 'attachments', toChannelId), { recursive: true });
     const from = join(DATA_DIR, 'attachments', a.channel_id, a.id);
     try {
+      mkdirSync(join(DATA_DIR, 'attachments', toChannelId), { recursive: true });
       await copyFile(from, join(DATA_DIR, 'attachments', toChannelId, id));
     } catch (e) {
       out.forEach(c => removeAttachment(toChannelId, c.id)); // no orphan copies when a later file fails

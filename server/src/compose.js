@@ -237,6 +237,7 @@ export async function send(d, authorId, { webhook, id, type = 0, inTx } = {}) {
     let snapshot = null;
     if (d.forward) {
       const copies = await copyAttachments(d.forward.src.id, ch.id, true);
+      attachments.push(...copies); // cleaned up from here on if anything below fails
       const s = messageObj(d.forward.src, d.forward.srcCh, null, true);
       const copyObj = a => ({
         id: a.id, filename: a.filename, size: a.size, content_type: a.content_type, url: attachmentUrl(a), proxy_url: attachmentUrl(a),
@@ -247,7 +248,6 @@ export async function send(d, authorId, { webhook, id, type = 0, inTx } = {}) {
         timestamp: s.timestamp, edited_timestamp: s.edited_timestamp, flags: s.flags, mentions: s.mentions, mention_roles: s.mention_roles,
         ...(s.sticker_items && { sticker_items: s.sticker_items }),
       } };
-      attachments.push(...copies);
     }
     // webhook embeds may point at their own uploads with attachment://name
     const embeds = d.rich ? richEmbeds(d.embeds, name => {

@@ -10,6 +10,7 @@ import { readPayload, prepare, send, checkSend, checkThreadOpen, markSent, filte
 import {
   F, messageObj, getMessage, getChannel, broadcastMessage, deleteMessages, countedMentions, unfurlLater, insertMessage, copyAttachments,
 } from '../message.js';
+import { removeAttachment } from '../files.js';
 import { loadChannel } from './channels.js';
 import { reopened } from './threads.js';
 
@@ -151,12 +152,18 @@ async function crosspost(ctx) {
   for (const w of all('SELECT * FROM webhooks WHERE source_channel_id = ? AND type = 2', ch.id)) {
     const target = getChannel(w.channel_id);
     if (!target) continue;
-    const copy = insertMessage({
-      ch: target, authorId: w.user_id, content: m.content, embeds: json(m.embeds), flags: F.IS_CROSSPOST,
-      reference: { message_id: m.id, channel_id: ch.id, guild_id: ch.guild_id },
-      attachments: await copyAttachments(m.id, target.id, false), stickerItems: json(m.sticker_items),
-      webhook: { id: w.id, author: { username: `${g.name} #${ch.name}`, avatar: null, ...(g.icon && { avatar_url: `/icons/${g.id}/${g.icon}` }) } },
-    });
+    const attachments = await copyAttachments(m.id, target.id, false);
+    let copy;
+    try { // insertMessage throws only when the row was not stored (later failures are logged there), as in compose.js send()
+      copy = insertMessage({
+        ch: target, authorId: w.user_id, content: m.content, embeds: json(m.embeds), flags: F.IS_CROSSPOST,
+        reference: { message_id: m.id, channel_id: ch.id, guild_id: ch.guild_id }, attachments, stickerItems: json(m.sticker_items),
+        webhook: { id: w.id, author: { username: `${g.name} #${ch.name}`, avatar: null, ...(g.icon && { avatar_url: `/icons/${g.id}/${g.icon}` }) } },
+      });
+    } catch (e) {
+      attachments.forEach(a => removeAttachment(target.id, a.id));
+      throw e;
+    }
     broadcastMessage(target, 'MESSAGE_CREATE', copy);
     unfurlLater(copy);
   }
