@@ -7,7 +7,7 @@ import { startServer, guildWith, bits, tempDir } from './helpers.js';
 
 process.env.DATA_DIR = await tempDir(); // the in-process limiter checks below open their own database
 process.env.CILLCORD_RATE_LIMIT_SCALE = '1';
-const { limit, loginFailed, checkLogin, shard } = await import('../src/ratelimit.js');
+const { limit, loginFailed, checkLogin, shard, capKey } = await import('../src/ratelimit.js');
 const { hit } = await import('../src/modules/store.js');
 
 const MANAGE_WEBHOOKS = 29, EMBED_LINKS = 14;
@@ -122,6 +122,19 @@ test('overflow entries keep one policy each and spread newcomers over 16 shards'
   await new Promise(r => setTimeout(r, 20));
   hit('lim:m2:b', 100, 10);
   assert.ok(hit('lim:m2:a', 5, 60_000) > 0);
+});
+
+test('a key in a live overflow entry stays there when room frees up, until that entry expires', async () => {
+  const map = new Map(), stale = b => b.reset <= Date.now(), wait = ms => new Promise(r => setTimeout(r, ms));
+  for (let i = 0; i < 3; i++) map.set(`short${i}`, { count: 1, reset: Date.now() + 100 });
+  const ov = capKey(map, 3, stale, 'victim', 'report', '198.51.100.7');
+  assert.notEqual(ov, 'victim', 'full: overflow');
+  map.set(ov, { count: 5, reset: Date.now() + 2000 }); // exhausted there
+  await wait(1100); // the short entries expire and the next sweep may run
+  assert.equal(capKey(map, 3, stale, 'victim', 'report', '198.51.100.7'), ov, 'still the exhausted overflow entry');
+  assert.equal(capKey(map, 3, stale, 'newcomer', 'report', '198.51.100.7'), ov, 'its shard too');
+  await wait(1000);
+  assert.equal(capKey(map, 3, stale, 'victim', 'report', '198.51.100.7'), 'victim', 'own entry once the overflow window ended');
 });
 
 test('the account login budget is shared by its name and its email', async () => {

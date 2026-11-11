@@ -50,17 +50,29 @@ const resourceOf = (pattern, params) => (/^\/(channels|guilds)\/:id/.test(patter
 // entries go (at most one sweep per second, so a full map of live keys costs nothing per call); if the map is still
 // full, a new key goes to an overflow entry of its policy (one window, one limit) and of one of 16 shards of its
 // identity, so a flood throttles itself and a chosen victim shares an entry with only 1/16 of the newcomers.
-// Bound: max + (policies x 16) entries.
+// Bound: max + (policies x 16) entries. A key without an entry of its own stays in its live overflow entry even when
+// room frees up (else a fresh entry would reset the exhausted overflow count); only once that expired it gets its own.
 const swept = new WeakMap(); // map -> time of its last sweep
+const overflows = new WeakMap(); // map -> its overflow keys (a hint: some may be gone)
 export const shard = id => createHash('sha256').update(String(id)).digest()[0] % 16;
 export function capKey(map, max, stale, key, policy, id = key, onDrop) {
-  if (map.has(key) || map.size < max) return key;
+  if (map.has(key)) return key;
+  const ov = () => `${policy}:\0overflow:${shard(id)}`;
+  if (overflows.get(map)?.size) {
+    const k = ov(), v = map.get(k);
+    if (v && !stale(v)) return k;
+  }
+  if (map.size < max) return key;
   const now = Date.now();
   if (now - (swept.get(map) ?? 0) >= 1000) {
     swept.set(map, now);
-    for (const [k, v] of map) if (stale(v)) { map.delete(k); onDrop?.(k); }
+    for (const [k, v] of map) if (stale(v)) { map.delete(k); overflows.get(map)?.delete(k); onDrop?.(k); }
   }
-  return map.size < max ? key : `${policy}:\0overflow:${shard(id)}`;
+  if (map.size < max) return key;
+  const k = ov();
+  if (!overflows.has(map)) overflows.set(map, new Set());
+  overflows.get(map).add(k);
+  return k;
 }
 
 function rateLimitError(seconds, headers) {
