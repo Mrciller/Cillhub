@@ -284,8 +284,25 @@ impl CillhubApp {
                                 );
 
                                 if is_reg {
+                                    self.load_instance_info();
+                                    if registration_closed(self.instance_info.as_ref()) {
+                                        ui.add_space(8.0);
+                                        ui.label(
+                                            RichText::new("Registration is closed on this instance. Ask its admin for an account.")
+                                                .font(ui_font(13.0))
+                                                .color(YELLOW),
+                                        );
+                                    }
+                                    if self.instance_info.as_ref().is_some_and(|i| !i["captcha"].is_null()) {
+                                        ui.add_space(8.0);
+                                        ui.label(
+                                            RichText::new("This server asks for a captcha check, which this app cannot show yet. Please register on the website, then log in here.")
+                                                .font(ui_font(13.0))
+                                                .color(YELLOW),
+                                        );
+                                    }
                                     ui.add_space(12.0);
-                                    Self::field_label(ui, "Email (optional)");
+                                    Self::field_label(ui, "Email");
                                     Self::auth_text_input(
                                         ui,
                                         &mut self.auth_email_input,
@@ -585,6 +602,17 @@ impl CillhubApp {
         resp
     }
 
+    /// Fetches the picked server's public instance info once, like the web client's useInstance().
+    fn load_instance_info(&mut self) {
+        let url = self.picked_server_url().to_string();
+        if self.instance_for == url {
+            return;
+        }
+        self.instance_for = url.clone();
+        self.instance_info = normalize_server_url(&url)
+            .and_then(|o| crate::api::ApiClient::new(o, None).get("/instance").ok());
+    }
+
     /// The server the user picked on the login screen: the hub or their private node.
     fn picked_server_url(&self) -> &str {
         match self.settings.server_target.as_str() {
@@ -612,9 +640,13 @@ impl CillhubApp {
                 "username": self.auth_login_input.trim(),
                 "password": self.auth_password_input,
             });
-            if !self.auth_email_input.trim().is_empty() {
-                body["email"] = Value::String(self.auth_email_input.trim().to_string());
+            // The hub requires an email to register (server/src/routes/auth.js emailField).
+            let email = self.auth_email_input.trim();
+            if email.is_empty() {
+                self.auth_error = Some("Email is required.".to_string());
+                return;
             }
+            body["email"] = Value::String(email.to_string());
             api.post("/auth/register", body)
         } else {
             api.post("/auth/login", login_body.clone())
@@ -705,5 +737,22 @@ impl CillhubApp {
                 Err(e) => self.auth_error = Some(e.to_string()),
             }
         }
+    }
+}
+
+/// The web client shows the "registration is closed" notice for registration_mode "closed".
+pub fn registration_closed(instance: Option<&Value>) -> bool {
+    instance.and_then(|i| i.get("registration_mode")).and_then(Value::as_str) == Some("closed")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn closed_registration_is_read_from_instance_info() {
+        assert!(registration_closed(Some(&json!({"registration_mode": "closed"}))));
+        assert!(!registration_closed(Some(&json!({"registration_mode": "open"}))));
+        assert!(!registration_closed(None));
     }
 }

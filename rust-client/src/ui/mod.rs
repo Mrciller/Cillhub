@@ -132,6 +132,9 @@ pub struct CillhubApp {
     pub auth_mfa_code: String,
     pub auth_reset_token: String,
     pub auth_error: Option<String>,
+    /// GET /instance of the picked server (registration mode), and which server it is for.
+    pub instance_info: Option<Value>,
+    instance_for: String,
 
     // Navigation & View state
     pub selected_guild_id: Option<String>,
@@ -187,6 +190,7 @@ pub struct CillhubApp {
     pub my_status: String,
     pub custom_status_input: String,
     pub theme_name: String,
+    theme_applied: String,
     pub locale: String,
     pub new_guild_name_input: String,
     pub join_invite_code_input: String,
@@ -225,6 +229,7 @@ impl CillhubApp {
             });
 
         let (image_tx, image_rx) = mpsc::channel();
+        let (theme_name, locale) = (settings.theme.clone(), settings.locale.clone());
         let mut app = Self {
             settings,
             state: State::default(),
@@ -241,6 +246,8 @@ impl CillhubApp {
             auth_mfa_code: String::new(),
             auth_reset_token: String::new(),
             auth_error: None,
+            instance_info: None,
+            instance_for: String::new(),
             selected_guild_id: None,
             selected_channel_id: None,
             friends_tab: FriendsTab::Online,
@@ -282,8 +289,9 @@ impl CillhubApp {
             custom_game_name_input: String::new(),
             my_status: "online".to_string(),
             custom_status_input: String::new(),
-            theme_name: "dark".to_string(),
-            locale: "en".to_string(),
+            theme_name,
+            theme_applied: String::new(),
+            locale,
             new_guild_name_input: String::new(),
             join_invite_code_input: String::new(),
             new_channel_name_input: String::new(),
@@ -861,6 +869,13 @@ impl CillhubApp {
                     if let Err(e) = self.state.apply(&name, payload) {
                         eprintln!("cillhub: {name} not applied: {e}");
                         self.status_banner = Some(format!("Could not apply {name}: {e}"));
+                    }
+                    if (is_ready || name == "USER_SETTINGS_UPDATE")
+                        && self.settings.adopt_server_appearance(&self.state.user_settings)
+                    {
+                        self.theme_name = self.settings.theme.clone();
+                        self.locale = self.settings.locale.clone();
+                        report(&mut self.status_banner, self.settings.save());
                     }
                     if is_ready {
                         let ids: Vec<String> = self.state.guilds.keys().cloned().collect();
@@ -1754,6 +1769,28 @@ impl CillhubApp {
         });
     }
 
+    /// Saves a theme or language choice locally and, for what the hub stores, in the user's
+    /// server-side settings (PATCH /users/@me/settings, like the web client's patchSettings).
+    pub fn set_appearance(&mut self, theme: Option<&str>, locale: Option<&str>) {
+        let mut patch = serde_json::Map::new();
+        if let Some(t) = theme {
+            self.theme_name = t.to_string();
+            self.settings.theme = t.to_string();
+            if crate::settings::SERVER_THEMES.contains(&t) {
+                patch.insert("theme".into(), t.into());
+            }
+        }
+        if let Some(l) = locale {
+            self.locale = l.to_string();
+            self.settings.locale = l.to_string();
+            patch.insert("locale".into(), l.into());
+        }
+        report(&mut self.status_banner, self.settings.save());
+        if let (Some(api), false) = (&self.api, patch.is_empty()) {
+            report(&mut self.status_banner, api.patch("/users/@me/settings", Value::Object(patch)));
+        }
+    }
+
     pub fn mark_fonts_installed(&mut self) {
         self.fonts_installed = true;
     }
@@ -1761,9 +1798,12 @@ impl CillhubApp {
     pub fn headless_tick(&mut self, ctx: &Context) {
         if !self.fonts_installed {
             install_fonts(ctx, self.state.user_settings.dyslexic_font);
-            apply_theme(ctx, &self.theme_name, self.settings.font_scale);
             egui_extras::install_image_loaders(ctx);
             self.fonts_installed = true;
+        }
+        if self.theme_applied != self.theme_name {
+            apply_theme(ctx, &self.theme_name, self.settings.font_scale);
+            self.theme_applied = self.theme_name.clone();
         }
         let families_ready = ctx.fonts(|f| {
             f.families()

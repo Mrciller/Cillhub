@@ -436,8 +436,7 @@ impl CillhubApp {
                                             .selectable_label(self.theme_name == th, th)
                                             .clicked()
                                         {
-                                            self.theme_name = th.to_string();
-                                            apply_theme(ctx, &self.theme_name, self.settings.font_scale);
+                                            self.set_appearance(Some(th), None);
                                         }
                                     }
                                 });
@@ -465,16 +464,16 @@ impl CillhubApp {
                                 ui.label(RichText::new("LANGUAGE").size(11.0).color(TEXT_MUTED));
                                 ui.horizontal(|ui| {
                                     if ui
-                                        .selectable_label(self.locale == "en", "English (EN)")
+                                        .selectable_label(!self.locale.starts_with("de"), "English (EN)")
                                         .clicked()
                                     {
-                                        self.locale = "en".to_string();
+                                        self.set_appearance(None, Some("en-US"));
                                     }
                                     if ui
-                                        .selectable_label(self.locale == "de", "Deutsch (DE)")
+                                        .selectable_label(self.locale.starts_with("de"), "Deutsch (DE)")
                                         .clicked()
                                     {
-                                        self.locale = "de".to_string();
+                                        self.set_appearance(None, Some("de"));
                                     }
                                 });
                             }

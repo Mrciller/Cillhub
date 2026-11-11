@@ -74,8 +74,24 @@ pub struct AppSettings {
     pub high_contrast: bool,
     #[serde(default)]
     pub dyslexic_font: bool,
+    /// Theme and language as the web client names them ("dark", "en-US", ...).
+    #[serde(default = "default_theme")]
+    pub theme: String,
+    #[serde(default = "default_locale")]
+    pub locale: String,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
+}
+
+/// Themes the hub stores in the user's settings (server/src/userdata.js); others stay local.
+pub const SERVER_THEMES: [&str; 4] = ["dark", "light", "ash", "onyx"];
+
+fn default_theme() -> String {
+    "dark".to_string()
+}
+
+fn default_locale() -> String {
+    "en-US".to_string()
 }
 
 fn yes() -> bool {
@@ -113,6 +129,8 @@ impl Default for AppSettings {
             reduced_motion: false,
             high_contrast: false,
             dyslexic_font: false,
+            theme: default_theme(),
+            locale: default_locale(),
             extra: HashMap::new(),
         }
     }
@@ -174,6 +192,21 @@ impl AppSettings {
         }
         std::io::Write::write_all(&mut opts.open(&tmp)?, json.as_bytes())?;
         fs::rename(&tmp, path)
+    }
+
+    /// Takes theme and language from the user's server-side settings, like the web client.
+    /// A local-only theme stays. Returns true when something changed.
+    pub fn adopt_server_appearance(&mut self, server: &crate::model::UserSettings) -> bool {
+        let before = (self.theme.clone(), self.locale.clone());
+        if let Some(t) = server.theme.as_deref() {
+            if SERVER_THEMES.contains(&self.theme.as_str()) && SERVER_THEMES.contains(&t) {
+                self.theme = t.to_string();
+            }
+        }
+        if let Some(l) = server.locale.as_deref().filter(|l| !l.is_empty()) {
+            self.locale = l.to_string();
+        }
+        before != (self.theme.clone(), self.locale.clone())
     }
 
     /// The saved session token: keyring first, then the settings file fallback.
@@ -283,6 +316,25 @@ pub fn set_autostart(enabled: bool) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn appearance_follows_the_server_unless_local_only() {
+        let server = crate::model::UserSettings {
+            theme: Some("light".into()),
+            locale: Some("de".into()),
+            ..Default::default()
+        };
+        let mut s = AppSettings::default();
+        assert!(s.adopt_server_appearance(&server));
+        assert_eq!((s.theme.as_str(), s.locale.as_str()), ("light", "de"));
+        assert!(!s.adopt_server_appearance(&server));
+        s.theme = "nord".into();
+        s.adopt_server_appearance(&server);
+        assert_eq!(s.theme, "nord");
+        let json = serde_json::to_string(&s).unwrap();
+        let back: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!((back.theme.as_str(), back.locale.as_str()), ("nord", "de"));
+    }
 
     #[test]
     fn persists_with_private_modes() {
