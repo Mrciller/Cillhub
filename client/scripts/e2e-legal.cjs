@@ -1,7 +1,7 @@
 // 7.11 legal, end to end against a real server (server/src/index.js serving client/dist on a temporary database):
 // legal links on login, sign-up with the terms and age boxes, the legal pages (Markdown cannot inject HTML), the public
 // notice form -> admin decision -> status page, remove by link, disable with reasons -> login shows them -> appeal.
-// Run: npm run build && NODE_PATH=<dir with playwright> node scripts/e2e-legal.cjs   (SHOTS=<dir> saves screenshots)
+// Run: npm run build && NODE_PATH=<dir with playwright> node scripts/e2e-legal.cjs   (SHOTS=<dir> saves screenshots, E2E_PORT fixes the port)
 const { chromium } = require('playwright')
 const { spawn, execFileSync } = require('node:child_process')
 const { createHmac } = require('node:crypto')
@@ -25,7 +25,7 @@ function totp(at = Date.now()) {
 async function main() {
   const dataDir = mkdtempSync(path.join(tmpdir(), 'cillhub-e2e-legal-'))
   if (SHOTS) mkdirSync(SHOTS, { recursive: true })
-  const env = { ...process.env, PORT: '0', DATA_DIR: dataDir, STATIC_DIR: path.join(__dirname, '../dist'), NODE_ENV: 'test', CILLCORD_RATE_LIMIT_SCALE: '100' }
+  const env = { ...process.env, PORT: process.env.E2E_PORT || '0', DATA_DIR: dataDir, STATIC_DIR: path.join(__dirname, '../dist'), NODE_ENV: 'test', CILLCORD_RATE_LIMIT_SCALE: '100' }
   for (const k of Object.keys(env)) if (k.startsWith('LIVEKIT_')) delete env[k]
   const proc = spawn(process.execPath, ['src/index.js'], { cwd: SERVER, env, stdio: ['ignore', 'pipe', 'inherit'] })
   const port = await new Promise((resolve, reject) => {
