@@ -128,7 +128,11 @@ test('operator fields and documents: validation, versions with hashes, public vi
 });
 
 test('sign-up: age always, terms checkbox once terms exist, the accepted version is stored', async () => {
-  const noAge = await reg('sam');
+  // an app from before 7.11 sends neither field: one plain message (no field errors) that its form can show
+  const oldApp = await reg('sam');
+  assert.deepEqual([oldApp.status, oldApp.body.code, oldApp.body.errors], [400, 0, undefined]);
+  assert.match(oldApp.body.message, /^Update the app to create an account/);
+  const noAge = await reg('sam', { age_confirmed: false });
   assert.deepEqual([noAge.status, Object.keys(noAge.body.errors)], [400, ['age_confirmed']]);
   assert.match(noAge.body.errors.age_confirmed._errors[0].message, /16 years/);
   assert.equal((await reg('sam', { age_confirmed: 'yes' })).status, 400, 'only true counts');
@@ -153,6 +157,9 @@ test('re-acceptance: a new terms version with the box ticked blocks the API unti
   const v = (await api('PUT', '/admin/legal/terms', alex.token, { en: '# Terms\nBe kind. v3', de: '# Nutzungsbedingungen\nv3', reaccept: true })).body.version;
   const blocked = await api('GET', '/users/@me/guilds', token);
   assert.deepEqual([blocked.status, blocked.body.required_actions], [403, ['accept_terms']]);
+  assert.match(blocked.body.message, /update it or sign in once on the website/, 'readable in an app that knows no gate');
+  // an app that knows no gate can still sign in (and read who it is); only the API behind the gate answers 403
+  assert.ok((await api('POST', '/auth/login', null, { login: 'robin', password: 'hunter2hunter2' })).body.token);
   assert.equal((await api('GET', '/users/@me', token)).status, 200);
   const st = (await api('GET', '/legal/status', token)).body;
   assert.deepEqual([st.required, st.accept_version], [true, v]);
