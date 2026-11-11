@@ -47,6 +47,8 @@ pub struct PendingHistory {
     pub updates: Vec<Value>,
     /// deleted ids: the snapshot may still carry them
     pub deleted: std::collections::HashSet<String>,
+    /// a buffer overflowed: replaying it would be wrong, the history is fetched again
+    pub dirty: bool,
 }
 
 /// Messages kept per channel.
@@ -283,6 +285,8 @@ impl State {
                     } else if let Some(p) = self.pending_history.get_mut(channel) {
                         if p.updates.len() < MAX_WINDOW {
                             p.updates.push(payload.clone()); // applied over the snapshot (set_history)
+                        } else {
+                            p.dirty = true;
                         }
                     }
                 }
@@ -686,15 +690,19 @@ impl State {
             history.retain(|m| !ids.contains(&m.id.as_str()));
         } else if let Some(p) = self.pending_history.get_mut(channel) {
             p.created.retain(|m| !ids.contains(&m.id.as_str()));
-            p.deleted.extend(ids.iter().take(MAX_HISTORY.saturating_sub(p.deleted.len())).map(|s| s.to_string()));
+            if p.deleted.len() + ids.len() > MAX_HISTORY {
+                p.dirty = true;
+            } else {
+                p.deleted.extend(ids.iter().map(|s| s.to_string()));
+            }
         }
     }
 
     /// Adds a new message to a loaded history (once). The newest MAX_WINDOW stay; "Load older" fetches the rest.
     /// After paging back (`paged`) live messages may add MAX_WINDOW on top of MAX_HISTORY before the oldest go,
     /// so what is being read is not cut.
-    /// shortcut: past MAX_WINDOW live messages while reading old pages the oldest still go; a window anchored
-    /// at the viewed end would fix that if it matters.
+    /// shortcut: the 501st live message while reading old pages (history at MAX_HISTORY) cuts the oldest viewed
+    /// message, and every further one cuts one more; a window anchored at the viewed end would fix that.
     pub fn push_message(&mut self, message: Message) {
         if let Some(history) = self.messages.get_mut(&message.channel_id) {
             if !history.iter().any(|m| m.id == message.id) {
@@ -704,14 +712,17 @@ impl State {
                 history.drain(..extra);
             }
         } else if let Some(waiting) = self.pending_history.get_mut(&message.channel_id) {
-            if !waiting.created.iter().any(|m| m.id == message.id) && waiting.created.len() < MAX_WINDOW {
+            if waiting.created.len() >= MAX_WINDOW {
+                waiting.dirty = true;
+            } else if !waiting.created.iter().any(|m| m.id == message.id) {
                 waiting.created.push(message);
             }
         }
     }
 
     /// Puts an older page ("Load older") in front of a channel's history, if its oldest message is still
-    /// `before`. The result holds at most MAX_HISTORY: the oldest of the page go first.
+    /// `before`. A page never makes the history pass MAX_HISTORY: the oldest of the page go first (the page stays
+    /// joined to the history, no gap), and a history already above it (live messages on top) takes nothing.
     pub fn prepend_history(&mut self, channel_id: &str, before: &str, mut older: Vec<Message>) {
         for m in &older {
             if let Some(a) = &m.author {
@@ -737,12 +748,22 @@ impl State {
         self.pending_history.remove(channel_id);
     }
 
+    /// Whether a buffer of the loading history overflowed (see PendingHistory::dirty).
+    pub fn history_dirty(&self, channel_id: &str) -> bool {
+        self.pending_history.get(channel_id).is_some_and(|p| p.dirty)
+    }
+
+    /// Installs a history snapshot. Live events that came while it loaded: deletes and edits apply to it, new
+    /// messages follow it. A dirty buffer is not replayed: the snapshot is taken as it is.
     pub fn set_history(&mut self, channel_id: String, mut messages: Vec<Message>) {
-        // live events that came while the snapshot loaded: deletes and edits apply to it, new messages follow it
-        let p = self.pending_history.remove(&channel_id).unwrap_or_default();
+        let mut p = self.pending_history.remove(&channel_id).unwrap_or_default();
+        if p.dirty {
+            p = PendingHistory::default();
+        }
         messages.retain(|m| !p.deleted.contains(&m.id));
         for m in p.created {
-            if !messages.iter().any(|x| x.id == m.id) {
+            // a late POST answer after the gateway's delete must not bring it back
+            if !p.deleted.contains(&m.id) && !messages.iter().any(|x| x.id == m.id) {
                 messages.push(m);
             }
         }
@@ -888,8 +909,32 @@ mod tests {
         assert_eq!((st.messages["c"].len(), st.messages["c"][0].id.as_str()), (MAX_HISTORY, "00080"));
         live(&mut st);
         assert_eq!((st.messages["c"].len(), st.messages["c"][0].id.as_str()), (MAX_HISTORY + 1, "00080"));
+        st.prepend_history("c", "00080", page(30, 50));
+        assert_eq!((st.messages["c"].len(), st.messages["c"][0].id.as_str()), (MAX_HISTORY + 1, "00080"), "above the cap: the page adds nothing");
         st.prepend_history("c", "00999", page(0, 50));
         assert_eq!(st.messages["c"][0].id, "00080", "a page for another window is dropped");
+    }
+
+    #[test]
+    fn an_overflowing_load_buffer_is_dirty_and_not_replayed() {
+        let mut st = State::default();
+        let m = |id: &str, text: &str| serde_json::json!({"id": id, "channel_id": "c", "content": text});
+        st.begin_history("c");
+        st.apply("MESSAGE_UPDATE", m("m", "v1")).unwrap();
+        for i in 0..MAX_WINDOW {
+            st.apply("MESSAGE_UPDATE", m(&format!("o{i}"), "x")).unwrap();
+        }
+        assert!(st.history_dirty("c"), "v2 below would be lost");
+        st.apply("MESSAGE_UPDATE", m("m", "v2")).unwrap();
+        st.set_history("c".into(), vec![parse(m("m", "v2")).unwrap()]);
+        assert_eq!(st.messages["c"][0].content, "v2", "a known-incomplete replay never overwrites the snapshot");
+        // a late POST answer of a message deleted while loading stays deleted
+        let mut st = State::default();
+        st.begin_history("d");
+        st.apply("MESSAGE_DELETE", json!({"id": "x", "channel_id": "d"})).unwrap();
+        st.push_message(parse(json!({"id": "x", "channel_id": "d"})).unwrap());
+        st.set_history("d".into(), Vec::new());
+        assert!(st.messages["d"].is_empty());
     }
 
     #[test]
