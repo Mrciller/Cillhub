@@ -62,6 +62,7 @@ export default [
   ['PUT', '/users/@me/settings/favorite-gifs', ({ body, user: me }) => changeFavoriteGifs(me, favoriteGifsChange(me.id, body ?? null)), user],
   ['DELETE', '/users/@me/settings/favorite-gifs', ({ query, user: me }) => changeFavoriteGifs(me, favoriteGifsChange(me.id, undefined, query.get('url'))), user],
   ['PUT', '/users/@me/settings/private-nodes', ({ body, user: me }) => changePrivateNodes(me, privateNodesChange(me.id, body ?? null)), user],
+  ['PUT', '/users/@me/settings/private-nodes/initial', ({ body, user: me }) => changePrivateNodes(me, privateNodesChange(me.id, undefined, undefined, body?.nodes)), user],
   ['DELETE', '/users/@me/settings/private-nodes', ({ query, user: me }) => changePrivateNodes(me, privateNodesChange(me.id, undefined, query.get('origin'))), user],
   ['PATCH', '/users/@me/guilds/:guild_id/settings', patchGuildSettingsRoute, user],
 ];

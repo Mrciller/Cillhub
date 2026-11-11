@@ -162,8 +162,10 @@ function privateNodes(v, f) {
 
 // one node added at the end (an origin already there keeps its entry) or removed by origin, applied to the stored list in
 // one synchronous step, so two devices changing the list at once never bring back a removed node
-export function privateNodesChange(userId, add, removeOrigin) {
-  const list = settingsOf(userId).private_nodes ?? [];
+export function privateNodesChange(userId, add, removeOrigin, initial) {
+  const stored = settingsOf(userId).private_nodes;
+  if (initial !== undefined) return stored ?? privateNodes(initial, 'nodes'); // a device's list only while the account has none
+  const list = stored ?? [];
   if (add !== undefined) {
     const [n] = privateNodes([add], 'node');
     if (list.some(x => x.origin === n.origin)) return list;
@@ -215,7 +217,9 @@ const SETTINGS = {
   guild_positions: [snowflakeList(200), []],
   status: [oneOf('online', 'idle', 'dnd', 'invisible'), 'online'],
   custom_status: [customStatus, null],
-  private_nodes: [privateNodes, null], // null: never saved (a device then uploads its local list)
+  // null: never saved. Changed only through /users/@me/settings/private-nodes (one add, one remove, or the first list),
+  // never replaced whole: a stale copy would bring removed nodes back
+  private_nodes: [(v, f) => fail(f, 'Use /users/@me/settings/private-nodes.'), null],
 };
 
 const stored = userId => get('SELECT settings, status FROM users WHERE id = ?', userId);
