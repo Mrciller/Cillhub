@@ -46,7 +46,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -257,7 +256,7 @@ private fun ForumPostCard(post: Channel, forum: Channel, state: io.github.mrcill
         onClick = onClick,
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.medium,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSolved) Color(0xFF2DC770).copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSolved) LocalExtra.current.online.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -282,14 +281,14 @@ private fun ForumPostCard(post: Channel, forum: Channel, state: io.github.mrcill
                     }
                     if (isSolved) {
                         Surface(
-                            color = Color(0xFF2DC770).copy(alpha = 0.18f),
+                            color = LocalExtra.current.online.copy(alpha = 0.18f),
                             shape = MaterialTheme.shapes.extraSmall,
                         ) {
                             Text(
                                 "✓ " + s(R.string.forum_solved),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2DC770),
+                                color = LocalExtra.current.online,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }

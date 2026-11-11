@@ -45,7 +45,6 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -96,7 +95,7 @@ fun MarkdownText(
                 is Md.Italic -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { add(n.children) }
                 is Md.Underline -> withStyle(SpanStyle(textDecoration = TextDecoration.Underline)) { add(n.children) }
                 is Md.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { add(n.children) }
-                is Md.Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = cs.surfaceContainerHighest, fontSize = 0.9.em)) { append(n.text) }
+                is Md.Code -> withStyle(SpanStyle(fontFamily = Mono, background = cs.surfaceContainerHighest, fontSize = 0.9.em)) { append(n.text) }
                 is Md.Spoiler -> {
                     val i = spoilers++
                     if (i in revealed) withStyle(SpanStyle(background = cs.surfaceContainerHighest)) { add(n.children) }
@@ -243,14 +242,14 @@ private fun CodeBlockView(b: Md.CodeBlock, base: TextStyle) {
             Column {
                 displayLines.forEachIndexed { i, line ->
                     val diffColor = when {
-                        isDiff && line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF2DC770)
-                        isDiff && line.startsWith("-") && !line.startsWith("---") -> Color(0xFFF23F43)
-                        isDiff && line.startsWith("@@") -> Color(0xFF5865F2)
+                        isDiff && line.startsWith("+") && !line.startsWith("+++") -> LocalExtra.current.online
+                        isDiff && line.startsWith("-") && !line.startsWith("---") -> cs.error
+                        isDiff && line.startsWith("@@") -> cs.tertiary
                         else -> cs.onSurface
                     }
                     val diffBg = when {
-                        isDiff && line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF2DC770).copy(alpha = 0.12f)
-                        isDiff && line.startsWith("-") && !line.startsWith("---") -> Color(0xFFF23F43).copy(alpha = 0.12f)
+                        isDiff && line.startsWith("+") && !line.startsWith("+++") -> LocalExtra.current.online.copy(alpha = 0.12f)
+                        isDiff && line.startsWith("-") && !line.startsWith("---") -> cs.error.copy(alpha = 0.12f)
                         else -> Color.Transparent
                     }
                     Row(
@@ -261,7 +260,7 @@ private fun CodeBlockView(b: Md.CodeBlock, base: TextStyle) {
                             Text(
                                 (i + 1).toString().padStart(lines.size.toString().length, ' '),
                                 style = base.copy(
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = Mono,
                                     fontSize = 12.sp,
                                     color = cs.onSurfaceVariant.copy(alpha = 0.5f),
                                 ),
@@ -270,7 +269,7 @@ private fun CodeBlockView(b: Md.CodeBlock, base: TextStyle) {
                         }
                         Text(
                             line,
-                            style = base.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = diffColor),
+                            style = base.copy(fontFamily = Mono, fontSize = 13.sp, color = diffColor),
                         )
                     }
                 }

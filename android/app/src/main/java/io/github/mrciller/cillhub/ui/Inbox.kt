@@ -140,7 +140,7 @@ fun InboxScreen() {
                             headlineContent = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (t.solvedMessageId != null) {
-                                        Text("✓ ", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
+                                        Text("✓ ", color = LocalExtra.current.online, fontWeight = FontWeight.Bold)
                                     }
                                     Text(t.name ?: "", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
@@ -151,7 +151,7 @@ fun InboxScreen() {
                                     Modifier.size(40.dp).clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceContainerHigh),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Ic(if (t.solvedMessageId != null) R.drawable.ms_check else R.drawable.ms_forum, null, tint = if (t.solvedMessageId != null) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary)
+                                    Ic(if (t.solvedMessageId != null) R.drawable.ms_check else R.drawable.ms_forum, null, tint = if (t.solvedMessageId != null) LocalExtra.current.online else MaterialTheme.colorScheme.primary)
                                 }
                             },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),

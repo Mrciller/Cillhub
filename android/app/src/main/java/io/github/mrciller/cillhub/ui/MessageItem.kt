@@ -181,7 +181,7 @@ fun MessageItem(
             }
         },
     ) {
-        val bar = LocalExtra.current.idle
+        val bar = LocalExtra.current.mention
         Column(
             Modifier.fillMaxWidth()
                 .background(if (mentionsMe) LocalExtra.current.mentionBg else MaterialTheme.colorScheme.surfaceContainer)
@@ -723,7 +723,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                     val isCorrect = ans.answerId == poll.correctAnswerId
 
                     val borderColor = when {
-                        showQuizCorrect && isCorrect -> Color(0xFF2E7D32)
+                        showQuizCorrect && isCorrect -> LocalExtra.current.online
                         voted -> MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.outlineVariant
                     }
@@ -755,7 +755,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                                     Modifier
                                         .fillMaxWidth(pct)
                                         .matchParentSize()
-                                        .background(if (showQuizCorrect && isCorrect) Color(0x334CAF50) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                        .background(if (showQuizCorrect && isCorrect) LocalExtra.current.online.copy(alpha = 0.2f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                                 )
                             }
                             Row(
@@ -773,7 +773,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                                     modifier = Modifier.weight(1f),
                                 )
                                 if (showQuizCorrect && isCorrect) {
-                                    Text("✓ " + s(R.string.poll_correct_answer), color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(end = 6.dp))
+                                    Text("✓ " + s(R.string.poll_correct_answer), color = LocalExtra.current.online, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(end = 6.dp))
                                 }
                                 if (voted) {
                                     Text("✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 6.dp))
@@ -932,10 +932,10 @@ private fun DiffTextView(diff: List<DiffWord>) {
         for (w in diff) {
             when (w.type) {
                 DiffType.UNCHANGED -> append(w.text)
-                DiffType.ADDED -> withStyle(SpanStyle(color = Color(0xFF2E7D32), background = Color(0x334CAF50), fontWeight = FontWeight.Medium)) {
+                DiffType.ADDED -> withStyle(SpanStyle(color = LocalExtra.current.online, background = LocalExtra.current.online.copy(alpha = 0.2f), fontWeight = FontWeight.Medium)) {
                     append(w.text)
                 }
-                DiffType.REMOVED -> withStyle(SpanStyle(color = Color(0xFFC62828), background = Color(0x33F44336), textDecoration = TextDecoration.LineThrough)) {
+                DiffType.REMOVED -> withStyle(SpanStyle(color = MaterialTheme.colorScheme.error, background = MaterialTheme.colorScheme.error.copy(alpha = 0.2f), textDecoration = TextDecoration.LineThrough)) {
                     append(w.text)
                 }
             }

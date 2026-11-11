@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- matches the web client Argon palette (client/src: rail, accent, on-accent, text, muted) -->
+    <!-- Arena tokens of the web client (dark): accent, on-accent, chat, text, muted; window is chat per theme (values-night) -->
     <color name="accent">#FF6A1F</color>
-    <color name="on_accent">#041318</color>
-    <color name="background">#0B0F18</color>
-    <color name="text">#DFE6F4</color>
-    <color name="muted">#929FB8</color>
-    <color name="window">#FAFBFD</color>
+    <color name="on_accent">#170900</color>
+    <color name="background">#17191E</color>
+    <color name="text">#E3E6EC</color>
+    <color name="muted">#9AA1AD</color>
+    <color name="window">#FBFBFC</color>
+    <!-- the app icon predates Arena and keeps its own ground -->
+    <color name="icon_background">#0B0F18</color>
 </resources>
