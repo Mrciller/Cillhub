@@ -4,7 +4,7 @@
 //! notched `GameInviteCard`, and `.composer` bar with `+` popover menu.
 
 use super::report;
-use crate::i18n::t;
+use crate::i18n::{tr, trf};
 use crate::league::{parse_game_invite, GameInviteData};
 use crate::model::{Channel, Emoji, Message, Reaction, SavedMessage};
 use crate::theme::{
@@ -486,16 +486,15 @@ impl CillhubApp {
                                 }
 
                                 if let Some(ts) = &msg.timestamp {
-                                    let short_ts = ts.get(11..16).unwrap_or(ts.as_str());
                                     ui.label(
-                                        RichText::new(short_ts)
-                                            .font(mono_font(11.0))
+                                        RichText::new(stamp(ts))
+                                            .font(ui_font(11.5))
                                             .color(TEXT_MUTED),
                                     );
                                 }
                                 if msg.edited_timestamp.is_some() {
                                     ui.label(
-                                        RichText::new("(edited)")
+                                        RichText::new(tr("(edited)"))
                                             .font(ui_font(11.0))
                                             .color(TEXT_MUTED),
                                     );
@@ -572,7 +571,7 @@ impl CillhubApp {
                             }
                             self.render_game_invite_card(ui, &invite);
                         } else if !msg.content.is_empty() {
-                            self.render_formatted_content(ui, &msg.content);
+                            self.render_formatted_content(ui, &msg.id, &msg.content);
                         }
 
                         // Attachments: images inline (fit into 400x300, click = full size), other files as a card
@@ -751,7 +750,7 @@ impl CillhubApp {
                         .inner_margin(Margin::symmetric(6, 2))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new(t(&self.locale, "game.open_party").to_uppercase())
+                                RichText::new(tr("Open Party").to_uppercase())
                                     .font(display_font(11.0))
                                     .color(LEAGUE_TEAL),
                             );
@@ -796,7 +795,7 @@ impl CillhubApp {
                 ui.painter().text(
                     btn_r.center(),
                     Align2::CENTER_CENTER,
-                    t(&self.locale, "game.join_party").to_uppercase(),
+                    tr("Join Party").to_uppercase(),
                     display_font(14.5),
                     Color32::BLACK,
                 );
@@ -807,33 +806,195 @@ impl CillhubApp {
         );
     }
 
-    fn render_formatted_content(&self, ui: &mut Ui, content: &str) {
-        if content.contains("```") {
-            for (idx, part) in content.split("```").enumerate() {
-                if idx % 2 == 1 {
+    /// Message text through the web client's Markdown rules (see crate::markdown).
+    fn render_formatted_content(&mut self, ui: &mut Ui, msg_id: &str, content: &str) {
+        let gid = self.selected_guild_id.clone();
+        let state = &self.state;
+        let user = |id: &str| {
+            let m = gid.as_ref().and_then(|g| state.members.get(g)).and_then(|m| m.get(id));
+            m.and_then(|m| m.nick.clone())
+                .or_else(|| state.users.get(id).map(|u| u.display_name().to_string()))
+        };
+        let role = |id: &str| {
+            let g = gid.as_ref().and_then(|g| state.guilds.get(g));
+            g.and_then(|g| g.roles.iter().find(|r| r.id == id)).map(|r| r.name.clone())
+        };
+        let channel = |id: &str| state.channels.get(id).and_then(|c| c.name.clone());
+        let time = |unix: i64, style: char| unix_time(unix, style);
+        let ctx = crate::markdown::Ctx { user: &user, role: &role, channel: &channel, time: &time };
+        let blocks = crate::markdown::parse(content, &ctx);
+        self.render_md_blocks(ui, msg_id, &blocks);
+    }
+
+    fn render_md_blocks(&mut self, ui: &mut Ui, msg_id: &str, blocks: &[crate::markdown::Block]) {
+        use crate::markdown::Block;
+        for b in blocks {
+            match b {
+                Block::Text(spans) => self.md_line(ui, msg_id, spans, ui_font(15.0), TEXT),
+                Block::Heading(level, spans) => {
+                    ui.add_space(6.0);
+                    let size = [22.5, 18.75, 15.0][(*level as usize - 1).min(2)];
+                    self.md_line(ui, msg_id, spans, bold_font(size), TEXT_HEADER);
+                    ui.add_space(2.0);
+                }
+                Block::Sub(spans) => self.md_line(ui, msg_id, spans, ui_font(12.0), TEXT_MUTED),
+                Block::Item(depth, marker, spans) => {
+                    ui.horizontal_top(|ui| {
+                        ui.add_space(8.0 + 24.0 * *depth as f32);
+                        ui.spacing_mut().item_spacing.x = 6.0;
+                        ui.label(RichText::new(marker).font(ui_font(15.0)).color(TEXT));
+                        ui.vertical(|ui| self.md_line(ui, msg_id, spans, ui_font(15.0), TEXT));
+                    });
+                }
+                Block::Quote(inner) => {
+                    // `.content blockquote`: 3px accent bar, light sidebar tint
+                    let fill = BG_SIDEBAR.gamma_multiply(0.55);
+                    let resp = Frame::new()
+                        .fill(fill)
+                        .inner_margin(Margin { left: 12, right: 10, top: 2, bottom: 2 })
+                        .outer_margin(Margin::symmetric(0, 4))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            self.render_md_blocks(ui, msg_id, inner)
+                        });
+                    let r = resp.response.rect;
+                    let bar = Rect::from_min_size(r.min, Vec2::new(3.0, r.height()));
+                    ui.painter().rect_filled(bar, 0.0, ACCENT);
+                }
+                Block::Code { lang, code } => {
+                    // `.code-block`: rail fill, border, 13.5px mono, language head with a copy button
                     Frame::new()
                         .fill(BG_RAIL)
                         .stroke(Stroke::new(1.0_f32, BORDER))
                         .corner_radius(CornerRadius::same(2))
-                        .inner_margin(Margin::same(10))
+                        .outer_margin(Margin::symmetric(0, 6))
                         .show(ui, |ui| {
-                            ui.label(
-                                RichText::new(part.trim())
-                                    .font(mono_font(12.5))
-                                    .color(TEXT_HEADER),
-                            );
+                            ui.set_max_width(ui.available_width() * 0.9);
+                            Frame::new()
+                                .fill(BG_SIDEBAR.lerp_to_gamma(BG_RAIL, 0.35))
+                                .inner_margin(Margin { left: 12, right: 10, top: 5, bottom: 5 })
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            RichText::new(lang.as_deref().unwrap_or("").to_lowercase())
+                                                .font(bold_font(12.0))
+                                                .color(TEXT_MUTED),
+                                        );
+                                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                            let copy = ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(tr("Copy")).font(ui_font(12.0)).color(TEXT_MUTED),
+                                                )
+                                                .sense(Sense::click()),
+                                            );
+                                            if copy.on_hover_text(tr("Copy code")).clicked() {
+                                                ui.ctx().copy_text(code.clone());
+                                            }
+                                        });
+                                    });
+                                });
+                            let r = ui.min_rect();
+                            ui.painter().hline(r.x_range(), r.max.y, Stroke::new(1.0_f32, BORDER));
+                            Frame::new().inner_margin(Margin::symmetric(12, 8)).show(ui, |ui| {
+                                let lines: Vec<&str> = code.split('\n').collect();
+                                let numbered = lines.len() >= 3;
+                                for (i, l) in lines.iter().enumerate() {
+                                    ui.horizontal_top(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 12.0;
+                                        if numbered {
+                                            let (r, _) = ui.allocate_exact_size(Vec2::new(28.0, 18.0), Sense::hover());
+                                            ui.painter().text(
+                                                r.right_center(),
+                                                Align2::RIGHT_CENTER,
+                                                (i + 1).to_string(),
+                                                mono_font(11.5),
+                                                TEXT_MUTED.gamma_multiply(0.55),
+                                            );
+                                        }
+                                        ui.label(RichText::new(*l).font(mono_font(13.5)).color(TEXT));
+                                    });
+                                }
+                            });
                         });
-                } else if !part.trim().is_empty() {
-                    ui.label(
-                        RichText::new(part.trim())
-                            .font(ui_font(14.5))
-                            .color(TEXT),
-                    );
                 }
             }
-        } else {
-            ui.label(RichText::new(content).font(ui_font(14.5)).color(TEXT));
         }
+    }
+
+    /// One run of styled text; clicks open links and reveal spoilers.
+    fn md_line(
+        &mut self,
+        ui: &mut Ui,
+        msg_id: &str,
+        spans: &[crate::markdown::Span],
+        font: egui::FontId,
+        color: Color32,
+    ) {
+        use egui::text::{LayoutJob, TextFormat};
+        let mut job = LayoutJob::default();
+        let mut ranges = Vec::new();
+        for sp in spans {
+            let st = sp.style;
+            let hidden = st.spoiler.is_some_and(|n| !self.revealed_spoilers.contains(&(msg_id.to_string(), n)));
+            let mut f = TextFormat {
+                font_id: if st.bold || st.mention {
+                    bold_font(font.size)
+                } else if st.code {
+                    mono_font(font.size * 0.85)
+                } else {
+                    font.clone()
+                },
+                color,
+                italics: st.italic,
+                ..Default::default()
+            };
+            if st.code {
+                f.background = BG_SIDEBAR;
+            }
+            if st.mention {
+                f.background = ACCENT.gamma_multiply(0.18);
+                f.color = TEXT_HEADER;
+            }
+            if sp.link.is_some() {
+                f.color = FOCUS;
+                f.underline = Stroke::new(1.0_f32, FOCUS);
+            }
+            if st.underline {
+                f.underline = Stroke::new(1.0_f32, f.color);
+            }
+            if st.strike {
+                f.strikethrough = Stroke::new(1.0_f32, f.color);
+            }
+            if st.spoiler.is_some() {
+                f.background = if hidden { BG_RAIL } else { Color32::from_white_alpha(23) };
+            }
+            if hidden {
+                f.color = BG_RAIL;
+                f.underline = Stroke::NONE;
+                f.strikethrough = Stroke::NONE;
+            }
+            let start = job.text.chars().count();
+            job.append(&sp.text, 0.0, f);
+            ranges.push((start..start + sp.text.chars().count(), sp, hidden));
+        }
+        job.wrap.max_width = ui.available_width();
+        let (pos, galley, resp) = egui::Label::new(job).sense(Sense::click()).layout_in_ui(ui);
+        let hit = resp.hover_pos().and_then(|p| {
+            let i = galley.cursor_from_pos(p - pos).ccursor.index;
+            ranges.iter().find(|(r, sp, hidden)| r.contains(&i) && (*hidden || sp.link.is_some()))
+        });
+        if let Some((_, sp, hidden)) = hit {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            if resp.clicked() {
+                if *hidden {
+                    self.revealed_spoilers.insert((msg_id.to_string(), sp.style.spoiler.unwrap_or(0)));
+                } else if let Some(url) = &sp.link {
+                    report(&mut self.status_banner, open::that(url));
+                }
+            }
+        }
+        ui.painter().galley(pos, galley, color);
     }
 
     fn render_composer(&mut self, ui: &mut Ui, ch_name: &str) {
@@ -1359,6 +1520,45 @@ impl CillhubApp {
     }
 }
 
+/// Hour and minute in the UI language (web appearance/format.ts clock()).
+fn clock(t: &chrono::NaiveDateTime) -> String {
+    t.format(if crate::i18n::is_german() { "%H:%M" } else { "%I:%M %p" }).to_string()
+}
+
+fn short_date(t: &chrono::NaiveDateTime) -> String {
+    t.format(if crate::i18n::is_german() { "%-d.%-m.%Y" } else { "%-m/%-d/%Y" }).to_string()
+}
+
+/// "Today at 11:10 PM" like the web's stamp(), in local time; `now` is local too.
+pub fn stamp_at(t: chrono::NaiveDateTime, now: chrono::NaiveDateTime) -> String {
+    match (now.date() - t.date()).num_days() {
+        0 => trf("Today at {time}", &[("time", &clock(&t))]),
+        1 => trf("Yesterday at {time}", &[("time", &clock(&t))]),
+        _ => format!("{} {}", short_date(&t), clock(&t)),
+    }
+}
+
+/// A server time stamp (RFC 3339, UTC) as the web shows it, in the local time zone.
+pub fn stamp(iso: &str) -> String {
+    match chrono::DateTime::parse_from_rfc3339(iso) {
+        Ok(t) => stamp_at(t.with_timezone(&chrono::Local).naive_local(), chrono::Local::now().naive_local()),
+        Err(_) => iso.to_string(),
+    }
+}
+
+/// <t:unix:style> in local time: t/T time, d/D date, the rest date and time.
+fn unix_time(unix: i64, style: char) -> String {
+    use chrono::TimeZone;
+    let Some(t) = chrono::Local.timestamp_opt(unix, 0).single().map(|t| t.naive_local()) else {
+        return unix.to_string();
+    };
+    match style {
+        't' | 'T' => clock(&t),
+        'd' | 'D' => short_date(&t),
+        _ => format!("{} {}", short_date(&t), clock(&t)),
+    }
+}
+
 /// Size of an inline image like the web client (chat/Attachments.tsx fit): only the types the
 /// hub serves inline, scaled down to fit 400x300. None = show a file card.
 pub fn inline_image_size(att: &crate::model::Attachment) -> Option<Vec2> {
@@ -1379,6 +1579,15 @@ pub fn inline_image_size(att: &crate::model::Attachment) -> Option<Vec2> {
 mod tests {
     use super::*;
     use crate::model::Attachment;
+
+    #[test]
+    fn stamps_like_the_web_client() {
+        let at = |s: &str| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M").unwrap();
+        let now = at("2026-11-11 09:00");
+        assert_eq!(stamp_at(at("2026-11-11 23:10"), now), "Today at 11:10 PM");
+        assert_eq!(stamp_at(at("2026-11-10 08:05"), now), "Yesterday at 08:05 AM");
+        assert_eq!(stamp_at(at("2026-11-01 13:00"), now), "11/1/2026 01:00 PM");
+    }
 
     #[test]
     fn inline_images_fit_like_the_web_client() {

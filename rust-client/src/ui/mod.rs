@@ -163,6 +163,8 @@ pub struct CillhubApp {
     pub show_composer_plus_menu: bool,
     pub reply_to_message: Option<Message>,
     pub editing_message_id: Option<String>,
+    /// Spoilers clicked open: (message id, spoiler index).
+    pub revealed_spoilers: std::collections::HashSet<(String, u16)>,
     pub search_query: String,
     pub quick_switcher_query: String,
     pub canvas_doc_input: String,
@@ -276,6 +278,7 @@ impl CillhubApp {
             show_composer_plus_menu: false,
             reply_to_message: None,
             editing_message_id: None,
+            revealed_spoilers: Default::default(),
             search_query: String::new(),
             quick_switcher_query: String::new(),
             canvas_doc_input: "# Arena Match Notes\n- Mid prio at 3:15\n- Objective control".to_string(),
@@ -1881,6 +1884,7 @@ impl CillhubApp {
         });
         crate::theme::set_custom_families_ready(families_ready);
 
+        crate::i18n::set_locale(&self.locale);
         self.process_background_events();
         while let Ok(paths) = self.picked_rx.try_recv() {
             self.pending_files.extend(paths);

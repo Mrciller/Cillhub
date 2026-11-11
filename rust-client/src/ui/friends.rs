@@ -2,7 +2,7 @@
 //! `client/src/components/Friends.tsx` and `client/src/components/ActiveNow.tsx`.
 
 use super::report;
-use crate::i18n::t;
+use crate::i18n::tr;
 use crate::model::{Channel, Relationship, User};
 use crate::theme::{
     bold_font, display_font, draw_avatar, draw_icon, draw_list_heading, icon_btn, palette::*,
@@ -28,7 +28,7 @@ impl CillhubApp {
                     let (ic_r, _) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover());
                     draw_icon(ui.painter(), ic_r, IconKind::People, TEXT_MUTED);
                     ui.label(
-                        RichText::new(t(&self.locale, "friends.title").to_uppercase())
+                        RichText::new(tr("Friends").to_uppercase())
                             .font(display_font(20.0))
                             .color(TEXT_HEADER),
                     );
@@ -41,10 +41,10 @@ impl CillhubApp {
                     );
 
                     for (tab, label) in [
-                        (FriendsTab::Online, t(&self.locale, "friends.online")),
-                        (FriendsTab::All, t(&self.locale, "friends.all")),
-                        (FriendsTab::Pending, t(&self.locale, "friends.pending")),
-                        (FriendsTab::Blocked, t(&self.locale, "friends.blocked")),
+                        (FriendsTab::Online, tr("Online")),
+                        (FriendsTab::All, tr("All")),
+                        (FriendsTab::Pending, tr("Pending")),
+                        (FriendsTab::Blocked, tr("Blocked")),
                     ] {
                         let active = self.friends_tab == tab;
                         if Self::friends_tab_pill(ui, &label, active, false).clicked() {
@@ -55,7 +55,7 @@ impl CillhubApp {
                     let add_active = self.friends_tab == FriendsTab::Add;
                     if Self::friends_tab_pill(
                         ui,
-                        &t(&self.locale, "friends.add"),
+                        tr("Add Friend"),
                         add_active,
                         true,
                     )

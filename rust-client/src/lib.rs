@@ -9,6 +9,7 @@ pub mod games;
 pub mod gateway;
 pub mod i18n;
 pub mod league;
+pub mod markdown;
 pub mod model;
 #[cfg(feature = "native-net")]
 pub mod native_gateway;

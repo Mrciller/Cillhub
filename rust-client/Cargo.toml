@@ -21,6 +21,8 @@ ed25519-dalek = "2"
 sha2 = "0.10"
 sysinfo = "0.33"
 regex = "1"
+# local time for message stamps (std has no time zones)
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 percent-encoding = "2.3"
 biquad = "0.4"
 nnnoiseless = "0.5"
