@@ -55,6 +55,8 @@ const NATIVE_DE: &[(&str, &str)] = &[
     ("Gateway reconnecting: {error}", "Verbindung wird wiederhergestellt: {error}"),
     ("Game invite", "Spieleinladung"),
     ("Only web links can be opened.", "Nur Weblinks können geöffnet werden."),
+    // this app has the arrows only, no drag and drop
+    ("Use roles to group your server members and assign permissions. Members use the color of their highest role. Use the arrows to change the hierarchy.", "Mit Rollen gruppierst du Servermitglieder und vergibst Berechtigungen. Mitglieder tragen die Farbe ihrer höchsten Rolle. Nutze die Pfeile, um die Hierarchie zu ändern."),
 ];
 
 fn table() -> &'static HashMap<&'static str, &'static str> {

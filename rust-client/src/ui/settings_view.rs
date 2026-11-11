@@ -557,7 +557,7 @@ impl CillhubApp {
     /// switches and the web's permission groups; Delete Role, Reset, Save Changes.
     fn roles_tab(&mut self, ui: &mut Ui, guild: &crate::model::Guild) {
         page_title(ui, tr("Roles"));
-        ui.label(RichText::new(tr("Use roles to group your server members and assign permissions. Members use the color of their highest role. Drag roles or use the arrows to change the hierarchy.")).font(ui_font(14.0)).color(TEXT_MUTED()));
+        ui.label(RichText::new(tr("Use roles to group your server members and assign permissions. Members use the color of their highest role. Use the arrows to change the hierarchy.")).font(ui_font(14.0)).color(TEXT_MUTED()));
         ui.add_space(16.0);
         let mut roles: Vec<Role> = guild.roles.clone();
         roles.sort_by(|a, b| b.position.cmp(&a.position).then(a.id.cmp(&b.id)));
