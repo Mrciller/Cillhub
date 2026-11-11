@@ -2103,6 +2103,30 @@ mod tests {
         assert!(seen.iter().any(|r| r.starts_with("GET /api/v9/channels/c_general/messages")), "{seen:?}");
     }
 
+    #[test]
+    fn votes_and_pins_follow_the_server() {
+        let mut app = CillhubApp::new(None, true);
+        let mut msg = app.state.messages["c_general"][0].clone();
+        msg.poll = Some(serde_json::from_value(serde_json::json!({"question": {"text": "Mode?"}, "answers": [{"answer_id": 1, "poll_media": {"text": "ARAM"}}]})).unwrap());
+        app.state.messages.get_mut("c_general").unwrap()[0] = msg.clone();
+        let (origin, hub) = fake_hub("{}", 1);
+        app.api = Some(ApiClient::new(origin, None));
+        app.vote_poll("c_general", &msg.id, 1, true);
+        settle(&mut app);
+        hub.join().unwrap();
+        assert_eq!(app.state.messages["c_general"][0], msg, "the count comes with the gateway event");
+        dispatch(&mut app, "MESSAGE_POLL_VOTE_ADD", serde_json::json!({"channel_id": "c_general", "message_id": msg.id, "user_id": "u_me", "answer_id": 1}));
+        let counts = &app.state.messages["c_general"][0].poll.as_ref().unwrap().results.as_ref().unwrap().answer_counts;
+        assert_eq!(counts[0].count, 1);
+
+        app.api = Some(ApiClient::new(Url::parse("http://localhost:9/").unwrap(), None));
+        let before = app.state.messages["c_general"].clone();
+        app.toggle_pin_message("c_general", &before[0]);
+        app.vote_poll("c_general", &msg.id, 1, false);
+        settle(&mut app);
+        assert_eq!(app.state.messages["c_general"], before, "a failed request changes nothing");
+    }
+
     /// Runs frames until background requests have answered (no-op while requests are synchronous).
     fn settle(_app: &mut CillhubApp) {}
 

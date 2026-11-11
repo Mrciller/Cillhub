@@ -416,10 +416,10 @@ impl CillhubApp {
 
     pub fn accept_friend(&mut self, user_id: &str) {
         if let Some(api) = &self.api {
-            report(&mut self.status_banner, api.put(
-                &format!("/users/@me/relationships/{user_id}"),
-                Some(json!({ "type": 1 })),
-            ));
+            let r = api.put(&format!("/users/@me/relationships/{user_id}"), Some(json!({ "type": 1 })));
+            if report(&mut self.status_banner, r).is_none() {
+                return;
+            }
         }
         if let Some(rel) = self.state.relationships.get_mut(user_id) {
             rel.kind = 1;
@@ -428,7 +428,9 @@ impl CillhubApp {
 
     pub fn remove_relationship(&mut self, user_id: &str) {
         if let Some(api) = &self.api {
-            report(&mut self.status_banner, api.delete(&format!("/users/@me/relationships/{user_id}")));
+            if report(&mut self.status_banner, api.delete(&format!("/users/@me/relationships/{user_id}"))).is_none() {
+                return;
+            }
         }
         self.state.relationships.remove(user_id);
     }

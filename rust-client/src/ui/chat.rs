@@ -1645,10 +1645,9 @@ impl CillhubApp {
         let new_pinned = !msg.pinned;
         if let Some(api) = &self.api {
             let path = format!("/channels/{channel_id}/pins/{}", msg.id);
-            if new_pinned {
-                report(&mut self.status_banner, api.put(&path, None));
-            } else {
-                report(&mut self.status_banner, api.delete(&path));
+            let r = if new_pinned { api.put(&path, None) } else { api.delete(&path) };
+            if report(&mut self.status_banner, r).is_none() {
+                return; // unchanged on the server
             }
         }
         if let Some(list) = self.state.messages.get_mut(channel_id) {
@@ -1730,11 +1729,9 @@ impl CillhubApp {
         if let Some(api) = &self.api {
             let path =
                 format!("/channels/{channel_id}/polls/{message_id}/answers/{answer_id}/@me");
-            if add {
-                report(&mut self.status_banner, api.put(&path, None));
-            } else {
-                report(&mut self.status_banner, api.delete(&path));
-            }
+            let r = if add { api.put(&path, None) } else { api.delete(&path) };
+            report(&mut self.status_banner, r);
+            return; // the gateway's MESSAGE_POLL_VOTE_ADD/REMOVE updates the count (no double count)
         }
         let me_id = self
             .state
