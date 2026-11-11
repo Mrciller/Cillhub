@@ -1,4 +1,5 @@
 use crate::model::{
+    parse,
     Activity, Call, Channel, ChannelCanvas, CustomStatus, Emoji, Guild, Member, Message,
     PollAnswerCount, PollResults, Presence, Reaction, ReadState, Ready, Relationship, Role,
     SavedMessage, ScheduledEvent, Sound, StageInstance, Sticker, User, UserGuildSettings,
@@ -38,7 +39,7 @@ impl State {
     pub fn apply(&mut self, name: &str, payload: Value) -> Result<bool, serde_json::Error> {
         match name {
             "READY" => {
-                let ready: Ready = serde_json::from_value(payload)?;
+                let ready: Ready = parse(payload)?;
                 self.session_id = Some(ready.session_id);
                 self.me = Some(ready.user.clone());
                 self.users.clear();
@@ -72,7 +73,8 @@ impl State {
                     self.user_settings = us;
                 }
                 for ugs in ready.user_guild_settings {
-                    self.user_guild_settings.insert(ugs.guild_id.clone(), ugs);
+                    self.user_guild_settings
+                        .insert(ugs.guild_id.clone().unwrap_or_else(|| "@me".into()), ugs);
                 }
                 for p in &ready.presences {
                     self.ingest_presence(p);
@@ -109,7 +111,7 @@ impl State {
                 } else {
                     payload
                 };
-                let guild: Guild = serde_json::from_value(payload)?;
+                let guild: Guild = parse(payload)?;
                 self.ingest_guild(guild);
             }
             "GUILD_DELETE" => {
@@ -125,7 +127,7 @@ impl State {
                     payload.get("guild_id").and_then(Value::as_str),
                     payload.get("role"),
                 ) {
-                    if let Ok(role) = serde_json::from_value::<Role>(role_val.clone()) {
+                    if let Ok(role) = parse::<Role>(role_val.clone()) {
                         if let Some(guild) = self.guilds.get_mut(gid) {
                             if let Some(existing) = guild.roles.iter_mut().find(|r| r.id == role.id)
                             {
@@ -148,7 +150,7 @@ impl State {
                 }
             }
             "GUILD_MEMBER_ADD" | "GUILD_MEMBER_UPDATE" => {
-                let member: Member = serde_json::from_value(payload.clone())?;
+                let member: Member = parse(payload.clone())?;
                 if let Some(u) = &member.user {
                     self.users.insert(u.id.clone(), u.clone());
                 }
@@ -184,7 +186,7 @@ impl State {
                         .get(payload.get("id").and_then(Value::as_str).unwrap_or("")),
                     payload,
                 )?;
-                let channel: Channel = serde_json::from_value(payload)?;
+                let channel: Channel = parse(payload)?;
                 for user in &channel.recipients {
                     self.users.insert(user.id.clone(), user.clone());
                 }
@@ -220,7 +222,7 @@ impl State {
             "THREAD_LIST_SYNC" => {
                 if let Some(threads) = payload.get("threads").and_then(Value::as_array) {
                     for t in threads {
-                        if let Ok(ch) = serde_json::from_value::<Channel>(t.clone()) {
+                        if let Ok(ch) = parse::<Channel>(t.clone()) {
                             self.channels.insert(ch.id.clone(), ch);
                         }
                     }
@@ -238,7 +240,7 @@ impl State {
                 }
             }
             "MESSAGE_CREATE" => {
-                let message: Message = serde_json::from_value(payload)?;
+                let message: Message = parse(payload)?;
                 if let Some(author) = &message.author {
                     self.users.insert(author.id.clone(), author.clone());
                 }
@@ -259,7 +261,7 @@ impl State {
                     if let Some(history) = self.messages.get_mut(channel) {
                         if let Some(old) = history.iter_mut().find(|m| m.id == id) {
                             *old =
-                                serde_json::from_value(merge_existing(Some(&*old), payload.clone())?)?;
+                                parse(merge_existing(Some(&*old), payload.clone())?)?;
                         }
                     }
                 }
@@ -312,7 +314,7 @@ impl State {
                 let uid = payload.get("user_id").and_then(Value::as_str);
                 let emoji = payload
                     .get("emoji")
-                    .and_then(|e| serde_json::from_value::<Emoji>(e.clone()).ok());
+                    .and_then(|e| parse::<Emoji>(e.clone()).ok());
                 let is_me = self.me.as_ref().map(|u| u.id.as_str()) == uid;
                 if let (Some(cid), Some(mid), Some(emoji)) = (cid, mid, emoji) {
                     if let Some(history) = self.messages.get_mut(cid) {
@@ -394,24 +396,22 @@ impl State {
                 }
             }
             "VOICE_STATE_UPDATE" => {
-                if let Ok(vs) = serde_json::from_value::<VoiceState>(payload) {
-                    if vs.channel_id.is_some() {
-                        self.voice_states.insert(vs.user_id.clone(), vs);
-                    } else {
-                        self.voice_states.remove(&vs.user_id);
-                    }
+                let vs: VoiceState = parse(payload)?;
+                if vs.channel_id.is_some() {
+                    self.voice_states.insert(vs.user_id.clone(), vs);
+                } else {
+                    self.voice_states.remove(&vs.user_id);
                 }
             }
             "PRESENCE_UPDATE" => {
                 self.ingest_presence(&payload);
             }
             "RELATIONSHIP_ADD" | "RELATIONSHIP_UPDATE" => {
-                if let Ok(rel) = serde_json::from_value::<Relationship>(payload) {
-                    if let Some(u) = &rel.user {
-                        self.users.insert(u.id.clone(), u.clone());
-                    }
-                    self.relationships.insert(rel.id.clone(), rel);
+                let rel: Relationship = parse(payload)?;
+                if let Some(u) = &rel.user {
+                    self.users.insert(u.id.clone(), u.clone());
                 }
+                self.relationships.insert(rel.id.clone(), rel);
             }
             "RELATIONSHIP_REMOVE" => {
                 if let Some(id) = payload.get("id").and_then(Value::as_str) {
@@ -424,7 +424,7 @@ impl State {
                         .get(payload.get("id").and_then(Value::as_str).unwrap_or("")),
                     payload,
                 )?;
-                let user: User = serde_json::from_value(payload)?;
+                let user: User = parse(payload)?;
                 if self.me.as_ref().is_some_and(|me| me.id == user.id) {
                     self.me = Some(user.clone());
                 }
@@ -432,19 +432,17 @@ impl State {
             }
             "USER_SETTINGS_UPDATE" => {
                 let merged = merge_existing(Some(&self.user_settings), payload)?;
-                if let Ok(us) = serde_json::from_value::<UserSettings>(merged) {
-                    self.user_settings = us;
-                }
+                let us: UserSettings = parse(merged)?;
+                self.user_settings = us;
             }
             "USER_GUILD_SETTINGS_UPDATE" => {
-                if let Ok(ugs) = serde_json::from_value::<UserGuildSettings>(payload) {
-                    self.user_guild_settings.insert(ugs.guild_id.clone(), ugs);
-                }
+                let ugs: UserGuildSettings = parse(payload)?;
+                self.user_guild_settings
+                    .insert(ugs.guild_id.clone().unwrap_or_else(|| "@me".into()), ugs);
             }
             "STAGE_INSTANCE_CREATE" | "STAGE_INSTANCE_UPDATE" => {
-                if let Ok(stage) = serde_json::from_value::<StageInstance>(payload) {
-                    self.stage_instances.insert(stage.channel_id.clone(), stage);
-                }
+                let stage: StageInstance = parse(payload)?;
+                self.stage_instances.insert(stage.channel_id.clone(), stage);
             }
             "STAGE_INSTANCE_DELETE" => {
                 if let Some(cid) = payload.get("channel_id").and_then(Value::as_str) {
@@ -452,16 +450,15 @@ impl State {
                 }
             }
             "GUILD_SCHEDULED_EVENT_CREATE" | "GUILD_SCHEDULED_EVENT_UPDATE" => {
-                if let Ok(ev) = serde_json::from_value::<ScheduledEvent>(payload) {
-                    let list = self
-                        .scheduled_events
-                        .entry(ev.guild_id.clone())
-                        .or_default();
-                    if let Some(existing) = list.iter_mut().find(|e| e.id == ev.id) {
-                        *existing = ev;
-                    } else {
-                        list.push(ev);
-                    }
+                let ev: ScheduledEvent = parse(payload)?;
+                let list = self
+                    .scheduled_events
+                    .entry(ev.guild_id.clone())
+                    .or_default();
+                if let Some(existing) = list.iter_mut().find(|e| e.id == ev.id) {
+                    *existing = ev;
+                } else {
+                    list.push(ev);
                 }
             }
             "GUILD_SCHEDULED_EVENT_DELETE" => {
@@ -481,7 +478,7 @@ impl State {
                 ) {
                     if let (Some(guild), Ok(list)) = (
                         self.guilds.get_mut(gid),
-                        serde_json::from_value::<Vec<Emoji>>(emojis.clone()),
+                        parse::<Vec<Emoji>>(emojis.clone()),
                     ) {
                         guild.emojis = list;
                     }
@@ -494,25 +491,24 @@ impl State {
                 ) {
                     if let (Some(guild), Ok(list)) = (
                         self.guilds.get_mut(gid),
-                        serde_json::from_value::<Vec<Sticker>>(stickers.clone()),
+                        parse::<Vec<Sticker>>(stickers.clone()),
                     ) {
                         guild.stickers = list;
                     }
                 }
             }
             "GUILD_SOUNDBOARD_SOUND_CREATE" | "GUILD_SOUNDBOARD_SOUND_UPDATE" => {
-                if let Ok(sound) = serde_json::from_value::<Sound>(payload) {
-                    if let Some(gid) = &sound.guild_id {
-                        if let Some(guild) = self.guilds.get_mut(gid) {
-                            if let Some(existing) = guild
-                                .soundboard_sounds
-                                .iter_mut()
-                                .find(|s| s.sound_id == sound.sound_id)
-                            {
-                                *existing = sound;
-                            } else {
-                                guild.soundboard_sounds.push(sound);
-                            }
+                let sound: Sound = parse(payload)?;
+                if let Some(gid) = &sound.guild_id {
+                    if let Some(guild) = self.guilds.get_mut(gid) {
+                        if let Some(existing) = guild
+                            .soundboard_sounds
+                            .iter_mut()
+                            .find(|s| s.sound_id == sound.sound_id)
+                        {
+                            *existing = sound;
+                        } else {
+                            guild.soundboard_sounds.push(sound);
                         }
                     }
                 }
@@ -528,9 +524,8 @@ impl State {
                 }
             }
             "CALL_CREATE" | "CALL_UPDATE" => {
-                if let Ok(call) = serde_json::from_value::<Call>(payload) {
-                    self.calls.insert(call.channel_id.clone(), call);
-                }
+                let call: Call = parse(payload)?;
+                self.calls.insert(call.channel_id.clone(), call);
             }
             "CALL_DELETE" => {
                 if let Some(cid) = payload.get("channel_id").and_then(Value::as_str) {
@@ -538,14 +533,12 @@ impl State {
                 }
             }
             "CHANNEL_CANVAS_UPDATE" => {
-                if let Ok(canvas) = serde_json::from_value::<ChannelCanvas>(payload) {
-                    self.canvases.insert(canvas.channel_id.clone(), canvas);
-                }
+                let canvas: ChannelCanvas = parse(payload)?;
+                self.canvases.insert(canvas.channel_id.clone(), canvas);
             }
             "WATCH_SESSION_UPDATE" => {
-                if let Ok(ws) = serde_json::from_value::<WatchSession>(payload) {
-                    self.watch_sessions.insert(ws.channel_id.clone(), ws);
-                }
+                let ws: WatchSession = parse(payload)?;
+                self.watch_sessions.insert(ws.channel_id.clone(), ws);
             }
             "WATCH_SESSION_DELETE" => {
                 if let Some(cid) = payload.get("channel_id").and_then(Value::as_str) {
@@ -553,16 +546,15 @@ impl State {
                 }
             }
             "SAVED_MESSAGE_CREATE" | "SAVED_MESSAGE_UPDATE" => {
-                if let Ok(sm) = serde_json::from_value::<SavedMessage>(payload) {
-                    if let Some(existing) = self
-                        .saved_messages
-                        .iter_mut()
-                        .find(|s| s.message_id == sm.message_id)
-                    {
-                        *existing = sm;
-                    } else {
-                        self.saved_messages.insert(0, sm);
-                    }
+                let sm: SavedMessage = parse(payload)?;
+                if let Some(existing) = self
+                    .saved_messages
+                    .iter_mut()
+                    .find(|s| s.message_id == sm.message_id)
+                {
+                    *existing = sm;
+                } else {
+                    self.saved_messages.insert(0, sm);
                 }
             }
             "SAVED_MESSAGE_DELETE" => {
@@ -572,9 +564,8 @@ impl State {
                 }
             }
             "MESSAGE_REMINDER_DUE" => {
-                if let Ok(sm) = serde_json::from_value::<SavedMessage>(payload) {
-                    self.due_reminders.push(sm);
-                }
+                let sm: SavedMessage = parse(payload)?;
+                self.due_reminders.push(sm);
             }
             "TYPING_START" => {
                 if let (Some(cid), Some(uid)) = (
@@ -644,7 +635,7 @@ impl State {
         let Some(uid) = uid else { return };
         if let Some(user_obj) = p.get("user") {
             if user_obj.get("username").is_some() {
-                if let Ok(u) = serde_json::from_value::<User>(user_obj.clone()) {
+                if let Ok(u) = parse::<User>(user_obj.clone()) {
                     self.users.insert(u.id.clone(), u);
                 }
             }
@@ -656,10 +647,10 @@ impl State {
             .to_string();
         let custom_status = p
             .get("custom_status")
-            .and_then(|cs| serde_json::from_value::<CustomStatus>(cs.clone()).ok());
+            .and_then(|cs| parse::<CustomStatus>(cs.clone()).ok());
         let activities = p
             .get("activities")
-            .and_then(|a| serde_json::from_value::<Vec<Activity>>(a.clone()).ok())
+            .and_then(|a| parse::<Vec<Activity>>(a.clone()).ok())
             .unwrap_or_default();
         self.presences.insert(
             uid.to_string(),
@@ -679,6 +670,28 @@ impl State {
             }
         }
         self.messages.insert(channel_id, messages);
+    }
+
+    /// Stores a guild's member list from GET /guilds/{id}/members (READY carries none).
+    pub fn set_members(&mut self, guild_id: &str, list: Value) -> Result<(), serde_json::Error> {
+        let list: Vec<Value> = parse(list)?;
+        let map = self.members.entry(guild_id.to_string()).or_default();
+        for item in list {
+            let member: Member = match parse(item) {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!("cillhub: skipped member of {guild_id}: {e}");
+                    continue;
+                }
+            };
+            if let Some(u) = &member.user {
+                self.users.insert(u.id.clone(), u.clone());
+            }
+            if let Some(uid) = member.resolved_user_id() {
+                map.insert(uid.to_string(), member);
+            }
+        }
+        Ok(())
     }
 
     pub fn user_status(&self, user_id: &str) -> &str {
@@ -782,13 +795,70 @@ mod tests {
     }
 
     #[test]
+    fn ready_from_a_real_hub() {
+        let ready: Value = serde_json::from_str(include_str!("fixtures/ready-hub.json")).unwrap();
+        let mut state = State::default();
+        state.apply("READY", ready).unwrap();
+        assert_eq!(state.me.as_ref().unwrap().username, "alex");
+        let guild = state.sorted_guilds()[0].clone();
+        assert_eq!(guild.name, "Pixel Lounge");
+        assert_eq!(guild.roles.len(), 4);
+        let names: Vec<_> = state.channels.values().filter_map(|c| c.name.clone()).collect();
+        for want in ["general", "dev-talk", "screenshots", "off-topic", "General"] {
+            assert!(names.iter().any(|n| n == want), "missing channel {want}");
+        }
+        let friends: Vec<_> = state.relationships.values().filter(|r| r.kind == 1).collect();
+        assert_eq!(friends[0].user.as_ref().unwrap().username, "sam");
+        let dm = state.channels.values().find(|c| c.kind == 1).unwrap();
+        assert_eq!(dm.display_name(Some("x")), "Sam");
+        assert_eq!(state.user_status(&state.me.as_ref().unwrap().id), "online");
+
+        // READY has no members; the client loads them over REST like the web client.
+        let gid = guild.id.clone();
+        let members = json!([
+            {"user": {"id": "1", "username": "alex", "global_name": "Alex", "avatar": null}, "nick": null, "roles": [], "joined_at": "2026-11-10T00:00:00Z", "communication_disabled_until": null},
+            {"user": {"id": "2", "username": "sam"}, "nick": null, "roles": [guild.roles[3].id], "joined_at": null},
+            {"nick": "broken: no user"}
+        ]);
+        state.set_members(&gid, members).unwrap();
+        assert_eq!(state.members[&gid].len(), 2);
+        assert_eq!(state.members[&gid]["2"].roles.len(), 1);
+    }
+
+    #[test]
+    fn ready_tolerates_odd_shapes() {
+        let mut state = State::default();
+        state
+            .apply(
+                "READY",
+                json!({
+                    "session_id": "s", "user": {"id": "u", "username": "kim"},
+                    "user_guild_settings": [{"guild_id": null, "muted": true}, {"guild_id": "g"}],
+                    "user_settings": {"animate_emoji": "hover", "custom_themes": [{"id": "t", "name": "Night", "gradient": null}], "theme": "light"},
+                    "guilds": [{"id": "g", "name": "Ok", "members": "not a list", "channels": [{"id": "c", "type": 0, "position": null}, {"type": 0}]}, {"name": "no id"}],
+                    "read_state": {"entries": [{"id": "c", "last_message_id": null}]},
+                    "brand_new_field": {"x": 1}
+                }),
+            )
+            .unwrap();
+        assert_eq!(state.guilds.len(), 1);
+        assert!(state.channels.contains_key("c"));
+        assert!(state.user_guild_settings["@me"].muted);
+        assert_eq!(state.user_settings.theme.as_deref(), Some("light"));
+        assert_eq!(state.user_settings.custom_themes[0].name, "Night");
+        assert!(state.read_states.contains_key("c"));
+        // A broken event is an error for the caller to report, not a silent no-op.
+        assert!(state.apply("VOICE_STATE_UPDATE", json!({"channel_id": "c"})).is_err());
+    }
+
+    #[test]
     fn presence_and_voice_state_updates() {
         let mut state = State::default();
         state
             .apply(
                 "PRESENCE_UPDATE",
                 json!({
-                    "user": {"id": "u1", "username": "Faker"},
+                    "user": {"id": "u1", "username": "jordan"},
                     "status": "online",
                     "activities": [{"type": 0, "name": "League of Legends", "timestamps": {"start": 1000}}]
                 }),

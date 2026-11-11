@@ -3,6 +3,7 @@
 //! `.auth-brand` badge, `Barlow Condensed` display headings (`READY UP` / `JOIN THE ROSTER`),
 //! `.server-choice` selector (Main Hub / Betacord / Private Node), and styled inputs/buttons.
 
+use super::report;
 use crate::api::normalize_server_url;
 use crate::config::HUB_URL;
 use crate::theme::{
@@ -113,7 +114,7 @@ impl CillhubApp {
                                     {
                                         self.settings.server_target = "hub".to_string();
                                         self.auth_server_url = HUB_URL.to_string();
-                                        let _ = self.settings.save();
+                                        report(&mut self.status_banner, self.settings.save());
                                     }
 
                                     if Self::server_tab_btn(
@@ -128,7 +129,7 @@ impl CillhubApp {
                                         self.settings.server_target = "betacord".to_string();
                                         self.auth_server_url =
                                             "https://betacord.cillerian.org".to_string();
-                                        let _ = self.settings.save();
+                                        report(&mut self.status_banner, self.settings.save());
                                     }
 
                                     if Self::server_tab_btn(
@@ -145,7 +146,7 @@ impl CillhubApp {
                                             self.auth_server_url =
                                                 self.settings.custom_node_url.clone();
                                         }
-                                        let _ = self.settings.save();
+                                        report(&mut self.status_banner, self.settings.save());
                                     }
                                 });
 
@@ -648,7 +649,7 @@ impl CillhubApp {
                         "hub".to_string()
                     };
                     self.auth_server_url = alt_url.to_string();
-                    let _ = self.settings.save();
+                    report(&mut self.status_banner, self.settings.save());
                     origin = alt_origin;
                     result = Ok(alt_data);
                 }

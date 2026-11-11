@@ -3,6 +3,7 @@
 //! Server Settings & Role Permissions, Create/Join Server, Create Poll, Send Later,
 //! Quick Switcher, and Threads/Pins/Saved/Search/Canvas Drawers.
 
+use super::report;
 use crate::league::{format_game_invite_url, GameInviteData};
 use crate::model::{
     Channel, Guild, Message, Poll, PollAnswer, PollMedia, PollResults, Role,
@@ -381,7 +382,7 @@ impl CillhubApp {
                                             exe: self.custom_game_exe_input.trim().to_string(),
                                             name: self.custom_game_name_input.trim().to_string(),
                                         });
-                                        let _ = self.settings.save();
+                                        report(&mut self.status_banner, self.settings.save());
                                         self.custom_game_exe_input.clear();
                                         self.custom_game_name_input.clear();
                                         self.poll_game_activity(true);
@@ -408,7 +409,7 @@ impl CillhubApp {
                                 }
                                 if let Some(idx) = remove_idx {
                                     self.settings.custom_games.remove(idx);
-                                    let _ = self.settings.save();
+                                    report(&mut self.status_banner, self.settings.save());
                                     self.poll_game_activity(true);
                                 }
                             }
@@ -473,7 +474,7 @@ impl CillhubApp {
                                 if changed {
                                     self.audio_processor.update_config(&cfg);
                                     self.settings.audio_config = cfg;
-                                    let _ = self.settings.save();
+                                    report(&mut self.status_banner, self.settings.save());
                                 }
 
                                 ui.add_space(10.0);
@@ -524,7 +525,7 @@ impl CillhubApp {
                                     .changed()
                                 {
                                     apply_theme(ctx, &self.theme_name, self.settings.font_scale);
-                                    let _ = self.settings.save();
+                                    report(&mut self.status_banner, self.settings.save());
                                 }
                                 if ui
                                     .checkbox(
@@ -562,7 +563,7 @@ impl CillhubApp {
                                     )
                                     .changed()
                                 {
-                                    let _ = self.settings.save();
+                                    report(&mut self.status_banner, self.settings.save());
                                 }
                                 if ui
                                     .checkbox(
@@ -571,8 +572,8 @@ impl CillhubApp {
                                     )
                                     .changed()
                                 {
-                                    let _ = set_autostart(self.settings.open_on_startup);
-                                    let _ = self.settings.save();
+                                    report(&mut self.status_banner, set_autostart(self.settings.open_on_startup));
+                                    report(&mut self.status_banner, self.settings.save());
                                 }
                                 ui.add_space(10.0);
                                 ui.label(
@@ -801,13 +802,13 @@ impl CillhubApp {
                     .clicked()
                 {
                     if let (Some(api), Some(cid)) = (&self.api, &self.selected_channel_id) {
-                        let _ = api.post(
+                        report(&mut self.status_banner, api.post(
                             &format!("/channels/{cid}/scheduled-messages"),
                             json!({
                                 "content": self.composer_text,
                                 "send_at": self.schedule_time_input,
                             }),
-                        );
+                        ));
                     }
                     self.status_banner = Some("Message scheduled!".to_string());
                     self.composer_text.clear();
@@ -1028,10 +1029,10 @@ impl CillhubApp {
                     );
                     if ui.button("Save Canvas").clicked() {
                         if let (Some(api), Some(cid)) = (&self.api, &self.selected_channel_id) {
-                            let _ = api.put(
+                            report(&mut self.status_banner, api.put(
                                 &format!("/channels/{cid}/canvas"),
                                 Some(json!({ "doc": self.canvas_doc_input })),
-                            );
+                            ));
                         }
                         self.status_banner = Some("Channel canvas updated!".to_string());
                     }
@@ -1050,12 +1051,12 @@ impl CillhubApp {
                 &format!("/guilds/{guild_id}/channels"),
                 json!({ "name": name, "type": kind }),
             ) {
-                let _ = self.state.apply("CHANNEL_CREATE", val);
+                report(&mut self.status_banner, self.state.apply("CHANNEL_CREATE", val));
                 return;
             }
         }
         let cid = format!("ch_{}", self.next_local_id());
-        let _ = self.state.apply(
+        report(&mut self.status_banner, self.state.apply(
             "CHANNEL_CREATE",
             json!({
                 "id": cid,
@@ -1063,15 +1064,15 @@ impl CillhubApp {
                 "name": name,
                 "type": kind,
             }),
-        );
+        ));
     }
 
     fn update_role_permissions(&mut self, guild_id: &str, role_id: &str, bits: u64) {
         if let Some(api) = &self.api {
-            let _ = api.patch(
+            report(&mut self.status_banner, api.patch(
                 &format!("/guilds/{guild_id}/roles/{role_id}"),
                 json!({ "permissions": bits.to_string() }),
-            );
+            ));
         }
         if let Some(g) = self.state.guilds.get_mut(guild_id) {
             if let Some(r) = g.roles.iter_mut().find(|r| r.id == role_id) {
@@ -1088,7 +1089,7 @@ impl CillhubApp {
         self.new_guild_name_input.clear();
         if let Some(api) = &self.api {
             if let Ok(val) = api.post("/guilds", json!({ "name": name })) {
-                let _ = self.state.apply("GUILD_CREATE", val);
+                report(&mut self.status_banner, self.state.apply("GUILD_CREATE", val));
                 return;
             }
         }
@@ -1179,10 +1180,10 @@ impl CillhubApp {
             results: Some(PollResults::default()),
         };
         if let Some(api) = &self.api {
-            let _ = api.post(
+            report(&mut self.status_banner, api.post(
                 &format!("/channels/{cid}/messages"),
                 json!({ "content": "", "poll": poll }),
-            );
+            ));
         }
         let msg = Message {
             id: format!("m_{}", self.next_local_id()),

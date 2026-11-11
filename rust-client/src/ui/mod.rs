@@ -36,6 +36,18 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 use url::Url;
 
+/// Logs a failed action and shows it in the status line instead of dropping it.
+pub fn report<T, E: std::fmt::Display>(banner: &mut Option<String>, r: Result<T, E>) -> Option<T> {
+    match r {
+        Ok(v) => Some(v),
+        Err(e) => {
+            eprintln!("cillhub: {e}");
+            *banner = Some(e.to_string());
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthMode {
     Login,
@@ -311,11 +323,11 @@ impl CillhubApp {
 
     pub fn complete_login(&mut self, origin: Url, token: String) {
         self.settings.saved_token = Some(token.clone());
-        let _ = self.settings.save();
+        report(&mut self.status_banner, self.settings.save());
         self.api = Some(ApiClient::new(origin.clone(), Some(token.clone())));
         let (ev_tx, ev_rx) = mpsc::channel();
         let (cmd_tx, cmd_rx) = mpsc::channel();
-        let _ = spawn_with_commands(origin, token, ev_tx, cmd_rx);
+        spawn_with_commands(origin, token, ev_tx, cmd_rx);
         self.gateway_rx = Some(ev_rx);
         self.gateway_cmd_tx = Some(cmd_tx);
         self.authenticated = true;
@@ -332,7 +344,7 @@ impl CillhubApp {
         self.api = None;
         self.authenticated = false;
         self.settings.saved_token = None;
-        let _ = self.settings.save();
+        report(&mut self.status_banner, self.settings.save());
         self.active_modal = None;
     }
 
@@ -555,7 +567,7 @@ impl CillhubApp {
 
     pub fn set_share_activity(&mut self, enabled: bool) {
         self.settings.share_activity = enabled;
-        let _ = self.settings.save();
+        report(&mut self.status_banner, self.settings.save());
         if !enabled {
             self.game_tracker.reset();
             self.current_game = None;
@@ -790,17 +802,32 @@ impl CillhubApp {
             return;
         }
         if let Some(api) = &self.api {
-            if let Ok(val) = api.get(&format!("/channels/{channel_id}/messages?limit=50")) {
+            if let Some(val) = report(
+                &mut self.status_banner,
+                api.get(&format!("/channels/{channel_id}/messages?limit=50")),
+            ) {
                 if let Some(arr) = val.as_array() {
                     let mut list = Vec::new();
                     for item in arr.iter().rev() {
-                        if let Ok(msg) = serde_json::from_value::<Message>(item.clone()) {
-                            list.push(msg);
+                        match crate::model::parse::<Message>(item.clone()) {
+                            Ok(msg) => list.push(msg),
+                            Err(e) => eprintln!("cillhub: skipped message: {e}"),
                         }
                     }
                     self.state.set_history(channel_id.to_string(), list);
                 }
             }
+        }
+    }
+
+    /// READY has no member lists; fetch them like the web client (GET /guilds/{id}/members).
+    pub fn load_members(&mut self, guild_id: &str) {
+        let Some(api) = &self.api else { return };
+        if let Some(list) = report(
+            &mut self.status_banner,
+            api.get(&format!("/guilds/{guild_id}/members?limit=1000")),
+        ) {
+            report(&mut self.status_banner, self.state.set_members(guild_id, list));
         }
     }
 
@@ -819,8 +846,9 @@ impl CillhubApp {
                 if let Some(arr) = val.as_array() {
                     let mut older = Vec::new();
                     for item in arr.iter().rev() {
-                        if let Ok(msg) = serde_json::from_value::<Message>(item.clone()) {
-                            older.push(msg);
+                        match crate::model::parse::<Message>(item.clone()) {
+                            Ok(msg) => older.push(msg),
+                            Err(e) => eprintln!("cillhub: skipped message: {e}"),
                         }
                     }
                     if let Some(existing) = self.state.messages.get_mut(channel_id) {
@@ -859,7 +887,7 @@ impl CillhubApp {
             let encoded =
                 percent_encoding::utf8_percent_encode(&q, percent_encoding::NON_ALPHANUMERIC)
                     .to_string();
-            let _ = api.get(&format!("/guilds/{gid}/messages/search?content={encoded}"));
+            report(&mut self.status_banner, api.get(&format!("/guilds/{gid}/messages/search?content={encoded}")));
         }
     }
 
@@ -874,7 +902,20 @@ impl CillhubApp {
             match ev {
                 GatewayEvent::Dispatch(name, payload) => {
                     let is_ready = name == "READY";
-                    let _ = self.state.apply(&name, payload);
+                    let new_guild = (name == "GUILD_CREATE")
+                        .then(|| payload.get("id").and_then(Value::as_str).map(String::from))
+                        .flatten();
+                    if let Err(e) = self.state.apply(&name, payload) {
+                        eprintln!("cillhub: {name} not applied: {e}");
+                        self.status_banner = Some(format!("Could not apply {name}: {e}"));
+                    }
+                    if is_ready {
+                        let ids: Vec<String> = self.state.guilds.keys().cloned().collect();
+                        ids.iter().for_each(|id| self.load_members(id));
+                    }
+                    if let Some(id) = new_guild {
+                        self.load_members(&id);
+                    }
                     if is_ready && self.selected_channel_id.is_none() {
                         if let Some(g) = self.state.sorted_guilds().first() {
                             let gid = g.id.clone();

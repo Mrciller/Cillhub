@@ -1,5 +1,52 @@
+use serde::de::{DeserializeOwned, Deserializer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// Parses a server object after dropping its null members, so a null where the model has a
+/// default (string, number, list) means "missing" instead of failing the whole object.
+pub fn parse<T: DeserializeOwned>(mut v: Value) -> Result<T, serde_json::Error> {
+    strip_nulls(&mut v);
+    serde_json::from_value(v)
+}
+
+fn strip_nulls(v: &mut Value) {
+    match v {
+        Value::Object(map) => {
+            map.retain(|_, x| !x.is_null());
+            map.values_mut().for_each(strip_nulls);
+        }
+        Value::Array(list) => list.iter_mut().for_each(strip_nulls),
+        _ => {}
+    }
+}
+
+/// A list field that keeps the items that parse and logs the rest. Accepts the hub's
+/// `{ "entries": [...] }` wrapper (user_guild_settings) and treats any other shape as empty.
+fn lenient_vec<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<Vec<T>, D::Error> {
+    let items = match Value::deserialize(d)? {
+        Value::Array(list) => list,
+        Value::Object(mut map) => match map.remove("entries") {
+            Some(Value::Array(list)) => list,
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
+    Ok(items
+        .into_iter()
+        .filter_map(|item| {
+            parse(item)
+                .map_err(|e| eprintln!("cillhub: skipped {}: {e}", std::any::type_name::<T>()))
+                .ok()
+        })
+        .collect())
+}
+
+/// A field whose wrong shape falls back to its default instead of failing the parent.
+fn lenient<'de, D: Deserializer<'de>, T: DeserializeOwned + Default>(d: D) -> Result<T, D::Error> {
+    Ok(parse(Value::deserialize(d)?)
+        .map_err(|e| eprintln!("cillhub: ignored {}: {e}", std::any::type_name::<T>()))
+        .unwrap_or_default())
+}
 
 /// Fields used by the common shell; `extra` preserves newer server fields.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -432,27 +479,27 @@ pub struct Guild {
     pub member_count: u32,
     #[serde(default)]
     pub features: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub roles: Vec<Role>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub channels: Vec<Channel>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub threads: Vec<Channel>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub members: Vec<Member>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub voice_states: Vec<VoiceState>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub presences: Vec<Value>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub emojis: Vec<Emoji>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub stickers: Vec<Sticker>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub soundboard_sounds: Vec<Sound>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub stage_instances: Vec<StageInstance>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub guild_scheduled_events: Vec<ScheduledEvent>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, Value>,
@@ -633,10 +680,18 @@ pub struct GuildFolder {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct CustomTheme {
     pub id: String,
-    pub name: String,
-    pub base: String,
     #[serde(default)]
-    pub vars: serde_json::Map<String, Value>,
+    pub name: String,
+    #[serde(default)]
+    pub background: String,
+    #[serde(default)]
+    pub surface: String,
+    #[serde(default)]
+    pub accent: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub gradient: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -656,9 +711,9 @@ pub struct UserSettings {
     #[serde(default)]
     pub enable_tts_command: bool,
     #[serde(default)]
-    pub animate_emoji: Option<bool>,
+    pub animate_emoji: Option<Value>,
     #[serde(default)]
-    pub animate_stickers: Option<u8>,
+    pub animate_stickers: Option<Value>,
     #[serde(default)]
     pub inline_attachment_media: Option<bool>,
     #[serde(default)]
@@ -679,10 +734,10 @@ pub struct UserSettings {
     pub guild_positions: Vec<String>,
     #[serde(default)]
     pub guild_folders: Vec<GuildFolder>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub custom_themes: Vec<CustomTheme>,
     #[serde(default)]
-    pub active_custom_theme_id: Option<String>,
+    pub active_theme: Option<String>,
     #[serde(default)]
     pub dyslexic_font: bool,
     #[serde(flatten)]
@@ -702,11 +757,13 @@ pub struct ChannelOverride {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct UserGuildSettings {
-    pub guild_id: String,
+    /// null = the DM settings entry; stored under "@me" like the web client.
+    #[serde(default)]
+    pub guild_id: Option<String>,
     #[serde(default)]
     pub muted: bool,
     #[serde(default)]
-    pub mute_Scheduled_events: bool,
+    pub mute_scheduled_events: bool,
     #[serde(default)]
     pub message_notifications: Option<u8>,
     #[serde(default)]
@@ -822,29 +879,29 @@ pub struct ScheduledMessage {
 pub struct Ready {
     pub session_id: String,
     pub user: User,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub guilds: Vec<Guild>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub private_channels: Vec<Channel>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub users: Vec<User>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub relationships: Vec<Relationship>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub read_state: Vec<ReadState>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
     pub user_settings: Option<UserSettings>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub user_guild_settings: Vec<UserGuildSettings>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub presences: Vec<Value>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub calls: Vec<Call>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub saved_messages: Vec<SavedMessage>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_vec")]
     pub watch_sessions: Vec<WatchSession>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
     pub notes: serde_json::Map<String, Value>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, Value>,

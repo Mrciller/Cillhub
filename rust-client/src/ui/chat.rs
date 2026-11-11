@@ -3,6 +3,7 @@
 //! grouped `.msg.head` message rows with 36px `draw_avatar` and hover `.toolbar`,
 //! notched `GameInviteCard`, and `.composer` bar with `+` popover menu.
 
+use super::report;
 use crate::i18n::t;
 use crate::league::{parse_game_invite, GameInviteData};
 use crate::model::{Channel, Emoji, Message, Reaction, SavedMessage};
@@ -586,7 +587,7 @@ impl CillhubApp {
                                             .color(TEXT_MUTED),
                                         );
                                         if ui.small_button("Open").clicked() {
-                                            let _ = open::that(&att.url);
+                                            report(&mut self.status_banner, open::that(&att.url));
                                         }
                                     });
                                 });
@@ -1005,10 +1006,10 @@ impl CillhubApp {
         if let Some(edit_id) = self.editing_message_id.take() {
             self.composer_text.clear();
             if let Some(api) = &self.api {
-                let _ = api.patch(
+                report(&mut self.status_banner, api.patch(
                     &format!("/channels/{cid}/messages/{edit_id}"),
                     json!({ "content": content }),
-                );
+                ));
             }
             if let Some(list) = self.state.messages.get_mut(&cid) {
                 if let Some(m) = list.iter_mut().find(|m| m.id == edit_id) {
@@ -1065,7 +1066,7 @@ impl CillhubApp {
 
     pub fn delete_message(&mut self, channel_id: &str, message_id: &str) {
         if let Some(api) = &self.api {
-            let _ = api.delete(&format!("/channels/{channel_id}/messages/{message_id}"));
+            report(&mut self.status_banner, api.delete(&format!("/channels/{channel_id}/messages/{message_id}")));
         }
         if let Some(list) = self.state.messages.get_mut(channel_id) {
             list.retain(|m| m.id != message_id);
@@ -1111,9 +1112,9 @@ impl CillhubApp {
             let path =
                 format!("/channels/{channel_id}/messages/{message_id}/reactions/{encoded}/@me");
             if already_me {
-                let _ = api.delete(&path);
+                report(&mut self.status_banner, api.delete(&path));
             } else {
-                let _ = api.put(&path, None);
+                report(&mut self.status_banner, api.put(&path, None));
             }
         }
     }
@@ -1123,9 +1124,9 @@ impl CillhubApp {
         if let Some(api) = &self.api {
             let path = format!("/channels/{channel_id}/pins/{}", msg.id);
             if new_pinned {
-                let _ = api.put(&path, None);
+                report(&mut self.status_banner, api.put(&path, None));
             } else {
-                let _ = api.delete(&path);
+                report(&mut self.status_banner, api.delete(&path));
             }
         }
         if let Some(list) = self.state.messages.get_mut(channel_id) {
@@ -1137,10 +1138,10 @@ impl CillhubApp {
 
     pub fn bookmark_message(&mut self, msg: &Message) {
         if let Some(api) = &self.api {
-            let _ = api.put(
+            report(&mut self.status_banner, api.put(
                 &format!("/users/@me/saved-messages/{}", msg.id),
                 Some(json!({ "channel_id": msg.channel_id })),
-            );
+            ));
         }
         if !self
             .state
@@ -1201,9 +1202,9 @@ impl CillhubApp {
             let path =
                 format!("/channels/{channel_id}/polls/{message_id}/answers/{answer_id}/@me");
             if add {
-                let _ = api.put(&path, None);
+                report(&mut self.status_banner, api.put(&path, None));
             } else {
-                let _ = api.delete(&path);
+                report(&mut self.status_banner, api.delete(&path));
             }
         }
         let me_id = self
@@ -1217,7 +1218,7 @@ impl CillhubApp {
         } else {
             "MESSAGE_POLL_VOTE_REMOVE"
         };
-        let _ = self.state.apply(
+        report(&mut self.status_banner, self.state.apply(
             ev,
             json!({
                 "channel_id": channel_id,
@@ -1225,17 +1226,17 @@ impl CillhubApp {
                 "user_id": me_id,
                 "answer_id": answer_id,
             }),
-        );
+        ));
     }
 
     fn send_attachment_demo(&mut self, channel_id: &str) {
         let content = "Uploaded attachment: `arena-clip-highlights.mp4`";
         if let Some(api) = &self.api {
-            let _ = api.upload_message(
+            report(&mut self.status_banner, api.upload_message(
                 channel_id,
                 &json!({ "content": content }),
                 &[("arena-notes.txt".to_string(), b"Cillhub Rust Client".to_vec())],
-            );
+            ));
         } else {
             self.send_message_to_selected(content);
         }
