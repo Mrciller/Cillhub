@@ -43,6 +43,7 @@ const NATIVE_DE: &[(&str, &str)] = &[
     ("Terms of use", "Nutzungsbedingungen"),
     ("Report illegal content", "Rechtswidrige Inhalte melden"),
     ("Tick the boxes above to create an account.", "Setze die Häkchen oben, um ein Konto zu erstellen."),
+    ("Open the website", "Website öffnen"),
     // the web shows these in English (missing in its dictionary)
     ("Active Now", "Gerade aktiv"),
     ("It's quiet for now…", "Gerade ist es ruhig …"),

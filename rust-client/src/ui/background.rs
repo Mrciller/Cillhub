@@ -88,6 +88,10 @@ impl CillhubApp {
         // their lookups are dropped with the session, and the next one may be another hub
         self.invite_cards.clear();
         self.invite_lookups = 0;
+        // a terms gate belongs to the session's server
+        if let Ok(mut g) = crate::api::TERMS_GATE.lock() {
+            *g = None;
+        }
         // node checks in flight are dropped too: run them again
         self.node_status = None;
         self.node_busy = false;

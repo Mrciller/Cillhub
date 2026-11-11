@@ -1977,6 +1977,29 @@ impl CillhubApp {
                 });
         }
 
+        // The server asks to accept its terms first (403 accept_terms): its message and a way to the website
+        let gate = crate::api::TERMS_GATE.lock().ok().and_then(|g| g.clone()).filter(|m| !m.is_empty());
+        if let (Some(msg), Some(origin)) = (gate, self.api.as_ref().map(|a| a.origin.to_string())) {
+            TopBottomPanel::top("terms_gate_panel")
+                .frame(Frame::new().fill(ACCENT_SOFT()).stroke(Stroke::new(1.0_f32, ACCENT())).inner_margin(Margin::symmetric(14, 6)))
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(&msg).strong().size(12.5).color(TEXT_HEADER()));
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            let close = ui.small_button(tr("Dismiss")).clicked();
+                            if ui.button(tr("Open the website")).clicked() {
+                                open_external(&mut self.status_banner, &origin);
+                            }
+                            if close {
+                                if let Ok(mut g) = crate::api::TERMS_GATE.lock() {
+                                    *g = Some(String::new());
+                                }
+                            }
+                        });
+                    });
+                });
+        }
+
         // Optional status notification banner at top
         if let Some(banner) = self.status_banner.clone() {
             TopBottomPanel::top("status_banner_panel")
