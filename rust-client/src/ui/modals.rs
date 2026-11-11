@@ -675,8 +675,31 @@ impl CillhubApp {
             // like the web: the last path part of an invite link
             _ => raw.split('/').filter(|p| !p.is_empty()).next_back().unwrap_or_default().to_string(),
         };
-        self.api_bg(true, move |api| api.post(&format!("/invites/{code}"), json!({})), |app, r| {
-            report(&mut app.status_banner, r);
+        self.join_invite(code);
+    }
+
+    /// `POST /invites/<code>` (Add a server, deep links, invite cards in messages), then opens the server like
+    /// the web's joinInvite. A failure shows on the code's invite card if there is one, else in the banner.
+    pub fn join_invite(&mut self, code: String) {
+        if let Some(c) = self.invite_cards.get_mut(&code) {
+            c.joining = true;
+            c.error = None;
+        }
+        let path = format!("/invites/{code}");
+        self.api_bg(true, move |api| api.post(&path, json!({})), move |app, r| match r {
+            Ok(v) => {
+                app.invite_cards.remove(&code); // the member count changed: look it up again
+                let gid = v.get("id").and_then(serde_json::Value::as_str).map(String::from);
+                if report(&mut app.status_banner, app.state.apply("GUILD_CREATE", v)).is_some() {
+                    if let Some(gid) = gid {
+                        app.open_guild(&gid);
+                    }
+                }
+            }
+            Err(e) => match app.invite_cards.get_mut(&code) {
+                Some(c) => (c.joining, c.error) = (false, Some(e.to_string())),
+                None => drop(report(&mut app.status_banner, Err::<(), _>(e))),
+            },
         });
     }
 

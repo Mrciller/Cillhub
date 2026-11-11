@@ -3,12 +3,14 @@
 //! grouped `.msg.head` message rows with 36px `draw_avatar` and hover `.toolbar`,
 //! notched `GameInviteCard`, and `.composer` bar with `+` popover menu.
 
+use super::modals::{primary_btn, secondary_btn};
 use super::{open_external, report};
 use crate::i18n::{tr, trf};
 use crate::league::{parse_game_invite, GameInviteData};
+use crate::invites::{invite_button, invite_codes, only_invite, InviteButton, InviteCard, InviteLookup, MAX_CARDS};
 use crate::model::{Channel, Emoji, Message, Reaction, SavedMessage};
 use crate::theme::{
-    bold_font, display_font, draw_avatar, draw_icon, icon_btn, mono_font, palette::*,
+    bold_font, display_font, draw_avatar, draw_icon, icon_btn, initials, mono_font, palette::*,
     show_notched_card, ui_font, IconKind,
 };
 use crate::ui::{CillhubApp, DrawerKind, ModalKind};
@@ -331,6 +333,10 @@ impl CillhubApp {
             .unwrap_or_else(|| "system".to_string());
         let author_game = self.state.user_game(&author_id).map(|g| g.name.clone());
         let game_invite = parse_game_invite(&msg.content);
+        let origin = self.api.as_ref().map(|a| a.origin.to_string()).unwrap_or_default();
+        let server_invites = if origin.is_empty() { Vec::new() } else { invite_codes(&msg.content, &origin, MAX_CARDS) };
+        let invite_only = !server_invites.is_empty() && only_invite(&msg.content, &origin);
+        let mine = self.state.me.as_ref().is_some_and(|me| me.id == author_id);
 
         if is_head {
             ui.add_space(10.0); // `.msg.head { margin-top: 10px }`
@@ -444,8 +450,12 @@ impl CillhubApp {
                                 ui.add_space(6.0);
                             }
                             self.render_game_invite_card(ui, &invite);
-                        } else if !msg.content.is_empty() {
+                        } else if !msg.content.is_empty() && !invite_only {
                             self.render_formatted_content(ui, &msg.id, &msg.content);
+                        }
+                        for code in &server_invites {
+                            ui.add_space(6.0);
+                            self.render_server_invite_card(ui, code, mine);
                         }
 
                         // Attachments: images inline (fit into 400x300, click = full size), other files as a card
@@ -1022,6 +1032,97 @@ impl CillhubApp {
                 }
             },
         );
+    }
+
+    /// `.invite-card` (chat/ServerInvite.tsx): a server invite link of this hub as a card with the server's
+    /// initials, name, member count and Join (Joined opens the server). Looked up once per code, off the UI thread.
+    pub fn render_server_invite_card(&mut self, ui: &mut Ui, code: &str, mine: bool) {
+        self.lookup_invite(code);
+        let card = self.invite_cards.get(code).cloned().unwrap_or_else(InviteCard::loading);
+        let button = invite_button(&card.lookup, |g| self.state.guilds.contains_key(g));
+        let width = ui.available_width().min(420.0);
+        show_notched_card(ui, BG_PANEL(), BORDER(), 8.0, None, None, Margin::symmetric(16, 12), |ui| {
+            ui.set_width(width - 32.0);
+            ui.spacing_mut().item_spacing.y = 10.0;
+            let label = if mine { tr("You sent an invite to join a server") } else { tr("You've been invited to join a server") };
+            ui.label(RichText::new(label.to_uppercase()).font(bold_font(11.5)).color(TEXT_MUTED()));
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 12.0;
+                let (icon, _) = ui.allocate_exact_size(Vec2::splat(48.0), Sense::hover());
+                ui.painter().rect_filled(icon, CornerRadius::same(12), BG_CARD());
+                let (abbr, fg) = match &card.lookup {
+                    InviteLookup::Found { name, .. } => (initials(name, 3), TEXT_HEADER()),
+                    InviteLookup::Invalid { .. } => ("?".to_string(), TEXT_MUTED()),
+                    InviteLookup::Loading => (String::new(), TEXT_MUTED()),
+                };
+                ui.painter().text(icon.center(), Align2::CENTER_CENTER, abbr, display_font(18.0), fg);
+                // button at the right end, the name column takes the rest
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if button != InviteButton::None {
+                        let joined = button == InviteButton::Joined;
+                        let label = if joined { tr("Joined") } else { tr("Join") };
+                        let resp = ui.add_enabled_ui(!card.joining, |ui| if joined { secondary_btn(ui, label) } else { primary_btn(ui, label) }).inner;
+                        if resp.clicked() {
+                            match &card.lookup {
+                                InviteLookup::Found { guild_id, .. } if joined => self.open_guild(&guild_id.clone()),
+                                _ => self.join_invite(code.to_string()),
+                            }
+                        }
+                    }
+                    let text_w = ui.available_width();
+                    ui.allocate_ui_with_layout(Vec2::new(text_w, 48.0), Layout::top_down(Align::Min).with_main_align(Align::Center), |ui| {
+                        ui.set_width(text_w);
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        match &card.lookup {
+                            InviteLookup::Loading => {
+                                // muted bars where the name and count go: the card keeps its size when the answer arrives
+                                for (w, h) in [(text_w * 0.6, 16.0), (text_w * 0.35, 12.0)] {
+                                    let (r, _) = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover());
+                                    ui.painter().rect_filled(r, CornerRadius::same(2), BG_CARD());
+                                }
+                            }
+                            InviteLookup::Found { name, members, .. } => {
+                                ui.add(egui::Label::new(RichText::new(name).font(bold_font(16.0)).color(TEXT_HEADER())).truncate())
+                                    .on_hover_text(name);
+                                if let Some(n) = members {
+                                    let key = if *n == 1 { "{n} Member" } else { "{n} Members" };
+                                    ui.label(RichText::new(trf(key, &[("n", &n.to_string())])).font(ui_font(13.0)).color(TEXT_MUTED()));
+                                }
+                            }
+                            InviteLookup::Invalid { expired, error } => {
+                                ui.label(RichText::new(tr("Invite invalid")).font(bold_font(16.0)).color(TEXT_MUTED()));
+                                let why = if *expired { tr("This invite has expired or was revoked.").to_string() } else { error.clone() };
+                                ui.add(egui::Label::new(RichText::new(why).font(ui_font(13.0)).color(TEXT_MUTED())).wrap());
+                            }
+                        }
+                    });
+                });
+            });
+            if let Some(e) = &card.error {
+                ui.label(RichText::new(e).font(ui_font(13.0)).color(DANGER()));
+            }
+        });
+    }
+
+    /// Starts `GET /invites/<code>?with_counts=true` unless the card is fresh; two at a time, so a history
+    /// page full of invites does not crowd out the other reads.
+    fn lookup_invite(&mut self, code: &str) {
+        if self.invite_cards.get(code).is_some_and(|c| !c.stale()) || self.invite_lookups >= 2 {
+            return;
+        }
+        let key = code.to_string();
+        // `code` is letters, digits, `_` and `-` only (crate::invites), so it is safe in the path
+        if self.api_get(format!("/invites/{code}?with_counts=true"), move |app, r| {
+            app.invite_lookups = app.invite_lookups.saturating_sub(1);
+            if let Some(c) = app.invite_cards.get_mut(&key) {
+                c.lookup = InviteLookup::from_result(&r);
+                c.at = std::time::Instant::now();
+            }
+        }) {
+            self.invite_lookups += 1;
+            // a stale answer stays on screen while it refreshes
+            self.invite_cards.entry(code.to_string()).or_insert_with(InviteCard::loading).at = std::time::Instant::now();
+        }
     }
 
     /// Message text through the web client's Markdown rules (see crate::markdown).

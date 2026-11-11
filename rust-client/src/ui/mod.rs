@@ -265,6 +265,9 @@ pub struct CillhubApp {
     pub locale: String,
     pub new_guild_name_input: String,
     pub join_invite_code_input: String,
+    /// Server invite cards in messages, by code (crate::invites); lookups in flight.
+    pub invite_cards: std::collections::HashMap<String, crate::invites::InviteCard>,
+    pub invite_lookups: usize,
     pub new_channel_name_input: String,
     pub poll_question_input: String,
     pub poll_options_input: String,
@@ -392,6 +395,8 @@ impl CillhubApp {
             locale,
             new_guild_name_input: String::new(),
             join_invite_code_input: String::new(),
+            invite_cards: Default::default(),
+            invite_lookups: 0,
             new_channel_name_input: String::new(),
             poll_question_input: "Which game mode tonight?".to_string(),
             poll_options_input: "League Ranked 5v5, Counter-Strike 2, Valorant".to_string(),

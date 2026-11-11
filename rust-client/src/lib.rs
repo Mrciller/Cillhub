@@ -8,6 +8,7 @@ pub mod deeplink;
 pub mod games;
 pub mod gateway;
 pub mod i18n;
+pub mod invites;
 pub mod league;
 pub mod markdown;
 pub mod model;
