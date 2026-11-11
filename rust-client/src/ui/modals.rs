@@ -508,12 +508,10 @@ impl CillhubApp {
                                     .strong()
                                     .color(TEXT_HEADER),
                                 );
-                                if let Some(ver) = &self.update_ready_version {
+                                if let Some((ver, _)) = &self.update_ready {
                                     ui.label(
-                                        RichText::new(format!(
-                                            "⬇ Verified Update Ready: v{ver}"
-                                        ))
-                                        .color(GREEN),
+                                        RichText::new(format!("Update ready: v{ver}"))
+                                            .color(GREEN),
                                     );
                                 }
                             }

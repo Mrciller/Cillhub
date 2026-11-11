@@ -15,6 +15,8 @@ pub const PINNED_KEYS: &str = include_str!("../../selfhost/release-public-key.pe
 pub struct Feed {
     pub version: String,
     pub files: Vec<String>,
+    /// (file, base64 sha512) from each `files` entry.
+    pub digests: Vec<(String, String)>,
 }
 
 pub fn parse_feed(yml: &str) -> Option<Feed> {
@@ -22,12 +24,109 @@ pub fn parse_feed(yml: &str) -> Option<Feed> {
         .lines()
         .find_map(|l| l.strip_prefix("version: "))
         .map(|v| v.trim().trim_matches('\'').to_string())?;
-    let files = yml
-        .lines()
-        .filter_map(|l| l.trim().strip_prefix("- url: "))
-        .map(|u| u.trim().to_string())
+    let (mut files, mut digests) = (Vec::new(), Vec::new());
+    for line in yml.lines() {
+        if let Some(u) = line.trim().strip_prefix("- url: ") {
+            files.push(u.trim().to_string());
+        } else if let (Some(d), true) = (line.trim().strip_prefix("sha512: "), line.starts_with(' ')) {
+            if let Some(f) = files.last() {
+                digests.push((f.clone(), d.trim().to_string()));
+            }
+        }
+    }
+    Some(Feed { version, files, digests })
+}
+
+/// The last gate before an installer may run: newer than this build, same sha512 as the feed
+/// lists, and signed with a pinned key over (version, sha512).
+pub fn accept(
+    feed: &Feed,
+    file: &str,
+    sha512_hex: &str,
+    sig: &[u8],
+    keys_pem: &str,
+    current: &str,
+) -> Result<(), String> {
+    if !is_newer(&feed.version, current) {
+        return Err(format!("{} is not newer than {current}", feed.version));
+    }
+    let listed = feed
+        .digests
+        .iter()
+        .find(|(f, _)| f == file)
+        .map(|(_, d)| d.as_str())
+        .ok_or("feed lists no sha512 for the installer")?;
+    let bytes: Vec<u8> = (0..sha512_hex.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(sha512_hex.get(i..i + 2)?, 16).ok())
         .collect();
-    Some(Feed { version, files })
+    if base64::engine::general_purpose::STANDARD.encode(bytes) != listed {
+        return Err("downloaded installer does not match the feed's sha512".into());
+    }
+    if !verify(sha512_hex, &feed.version, sig, keys_pem) {
+        return Err("update signature does not verify against the pinned release keys".into());
+    }
+    Ok(())
+}
+
+/// Checks `<base>latest[-linux].yml`; downloads and verifies a newer installer for this package.
+/// Ok(None) = nothing to do (up to date, or a build no updater can replace, e.g. the tarball).
+#[cfg(feature = "native-net")]
+pub fn fetch_update(base: &str, current: &str) -> Result<Option<(String, PathBuf)>, String> {
+    let Some(pkg) = package() else { return Ok(None) };
+    let client = reqwest::blocking::Client::builder()
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(None)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let get = |url: String| {
+        client
+            .get(url)
+            .send()
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| e.to_string())
+    };
+    let feed_name = if cfg!(windows) { "latest.yml" } else { "latest-linux.yml" };
+    let yml = get(format!("{base}{feed_name}"))?.text().map_err(|e| e.to_string())?;
+    let feed = parse_feed(&yml).ok_or("feed has no version")?;
+    if !is_newer(&feed.version, current) {
+        return Ok(None);
+    }
+    let file = pick_file(&feed, &pkg)
+        .ok_or("feed lists no installer for this package")?
+        .to_string();
+    let dest = std::env::temp_dir().join(&file);
+    let sha = download(&client, &format!("{base}{file}"), &dest, |_| {})?;
+    let sig = get(format!("{base}{file}.sig"))?.bytes().map_err(|e| e.to_string())?;
+    if let Err(e) = accept(&feed, &file, &sha, &sig, PINNED_KEYS, current) {
+        let _ = std::fs::remove_file(&dest); // never keep an unverified installer around
+        return Err(e);
+    }
+    Ok(Some((feed.version, dest)))
+}
+
+/// Runs a verified installer. The caller exits afterwards (the installer relaunches the app).
+pub fn run_installer(path: &Path) -> std::io::Result<()> {
+    use std::process::Command;
+    match package() {
+        Some(Package::Nsis) => Command::new(path).args(["/P", "/R"]).spawn().map(|_| ()),
+        Some(Package::AppImage(image)) => {
+            #[cfg(unix)]
+            std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o755))?;
+            std::fs::rename(path, &image)?;
+            Command::new(image).spawn().map(|_| ())
+        }
+        Some(Package::Deb) => {
+            let s = Command::new("pkexec").args(["dpkg", "-i"]).arg(path).status()?;
+            if !s.success() {
+                return Err(std::io::Error::other(format!("dpkg: {s}")));
+            }
+            Command::new(std::env::current_exe()?).spawn().map(|_| ())
+        }
+        None => Err(std::io::Error::other("no installer for this build")),
+    }
 }
 
 fn semver(v: &str) -> Option<(u64, u64, u64)> {
@@ -201,6 +300,36 @@ mod tests {
     }
 
     #[test]
+    fn accept_checks_version_digest_and_signature() {
+        let mut rng = rand::rngs::OsRng;
+        let (pinned, evil) = (SigningKey::generate(&mut rng), SigningKey::generate(&mut rng));
+        let keys = pem(&pinned);
+        let installer = b"installer bytes";
+        let sha = hex(&Sha512::digest(installer));
+        let b64 = base64::engine::general_purpose::STANDARD.encode(Sha512::digest(installer));
+        let yml = format!("version: 3.1.0\nfiles:\n  - url: cillhub_3.1.0_amd64.deb\n    sha512: {b64}\n    size: 15\npath: cillhub_3.1.0_amd64.deb\nsha512: other\n");
+        let feed = parse_feed(&yml).unwrap();
+        let file = "cillhub_3.1.0_amd64.deb";
+        let sig = pinned.sign(&message(&sha, "3.1.0")).to_bytes();
+
+        assert_eq!(accept(&feed, file, &sha, &sig, &keys, "3.0.2"), Ok(()));
+        // bad signature: other key, or signed for another version
+        let bad = evil.sign(&message(&sha, "3.1.0")).to_bytes();
+        assert!(accept(&feed, file, &sha, &bad, &keys, "3.0.2").unwrap_err().contains("signature"));
+        let old = pinned.sign(&message(&sha, "3.0.9")).to_bytes();
+        assert!(accept(&feed, file, &sha, &old, &keys, "3.0.2").is_err());
+        // bad digest: the bytes that arrived are not the ones the feed lists (even if signed)
+        let other = hex(&Sha512::digest(b"tampered"));
+        let other_sig = pinned.sign(&message(&other, "3.1.0")).to_bytes();
+        assert!(accept(&feed, file, &other, &other_sig, &keys, "3.0.2").unwrap_err().contains("sha512"));
+        // downgrade and same version refused
+        assert!(accept(&feed, file, &sha, &sig, &keys, "3.1.0").is_err());
+        assert!(accept(&feed, file, &sha, &sig, &keys, "4.0.0").unwrap_err().contains("not newer"));
+        // a file the feed does not list
+        assert!(accept(&feed, "x.deb", &sha, &sig, &keys, "3.0.2").is_err());
+    }
+
+    #[test]
     fn pinned_keys_parse() {
         assert_eq!(
             parse_keys(PINNED_KEYS).len(),
@@ -236,7 +365,8 @@ mod tests {
                 pick_file(
                     &Feed {
                         version: "9.0.0".into(),
-                        files: vec![evil.into()]
+                        files: vec![evil.into()],
+                        digests: vec![],
                     },
                     &Package::Deb
                 ),

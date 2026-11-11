@@ -198,7 +198,11 @@ pub struct CillhubApp {
     pub poll_question_input: String,
     pub poll_options_input: String,
     pub schedule_time_input: String,
-    pub update_ready_version: Option<String>,
+    /// A downloaded installer that passed update::accept: (version, path).
+    pub update_ready: Option<(String, std::path::PathBuf)>,
+    update_rx: Option<Receiver<Result<Option<(String, std::path::PathBuf)>, String>>>,
+    last_update_check: Option<Instant>,
+    update_dismissed_until: Option<Instant>,
 
     local_counter: u64,
     fonts_installed: bool,
@@ -298,7 +302,10 @@ impl CillhubApp {
             poll_question_input: "Which game mode tonight?".to_string(),
             poll_options_input: "League Ranked 5v5, Counter-Strike 2, Valorant".to_string(),
             schedule_time_input: "2026-11-10T22:00:00Z".to_string(),
-            update_ready_version: None,
+            update_ready: None,
+            update_rx: None,
+            last_update_check: None,
+            update_dismissed_until: None,
             local_counter: 100,
             fonts_installed: false,
         };
@@ -913,6 +920,8 @@ impl CillhubApp {
             }
         }
 
+        self.poll_update();
+        self.maybe_check_for_update(self.api.is_none() && self.authenticated);
         if self.last_game_scan.elapsed() >= Duration::from_secs(5) {
             self.poll_game_activity(false);
         }
@@ -1791,6 +1800,39 @@ impl CillhubApp {
         }
     }
 
+    /// Starts an update check in the background (at start, then every four hours like the
+    /// old desktop app). Only a verified installer ever reaches `update_ready`.
+    fn maybe_check_for_update(&mut self, demo: bool) {
+        const EVERY: Duration = Duration::from_secs(4 * 60 * 60);
+        if cfg!(test) || demo || self.update_ready.is_some() || self.update_rx.is_some() {
+            return;
+        }
+        if self.last_update_check.is_some_and(|t| t.elapsed() < EVERY) {
+            return;
+        }
+        let first = self.last_update_check.is_none();
+        self.last_update_check = Some(Instant::now());
+        let (tx, rx) = mpsc::channel();
+        self.update_rx = Some(rx);
+        std::thread::spawn(move || {
+            if first {
+                std::thread::sleep(Duration::from_secs(5)); // never slow down the start
+            }
+            let base = format!("{}{}", crate::config::PROD_HUB, crate::config::FEED_PATH);
+            let _ = tx.send(crate::update::fetch_update(&base, env!("CARGO_PKG_VERSION")));
+        });
+    }
+
+    fn poll_update(&mut self) {
+        let Some(rx) = &self.update_rx else { return };
+        let Ok(result) = rx.try_recv() else { return };
+        self.update_rx = None;
+        match result {
+            Ok(ready) => self.update_ready = ready,
+            Err(e) => eprintln!("cillhub: update check: {e}"),
+        }
+    }
+
     pub fn mark_fonts_installed(&mut self) {
         self.fonts_installed = true;
     }
@@ -1852,6 +1894,37 @@ impl CillhubApp {
             if !open {
                 self.lightbox = None;
             }
+        }
+
+        // Update banner (the web client's UpdateBanner): only for a verified installer
+        let update_shown = self
+            .update_dismissed_until
+            .is_none_or(|t| Instant::now() >= t);
+        if let (Some((version, path)), true) = (self.update_ready.clone(), update_shown) {
+            TopBottomPanel::top("update_banner_panel")
+                .frame(Frame::new().fill(ACCENT).inner_margin(Margin::symmetric(14, 6)))
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("A new version of Cillhub is available ({version})."))
+                                .strong()
+                                .size(12.5)
+                                .color(Color32::BLACK),
+                        );
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.small_button("✕").on_hover_text("Dismiss for an hour").clicked() {
+                                self.update_dismissed_until =
+                                    Some(Instant::now() + Duration::from_secs(3600));
+                            }
+                            if ui.button("Restart to Update").clicked()
+                                && report(&mut self.status_banner, crate::update::run_installer(&path))
+                                    .is_some()
+                            {
+                                std::process::exit(0);
+                            }
+                        });
+                    });
+                });
         }
 
         // Optional status notification banner at top
