@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { startServer, guildWith, until } from './helpers.js';
 import { makeAdmin, totp } from './module-helpers.js';
@@ -40,6 +40,17 @@ test('a failure after the message is stored keeps its files and the message', as
   } finally { db(d => d.exec('DROP TRIGGER no_metric')); }
   assert.ok(r.status < 300, 'the stored message is answered');
   assert.ok(existsSync(join(srv.dataDir, 'attachments', g.general.id, r.body.attachments[0].id)), 'its file is still there');
+});
+
+test('a forward whose second file is missing leaves no copy of the first behind', async () => {
+  const src = (await srv.upload(g.general.id, alex.token, { content: 'two files' },
+    [['one.txt', Buffer.from('one'), 'text/plain'], ['two.txt', Buffer.from('two'), 'text/plain']])).body;
+  rmSync(join(srv.dataDir, 'attachments', g.general.id, src.attachments[1].id));
+  const target = (await api('POST', `/guilds/${g.guild.id}/channels`, alex.token, { name: 'forwards' })).body;
+  const r = await api('POST', `/channels/${target.id}/messages`, alex.token, { message_reference: { type: 1, message_id: src.id, channel_id: g.general.id } });
+  assert.equal(r.status, 500);
+  const dir = join(srv.dataDir, 'attachments', target.id);
+  assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], []);
 });
 
 test('a scheduled message is sent under the id fixed before the send, and never twice', async () => {
