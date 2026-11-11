@@ -150,7 +150,7 @@ function RemoveForm({ initial = '', onDone }: { initial?: string; onDone?: () =>
       .then((r) => r && (toast(t('Removed. The copy is kept until {date}.', { date: when(r.preserve_until) })), setItem(null), setUrl(''), onDone?.()), toastError))
   return (
     <div className="admin-card">
-      <form className="admin-inline" onSubmit={show}>
+      <form className="admin-inline legal-remove" onSubmit={show}>
         <Field label={t('Link to a message, attachment or server')} value={url} maxLength={500} placeholder="https://…/channels/…" onChange={(e) => setUrl(e.target.value)} />
         <button className="secondary admin-btn" disabled={!url.trim()}>{t('Show')}</button>
       </form>
@@ -211,7 +211,7 @@ function Appeals() {
       {data && data.length === 0 && <p className="hint">{t('No appeals.')}</p>}
       <ul className="admin-reports">{data?.map((d) => (
         <li key={d.id} className="admin-card admin-report">
-          <header><strong>{t(ACTION_LABEL[d.action] ?? d.action)}</strong><span className="hint small">{d.user?.username ?? t('Unknown')} · {d.target.name ?? ''} · {groundLabel(d.ground)}</span></header>
+          <header><strong>{t(ACTION_LABEL[d.action] ?? d.action)}</strong><span className="hint small">{[d.user?.username ?? t('Unknown'), d.target.name, groundLabel(d.ground)].filter(Boolean).join(' · ')}</span></header>
           <DecisionView d={d} />
           <figure className="admin-quote"><figcaption>{t('Appeal of {date}', { date: when(d.appeal?.at) })}</figcaption><blockquote>{d.appeal?.text}</blockquote></figure>
           {d.appeal?.status === 'open' ? (

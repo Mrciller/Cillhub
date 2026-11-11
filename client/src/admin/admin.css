@@ -143,3 +143,4 @@
 .legal-editor { min-height: 180px; font-family: var(--font-mono, monospace); font-size: 13px; }
 .admin-report .admin-quote blockquote { white-space: pre-wrap; overflow-wrap: anywhere; }
 .admin-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 16px; }
+.legal-remove .field { flex: 1; min-width: 260px; }
