@@ -18,6 +18,8 @@ const NATIVE_DE: &[(&str, &str)] = &[
     ("Dismiss for an hour", "Für eine Stunde ausblenden"),
     ("Open in Browser", "Im Browser öffnen"),
     ("Load older", "Ältere laden"),
+    ("Delete Category", "Kategorie löschen"),
+    ("Channel Canvas", "Kanal-Canvas"),
     ("Open Party", "Offene Gruppe"),
     ("Join Party", "Gruppe beitreten"),
     ("Join my League of Legends party!", "Tritt meiner League-of-Legends-Gruppe bei!"),

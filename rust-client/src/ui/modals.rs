@@ -35,6 +35,8 @@ impl CillhubApp {
             ModalKind::SendLater => self.render_send_later_modal(ctx),
             ModalKind::QuickSwitcher => self.render_quick_switcher_modal(ctx),
             ModalKind::Directory => self.render_directory_modal(ctx),
+            ModalKind::CreateChannel => self.render_create_channel(ctx),
+            ModalKind::Events => self.render_events(ctx),
         }
     }
 
@@ -766,6 +768,211 @@ impl CillhubApp {
         }
     }
 
+    pub fn open_create_channel(&mut self, parent: Option<String>) {
+        self.create_channel_parent = parent;
+        self.create_channel_kind = 0;
+        self.new_channel_name_input.clear();
+        self.active_modal = Some(ModalKind::CreateChannel);
+    }
+
+    /// "Create channel" (GuildSidebar.tsx CreateChannelModal): channel type cards, name.
+    /// Media and forum channels are left out: this app cannot open them yet.
+    fn render_create_channel(&mut self, ctx: &Context) {
+        use crate::theme::IconKind;
+        let Some(gid) = self.selected_guild_id.clone() else {
+            self.active_modal = None;
+            return;
+        };
+        let types: [(u8, &str, Option<IconKind>, &str); 4] = [
+            (0, tr("Text"), None, tr("Send messages, images, GIFs, emoji, opinions, and puns")),
+            (2, tr("Voice"), Some(IconKind::Speaker), tr("Hang out together with voice, video, and screen share")),
+            (5, tr("Announcement"), Some(IconKind::Announcement), tr("Important updates for people in and out of the server")),
+            (13, tr("Stage"), Some(IconKind::Stage), tr("Host events with a moderated audience")),
+        ];
+        let mut close = false;
+        let mut create = false;
+        let (_, dim) = overlay(ctx, "create_channel", 448.0, |ui| {
+            modal_title(ui, tr("Create channel"));
+            field_label(ui, tr("Channel Type"));
+            for (kind, label, icon, note) in types {
+                let on = self.create_channel_kind == kind;
+                let resp = Frame::new()
+                    .fill(if on { BG_SELECTED } else { BG_SIDEBAR })
+                    .stroke(Stroke::new(1.0_f32, if on { ACCENT } else { BORDER }))
+                    .corner_radius(CornerRadius::same(2))
+                    .inner_margin(Margin::symmetric(12, 10))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 8.0;
+                            radio_dot(ui, on);
+                            let (r, _) = ui.allocate_exact_size(Vec2::splat(18.0), egui::Sense::hover());
+                            match icon {
+                                Some(k) => crate::theme::draw_icon(ui.painter(), r, k, INTERACTIVE),
+                                None => {
+                                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "#", ui_font(18.0), OFFLINE);
+                                }
+                            }
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = 0.0;
+                                ui.label(RichText::new(label).font(ui_font(15.0)).color(TEXT_HEADER));
+                                ui.label(RichText::new(note).font(ui_font(12.0)).color(TEXT));
+                            });
+                        });
+                    })
+                    .response
+                    .interact(egui::Sense::click());
+                if resp.clicked() {
+                    self.create_channel_kind = kind;
+                }
+                ui.add_space(8.0);
+            }
+            ui.add_space(12.0);
+            field_label(ui, tr("Channel name"));
+            let hint = if matches!(self.create_channel_kind, 2 | 13) { tr("General") } else { tr("new-channel") };
+            let r = text_input(ui, &mut self.new_channel_name_input, hint);
+            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                create = true;
+            }
+            ui.add_space(18.0);
+            actions_row(ui, |ui| {
+                if primary_btn(ui, tr("Create Channel")).clicked() {
+                    create = true;
+                }
+                if secondary_btn(ui, tr("Cancel")).clicked() {
+                    close = true;
+                }
+            });
+        });
+        let name = self.new_channel_name_input.trim().to_string();
+        if create && !name.is_empty() {
+            let mut body = json!({ "name": name, "type": self.create_channel_kind });
+            if let Some(p) = &self.create_channel_parent {
+                body["parent_id"] = json!(p);
+            }
+            if let Some(api) = &self.api {
+                if let Some(v) = report(&mut self.status_banner, api.post(&format!("/guilds/{gid}/channels"), body)) {
+                    if let Ok(ch) = serde_json::from_value::<Channel>(v) {
+                        self.state.channels.insert(ch.id.clone(), ch);
+                    }
+                    close = true;
+                }
+            }
+        }
+        if close || dim {
+            self.active_modal = None;
+        }
+    }
+
+    /// Edit Category: rename or delete a category.
+    pub fn render_edit_channel(&mut self, ctx: &Context) {
+        let Some((id, mut name)) = self.edit_channel.clone() else { return };
+        let mut close = false;
+        let mut save = false;
+        let mut delete = false;
+        let (_, dim) = overlay(ctx, "edit_channel", 448.0, |ui| {
+            modal_title(ui, tr("Edit Category"));
+            field_label(ui, tr("Category name"));
+            text_input(ui, &mut name, tr("New Category"));
+            ui.add_space(18.0);
+            ui.horizontal(|ui| {
+                if danger_btn(ui, tr("Delete Category")).clicked() {
+                    delete = true;
+                }
+                actions_row(ui, |ui| {
+                    if primary_btn(ui, tr("Save Changes")).clicked() {
+                        save = true;
+                    }
+                    if secondary_btn(ui, tr("Cancel")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        });
+        if let Some(e) = self.edit_channel.as_mut() {
+            e.1 = name.clone();
+        }
+        if let Some(api) = &self.api {
+            if save && !name.trim().is_empty() {
+                let r = api.patch(&format!("/channels/{id}"), json!({ "name": name.trim() }));
+                if report(&mut self.status_banner, r).is_some() {
+                    if let Some(c) = self.state.channels.get_mut(&id) {
+                        c.name = Some(name.trim().to_string());
+                    }
+                    close = true;
+                }
+            }
+            if delete && report(&mut self.status_banner, api.delete(&format!("/channels/{id}"))).is_some() {
+                self.state.channels.remove(&id);
+                close = true;
+            }
+        }
+        if close || dim {
+            self.edit_channel = None;
+        }
+    }
+
+    pub fn load_events(&mut self, gid: &str) {
+        self.events.clear();
+        if let Some(api) = &self.api {
+            if let Some(v) = report(&mut self.status_banner, api.get(&format!("/guilds/{gid}/scheduled-events?with_user_count=true"))) {
+                self.events = v.as_array().cloned().unwrap_or_default();
+            }
+        }
+    }
+
+    /// Events list (events/Events.tsx, the list view).
+    fn render_events(&mut self, ctx: &Context) {
+        let (_, dim) = overlay(ctx, "events", 560.0, |ui| {
+            modal_title(ui, tr("Events"));
+            let n = self.events.len();
+            let count = if n == 1 { tr("{n} Event") } else { tr("{n} Events") };
+            ui.label(RichText::new(count.replace("{n}", &n.to_string())).font(ui_font(14.0)).color(TEXT_MUTED));
+            ui.add_space(12.0);
+            if self.events.is_empty() {
+                ui.add_space(24.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(RichText::new(tr("There are no upcoming events.")).font(ui_font(14.0)).color(TEXT_MUTED));
+                });
+                ui.add_space(24.0);
+            }
+            ScrollArea::vertical().max_height(520.0).show(ui, |ui| {
+                for e in &self.events {
+                    let get = |k: &str| e.get(k).and_then(|v| v.as_str()).unwrap_or("");
+                    let live = e.get("status").and_then(|v| v.as_u64()) == Some(2);
+                    Frame::new()
+                        .fill(BG_SIDEBAR)
+                        .stroke(if live { Stroke::new(1.0_f32, GREEN) } else { Stroke::NONE })
+                        .corner_radius(CornerRadius::same(3))
+                        .inner_margin(Margin::same(16))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            let when = if live {
+                                tr("Live Now").to_string()
+                            } else {
+                                crate::ui::chat::stamp(get("scheduled_start_time"))
+                            };
+                            ui.horizontal(|ui| {
+                                let (r, _) = ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
+                                crate::theme::draw_icon(ui.painter(), r, crate::theme::IconKind::Calendar, if live { GREEN } else { TEXT_MUTED });
+                                ui.label(RichText::new(when).font(crate::theme::bold_font(13.0)).color(if live { GREEN } else { TEXT_MUTED }));
+                            });
+                            ui.label(RichText::new(get("name")).font(crate::theme::bold_font(18.0)).color(TEXT_HEADER));
+                            if !get("description").is_empty() {
+                                ui.label(RichText::new(get("description")).font(ui_font(14.0)).color(TEXT));
+                            }
+                            let users = e.get("user_count").and_then(|v| v.as_u64()).unwrap_or(0);
+                            ui.label(RichText::new(format!("{users} interested")).font(ui_font(12.0)).color(TEXT_MUTED));
+                        });
+                    ui.add_space(12.0);
+                }
+            });
+        });
+        if dim {
+            self.active_modal = None;
+        }
+    }
+
     fn render_quick_switcher_modal(&mut self, ctx: &Context) {
         let mut open = true;
         Window::new("⚡ Quick Switcher (Ctrl+K)")
@@ -1277,4 +1484,16 @@ pub fn select_box(ui: &mut Ui, id: &str, current: &str, add: impl FnOnce(&mut Ui
             .height(320.0)
             .show_ui(ui, add);
     });
+}
+
+/// A radio circle like the browser's (accent fill when picked).
+pub fn radio_dot(ui: &mut Ui, on: bool) {
+    let (r, _) = ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
+    let c = r.center();
+    if on {
+        ui.painter().circle_filled(c, 7.0, FOCUS);
+        ui.painter().circle_filled(c, 3.0, BG_RAIL);
+    } else {
+        ui.painter().circle(c, 6.5, BG_RAIL, Stroke::new(1.0_f32, INTERACTIVE));
+    }
 }

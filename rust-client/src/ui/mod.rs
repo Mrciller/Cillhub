@@ -21,6 +21,7 @@ use crate::model::{
 use crate::native_gateway::{spawn_with_commands, GatewayCommand, GatewayEvent};
 use crate::settings::AppSettings;
 use crate::state::State;
+use crate::i18n::tr;
 use crate::theme::{
     apply_theme, bold_font, display_font, draw_avatar, draw_icon, draw_list_heading, icon_btn,
     initials, install_fonts, palette::*, ui_font, IconKind,
@@ -94,6 +95,16 @@ pub enum ModalKind {
     SendLater,
     QuickSwitcher,
     Directory,
+    CreateChannel,
+    Events,
+}
+
+/// What a sidebar row shows before its name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowIcon {
+    Hash,
+    Icon(IconKind),
+    None,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,6 +187,15 @@ pub struct CillhubApp {
     pub emoji_picker: Option<(chat::EmojiTarget, Pos2)>,
     pub emoji_query: String,
     pub confirm_delete: Option<Message>,
+    /// Categories folded in the channel list.
+    pub collapsed_categories: std::collections::HashSet<String>,
+    /// Edit Category dialog: (channel id, name being edited).
+    pub edit_channel: Option<(String, String)>,
+    /// Create Channel dialog: parent category and channel type.
+    pub create_channel_parent: Option<String>,
+    pub create_channel_kind: u8,
+    /// Scheduled events of the open server (Events dialog).
+    pub events: Vec<Value>,
     pub search_query: String,
     pub quick_switcher_query: String,
     pub canvas_doc_input: String,
@@ -299,6 +319,11 @@ impl CillhubApp {
             emoji_picker: None,
             emoji_query: String::new(),
             confirm_delete: None,
+            collapsed_categories: Default::default(),
+            edit_channel: None,
+            create_channel_parent: None,
+            create_channel_kind: 0,
+            events: Vec::new(),
             search_query: String::new(),
             quick_switcher_query: String::new(),
             canvas_doc_input: "# Arena Match Notes\n- Mid prio at 3:15\n- Objective control".to_string(),
@@ -378,11 +403,14 @@ impl CillhubApp {
         self.api = Some(ApiClient::new(origin.clone(), Some(token.clone())));
         let (ev_tx, ev_rx) = mpsc::channel();
         let (cmd_tx, cmd_rx) = mpsc::channel();
-        spawn_with_commands(origin, token, ev_tx, cmd_rx);
+        spawn_with_commands(origin.clone(), token, ev_tx, cmd_rx);
         self.gateway_rx = Some(ev_rx);
         self.gateway_cmd_tx = Some(cmd_tx);
         self.authenticated = true;
         self.auth_error = None;
+        // GET /instance: the rail shows Explore servers only on a hub (like the web's useInstance)
+        self.instance_info = self.api.as_ref().and_then(|a| a.get("/instance").ok());
+        self.instance_for = origin.to_string();
         self.broadcast_presence();
     }
 
@@ -967,96 +995,88 @@ impl CillhubApp {
         }
     }
 
+    /// `.rail` (GuildRail.tsx): Direct Messages, separator, servers, add a server, and explore
+    /// servers only on a hub. No download entry: this is the desktop app.
     fn render_guild_rail(&mut self, ui: &mut Ui) {
         let rail_rect = ui.max_rect();
         ui.painter().vline(
             rail_rect.max.x - 0.5,
             rail_rect.y_range(),
-            Stroke::new(1.0_f32, BORDER),
+            Stroke::new(1.0_f32, BORDER.gamma_multiply(0.65)),
         );
 
         ui.vertical_centered(|ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
             ui.add_space(10.0);
 
-            // 1. Home / Friends / Direct Messages `.rail-icon`
             let home_active = self.selected_guild_id.is_none();
             let home_resp = Self::rail_icon_slot(ui, rail_rect.min.x, home_active, false, |painter, rect, fg| {
-                let icon_rect = Rect::from_center_size(rect.center(), Vec2::splat(22.0));
-                draw_icon(painter, icon_rect, IconKind::Home, fg);
+                draw_icon(painter, Rect::from_center_size(rect.center(), Vec2::splat(26.0)), IconKind::Home, fg);
             });
-            if home_resp.on_hover_text("Direct Messages").clicked() {
+            if home_resp.on_hover_text(tr("Direct Messages")).clicked() {
                 self.selected_guild_id = None;
                 self.selected_channel_id = None;
             }
 
-            ui.add_space(8.0);
-            // .rail-sep: 32px × 1px divider
-            let (sep_rect, _) = ui.allocate_exact_size(Vec2::new(32.0, 1.0), Sense::hover());
-            ui.painter().hline(
-                sep_rect.x_range(),
-                sep_rect.center().y,
-                Stroke::new(1.0_f32, BORDER),
-            );
-            ui.add_space(8.0);
+            // `.rail-sep`: 32x1, 2px margin
+            let (sep_rect, _) = ui.allocate_exact_size(Vec2::new(32.0, 5.0), Sense::hover());
+            ui.painter().hline(sep_rect.x_range(), sep_rect.center().y, Stroke::new(1.0_f32, BORDER));
 
-            // 2. Guilds list
             let guilds: Vec<(String, String)> = self
                 .state
                 .sorted_guilds()
                 .into_iter()
                 .map(|g| (g.id.clone(), g.name.clone()))
                 .collect();
-
             for (gid, gname) in guilds {
                 let active = self.selected_guild_id.as_deref() == Some(gid.as_str());
                 let abbr = initials(&gname, 2);
                 let resp = Self::rail_icon_slot(ui, rail_rect.min.x, active, false, |painter, rect, fg| {
-                    painter.text(
-                        rect.center(),
-                        Align2::CENTER_CENTER,
-                        &abbr,
-                        display_font(20.0),
-                        fg,
-                    );
+                    painter.text(rect.center(), Align2::CENTER_CENTER, &abbr, display_font(20.0), fg);
                 });
                 if resp.on_hover_text(&gname).clicked() {
-                    self.selected_guild_id = Some(gid.clone());
-                    let first_ch = self
-                        .state
-                        .guilds
-                        .get(&gid)
-                        .and_then(|g| g.channels.iter().find(|c| c.kind == 0))
-                        .map(|c| c.id.clone());
-                    if let Some(cid) = first_ch {
-                        self.selected_channel_id = Some(cid.clone());
-                        self.load_channel_history(&cid);
-                    }
+                    self.open_guild(&gid);
                 }
-                ui.add_space(8.0);
             }
 
-            // 3. `.rail-add` button (`+` Add a Server)
             let add_resp = Self::rail_icon_slot(ui, rail_rect.min.x, false, true, |painter, rect, fg| {
-                let icon_rect = Rect::from_center_size(rect.center(), Vec2::splat(20.0));
-                draw_icon(painter, icon_rect, IconKind::Plus, fg);
+                draw_icon(painter, Rect::from_center_size(rect.center(), Vec2::splat(24.0)), IconKind::Plus, fg);
             });
-            if add_resp.on_hover_text("Add a Server").clicked() {
+            if add_resp.on_hover_text(tr("Add a server")).clicked() {
                 self.active_modal = Some(ModalKind::CreateJoinGuild);
             }
 
-            ui.add_space(8.0);
-
-            // 4. Explore Public Servers (`Compass` icon)
-            let dir_resp = Self::rail_icon_slot(ui, rail_rect.min.x, false, false, |painter, rect, fg| {
-                let icon_rect = Rect::from_center_size(rect.center(), Vec2::splat(20.0));
-                draw_icon(painter, icon_rect, IconKind::Compass, fg);
-            });
-            if dir_resp.on_hover_text("Explore Public Servers").clicked() {
-                self.active_modal = Some(ModalKind::Directory);
+            let hub = self
+                .instance_info
+                .as_ref()
+                .and_then(|v| v.pointer("/federation/role"))
+                .and_then(Value::as_str)
+                == Some("hub");
+            if hub {
+                let dir_resp = Self::rail_icon_slot(ui, rail_rect.min.x, false, true, |painter, rect, fg| {
+                    draw_icon(painter, Rect::from_center_size(rect.center(), Vec2::splat(24.0)), IconKind::Compass, fg);
+                });
+                if dir_resp.on_hover_text(tr("Explore servers")).clicked() {
+                    self.active_modal = Some(ModalKind::Directory);
+                }
             }
         });
     }
 
+    /// Opens a server at its first text channel (web firstText: the system channel if visible).
+    pub fn open_guild(&mut self, gid: &str) {
+        self.selected_guild_id = Some(gid.to_string());
+        let groups = self.sidebar_groups(gid);
+        let texts: Vec<&Channel> = groups.iter().flat_map(|(_, l)| l).filter(|c| matches!(c.kind, 0 | 5)).collect();
+        let sys = self.state.guilds.get(gid).and_then(|g| g.system_channel_id.clone());
+        let pick = texts.iter().find(|c| Some(&c.id) == sys.as_ref()).or(texts.first()).map(|c| c.id.clone());
+        if let Some(cid) = pick {
+            self.selected_channel_id = Some(cid.clone());
+            self.load_channel_history(&cid);
+        }
+    }
+
+    /// `.rail-icon` (46px, radius 4, card fill) with the `.rail-item::before` pill.
     fn rail_icon_slot(
         ui: &mut Ui,
         rail_left_x: f32,
@@ -1066,36 +1086,77 @@ impl CillhubApp {
     ) -> egui::Response {
         let (rect, resp) = ui.allocate_exact_size(Vec2::splat(46.0), Sense::click());
         let hovered = resp.hovered();
-        let painter = ui.painter();
-
-        let (fill, stroke, fg) = if is_add {
-            if hovered {
-                (GREEN, Stroke::new(1.0_f32, GREEN), BG_RAIL)
-            } else {
-                (BG_CARD, Stroke::new(1.0_f32, GREEN), GREEN)
-            }
-        } else if active {
-            (BG_SELECTED, Stroke::new(2.0_f32, ACCENT), ACCENT)
-        } else if hovered {
-            (BG_HOVER, Stroke::new(1.0_f32, ACCENT), TEXT_HEADER)
-        } else {
-            (BG_CARD, Stroke::new(1.0_f32, BORDER), INTERACTIVE)
-        };
-
-        painter.rect(rect, CornerRadius::same(4), fill, stroke, StrokeKind::Inside);
-
-        // Left-edge selection indicator bar (`3px` wide) matching `.rail-icon.active::before`
-        if !is_add && (active || hovered) {
-            let pill_h = if active { 38.0 } else { 18.0 };
-            let pill_rect = Rect::from_min_size(
-                Pos2::new(rail_left_x, rect.center().y - pill_h * 0.5),
-                Vec2::new(3.0, pill_h),
-            );
-            painter.rect_filled(pill_rect, 0.0, ACCENT);
+        if hovered {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
-
-        paint_inner(painter, rect, fg);
+        let painter = ui.painter();
+        let r = if hovered && !active { rect.translate(Vec2::new(0.0, -2.0)) } else { rect };
+        if is_add {
+            // `.rail-add`: online colour, dashed border, faint green fill
+            let fill = if hovered { GREEN.gamma_multiply(0.16).blend(BG_SELECTED.gamma_multiply(0.84)) } else { GREEN.gamma_multiply(0.06).blend(BG_CARD.gamma_multiply(0.94)) };
+            painter.rect_filled(r, CornerRadius::same(4), fill);
+            let border = GREEN.gamma_multiply(0.4).blend(BORDER.gamma_multiply(0.6));
+            if hovered {
+                painter.rect_stroke(r, CornerRadius::same(4), Stroke::new(1.0_f32, border), StrokeKind::Inside);
+            } else {
+                let q = r.shrink(0.5);
+                let pts = [q.left_top(), q.right_top(), q.right_bottom(), q.left_bottom(), q.left_top()];
+                painter.extend(egui::Shape::dashed_line(&pts, Stroke::new(1.0_f32, border), 3.0, 3.0));
+            }
+            paint_inner(painter, r, GREEN);
+            return resp;
+        }
+        let (fill, fg) = if active || hovered { (BG_SELECTED, TEXT_HEADER) } else { (BG_CARD, TEXT) };
+        painter.rect_filled(r, CornerRadius::same(4), fill);
+        if active {
+            painter.rect_stroke(r, CornerRadius::same(4), Stroke::new(2.0_f32, ACCENT), StrokeKind::Inside);
+        }
+        if active || hovered {
+            let (h, c) = if active { (38.0, ACCENT) } else { (18.0, TEXT_MUTED) };
+            let pill = Rect::from_min_size(Pos2::new(rail_left_x, rect.center().y - h * 0.5), Vec2::new(3.0, h));
+            painter.rect_filled(pill, 0.0, c);
+        }
+        paint_inner(painter, r, fg);
         resp
+    }
+
+    /// Channel groups like the web's sidebar(): uncategorized first, then categories by
+    /// position; text-like channels above voice; no threads; only channels I can view.
+    pub fn sidebar_groups(&self, gid: &str) -> Vec<(Option<Channel>, Vec<Channel>)> {
+        use crate::permissions::{has, is_thread, p};
+        let snow = |id: &str| id.parse::<u64>().unwrap_or(u64::MAX);
+        let all: Vec<&Channel> = self
+            .state
+            .channels
+            .values()
+            .filter(|c| c.guild_id.as_deref() == Some(gid) && !is_thread(c))
+            .collect();
+        let view = |c: &Channel| has(self.my_perms(&c.id), p::VIEW_CHANNEL);
+        let mut cats: Vec<&Channel> = all.iter().copied().filter(|c| c.kind == 4).collect();
+        cats.sort_by_key(|c| (c.position, snow(&c.id)));
+        let cat_ids: std::collections::HashSet<&str> = cats.iter().map(|c| c.id.as_str()).collect();
+        let children = |id: Option<&str>| {
+            let mut v: Vec<Channel> = all
+                .iter()
+                .filter(|c| c.kind != 4)
+                .filter(|c| match id {
+                    Some(id) => c.parent_id.as_deref() == Some(id),
+                    None => c.parent_id.as_deref().is_none_or(|p| !cat_ids.contains(p)),
+                })
+                .filter(|c| view(c))
+                .map(|c| (*c).clone())
+                .collect();
+            v.sort_by_key(|c| (matches!(c.kind, 2 | 13), c.position, snow(&c.id)));
+            v
+        };
+        let mut groups = vec![(None, children(None))];
+        for cat in cats {
+            let ch = children(Some(&cat.id));
+            if !ch.is_empty() || view(cat) {
+                groups.push((Some(cat.clone()), ch));
+            }
+        }
+        groups
     }
 
     fn render_channel_sidebar(&mut self, ui: &mut Ui) {
@@ -1115,39 +1176,20 @@ impl CillhubApp {
                 ui.painter()
                     .hline(r.x_range(), r.min.y, Stroke::new(1.0_f32, BORDER));
 
-                // 2. `.user-panel` (`height: 48px`, `padding: 0 8px`) matching `UserPanel.tsx`
+                // `.user-panel`: 48px, padding 0 10px, avatar 32, name + username, three icon buttons
                 Frame::new()
                     .fill(BG_PANEL)
-                    .inner_margin(Margin::symmetric(8, 8))
+                    .inner_margin(Margin::symmetric(10, 8))
                     .show(ui, |ui| {
                         ui.set_height(32.0);
                         ui.horizontal(|ui| {
-                            let (me_id, me_name, me_tag) = if let Some(me) = &self.state.me {
-                                (
-                                    me.id.clone(),
-                                    me.display_name().to_string(),
-                                    format!("@{}", me.username),
-                                )
-                            } else {
-                                (
-                                    "u_me".to_string(),
-                                    "Player".to_string(),
-                                    "@player".to_string(),
-                                )
+                            ui.spacing_mut().item_spacing.x = 8.0;
+                            let (me_id, me_name, me_tag) = match &self.state.me {
+                                Some(me) => (me.id.clone(), me.display_name().to_string(), me.username.clone()),
+                                None => (String::new(), String::new(), String::new()),
                             };
-
-                            let av_resp = draw_avatar(
-                                ui,
-                                32.0,
-                                &me_id,
-                                &me_name,
-                                Some(&self.my_status),
-                                BG_PANEL,
-                            );
-                            if av_resp
-                                .on_hover_text("Click to cycle status (Online / Idle / DND / Invisible)")
-                                .clicked()
-                            {
+                            let av_resp = draw_avatar(ui, 32.0, &me_id, &me_name, Some(&self.my_status), BG_PANEL);
+                            if av_resp.on_hover_text(tr("Status")).clicked() {
                                 self.my_status = match self.my_status.as_str() {
                                     "online" => "idle".to_string(),
                                     "idle" => "dnd".to_string(),
@@ -1156,321 +1198,160 @@ impl CillhubApp {
                                 };
                                 self.broadcast_presence();
                             }
-
-                            ui.vertical(|ui| {
+                            // name block gets what the three 32px buttons leave
+                            let w = (ui.available_width() - 3.0 * 32.0 - 8.0).max(20.0);
+                            ui.allocate_ui_with_layout(Vec2::new(w, 32.0), Layout::top_down(Align::Min), |ui| {
+                                ui.set_width(w);
                                 ui.spacing_mut().item_spacing.y = 0.0;
-                                ui.label(
-                                    RichText::new(&me_name)
-                                        .font(bold_font(13.0))
-                                        .color(TEXT_HEADER),
-                                );
-                                let sub_text = if let Some(g) = &self.current_game {
-                                    RichText::new(format!("Playing {}", g.name))
-                                        .font(ui_font(11.0))
-                                        .color(GREEN)
-                                } else if !self.custom_status_input.trim().is_empty() {
-                                    RichText::new(self.custom_status_input.trim())
-                                        .font(ui_font(11.0))
-                                        .color(TEXT_MUTED)
+                                ui.add(egui::Label::new(RichText::new(&me_name).font(bold_font(14.0)).color(TEXT_HEADER)).truncate());
+                                let sub = if !self.custom_status_input.trim().is_empty() {
+                                    self.custom_status_input.trim().to_string()
                                 } else {
-                                    RichText::new(me_tag)
-                                        .font(ui_font(11.0))
-                                        .color(TEXT_MUTED)
+                                    me_tag
                                 };
-                                ui.label(sub_text);
+                                ui.add(egui::Label::new(RichText::new(sub).font(ui_font(12.0)).color(TEXT_MUTED)).truncate());
                             });
-
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                ui.spacing_mut().item_spacing.x = 2.0;
-                                if icon_btn(
-                                    ui,
-                                    IconKind::Gear,
-                                    "User Settings",
-                                    false,
-                                    false,
-                                )
-                                .clicked()
-                                {
-                                    self.active_modal = Some(ModalKind::UserSettings);
-                                }
-
-                                let deaf_icon = if self.self_deaf {
-                                    IconKind::HeadsetOff
-                                } else {
-                                    IconKind::Headset
-                                };
-                                if icon_btn(
-                                    ui,
-                                    deaf_icon,
-                                    if self.self_deaf { "Undeafen" } else { "Deafen" },
-                                    false,
-                                    self.self_deaf,
-                                )
-                                .clicked()
-                                {
-                                    self.self_deaf = !self.self_deaf;
-                                }
-
-                                let mute_icon = if self.self_mute {
-                                    IconKind::MicOff
-                                } else {
-                                    IconKind::Mic
-                                };
-                                if icon_btn(
-                                    ui,
-                                    mute_icon,
-                                    if self.self_mute { "Unmute" } else { "Mute" },
-                                    false,
-                                    self.self_mute,
-                                )
-                                .clicked()
-                                {
-                                    self.self_mute = !self.self_mute;
-                                }
-                            });
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            let mute_icon = if self.self_mute { IconKind::MicOff } else { IconKind::Mic };
+                            if icon_btn(ui, mute_icon, if self.self_mute { tr("Unmute") } else { tr("Mute") }, false, self.self_mute).clicked() {
+                                self.self_mute = !self.self_mute;
+                            }
+                            let deaf_icon = if self.self_deaf { IconKind::HeadsetOff } else { IconKind::Headset };
+                            if icon_btn(ui, deaf_icon, if self.self_deaf { tr("Undeafen") } else { tr("Deafen") }, false, self.self_deaf).clicked() {
+                                self.self_deaf = !self.self_deaf;
+                            }
+                            if icon_btn(ui, IconKind::Gear, tr("User Settings"), false, false).clicked() {
+                                self.active_modal = Some(ModalKind::UserSettings);
+                            }
                         });
                     });
             });
 
         // Top `.sidebar-header` (`44px` height, `border-bottom: 1px solid #2c3038`) + `.sidebar-scroller`
         if let Some(gid) = self.selected_guild_id.clone() {
-            let guild_name = self
-                .state
-                .guilds
-                .get(&gid)
-                .map(|g| g.name.clone())
-                .unwrap_or_else(|| "Server".to_string());
+            let guild_name = self.state.guilds.get(&gid).map(|g| g.name.clone()).unwrap_or_default();
 
-            let (hdr_rect, hdr_resp) =
-                ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
+            // `.sidebar-header`: 44px, padding 0 14px, 19px display, chevron
+            let (hdr_rect, hdr_resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::click());
             if hdr_resp.hovered() {
                 ui.painter().rect_filled(hdr_rect, 0.0, BG_HOVER);
             }
-            ui.painter().hline(
-                hdr_rect.x_range(),
-                hdr_rect.max.y - 0.5,
-                Stroke::new(1.0_f32, BORDER),
-            );
-            ui.painter().text(
-                Pos2::new(hdr_rect.min.x + 12.0, hdr_rect.center().y),
-                Align2::LEFT_CENTER,
+            ui.painter().hline(hdr_rect.x_range(), hdr_rect.max.y - 0.5, Stroke::new(1.0_f32, BORDER));
+            let title = ui.painter().layout(
                 guild_name.to_uppercase(),
                 display_font(19.0),
                 TEXT_HEADER,
+                hdr_rect.width() - 28.0 - 24.0,
             );
-            let chev_rect = Rect::from_center_size(
-                Pos2::new(hdr_rect.max.x - 18.0, hdr_rect.center().y),
-                Vec2::splat(16.0),
+            ui.painter().galley(Pos2::new(hdr_rect.min.x + 14.0, hdr_rect.center().y - title.size().y / 2.0), title, TEXT_HEADER);
+            draw_icon(
+                ui.painter(),
+                Rect::from_center_size(Pos2::new(hdr_rect.max.x - 24.0, hdr_rect.center().y), Vec2::splat(20.0)),
+                IconKind::ChevronDown,
+                TEXT_HEADER,
             );
-            draw_icon(ui.painter(), chev_rect, IconKind::ChevronDown, INTERACTIVE);
-            if hdr_resp.on_hover_text("Server Settings & Channels").clicked() {
+            if hdr_resp.on_hover_text(tr("Server Settings")).clicked() {
                 self.active_modal = Some(ModalKind::ServerSettings);
             }
 
-            let mut channels: Vec<Channel> = self
-                .state
-                .channels
-                .values()
-                .filter(|c| c.guild_id.as_deref() == Some(gid.as_str()) && c.kind != 4)
-                .cloned()
-                .collect();
-            // shortcut: flat list in category order (no category headers yet, round 2 = look)
-            let snowflake = |id: &str| id.parse::<u64>().unwrap_or(u64::MAX);
-            let cat_key = |c: &Channel| {
-                c.parent_id
-                    .as_deref()
-                    .and_then(|p| self.state.channels.get(p))
-                    .map_or((-1, 0), |p| (p.position, snowflake(&p.id)))
-            };
-            channels.sort_by_key(|c| {
-                (cat_key(c), matches!(c.kind, 2 | 13), c.position, snowflake(&c.id))
-            });
+            let manage = crate::permissions::has(self.guild_perms(&gid), crate::permissions::p::MANAGE_CHANNELS);
+            let groups = self.sidebar_groups(&gid);
 
             ScrollArea::vertical()
                 .id_salt("guild_channels_scroll")
                 .show(ui, |ui| {
-                    Frame::new()
-                        .inner_margin(Margin::symmetric(6, 10))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.set_width(ui.available_width());
-                                ui.label(
-                                    RichText::new("TEXT & VOICE CHANNELS")
-                                        .font(display_font(12.5))
-                                        .color(TEXT_MUTED),
-                                );
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    let (plus_r, plus_resp) = ui
-                                        .allocate_exact_size(Vec2::splat(16.0), Sense::click());
-                                    draw_icon(
-                                        ui.painter(),
-                                        plus_r,
-                                        IconKind::Plus,
-                                        if plus_resp.hovered() {
-                                            TEXT_HEADER
-                                        } else {
-                                            TEXT_MUTED
-                                        },
-                                    );
-                                    if plus_resp.on_hover_text("Create Channel").clicked() {
-                                        self.active_modal = Some(ModalKind::ServerSettings);
+                    // `.events-entry` (padding 8px 8px 0) + `.sidebar-list` (padding 8px)
+                    Frame::new().inner_margin(Margin { left: 8, right: 8, top: 8, bottom: 0 }).show(ui, |ui| {
+                        if Self::sidebar_row(ui, RowIcon::Icon(IconKind::Calendar), tr("Events"), false, None).clicked() {
+                            self.load_events(&gid);
+                            self.active_modal = Some(ModalKind::Events);
+                        }
+                    });
+                    Frame::new().inner_margin(Margin::same(8)).show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for (gi, (cat, channels)) in groups.iter().enumerate() {
+                            if gi > 0 {
+                                ui.add_space(8.0);
+                            }
+                            let closed = cat.as_ref().is_some_and(|c| self.collapsed_categories.contains(&c.id));
+                            if let Some(cat) = cat {
+                                let (toggle, gear, plus) = Self::category_head(ui, cat.name.as_deref().unwrap_or(""), closed, manage);
+                                if toggle {
+                                    if !self.collapsed_categories.remove(&cat.id) {
+                                        self.collapsed_categories.insert(cat.id.clone());
                                     }
-                                });
-                            });
-                            ui.add_space(4.0);
-
+                                }
+                                if gear {
+                                    self.edit_channel = Some((cat.id.clone(), cat.name.clone().unwrap_or_default()));
+                                }
+                                if plus {
+                                    self.open_create_channel(Some(cat.id.clone()));
+                                }
+                            }
                             for ch in channels {
-                                let active =
-                                    self.selected_channel_id.as_deref() == Some(ch.id.as_str());
-                                let icon_kind = match ch.kind {
-                                    2 => IconKind::Speaker,
-                                    13 => IconKind::Stage,
-                                    15 => IconKind::Forum,
-                                    _ => IconKind::Hash,
+                                let active = self.selected_channel_id.as_deref() == Some(ch.id.as_str());
+                                if closed && !active {
+                                    continue;
+                                }
+                                let icon = match ch.kind {
+                                    2 => RowIcon::Icon(IconKind::Speaker),
+                                    13 => RowIcon::Icon(IconKind::Stage),
+                                    5 => RowIcon::Icon(IconKind::Announcement),
+                                    15 => RowIcon::Icon(IconKind::Forum),
+                                    16 => RowIcon::Icon(IconKind::Grid),
+                                    _ => RowIcon::Hash,
                                 };
-                                let name = ch.name.as_deref().unwrap_or("channel");
-                                let row_resp =
-                                    Self::sidebar_channel_row(ui, icon_kind, name, active, None);
-                                if row_resp.clicked() {
+                                let name = ch.name.as_deref().unwrap_or("");
+                                if Self::sidebar_row(ui, icon, name, active, None).clicked() {
                                     if matches!(ch.kind, 2 | 13) {
                                         self.show_voice_unavailable();
                                     }
                                     self.selected_channel_id = Some(ch.id.clone());
                                     self.load_channel_history(&ch.id);
                                 }
-
-                                // Voice participants inside voice/stage channels
-                                if ch.kind == 2 || ch.kind == 13 {
-                                    let in_vc: Vec<(String, String, bool)> = self
-                                        .state
-                                        .voice_states
-                                        .values()
-                                        .filter(|vs| {
-                                            vs.channel_id.as_deref() == Some(ch.id.as_str())
-                                        })
-                                        .map(|vs| {
-                                            let uname = self
-                                                .state
-                                                .users
-                                                .get(&vs.user_id)
-                                                .map(|u| u.display_name().to_string())
-                                                .unwrap_or_else(|| vs.user_id.clone());
-                                            (vs.user_id.clone(), uname, vs.self_stream)
-                                        })
-                                        .collect();
-                                    for (uid, uname, is_live) in in_vc {
-                                        ui.horizontal(|ui| {
-                                            ui.add_space(24.0);
-                                            draw_avatar(
-                                                ui,
-                                                20.0,
-                                                &uid,
-                                                &uname,
-                                                None,
-                                                BG_SIDEBAR,
-                                            );
-                                            ui.label(
-                                                RichText::new(&uname)
-                                                    .font(ui_font(12.5))
-                                                    .color(INTERACTIVE),
-                                            );
-                                            if is_live {
-                                                Frame::new()
-                                                    .fill(SIGNAL_STRONG)
-                                                    .corner_radius(CornerRadius::same(2))
-                                                    .inner_margin(Margin::symmetric(4, 1))
-                                                    .show(ui, |ui| {
-                                                        ui.label(
-                                                            RichText::new("LIVE")
-                                                                .font(display_font(10.0))
-                                                                .color(Color32::WHITE),
-                                                        );
-                                                    });
-                                            }
-                                        });
-                                    }
+                                if matches!(ch.kind, 2 | 13) {
+                                    self.voice_members(ui, &ch.id);
                                 }
                             }
-                        });
+                        }
+                    });
                 });
         } else {
-            // Direct Messages sidebar (`DmSidebar.tsx`)
-            Frame::new()
-                .inner_margin(Margin::symmetric(10, 6))
-                .show(ui, |ui| {
-                    let (btn_r, btn_resp) = ui.allocate_exact_size(
-                        Vec2::new(ui.available_width(), 32.0),
-                        Sense::click(),
-                    );
-                    let border_col = if btn_resp.hovered() { ACCENT } else { BORDER };
-                    ui.painter().rect(
-                        btn_r,
-                        CornerRadius::same(2),
-                        BG_RAIL,
-                        Stroke::new(1.0_f32, border_col),
-                        StrokeKind::Inside,
-                    );
-                    ui.painter().text(
-                        Pos2::new(btn_r.min.x + 8.0, btn_r.center().y),
-                        Align2::LEFT_CENTER,
-                        "Find or start a conversation",
-                        ui_font(12.5),
-                        TEXT_MUTED,
-                    );
-                    if btn_resp.clicked() {
-                        self.active_modal = Some(ModalKind::QuickSwitcher);
-                    }
-                });
-            let hr = ui.min_rect();
-            ui.painter()
-                .hline(hr.x_range(), hr.max.y, Stroke::new(1.0_f32, BORDER));
+            // Direct Messages sidebar (`DmSidebar.tsx`): 44px search header, Friends, the DM list
+            let (hdr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::hover());
+            ui.painter().hline(hdr.x_range(), hdr.max.y - 0.5, Stroke::new(1.0_f32, BORDER));
+            let btn_r = Rect::from_center_size(hdr.center(), Vec2::new(hdr.width() - 20.0, 30.0));
+            let btn_resp = ui.interact(btn_r, ui.id().with("dm_search"), Sense::click());
+            ui.painter().rect(btn_r, CornerRadius::same(2), BG_RAIL, Stroke::new(1.0_f32, BORDER), StrokeKind::Inside);
+            ui.painter().text(
+                Pos2::new(btn_r.min.x + 10.0, btn_r.center().y),
+                Align2::LEFT_CENTER,
+                tr("Find or start a conversation"),
+                bold_font(12.0),
+                if btn_resp.hovered() { TEXT } else { INTERACTIVE },
+            );
+            if btn_resp.clicked() {
+                self.active_modal = Some(ModalKind::QuickSwitcher);
+            }
 
             ScrollArea::vertical()
                 .id_salt("dm_channels_scroll")
                 .show(ui, |ui| {
                     Frame::new()
-                        .inner_margin(Margin::symmetric(6, 8))
+                        .inner_margin(Margin::same(8))
                         .show(ui, |ui| {
+                            ui.spacing_mut().item_spacing.y = 1.0;
                             let friends_selected = self.selected_channel_id.is_none();
-                            let pending_count = self
-                                .state
-                                .relationships
-                                .values()
-                                .filter(|r| r.kind == 3)
-                                .count();
-                            let badge = if pending_count > 0 {
-                                Some(pending_count.to_string())
-                            } else {
-                                None
-                            };
-                            if Self::sidebar_channel_row(
-                                ui,
-                                IconKind::People,
-                                "Friends",
-                                friends_selected,
-                                badge.as_deref(),
-                            )
-                            .clicked()
+                            let pending_count = self.state.relationships.values().filter(|r| r.kind == 3).count();
+                            let badge = (pending_count > 0).then(|| pending_count.to_string());
+                            if Self::sidebar_row(ui, RowIcon::Icon(IconKind::People), tr("Friends"), friends_selected, badge.as_deref())
+                                .clicked()
                             {
                                 self.selected_channel_id = None;
                             }
 
-                            // Game Lobby Invite shortcut row
-                            let lobby_open = self.active_modal == Some(ModalKind::GameLobbyInvite);
-                            if Self::sidebar_channel_row(
-                                ui,
-                                IconKind::Gamepad,
-                                "Game Lobby Invites",
-                                lobby_open,
-                                None,
-                            )
-                            .clicked()
-                            {
-                                self.active_modal = Some(ModalKind::GameLobbyInvite);
-                            }
-
-                            ui.add_space(10.0);
-                            draw_list_heading(ui, "DIRECT MESSAGES");
+                            ui.add_space(14.0);
+                            draw_list_heading(ui, &tr("Direct Messages").to_uppercase());
                             ui.add_space(4.0);
 
                             let dms: Vec<Channel> = self
@@ -1565,79 +1446,121 @@ impl CillhubApp {
         }
     }
 
-    fn sidebar_channel_row(
-        ui: &mut Ui,
-        icon: IconKind,
-        label: &str,
-        active: bool,
-        badge: Option<&str>,
-    ) -> egui::Response {
-        let (rect, resp) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::click());
+    /// `.row`: 30px, padding 4px 8px, gap 8, 14px muted text; hover tint and 2px nudge;
+    /// active: selected fill, strong 600 text, 3px accent bar, accent icon.
+    fn sidebar_row(ui: &mut Ui, icon: RowIcon, label: &str, active: bool, badge: Option<&str>) -> egui::Response {
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::click());
         let hovered = resp.hovered();
         let painter = ui.painter();
-
+        let r = if hovered && !active { rect.translate(Vec2::new(2.0, 0.0)) } else { rect };
         if active || hovered {
-            painter.rect_filled(
-                rect,
-                CornerRadius::same(2),
-                if active { BG_SELECTED } else { BG_HOVER },
-            );
+            painter.rect_filled(r, CornerRadius::same(2), if active { BG_SELECTED } else { BG_HOVER });
         }
         if active {
-            let bar = Rect::from_min_size(rect.min, Vec2::new(3.0, rect.height()));
-            painter.rect_filled(bar, 0.0, ACCENT);
+            painter.rect_filled(Rect::from_min_size(r.min, Vec2::new(3.0, r.height())), 0.0, ACCENT);
         }
-
-        let icon_color = if active {
-            ACCENT
-        } else if hovered {
-            INTERACTIVE
-        } else {
-            TEXT_MUTED
-        };
-        let icon_rect = Rect::from_center_size(
-            Pos2::new(rect.min.x + 16.0, rect.center().y),
-            Vec2::splat(16.0),
-        );
-        draw_icon(painter, icon_rect, icon, icon_color);
-
-        let text_color = if active {
-            TEXT_HEADER
-        } else if hovered {
-            TEXT
-        } else {
-            TEXT_MUTED
-        };
-        let font = if active {
-            bold_font(14.0)
-        } else {
-            ui_font(14.0)
-        };
-        painter.text(
-            Pos2::new(rect.min.x + 30.0, rect.center().y),
-            Align2::LEFT_CENTER,
-            label,
-            font,
-            text_color,
-        );
-
+        let icon_color = if active { ACCENT } else { OFFLINE };
+        let icon_rect = Rect::from_center_size(Pos2::new(r.min.x + 17.0, r.center().y), Vec2::splat(20.0));
+        match icon {
+            RowIcon::Hash => {
+                painter.text(icon_rect.center(), Align2::CENTER_CENTER, "#", ui_font(18.0), icon_color);
+            }
+            RowIcon::Icon(k) => draw_icon(painter, icon_rect, k, icon_color),
+            RowIcon::None => {}
+        }
+        let text_color = if active { TEXT_HEADER } else if hovered { TEXT } else { TEXT_MUTED };
+        let font = if active { bold_font(14.0) } else { ui_font(14.0) };
+        let x = if matches!(icon, RowIcon::None) { r.min.x + 8.0 } else { r.min.x + 35.0 };
+        let galley = painter.layout(label.to_string(), font, text_color, r.max.x - x - 30.0);
+        painter.galley(Pos2::new(x, r.center().y - galley.size().y / 2.0), galley, text_color);
         if let Some(b) = badge {
-            let b_rect = Rect::from_center_size(
-                Pos2::new(rect.max.x - 18.0, rect.center().y),
-                Vec2::new(20.0, 16.0),
-            );
+            let b_rect = Rect::from_center_size(Pos2::new(r.max.x - 16.0, r.center().y), Vec2::new(18.0, 16.0));
             painter.rect_filled(b_rect, CornerRadius::same(2), SIGNAL_STRONG);
-            painter.text(
-                b_rect.center(),
-                Align2::CENTER_CENTER,
-                b,
-                display_font(11.0),
-                Color32::WHITE,
-            );
+            painter.text(b_rect.center(), Align2::CENTER_CENTER, b, bold_font(11.0), Color32::WHITE);
         }
-
+        if hovered {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
         resp
+    }
+
+    /// `.category`: chevron + 12px display name + rule, then gear and + (when allowed).
+    /// Returns (toggle clicked, gear clicked, plus clicked).
+    fn category_head(ui: &mut Ui, name: &str, closed: bool, manage: bool) -> (bool, bool, bool) {
+        ui.add_space(12.0);
+        let w = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 18.0), Sense::hover());
+        ui.add_space(4.0);
+        let btns = if manage { 44.0 } else { 0.0 };
+        let toggle_rect = Rect::from_min_max(rect.min, Pos2::new(rect.max.x - btns - 4.0, rect.max.y));
+        let toggle = ui.interact(toggle_rect, ui.id().with(("cat", name)), Sense::click());
+        let color = if toggle.hovered() { TEXT_HEADER } else { TEXT_MUTED };
+        let p = ui.painter();
+        let chev = Rect::from_center_size(Pos2::new(rect.min.x + 6.0, rect.center().y), Vec2::splat(12.0));
+        draw_icon(p, chev, if closed { IconKind::ChevronRight } else { IconKind::Expand }, color);
+        let galley = crate::theme::spaced_text(ui, &name.to_uppercase(), 12.0, color);
+        let p = ui.painter();
+        let gx = rect.min.x + 15.0;
+        let gw = galley.size().x;
+        p.galley(Pos2::new(gx, rect.center().y - galley.size().y / 2.0), galley, color);
+        let line_x = gx + gw + 6.0;
+        if line_x < toggle_rect.max.x {
+            p.hline(line_x..=toggle_rect.max.x, rect.center().y, Stroke::new(1.0_f32, BORDER.gamma_multiply(0.75)));
+        }
+        let mut out = (toggle.clicked(), false, false);
+        if manage {
+            let tiny = |ui: &mut Ui, x: f32, icon: IconKind, size: f32, tip: &str, salt: &str| {
+                let r = Rect::from_center_size(Pos2::new(x, rect.center().y), Vec2::splat(20.0));
+                let resp = ui.interact(r, ui.id().with((salt, name)), Sense::click());
+                if resp.hovered() {
+                    ui.painter().rect_filled(r, CornerRadius::same(4), BG_HOVER);
+                }
+                let c = if resp.hovered() { TEXT_HEADER } else { INTERACTIVE.gamma_multiply(0.75) };
+                draw_icon(ui.painter(), Rect::from_center_size(r.center(), Vec2::splat(size)), icon, c);
+                resp.on_hover_text(tip).clicked()
+            };
+            out.1 = tiny(ui, rect.max.x - 32.0, IconKind::Gear, 14.0, tr("Edit Category"), "gear");
+            out.2 = tiny(ui, rect.max.x - 10.0, IconKind::Plus, 16.0, tr("New Channel"), "plus");
+        }
+        out
+    }
+
+    /// People in a voice channel, under its row.
+    fn voice_members(&self, ui: &mut Ui, channel_id: &str) {
+        let mut in_vc: Vec<(String, String, bool)> = self
+            .state
+            .voice_states
+            .values()
+            .filter(|vs| vs.channel_id.as_deref() == Some(channel_id))
+            .map(|vs| {
+                let name = self.state.users.get(&vs.user_id).map(|u| u.display_name().to_string()).unwrap_or_else(|| vs.user_id.clone());
+                (vs.user_id.clone(), name, vs.self_stream)
+            })
+            .collect();
+        in_vc.sort_by(|a, b| a.1.cmp(&b.1));
+        for (uid, uname, live) in in_vc {
+            ui.horizontal(|ui| {
+                ui.add_space(30.0);
+                draw_avatar(ui, 20.0, &uid, &uname, None, BG_SIDEBAR);
+                ui.label(RichText::new(&uname).font(ui_font(13.0)).color(INTERACTIVE));
+                if live {
+                    Frame::new()
+                        .fill(SIGNAL_STRONG)
+                        .corner_radius(CornerRadius::same(2))
+                        .inner_margin(Margin::symmetric(4, 1))
+                        .show(ui, |ui| {
+                            ui.label(RichText::new(tr("LIVE")).font(display_font(10.0)).color(Color32::WHITE));
+                        });
+                }
+            });
+        }
+    }
+
+    /// My server-wide permissions.
+    pub fn guild_perms(&self, gid: &str) -> u64 {
+        let (Some(g), Some(me)) = (self.state.guilds.get(gid), self.state.me.as_ref()) else { return 0 };
+        let member = self.state.members.get(gid).and_then(|m| m.get(&me.id));
+        crate::permissions::base_perms(g, &me.id, member)
     }
 
     fn render_member_list(&mut self, ui: &mut Ui, guild_id: &str) {
@@ -1670,25 +1593,31 @@ impl CillhubApp {
                 online.push((uid, m, st));
             }
         }
+        let key = |(uid, m, _): &(String, Member, String)| {
+            m.nick.clone().or_else(|| m.user.as_ref().map(|u| u.display_name().to_string())).or_else(|| self.state.users.get(uid).map(|u| u.display_name().to_string())).unwrap_or_default().to_lowercase()
+        };
+        online.sort_by_key(key);
+        offline.sort_by_key(key);
 
+        // `.members`: padding 0 6px 14px; `.list-heading` padding 16px 8px 6px
         Frame::new()
-            .inner_margin(Margin::symmetric(10, 12))
+            .inner_margin(Margin { left: 6, right: 6, top: 0, bottom: 14 })
             .show(ui, |ui| {
                 ScrollArea::vertical()
                     .id_salt("guild_members_scroll")
                     .show(ui, |ui| {
-                        draw_list_heading(ui, &format!("ONLINE — {}", online.len()));
-                        ui.add_space(4.0);
-                        for (uid, m, st) in &online {
-                            self.render_member_item(ui, &guild, &owner_id, uid, m, st, false);
-                        }
-
-                        if !offline.is_empty() {
-                            ui.add_space(12.0);
-                            draw_list_heading(ui, &format!("OFFLINE — {}", offline.len()));
-                            ui.add_space(4.0);
-                            for (uid, m, st) in &offline {
-                                self.render_member_item(ui, &guild, &owner_id, uid, m, st, true);
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for (title, list, off) in [(tr("Online"), &online, false), (tr("Offline"), &offline, true)] {
+                            if list.is_empty() && off {
+                                continue;
+                            }
+                            ui.add_space(16.0);
+                            Frame::new().inner_margin(Margin::symmetric(8, 0)).show(ui, |ui| {
+                                draw_list_heading(ui, &format!("{} – {}", title.to_uppercase(), list.len()));
+                            });
+                            ui.add_space(6.0);
+                            for (uid, m, st) in list {
+                                self.render_member_item(ui, &guild, &owner_id, uid, m, st, off);
                             }
                         }
                     });
@@ -1732,51 +1661,41 @@ impl CillhubApp {
                 })
         });
 
-        let (rect, resp) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::click());
+        // `.members .row`: 30px, avatar 28, 14px name (muted when offline, avatar at half opacity)
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::click());
         if resp.hovered() {
-            ui.painter()
-                .rect_filled(rect, CornerRadius::same(2), BG_HOVER);
+            ui.painter().rect_filled(rect, CornerRadius::same(2), BG_HOVER);
         }
-
         let mut row_ui = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(rect.shrink2(Vec2::new(6.0, 4.0)))
+                .max_rect(rect.shrink2(Vec2::new(4.0, 1.0)))
                 .layout(Layout::left_to_right(Align::Center)),
         );
         row_ui.style_mut().interaction.selectable_labels = false;
-        draw_avatar(
-            &mut row_ui,
-            28.0,
-            uid,
-            name,
-            Some(status),
-            if resp.hovered() { BG_HOVER } else { BG_SIDEBAR },
-        );
-        row_ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                let base_col = role_color.unwrap_or(if is_offline {
-                    TEXT_MUTED
-                } else {
-                    TEXT
-                });
-                ui.label(RichText::new(name).font(bold_font(13.5)).color(base_col));
-                if uid == owner_id {
-                    ui.label(RichText::new("👑").size(11.0).color(YELLOW));
+        row_ui.spacing_mut().item_spacing.x = 8.0;
+        if is_offline {
+            row_ui.set_opacity(0.5);
+        }
+        draw_avatar(&mut row_ui, 28.0, uid, name, Some(status), if resp.hovered() { BG_HOVER } else { BG_SIDEBAR });
+        row_ui.set_opacity(1.0);
+        let base_col = if is_offline { TEXT_MUTED } else { role_color.unwrap_or(TEXT) };
+        let w = row_ui.available_width() - 20.0;
+        row_ui.allocate_ui_with_layout(Vec2::new(w, 28.0), Layout::top_down(Align::Min).with_main_align(Align::Center), |ui| {
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                ui.add(egui::Label::new(RichText::new(name).font(ui_font(14.0)).color(base_col)).truncate());
+                if let Some(gname) = &game {
+                    ui.add(egui::Label::new(RichText::new(gname).font(ui_font(11.0)).color(TEXT_MUTED)).truncate());
                 }
             });
-            if let Some(gname) = game {
-                ui.label(
-                    RichText::new(format!("🎮 {gname}"))
-                        .font(ui_font(11.0))
-                        .color(TEXT_MUTED),
-                );
-            }
         });
+        if uid == owner_id {
+            row_ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(RichText::new("♛").font(ui_font(13.0)).color(YELLOW)).on_hover_text(tr("Server Owner"));
+            });
+        }
 
-        if resp.on_hover_text("Click to Message").clicked() {
+        if resp.clicked() {
             let my_id = self.state.me.as_ref().map(|u| u.id.as_str());
             if my_id != Some(uid) {
                 self.open_or_create_dm(&user);
@@ -1932,6 +1851,7 @@ impl CillhubApp {
             self.msg_menu = None;
             self.emoji_picker = None;
             self.confirm_delete = None;
+            self.edit_channel = None;
         }
 
         // Full-size image view (the web client's lightbox)
@@ -2078,6 +1998,7 @@ impl CillhubApp {
         self.render_message_menu(ctx);
         self.render_emoji_picker(ctx);
         self.render_confirm_delete(ctx);
+        self.render_edit_channel(ctx);
     }
 }
 

@@ -459,23 +459,27 @@ pub fn draw_avatar(
 #[cfg(feature = "native-gui")]
 pub fn draw_list_heading(ui: &mut Ui, label: &str) {
     use palette::*;
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 8.0;
-        ui.label(
-            egui::RichText::new(label.to_uppercase())
-                .font(display_font(13.0))
-                .color(TEXT_MUTED),
-        );
-        let avail = ui.available_width();
-        if avail > 6.0 {
-            let (line_rect, _) = ui.allocate_exact_size(Vec2::new(avail, 14.0), Sense::hover());
-            ui.painter().hline(
-                line_rect.x_range(),
-                line_rect.center().y,
-                Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0x2c, 0x30, 0x38, 190)),
-            );
-        }
-    });
+    // `.list-heading`: 12px condensed, letter-spacing .12em, rule after
+    let galley = spaced_text(ui, &label.to_uppercase(), 12.0, TEXT_MUTED);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 16.0), Sense::hover());
+    let y = rect.center().y;
+    let w = galley.size().x;
+    ui.painter().galley(Pos2::new(rect.min.x, y - galley.size().y / 2.0), galley, TEXT_MUTED);
+    if rect.min.x + w + 8.0 < rect.max.x {
+        ui.painter().hline((rect.min.x + w + 8.0)..=rect.max.x, y, Stroke::new(1.0_f32, BORDER.gamma_multiply(0.75)));
+    }
+}
+
+/// Condensed heading text with the web's .12em letter spacing.
+#[cfg(feature = "native-gui")]
+pub fn spaced_text(ui: &Ui, text: &str, size: f32, color: Color32) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::default();
+    job.append(
+        text,
+        0.0,
+        egui::TextFormat { font_id: display_font(size), color, extra_letter_spacing: size * 0.12, ..Default::default() },
+    );
+    ui.fonts(|f| f.layout_job(job))
 }
 
 #[cfg(feature = "native-gui")]

@@ -14,7 +14,7 @@ use crate::theme::{
 use crate::ui::{CillhubApp, DrawerKind, ModalKind};
 use egui::{
     Align, Align2, Color32, CornerRadius, Frame, Layout, Margin, Rect, RichText, ScrollArea,
-    Sense, Stroke, TextEdit, Ui, Vec2,
+    Pos2, Sense, Stroke, TextEdit, Ui, Vec2,
 };
 use serde_json::json;
 
@@ -23,184 +23,106 @@ impl CillhubApp {
         let cid = channel.id.clone();
         let ch_name = channel.display_name(self.state.me.as_ref().map(|u| u.id.as_str()));
         let ch_icon = match channel.kind {
-            1 | 3 => IconKind::People,
             2 => IconKind::Speaker,
+            5 => IconKind::Announcement,
             13 => IconKind::Stage,
             15 => IconKind::Forum,
             _ => IconKind::Hash,
         };
 
-        // 1. `.chat-header` (`44px` height, `border-bottom: 1px solid #2c3038`, `padding: 0 12px`)
-        Frame::new()
-            .fill(BG_CHAT)
-            .inner_margin(Margin::symmetric(12, 6))
-            .show(ui, |ui| {
-                ui.set_height(32.0);
-                ui.horizontal(|ui| {
-                    let (ic_rect, _) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover());
-                    draw_icon(ui.painter(), ic_rect, ch_icon, TEXT_MUTED);
-                    ui.label(
-                        RichText::new(ch_name.to_uppercase())
-                            .font(display_font(20.0))
-                            .color(TEXT_HEADER),
-                    );
-
-                    if let Some(topic) = channel.topic.as_deref().filter(|s| !s.is_empty()) {
-                        let (div_r, _) =
-                            ui.allocate_exact_size(Vec2::new(8.0, 18.0), Sense::hover());
-                        ui.painter().vline(
-                            div_r.center().x,
-                            div_r.y_range(),
-                            Stroke::new(1.0_f32, BORDER),
-                        );
-                        ui.label(
-                            RichText::new(topic)
-                                .font(ui_font(12.5))
-                                .color(TEXT_MUTED),
-                        );
-                    }
-
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-
-                        // Inbox / Saved Messages drawer
-                        let saved_open = self.active_drawer == Some(DrawerKind::Saved);
-                        if icon_btn(
-                            ui,
-                            IconKind::Inbox,
-                            "Saved Messages & Bookmarks",
-                            saved_open,
-                            false,
-                        )
-                        .clicked()
-                        {
-                            self.active_drawer = if saved_open {
-                                None
-                            } else {
-                                Some(DrawerKind::Saved)
-                            };
-                        }
-
-                        // Compact `.search-input` (`#0b0c0f` fill, `1px` `#2c3038` border)
-                        Frame::new()
-                            .fill(BG_RAIL)
-                            .stroke(Stroke::new(1.0_f32, BORDER))
-                            .corner_radius(CornerRadius::same(2))
-                            .inner_margin(Margin::symmetric(8, 4))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    let resp = ui.add_sized(
-                                        Vec2::new(128.0, 18.0),
-                                        TextEdit::singleline(&mut self.search_query)
-                                            .font(ui_font(12.5))
-                                            .hint_text(
-                                                RichText::new("Search")
-                                                    .font(ui_font(12.5))
-                                                    .color(TEXT_MUTED),
-                                            )
-                                            .frame(false),
-                                    );
-                                    let (sr, _) =
-                                        ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover());
-                                    draw_icon(ui.painter(), sr, IconKind::Search, TEXT_MUTED);
-                                    if resp.lost_focus()
-                                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                                        && !self.search_query.trim().is_empty()
-                                    {
-                                        self.active_drawer = Some(DrawerKind::Search);
-                                        self.run_search();
-                                    }
-                                });
-                            });
-
-                        // Member List Toggle
-                        if icon_btn(
-                            ui,
-                            IconKind::People,
-                            "Toggle Member List",
-                            self.show_member_list,
-                            false,
-                        )
-                        .clicked()
-                        {
-                            self.show_member_list = !self.show_member_list;
-                        }
-
-                        // Channel Canvas Drawer
-                        let canvas_open = self.active_drawer == Some(DrawerKind::Canvas);
-                        if icon_btn(
-                            ui,
-                            IconKind::Canvas,
-                            "Channel Canvas",
-                            canvas_open,
-                            false,
-                        )
-                        .clicked()
-                        {
-                            self.active_drawer = if canvas_open {
-                                None
-                            } else {
-                                Some(DrawerKind::Canvas)
-                            };
-                        }
-
-                        // Pinned Messages Drawer
-                        let pins_open = self.active_drawer == Some(DrawerKind::Pins);
-                        if icon_btn(
-                            ui,
-                            IconKind::Pin,
-                            "Pinned Messages",
-                            pins_open,
-                            false,
-                        )
-                        .clicked()
-                        {
-                            self.active_drawer = if pins_open {
-                                None
-                            } else {
-                                self.load_pins(&cid);
-                                Some(DrawerKind::Pins)
-                            };
-                        }
-
-                        // Threads Drawer
-                        let threads_open = self.active_drawer == Some(DrawerKind::Threads);
-                        if icon_btn(
-                            ui,
-                            IconKind::Thread,
-                            "Threads",
-                            threads_open,
-                            false,
-                        )
-                        .clicked()
-                        {
-                            self.active_drawer = if threads_open {
-                                None
-                            } else {
-                                Some(DrawerKind::Threads)
-                            };
-                        }
-
-                        // Share Game Lobby Invite button
-                        let lobby_open = self.active_modal == Some(ModalKind::GameLobbyInvite);
-                        if icon_btn(
-                            ui,
-                            IconKind::Gamepad,
-                            "Invite to Game Lobby / League Party",
-                            lobby_open,
-                            false,
-                        )
-                        .clicked()
-                        {
-                            self.active_modal = Some(ModalKind::GameLobbyInvite);
-                        }
-                    });
-                });
+        // 1. `.chat-header` (Chat.tsx): 44px, padding 0 14px, title left, topic after a rule
+        //    (cut to fit), the web's buttons right: threads, pins, canvas, members, search, inbox.
+        let header_bg = BG_CHAT.lerp_to_gamma(BG_SIDEBAR, 0.06);
+        let (hdr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::hover());
+        ui.painter().rect_filled(hdr, 0.0, header_bg);
+        ui.painter().hline(hdr.x_range(), hdr.max.y - 0.5, Stroke::new(1.0_f32, BORDER));
+        let in_guild = channel.guild_id.is_some();
+        let text_like = matches!(channel.kind, 0 | 5);
+        let n_btns = 2 + usize::from(text_like) + usize::from(in_guild) + 1; // pins, canvas, threads, members, inbox
+        let right_w = n_btns as f32 * 32.0 + 168.0 + 8.0 * (n_btns as f32);
+        let mut hui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(hdr.shrink2(Vec2::new(14.0, 0.0)))
+                .layout(Layout::left_to_right(Align::Center)),
+        );
+        hui.spacing_mut().item_spacing.x = 8.0;
+        let left_w = hui.available_width() - right_w - 16.0;
+        hui.allocate_ui_with_layout(Vec2::new(left_w.max(60.0), 44.0), Layout::left_to_right(Align::Center), |ui| {
+            ui.style_mut().interaction.selectable_labels = false;
+            match ch_icon {
+                IconKind::Hash => {
+                    let hash = if matches!(channel.kind, 1 | 3) { "@" } else { "#" };
+                    ui.label(RichText::new(hash).font(ui_font(20.0)).color(TEXT_MUTED));
+                }
+                k => {
+                    let (r, _) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::hover());
+                    draw_icon(ui.painter(), r, k, OFFLINE);
+                }
+            }
+            let max_title = ui.available_width() * 0.5;
+            ui.allocate_ui(Vec2::new(max_title, 44.0), |ui| {
+                ui.add(
+                    egui::Label::new(RichText::new(ch_name.to_uppercase()).font(display_font(20.0)).color(TEXT_HEADER))
+                        .truncate(),
+                )
             });
-
-        let hr = ui.min_rect();
-        ui.painter()
-            .hline(hr.x_range(), hr.max.y, Stroke::new(1.0_f32, BORDER));
+            if let Some(topic) = channel.topic.as_deref().filter(|s| !s.is_empty()) {
+                ui.add_space(0.0);
+                let (div_r, _) = ui.allocate_exact_size(Vec2::new(1.0, 20.0), Sense::hover());
+                ui.painter().vline(div_r.center().x, div_r.y_range(), Stroke::new(1.0_f32, BORDER));
+                ui.add(egui::Label::new(RichText::new(topic.replace('\n', " ")).font(ui_font(13.0)).color(TEXT_MUTED)).truncate());
+            }
+        });
+        hui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            let saved_open = self.active_drawer == Some(DrawerKind::Saved);
+            if icon_btn(ui, IconKind::Inbox, tr("Inbox"), saved_open, false).clicked() {
+                self.active_drawer = if saved_open { None } else { Some(DrawerKind::Saved) };
+            }
+            // `.search-box`: 168x30, rail fill, icon at the right
+            let (sr, _) = ui.allocate_exact_size(Vec2::new(168.0, 30.0), Sense::hover());
+            let sid = ui.id().with("header_search");
+            let focused = ui.memory(|m| m.has_focus(sid));
+            ui.painter().rect(sr, CornerRadius::same(2), BG_RAIL, Stroke::new(1.0_f32, if focused { FOCUS } else { BORDER }), egui::StrokeKind::Inside);
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sr.min + Vec2::new(10.0, 7.0), sr.max - Vec2::new(28.0, 6.0))));
+            let resp = child.add(
+                TextEdit::singleline(&mut self.search_query)
+                    .id(sid)
+                    .font(ui_font(13.5))
+                    .text_color(TEXT)
+                    .hint_text(RichText::new(tr("Search")).font(ui_font(13.5)).color(TEXT_MUTED))
+                    .frame(false)
+                    .margin(Margin::ZERO)
+                    .desired_width(sr.width() - 38.0),
+            );
+            draw_icon(ui.painter(), Rect::from_center_size(Pos2::new(sr.max.x - 14.0, sr.center().y), Vec2::splat(16.0)), IconKind::Search, TEXT_MUTED);
+            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !self.search_query.trim().is_empty() {
+                self.active_drawer = Some(DrawerKind::Search);
+                self.run_search();
+            }
+            if in_guild && icon_btn(ui, IconKind::People, tr("Show Member List"), self.show_member_list, false).clicked() {
+                self.show_member_list = !self.show_member_list;
+            }
+            let canvas_open = self.active_drawer == Some(DrawerKind::Canvas);
+            if icon_btn(ui, IconKind::Canvas, tr("Channel Canvas"), canvas_open, false).clicked() {
+                self.active_drawer = if canvas_open { None } else { Some(DrawerKind::Canvas) };
+            }
+            let pins_open = self.active_drawer == Some(DrawerKind::Pins);
+            if icon_btn(ui, IconKind::Pin, tr("Pinned Messages"), pins_open, false).clicked() {
+                self.active_drawer = if pins_open {
+                    None
+                } else {
+                    self.load_pins(&cid);
+                    Some(DrawerKind::Pins)
+                };
+            }
+            if text_like {
+                let threads_open = self.active_drawer == Some(DrawerKind::Threads);
+                if icon_btn(ui, IconKind::Thread, tr("Threads"), threads_open, false).clicked() {
+                    self.active_drawer = if threads_open { None } else { Some(DrawerKind::Threads) };
+                }
+            }
+        });
 
         // If this is a Stage channel (type 13), show Stage controls banner
         if channel.kind == 13 {
