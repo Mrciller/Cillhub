@@ -155,6 +155,11 @@ function inbound<T>(n: Live, data: T): T | null {
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(x)) {
       if (isIdList(k) && v != null && !Array.isArray(v)) throw bad // an id list that is not a list
+      // our presence and activities are the hub's: a node's entry for our node account is dropped
+      if (k === 'presences' && Array.isArray(v)) {
+        out[k] = walk(v.filter((p) => !(n.meId && (p as { user?: { id?: unknown } } | null)?.user?.id === n.meId)), k, depth + 1, inFree, false)
+        continue
+      }
       const typed = (key === 'emoji' && k === 'id') || key === 'default_values'
       if (isIdKey(k) && v != null && (!inFree || typed)) {
         out[k] = USER_ID_KEYS.has(k) || (k === 'id' && (userObj || (key === 'default_values' && (x as { type?: unknown }).type === 'user'))) ? userRef(v) : ref(v)
@@ -249,24 +254,61 @@ export function admitRest<T>(inst: string, raw: T): T | null {
 export function outbound<T>(inst: string, data: T): T {
   const n = live[inst]
   const pre = inst + SEP
-  const strip = (x: string) =>
-    x.startsWith(pre) && SNOW.test(x.slice(pre.length)) ? x.slice(pre.length)
-    : n?.meId && hub.meId && x === hub.meId ? n.meId
-    : x.replace(TOKENS_SCOPED, (m, kind: string, i: string, v: string) => (i === inst ? `<${kind}${v}>` : m)).replace(/<(@!?)(\d{1,20})>/g, (m, kind: string, v: string) => (n?.meId && v === hub.meId ? `<${kind}${n.meId}>` : m))
-  const key = (k: string) => (k.startsWith(pre) && SNOW.test(k.slice(pre.length)) ? k.slice(pre.length) : k)
-  const walk = (x: unknown): unknown =>
-    typeof x === 'string' ? strip(x)
-    : Array.isArray(x) ? x.map(walk)
-    : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [key(k), walk(v)]))
+  const me = (x: unknown) => !!n?.meId && !!hub.meId && x === hub.meId
+  const bare = (x: string) => (x.startsWith(pre) && SNOW.test(x.slice(pre.length)) ? x.slice(pre.length) : x)
+  // our hub id becomes our node id only in typed user positions, never a stripped resource id that happens to equal it
+  const strip = (x: string, user: boolean) =>
+    user && me(x) ? n!.meId!
+    : bare(x).replace(TOKENS_SCOPED, (m, kind: string, i: string, v: string) => (i === inst ? `<${kind}${v}>` : m))
+      .replace(/<(@!?)(\d{1,20})>/g, (m, kind: string, v: string) => (me(v) ? `<${kind}${n!.meId}>` : m))
+  const walk = (x: unknown, key: string, userObj: boolean): unknown =>
+    typeof x === 'string' ? strip(x, USER_ID_KEYS.has(key) || USER_LISTS.has(key) || (key === 'id' && userObj))
+    : Array.isArray(x) ? x.map((v) => walk(v, key, userObj))
+    : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [bare(k), walk(v, k, USER_OBJECTS.has(k) || (k === 'id' && userObj))]))
     : x
-  return walk(data) as T
+  return walk(data, '', false) as T
 }
 const TOKENS_SCOPED = /<(@!?|@&|#|a?:\w{1,32}:)(\d{1,20})~(\d{1,20})>/g
-/** A path (and query) going to the node: its scoped ids bare (also inside `name:id` emoji segments, URL-encoded too). */
+// Path segments that name a user: our hub id there becomes our node id.
+const USER_SEGMENT_PARENTS = new Set(['users', 'members', 'recipients', 'bans', 'thread-members'])
+/** A path (and query) going to the node: its scoped ids bare (also inside `name:id` emoji segments, URL-encoded too); our
+ *  bare hub id becomes our node id only right after a user collection, checked before stripping. */
 export const outboundPath = (inst: string, path: string) => {
   const n = live[inst]
-  const out = path.replace(new RegExp(`(?<!\\d)${inst}${SEP}(?=\\d)`, 'g'), '')
-  return n?.meId && hub.meId ? out.split('/').map((seg) => (seg === hub.meId ? n.meId : seg)).join('/') : out
+  const strip = (x: string) => x.replace(new RegExp(`(?<!\\d)${inst}${SEP}(?=\\d)`, 'g'), '')
+  const [p, q] = path.split(/\?(.*)/s)
+  const segs = p.split('/')
+  const out = segs.map((seg, i) => (n?.meId && hub.meId && seg === hub.meId && USER_SEGMENT_PARENTS.has(segs[i - 1]) ? n.meId : strip(seg))).join('/')
+  return q === undefined ? out : `${out}?${strip(q)}`
+}
+
+/** A body may only reference objects of the server it goes to (forwards, replies, pins…): to a node, every `id`/`*_id`
+ *  string is that node's or our own user id; to the hub, none is a node's. */
+export function bodyFits(body: unknown, to: string | undefined) {
+  let ok = true
+  const walk = (x: unknown, depth: number): void => {
+    if (!ok || !x || typeof x !== 'object' || depth > LIMITS.depth) return
+    for (const [k, v] of Object.entries(x)) {
+      if (k === 'attachments') continue // upload slots ('0', '1', …) and attachment ids of the message itself
+      if (typeof v === 'string' && isIdKey(k) && /^[\d~]+$/.test(v)) {
+        const n = nodeOf(v)
+        if (to ? n !== to && v !== hub.meId : n !== undefined) ok = false
+      } else walk(v, depth + 1)
+    }
+  }
+  walk(body, 0)
+  return ok
+}
+
+/** `r` without the entries of node `inst` that are not in `keep` (users, presences… of a node server that left). */
+export const pruneNode = <V,>(inst: string, r: Record<string, V>, keep: Set<string>) => Object.fromEntries(Object.entries(r).filter(([k]) => nodeOf(k) !== inst || keep.has(k)))
+
+/** A LiveKit participant of a call on node `inst` as our user id (or null when the identity is not a snowflake). */
+export const nodeUserId = (inst: string | undefined, identity: string) => {
+  if (!inst) return SNOW.test(identity) ? identity : null
+  const n = live[inst]
+  if (!SNOW.test(identity)) return null
+  return n?.meId && identity === n.meId ? hub.meId : scoped(inst, identity)
 }
 
 // A path segment that is an id (a file may follow the id: /emojis/<id>.png); `name:id` emoji segments are not.

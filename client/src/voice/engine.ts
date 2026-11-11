@@ -1,4 +1,8 @@
-import { nodeOf } from '../instances/registry'
+import { nodeOf, nodeUserId } from '../instances/registry'
+// LiveKit identities of a node's room are that node's user ids: scoped (ours → our hub id) before any map key or tile.
+let roomNode: string | undefined
+const userOf = (p: { identity: string }) => nodeUserId(roomNode, p.identity)
+const speakingOf = (ps: { identity: string }[]) => Object.fromEntries(ps.flatMap((p) => { const id = userOf(p); return id ? [[id, true as const]] : [] }))
 // Voice connection: gateway op 4 / VOICE_SERVER_UPDATE handling and the LiveKit room (CONTRACT-v2 section 10).
 // livekit-client is imported lazily so it only loads once someone joins voice. When VOICE_SERVER_UPDATE names the
 // endpoint "cillvoice", Cillhub's own media server is used instead: every action below then goes to ./cillvoice.
@@ -134,9 +138,10 @@ async function connectRoom(endpoint: string, token: string) {
     audioOutput: { deviceId: s.output || undefined },
   })
   room = r
+  roomNode = nodeOf(getState().voice.guildId) // whose LiveKit this is: its identities are that node's user ids
   last = { endpoint, token }
   const live = () => room === r
-  r.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => live() && setVoice({ speaking: Object.fromEntries(speakers.map((p) => [p.identity, true])) }))
+  r.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => live() && setVoice({ speaking: speakingOf(speakers) }))
     .on(RoomEvent.TrackSubscribed, (track: Track, _pub, p: RemoteParticipant) => {
       if (!live()) return
       if (track.kind === 'audio') audioBox().appendChild(track.attach())
@@ -170,7 +175,7 @@ async function connectRoom(endpoint: string, token: string) {
   }
   if (!live()) return void r.disconnect()
   // Speakers announced while connect() was pending are already in activeSpeakers; resetting to {} would drop them.
-  setVoice({ status: 'connected', speaking: Object.fromEntries(r.activeSpeakers.map((p) => [p.identity, true])) })
+  setVoice({ status: 'connected', speaking: speakingOf(r.activeSpeakers) })
   r.remoteParticipants.forEach(applyVolume)
   if (!decodesAv1()) void r.localParticipant.setAttributes({ av1: '0' }).catch(() => {}) // needs canUpdateOwnMetadata (server 7.4+)
   await syncMic()
@@ -216,8 +221,9 @@ const deafened = () => getState().voice.selfDeaf || !!myState()?.deaf
 function applyVolume(p: RemoteParticipant) {
   const s = voiceSettings()
   // Capped at 300 % overall to protect ears when user and output volume are both raised.
-  const vol = deafened() ? 0 : Math.min(3, (s.volumes[p.identity] ?? 1) * s.outputVolume)
-  const streamVol = deafened() ? 0 : Math.min(3, (s.screenVolumes?.[p.identity] ?? s.volumes[`${p.identity}-screen`] ?? 1) * s.outputVolume)
+  const id = userOf(p) ?? ''
+  const vol = deafened() ? 0 : Math.min(3, (s.volumes[id] ?? 1) * s.outputVolume)
+  const streamVol = deafened() ? 0 : Math.min(3, (s.screenVolumes?.[id] ?? s.volumes[`${id}-screen`] ?? 1) * s.outputVolume)
   p.setVolume(vol)
   p.setVolume(streamVol, 'screen_share_audio' as Track.Source.ScreenShareAudio)
 }
@@ -686,7 +692,7 @@ export function videoTiles(): Tile[] {
   const out: Tile[] = []
   for (const p of [r.localParticipant, ...r.remoteParticipants.values()])
     for (const pub of p.videoTrackPublications.values())
-      if (pub.track && !pub.isMuted) out.push({ userId: p.identity, source: pub.source === 'screen_share' ? 'screen' : 'camera', track: pub.track })
+      if (pub.track && !pub.isMuted && userOf(p)) out.push({ userId: userOf(p)!, source: pub.source === 'screen_share' ? 'screen' : 'camera', track: pub.track })
   return out
 }
 

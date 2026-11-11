@@ -243,3 +243,41 @@ test('limits everywhere; gateway only on the node; CDN paths cannot walk out', (
   assert.equal(gatewayOk('https://n1.example', 'ws://n1.example/gateway'), false)
   assert.equal(safePath('/emojis/../api/v9/users/@me.png'), false)
 })
+
+test('r4-4: a node cannot set our presence or activities, in any payload', () => {
+  const g = reg.admit('7', 'GUILD_CREATE', { id: '100', channels: [], presences: [{ user: { id: '900' }, status: 'offline', activities: [{ name: 'x' }] }, { user: { id: '901' }, status: 'online' }] })
+  assert.deepEqual(g.presences.map((p) => p.user.id), ['7~901'])
+  const r = reg.admit('7', 'READY', { user: { id: '900' }, guilds: [{ id: '100', channels: [], presences: [{ user: { id: '900' }, status: 'dnd' }] }], presences: [{ user: { id: '900' }, status: 'idle' }] })
+  assert.deepEqual([r.presences.length, r.guilds[0].presences.length], [0, 0])
+  assert.equal(reg.admit('7', 'PRESENCE_UPDATE', { user: { id: '900' }, status: 'offline', guild_id: '100' }), null)
+})
+
+test('r4-7: a node server that leaves takes its users, presences and activities along, unless another server of that node holds them', () => {
+  const users = { 1: 'hub-me', 2: 'hub-sam', '7~901': 'kim', '7~902': 'jordan', '8~901': 'other node' }
+  assert.deepEqual(Object.keys(reg.pruneNode('7', users, new Set(['7~902']))).sort(), ['1', '2', '7~902', '8~901'])
+})
+
+test('r4-12: LiveKit identities of a node room are that node user ids', () => {
+  assert.equal(reg.nodeUserId('7', '900'), '1', 'our node account')
+  assert.equal(reg.nodeUserId('7', '2'), '7~2', 'never the hub user 2')
+  assert.equal(reg.nodeUserId('7', '8~950'), null)
+  assert.equal(reg.nodeUserId('7', 'x'), null)
+  assert.equal(reg.nodeUserId(undefined, '2'), '2', 'a hub room keeps hub ids')
+})
+
+test('r4-16: our hub id becomes our node id only in user positions, never in a stripped resource id', () => {
+  assert.equal(reg.outboundPath('7', '/channels/7~1/messages'), '/channels/1/messages', 'a node channel whose id equals our hub id')
+  assert.equal(reg.outboundPath('7', '/guilds/7~100/members/1'), '/guilds/100/members/900')
+  assert.equal(reg.outboundPath('7', '/guilds/7~100/members/7~1'), '/guilds/100/members/1')
+  assert.deepEqual(reg.outbound('7', { channel_id: '7~1', user_id: '1', author: { id: '1' }, target: { id: '1' } }), { channel_id: '1', user_id: '900', author: { id: '900' }, target: { id: '1' } })
+})
+
+test('r4-17: forwards and other references only within one server', () => {
+  const fwd = (ref) => ({ message_reference: { type: 1, ...ref } })
+  assert.equal(reg.bodyFits(fwd({ message_id: '5', channel_id: '11' }), '7'), false, 'hub message forwarded to a node')
+  assert.equal(reg.bodyFits(fwd({ message_id: '7~5', channel_id: '7~101' }), undefined), false, 'node message forwarded to the hub')
+  assert.equal(reg.bodyFits(fwd({ message_id: '8~5', channel_id: '8~1' }), '7'), false, 'another node')
+  assert.equal(reg.bodyFits(fwd({ message_id: '7~5', channel_id: '7~101' }), '7'), true)
+  assert.equal(reg.bodyFits({ content: 'x', attachments: [{ id: '0' }], user_id: '1' }, '7'), true, 'upload slots and our own user id')
+  assert.equal(reg.bodyFits({ guild_folders: [{ id: 1, guild_ids: ['7~100'] }] }, undefined), true, 'hub settings list node servers')
+})

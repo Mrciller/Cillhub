@@ -12,7 +12,7 @@ import { gatewayOk, inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revoca
 import { apply, byId, getState, setState, setToken } from '../store'
 import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
-import { admit, outbound, overBudget, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
+import { admit, outbound, overBudget, pruneNode, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
 
 /** The hub's node directory record (§2), from GET /federation/nodes. */
 export type NodeRecord = {
@@ -95,9 +95,19 @@ function dispatch(id: string, t: string, raw: any) {
   if (t === 'READY') return ready(id, d)
   const s = getState()
   apply(t, d)
+  if (t === 'GUILD_DELETE') dropNodeState(id) // its members leave unless another server of the node still has them
   voiceEvent(t, d)
   notifyEvent(t, d)
   soundEvent(t, d, s)
+}
+
+/** Users, presences, activities and messages of node `id` that none of its remaining servers holds. */
+function dropNodeState(id: string) {
+  const s = getState()
+  const keep = new Set<string>()
+  for (const g of Object.keys(s.guilds)) if (nodeOf(g) === id) for (const u of Object.keys(s.members[g] ?? {})) keep.add(u)
+  setState({ users: pruneNode(id, s.users, keep), presences: pruneNode(id, s.presences, keep), activities: pruneNode(id, s.activities, keep),
+    messages: Object.fromEntries(Object.entries(s.messages).filter(([c]) => nodeOf(c) !== id || !!s.channels[c])) })
 }
 
 const list = <T,>(x: unknown): T[] => (Array.isArray(x) ? x : Array.isArray((x as { entries?: unknown })?.entries) ? (x as { entries: T[] }).entries : [])
@@ -108,6 +118,7 @@ function ready(id: string, d: { guilds?: GuildPayload[]; users?: User[]; presenc
   // Replaced wholesale (like the hub's READY): drops servers we left while away, stale members and voice states, and
   // anything applied from a REST answer before our node identity was known (not yet aliased).
   for (const g of Object.keys(getState().guilds)) if (nodeOf(g) === id) apply('GUILD_DELETE', { id: g })
+  dropNodeState(id) // what the node brought before goes too, so its id budget (reset by this READY) matches what is kept
   for (const g of guilds) apply('GUILD_CREATE', g)
   setState((s) => ({
     users: { ...byId((d.users ?? []).filter((u) => u.id !== me)), ...s.users },

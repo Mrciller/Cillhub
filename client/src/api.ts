@@ -1,6 +1,6 @@
 import { DEFAULT_HUB_URL } from './hub'
 import { t } from './i18n'
-import { admitRest, instanceById, instances, outbound, outboundPath, pathFits, route, tokenOf } from './instances/registry'
+import { admitRest, bodyFits, instanceById, instances, outbound, outboundPath, pathFits, route, tokenOf } from './instances/registry'
 import { cleanName, normalizeServerUrl, parseNodes, safePath, tokenFor, type SavedNode } from './privateNodes'
 
 export { normalizeServerUrl }
@@ -123,6 +123,7 @@ function target(path: string, body: unknown, instance?: string) {
   const info = instanceById(node)
   // a node id of a node we no longer have, or ids of another server in the path: never sent
   if ((node && !info) || !pathFits(path, node)) throw new ApiError(0, { message: t('Request failed ({status})', { status: 0 }) })
+  if (!bodyFits(body, node)) throw new ApiError(0, { message: t('That is on another server and cannot be used here.') })
   const base = apiOrigin() + '/api/v9'
   return info ? { node: info.id, url: info.url + '/api/v9' + outboundPath(info.id, path), body: outbound(info.id, body) } : { node: undefined, url: base + path, body }
 }
