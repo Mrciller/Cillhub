@@ -76,3 +76,7 @@ export function tokenFor(url: string, hub: { origin: string; token: string | nul
   const own = nodes.filter((n) => normalizeServerUrl(n.url, true) === origin)
   return own.length === 1 ? own[0].token : null
 }
+
+/** A background sign-in that finished may be kept only in the hub session it started in (`session`: logout count and hub
+ *  user) and only while its node is still saved; otherwise its token is revoked on the node. */
+export const keepSignIn = (started: string, now: string, saved: SavedNode[], origin: string) => started === now && saved.some((n) => n.origin === origin)

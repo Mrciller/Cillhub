@@ -1,7 +1,7 @@
 // Saved private nodes and add links (src/privateNodes.ts). Run: npm test (node strips the TypeScript types).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { addLink, addNode, cleanName, MAX_NODES, normalizeServerUrl, parseAddLink, parseNodes, tokenFor } from '../src/privateNodes.ts'
+import { addLink, addNode, cleanName, MAX_NODES, normalizeServerUrl, parseAddLink, parseNodes, tokenFor, keepSignIn } from '../src/privateNodes.ts'
 
 test('addresses become origins; http only for localhost', () => {
   assert.equal(normalizeServerUrl('chat.example.org/'), 'https://chat.example.org')
@@ -73,4 +73,12 @@ test('a request carries only the token of the origin it goes to', () => {
   assert.equal(tokenFor('https://c.example.org/api', hub, [{ url: 'https://c.example.org/x', token: 'c' }]), null)
   for (const n of nodes) for (const other of [hub.token, ...nodes.filter((x) => x !== n).map((x) => x.token)])
     assert.notEqual(tokenFor(`${n.url}/api/v9/users/@me`, hub, nodes), other)
+})
+
+test('a sign-in that finishes after logout, an account change or removal is not kept', () => {
+  const saved = [{ origin: 'https://a.example.org', name: 'A' }]
+  assert.equal(keepSignIn('1:100', '1:100', saved, 'https://a.example.org'), true)
+  assert.equal(keepSignIn('1:100', '2:', saved, 'https://a.example.org'), false, 'logged out meanwhile')
+  assert.equal(keepSignIn('1:100', '2:200', saved, 'https://a.example.org'), false, 'another account now, same node in its list')
+  assert.equal(keepSignIn('1:100', '1:100', [], 'https://a.example.org'), false, 'node removed meanwhile')
 })
