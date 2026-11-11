@@ -20,6 +20,8 @@ const NATIVE_DE: &[(&str, &str)] = &[
     ("Load older", "Ältere laden"),
     ("Open Party", "Offene Gruppe"),
     ("Join Party", "Gruppe beitreten"),
+    ("Join my League of Legends party!", "Tritt meiner League-of-Legends-Gruppe bei!"),
+    ("Share League Lobby ({members}/{max})", "League-Lobby teilen ({members}/{max})"),
     ("Session expired. Please log in again.", "Sitzung abgelaufen. Bitte melde dich erneut an."),
     ("Gateway reconnecting: {error}", "Verbindung wird wiederhergestellt: {error}"),
 ];

@@ -6,7 +6,7 @@
 use super::report;
 use crate::league::{format_game_invite_url, GameInviteData};
 use crate::model::{
-    Channel, Guild, Message, Poll, PollAnswer, PollMedia, PollResults, Role,
+    Channel, Guild, Message, Role,
 };
 use crate::permissions::{has, parse_bits, PERMISSION_LIST};
 use crate::settings::{set_autostart, CustomGame};
@@ -17,6 +17,8 @@ use egui::{
     Stroke, TextEdit, Ui, Vec2, Window,
 };
 use serde_json::json;
+use crate::i18n::{tr, trf};
+use crate::theme::ui_font;
 
 impl CillhubApp {
     pub fn render_modals(&mut self, ctx: &Context) {
@@ -643,92 +645,123 @@ impl CillhubApp {
         }
     }
 
+    /// "Create a Poll" (polls/PollComposer.tsx): question, answers, duration, multiple answers.
     fn render_create_poll_modal(&mut self, ctx: &Context) {
-        let mut open = true;
-        Window::new("📊 Create a Poll")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_width(400.0)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.label("Question:");
-                ui.add_sized(
-                    Vec2::new(ui.available_width(), 28.0),
-                    TextEdit::singleline(&mut self.poll_question_input),
-                );
+        let mut close = false;
+        let mut post = false;
+        let (_, dim) = overlay(ctx, "create_poll", 448.0, |ui| {
+            modal_title(ui, tr("Create a Poll"));
+            field_label(ui, tr("Question"));
+            text_input(ui, &mut self.poll_question_input, tr("What question do you want to ask?"));
+            ui.add_space(20.0);
+            field_label(ui, tr("Answers"));
+            let mut remove = None;
+            for (i, a) in self.poll_answers.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    let w = ui.available_width() - if i >= 2 { 40.0 } else { 0.0 };
+                    ui.allocate_ui(Vec2::new(w, 40.0), |ui| text_input(ui, a, tr("Type your answer")));
+                    if i >= 2 && crate::ui::chat::toolbar_btn(ui, crate::theme::IconKind::Trash, false, true).clicked() {
+                        remove = Some(i);
+                    }
+                });
                 ui.add_space(6.0);
-                ui.label("Options (comma-separated):");
-                ui.add_sized(
-                    Vec2::new(ui.available_width(), 28.0),
-                    TextEdit::singleline(&mut self.poll_options_input),
-                );
-                ui.add_space(10.0);
-                if ui
-                    .add_sized(
-                        Vec2::new(ui.available_width(), 32.0),
-                        egui::Button::new(
-                            RichText::new("Post Poll").strong().color(Color32::BLACK),
-                        )
-                        .fill(ACCENT),
-                    )
-                    .clicked()
-                {
-                    self.post_poll();
-                    self.active_modal = None;
+            }
+            if let Some(i) = remove {
+                self.poll_answers.remove(i);
+            }
+            if self.poll_answers.len() < 10 && secondary_btn(ui, tr("+ Add another answer")).clicked() {
+                self.poll_answers.push(String::new());
+            }
+            ui.add_space(20.0);
+            field_label(ui, tr("Duration"));
+            let durations: [(u32, &str); 7] = [
+                (1, tr("1 hour")), (4, tr("4 hours")), (8, tr("8 hours")), (24, tr("24 hours")),
+                (72, tr("3 days")), (168, tr("1 week")), (336, tr("2 weeks")),
+            ];
+            let current = durations.iter().find(|d| d.0 == self.poll_hours).map_or("", |d| d.1);
+            select_box(ui, "poll_duration", current, |ui| {
+                for (h, l) in durations {
+                    ui.selectable_value(&mut self.poll_hours, h, l);
                 }
             });
-        if !open {
+            ui.add_space(8.0);
+            switch_row(ui, tr("Allow Multiple Answers"), None, &mut self.poll_multi);
+            ui.add_space(18.0);
+            let filled = self.poll_answers.iter().filter(|a| !a.trim().is_empty()).count();
+            actions_row(ui, |ui| {
+                let ok = !self.poll_question_input.trim().is_empty() && filled >= 1;
+                if ui.add_enabled_ui(ok, |ui| primary_btn(ui, tr("Post"))).inner.clicked() {
+                    post = true;
+                }
+                if secondary_btn(ui, tr("Cancel")).clicked() {
+                    close = true;
+                }
+            });
+        });
+        if post {
+            self.post_poll();
+        }
+        if close || post || dim {
             self.active_modal = None;
         }
     }
 
+    /// "Send Later" (scheduling/Scheduling.tsx): where it goes, the text, the time.
     fn render_send_later_modal(&mut self, ctx: &Context) {
-        let mut open = true;
-        Window::new("🕒 Schedule Message (Send Later)")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_width(400.0)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.label("Message Content:");
-                ui.add_sized(
-                    Vec2::new(ui.available_width(), 28.0),
-                    TextEdit::singleline(&mut self.composer_text),
-                );
+        let mut close = false;
+        let mut send = false;
+        let ch_name = self
+            .selected_channel_id
+            .as_ref()
+            .and_then(|c| self.state.channels.get(c))
+            .map(|c| c.display_name(self.state.me.as_ref().map(|u| u.id.as_str())))
+            .unwrap_or_default();
+        let when = chrono::NaiveDateTime::parse_from_str(self.schedule_time_input.trim(), "%Y-%m-%d %H:%M")
+            .ok()
+            .and_then(|t| t.and_local_timezone(chrono::Local).single());
+        let future = when.is_some_and(|w| w > chrono::Local::now() + chrono::Duration::seconds(30));
+        let (_, dim) = overlay(ctx, "send_later", 448.0, |ui| {
+            modal_title(ui, tr("Send Later"));
+            ui.label(RichText::new(trf("Sends to {where}", &[("where", &format!("#{ch_name}"))])).font(ui_font(14.0)).color(TEXT_MUTED));
+            ui.add_space(8.0);
+            let r = Frame::new()
+                .fill(BG_SIDEBAR)
+                .corner_radius(CornerRadius::same(2))
+                .inner_margin(Margin { left: 16, right: 12, top: 10, bottom: 10 })
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    let quote: String = self.composer_text.chars().take(300).collect();
+                    ui.label(RichText::new(quote).font(ui_font(15.0)).color(TEXT));
+                })
+                .response
+                .rect;
+            ui.painter().rect_filled(egui::Rect::from_min_size(r.min, Vec2::new(4.0, r.height())), 0.0, ACCENT);
+            ui.add_space(16.0);
+            field_label(ui, tr("Date and time"));
+            text_input(ui, &mut self.schedule_time_input, "YYYY-MM-DD HH:MM");
+            if !future {
                 ui.add_space(6.0);
-                ui.label("Send At (ISO 8601):");
-                ui.add_sized(
-                    Vec2::new(ui.available_width(), 28.0),
-                    TextEdit::singleline(&mut self.schedule_time_input),
-                );
-                ui.add_space(10.0);
-                if ui
-                    .add_sized(
-                        Vec2::new(ui.available_width(), 32.0),
-                        egui::Button::new(
-                            RichText::new("Schedule Message").strong().color(Color32::BLACK),
-                        )
-                        .fill(ACCENT),
-                    )
-                    .clicked()
-                {
-                    if let (Some(api), Some(cid)) = (&self.api, &self.selected_channel_id) {
-                        report(&mut self.status_banner, api.post(
-                            &format!("/channels/{cid}/scheduled-messages"),
-                            json!({
-                                "content": self.composer_text,
-                                "send_at": self.schedule_time_input,
-                            }),
-                        ));
-                    }
-                    self.status_banner = Some("Message scheduled!".to_string());
-                    self.composer_text.clear();
-                    self.active_modal = None;
+                ui.label(RichText::new(tr("Pick a time in the future.")).font(ui_font(14.0)).color(DANGER));
+            }
+            ui.add_space(18.0);
+            actions_row(ui, |ui| {
+                if ui.add_enabled_ui(future, |ui| primary_btn(ui, tr("Schedule Message"))).inner.clicked() {
+                    send = true;
+                }
+                if secondary_btn(ui, tr("Cancel")).clicked() {
+                    close = true;
                 }
             });
-        if !open {
+        });
+        if let (true, Some(w), Some(api), Some(cid)) = (send, when, &self.api, &self.selected_channel_id) {
+            let body = json!({ "content": self.composer_text.trim(), "send_at": w.with_timezone(&chrono::Utc).to_rfc3339() });
+            if report(&mut self.status_banner, api.post(&format!("/channels/{cid}/scheduled-messages"), body)).is_some() {
+                self.composer_text.clear();
+                self.active_modal = None;
+            }
+        }
+        if close || dim {
             self.active_modal = None;
         }
     }
@@ -1062,58 +1095,35 @@ impl CillhubApp {
         let Some(cid) = self.selected_channel_id.clone() else {
             return;
         };
-        let answers: Vec<PollAnswer> = self
-            .poll_options_input
-            .split(',')
-            .enumerate()
-            .filter_map(|(i, s)| {
-                let t = s.trim();
-                if t.is_empty() {
-                    None
-                } else {
-                    Some(PollAnswer {
-                        answer_id: (i + 1) as u32,
-                        poll_media: PollMedia {
-                            text: Some(t.to_string()),
-                            emoji: None,
-                        },
-                    })
-                }
-            })
+        let answers: Vec<_> = self
+            .poll_answers
+            .iter()
+            .filter(|a| !a.trim().is_empty())
+            .map(|a| json!({ "poll_media": { "text": a.trim() } }))
             .collect();
-        let poll = Poll {
-            question: PollMedia {
-                text: Some(self.poll_question_input.clone()),
-                emoji: None,
-            },
-            answers,
-            expiry: None,
-            allow_multiselect: false,
-            layout_type: 1,
-            results: Some(PollResults::default()),
-        };
-        if let Some(api) = &self.api {
-            report(&mut self.status_banner, api.post(
-                &format!("/channels/{cid}/messages"),
-                json!({ "content": "", "poll": poll }),
-            ));
+        let poll = json!({
+            "question": { "text": self.poll_question_input.trim() },
+            "answers": answers,
+            "duration": self.poll_hours,
+            "allow_multiselect": self.poll_multi,
+            "layout_type": 1,
+        });
+        let Some(api) = &self.api else { return };
+        let r = api.post(&format!("/channels/{cid}/messages"), json!({ "content": "", "poll": poll }));
+        if let Some(v) = report(&mut self.status_banner, r) {
+            if let Ok(msg) = crate::model::parse::<Message>(v) {
+                let list = self.state.messages.entry(cid).or_default();
+                if !list.iter().any(|m| m.id == msg.id) {
+                    list.push(msg);
+                }
+            }
         }
-        let msg = Message {
-            id: format!("m_{}", self.next_local_id()),
-            channel_id: cid.clone(),
-            content: String::new(),
-            author: self.state.me.clone(),
-            poll: Some(poll),
-            timestamp: Some("just now".to_string()),
-            ..Default::default()
-        };
-        self.state.messages.entry(cid).or_default().push(msg);
     }
 }
 
 /// A dialog like the web's `.modal`: page dimmed (rgb 0 0 0 / .72), centred notched card with
-/// the 4px accent top, `--chat` fill, 24px padding. A click on the dim area sets `close`.
-pub fn overlay<R>(ctx: &Context, id: &str, width: f32, close: &mut bool, add: impl FnOnce(&mut Ui) -> R) -> R {
+/// the 4px accent top, `--chat` fill, 24px padding. Returns whether the dim area was clicked.
+pub fn overlay<R>(ctx: &Context, id: &str, width: f32, add: impl FnOnce(&mut Ui) -> R) -> (R, bool) {
     let screen = ctx.screen_rect();
     let dim = egui::Area::new(egui::Id::new((id, "dim")))
         .order(egui::Order::Middle)
@@ -1124,10 +1134,7 @@ pub fn overlay<R>(ctx: &Context, id: &str, width: f32, close: &mut bool, add: im
             resp
         })
         .inner;
-    if dim.clicked() {
-        *close = true;
-    }
-    egui::Area::new(egui::Id::new((id, "card")))
+    let inner = egui::Area::new(egui::Id::new((id, "card")))
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
         .show(ctx, |ui| {
@@ -1138,10 +1145,13 @@ pub fn overlay<R>(ctx: &Context, id: &str, width: f32, close: &mut bool, add: im
             })
             .inner
         })
-        .inner
+        .inner;
+    (inner, dim.clicked())
 }
 
 fn button(ui: &mut Ui, label: &str, fill: Color32, hover: Color32, fg: Color32, border: Option<Color32>) -> egui::Response {
+    // `.primary:disabled`: secondary fill, muted text
+    let (fill, hover, fg) = if ui.is_enabled() { (fill, hover, fg) } else { (BTN_SECONDARY, BTN_SECONDARY, TEXT_MUTED) };
     let galley = ui.painter().layout_no_wrap(label.to_uppercase(), display_font(16.0), fg);
     let size = Vec2::new(galley.size().x + 32.0, 36.0);
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
@@ -1175,5 +1185,96 @@ pub fn actions_row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     ui.allocate_ui_with_layout(Vec2::new(w, 36.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         add(ui)
+    });
+}
+
+/// `.modal-body > h2`: 28px condensed uppercase title.
+pub fn modal_title(ui: &mut Ui, text: &str) {
+    ui.label(RichText::new(text.to_uppercase()).font(display_font(28.0)).color(TEXT_HEADER));
+    ui.add_space(16.0);
+}
+
+/// `.field label`: 13px semibold, interactive colour.
+pub fn field_label(ui: &mut Ui, text: &str) {
+    ui.label(RichText::new(text).font(crate::theme::bold_font(13.0)).color(INTERACTIVE));
+    ui.add_space(6.0);
+}
+
+/// `.input`: 40px, rail fill, 1px border (focus colour when focused).
+pub fn text_input(ui: &mut Ui, value: &mut String, hint: &str) -> egui::Response {
+    let id = ui.next_auto_id();
+    let focused = ui.memory(|m| m.has_focus(id));
+    Frame::new()
+        .fill(BG_RAIL)
+        .stroke(Stroke::new(1.0_f32, if focused { FOCUS } else { BORDER }))
+        .corner_radius(CornerRadius::same(2))
+        .inner_margin(Margin::symmetric(12, 10))
+        .show(ui, |ui| {
+            ui.add(
+                TextEdit::singleline(value)
+                    .id(id)
+                    .font(crate::theme::ui_font(15.0))
+                    .text_color(TEXT)
+                    .hint_text(RichText::new(hint).color(TEXT_MUTED))
+                    .desired_width(f32::INFINITY)
+                    .frame(false)
+                    .margin(Margin::ZERO),
+            )
+        })
+        .inner
+}
+
+/// `.switch-row`: label (and note) left, 42x24 switch right, line below.
+pub fn switch_row(ui: &mut Ui, label: &str, note: Option<&str>, on: &mut bool) -> bool {
+    let mut changed = false;
+    ui.add_space(14.0);
+    ui.horizontal_top(|ui| {
+        let w = ui.available_width() - 58.0;
+        ui.allocate_ui(Vec2::new(w, 24.0), |ui| {
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                ui.label(RichText::new(label).font(crate::theme::ui_font(15.0)).color(TEXT_HEADER));
+                if let Some(n) = note {
+                    ui.label(RichText::new(n).font(crate::theme::ui_font(12.0)).color(TEXT_MUTED));
+                }
+            });
+        });
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+            let (r, resp) = ui.allocate_exact_size(Vec2::new(42.0, 24.0), egui::Sense::click());
+            ui.painter().rect_filled(r, CornerRadius::same(2), if *on { GREEN } else { OFFLINE });
+            let knob_x = if *on { r.max.x - 21.0 } else { r.min.x + 3.0 };
+            ui.painter().rect_filled(egui::Rect::from_min_size(egui::pos2(knob_x, r.min.y + 3.0), Vec2::splat(18.0)), CornerRadius::same(2), Color32::WHITE);
+            if resp.clicked() {
+                *on = !*on;
+                changed = true;
+            }
+        });
+    });
+    ui.add_space(14.0);
+    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), egui::Sense::hover());
+    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0_f32, BORDER));
+    changed
+}
+
+/// `select.input`: a 40px field like `.input` that opens a list.
+pub fn select_box(ui: &mut Ui, id: &str, current: &str, add: impl FnOnce(&mut Ui)) {
+    ui.scope(|ui| {
+        let v = ui.visuals_mut();
+        for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
+            w.weak_bg_fill = BG_RAIL;
+            w.bg_fill = BG_RAIL;
+            w.corner_radius = CornerRadius::same(2);
+            w.fg_stroke.color = TEXT;
+        }
+        v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER);
+        v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, BTN_SECONDARY_HOVER);
+        v.widgets.open.bg_stroke = Stroke::new(1.0_f32, FOCUS);
+        ui.spacing_mut().interact_size.y = 40.0;
+        ui.spacing_mut().button_padding = Vec2::new(12.0, 10.0);
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(RichText::new(current).font(crate::theme::ui_font(15.0)).color(TEXT))
+            .width(ui.available_width())
+            .height(320.0)
+            .show_ui(ui, add);
     });
 }

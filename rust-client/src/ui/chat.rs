@@ -243,10 +243,16 @@ impl CillhubApp {
             .frame(
                 Frame::new()
                     .fill(BG_CHAT)
-                    .inner_margin(Margin::from(egui:: Vec2::new(12.0, 12.0))),
+                    .inner_margin(Margin { left: 16, right: 16, top: 0, bottom: 24 }),
             )
             .show_inside(ui, |ui| {
-                self.render_composer(ui, &ch_name);
+                // Chat.tsx label: "#name" in servers, "@name" in a DM, the name in a group
+                let label = match channel.kind {
+                    1 => format!("@{ch_name}"),
+                    3 => ch_name.clone(),
+                    _ => format!("#{ch_name}"),
+                };
+                self.render_composer(ui, &label);
             });
 
         // 3. `.messages` scroller
@@ -946,10 +952,9 @@ impl CillhubApp {
     /// The web's "Delete Message" dialog.
     pub fn render_confirm_delete(&mut self, ctx: &egui::Context) {
         let Some(msg) = self.confirm_delete.clone() else { return };
-        let mut dim_clicked = false;
         let mut close = false;
         let mut delete = false;
-        super::modals::overlay(ctx, "confirm_delete", 448.0, &mut dim_clicked, |ui| {
+        let (_, dim_clicked) = super::modals::overlay(ctx, "confirm_delete", 448.0, |ui| {
             ui.label(RichText::new(tr("Delete Message").to_uppercase()).font(display_font(28.0)).color(TEXT_HEADER));
             ui.add_space(16.0);
             ui.label(RichText::new(tr("Are you sure you want to delete this message?")).font(ui_font(15.0)).color(TEXT));
@@ -1288,235 +1293,245 @@ impl CillhubApp {
         ui.painter().galley(pos, galley, color);
     }
 
+    /// `.composer` like the web's Composer.tsx: reply bar, file chips, `+` menu (upload, poll),
+    /// text box, emoji picker and send later on the right.
     fn render_composer(&mut self, ui: &mut Ui, ch_name: &str) {
-        // Reply or Edit bar above `.composer` (`.composer-reply`)
-        if let Some(reply) = self.reply_to_message.clone() {
+        let cid = self.selected_channel_id.clone().unwrap_or_default();
+        let perms = self.my_perms(&cid);
+        use crate::permissions::{has, p};
+        let can_send = has(perms, p::SEND_MESSAGES);
+        let can_attach = can_send && has(perms, p::ATTACH_FILES);
+        let can_poll = can_send && has(perms, p::SEND_POLLS);
+
+        // Files dropped on the window join the pending uploads.
+        if can_attach {
+            let dropped: Vec<_> = ui
+                .ctx()
+                .input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
+            self.pending_files.extend(dropped);
+        }
+
+        // `.reply-bar` (also used while editing a message here)
+        let bar = if let Some(reply) = &self.reply_to_message {
+            let who = reply.author.as_ref().map(|u| u.display_name().to_string()).unwrap_or_default();
+            Some((tr("Replying to"), who))
+        } else if self.editing_message_id.is_some() {
+            Some((tr("Edit Message"), String::new()))
+        } else {
+            None
+        };
+        let attached = bar.is_some() || !self.pending_files.is_empty();
+        if let Some((label, who)) = bar {
             Frame::new()
                 .fill(BG_SIDEBAR)
                 .stroke(Stroke::new(1.0_f32, BORDER))
-                .corner_radius(CornerRadius::same(2))
-                .inner_margin(Margin::symmetric(12, 6))
+                .corner_radius(CornerRadius { nw: 3, ne: 3, sw: 0, se: 0 })
+                .inner_margin(Margin { left: 16, right: 12, top: 5, bottom: 5 })
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
-                        let author = reply
-                            .author
-                            .as_ref()
-                            .map(|u| u.display_name())
-                            .unwrap_or("User");
-                        ui.label(
-                            RichText::new(format!("Replying to @{author}"))
-                                .font(bold_font(12.0))
-                                .color(ACCENT),
-                        );
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.label(RichText::new(label).font(ui_font(13.5)).color(INTERACTIVE));
+                        ui.label(RichText::new(who).font(bold_font(13.5)).color(TEXT_HEADER));
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if toolbar_btn(ui, IconKind::Close, false, false).on_hover_text(tr("Cancel")).clicked()
-                            {
+                            let (r, resp) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+                            if resp.hovered() {
+                                ui.painter().rect_filled(r, CornerRadius::same(2), BG_HOVER);
+                            }
+                            draw_icon(ui.painter(), Rect::from_center_size(r.center(), Vec2::splat(16.0)), IconKind::Close, INTERACTIVE);
+                            if resp.on_hover_text(tr("Cancel")).clicked() {
+                                if self.editing_message_id.take().is_some() {
+                                    self.composer_text.clear();
+                                }
                                 self.reply_to_message = None;
                             }
                         });
                     });
                 });
-            ui.add_space(4.0);
         }
 
-        if self.editing_message_id.is_some() {
-            Frame::new()
-                .fill(BG_SIDEBAR)
-                .stroke(Stroke::new(1.0_f32, YELLOW))
-                .corner_radius(CornerRadius::same(2))
-                .inner_margin(Margin::symmetric(12, 6))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new("Editing message — Press Enter to save")
-                                .font(bold_font(12.0))
-                                .color(YELLOW),
-                        );
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if toolbar_btn(ui, IconKind::Close, false, false).on_hover_text(tr("Cancel")).clicked()
-                            {
-                                self.editing_message_id = None;
-                                self.composer_text.clear();
-                            }
-                        });
-                    });
-                });
-            ui.add_space(4.0);
-        }
-
-        // `.composer-plus-menu` popover matching `Composer.tsx`
-        if self.show_composer_plus_menu {
-            Frame::new()
-                .fill(BG_MENU)
-                .stroke(Stroke::new(1.0_f32, BORDER))
-                .corner_radius(CornerRadius::same(2))
-                .inner_margin(Margin::same(8))
-                .show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing.x = 6.0;
-                        let lobby_label = if let Some(l) = &self.league_lobby {
-                            format!(
-                                "🎮 Share League Lobby ({}/{})",
-                                l.member_count, l.max_party_size
-                            )
-                        } else if let Some(g) = &self.current_game {
-                            format!("🎮 Share {} Lobby", g.name)
-                        } else {
-                            "🎮 Share Game Lobby Invite".to_string()
-                        };
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    RichText::new(lobby_label)
-                                        .font(bold_font(12.5))
-                                        .color(LEAGUE_TEAL),
-                                )
-                                .fill(LEAGUE_BG)
-                                .stroke(Stroke::new(1.0_f32, LEAGUE_TEAL)),
-                            )
-                            .clicked()
-                        {
-                            let invite_url = self.build_active_lobby_invite_url();
-                            self.send_message_to_selected(&invite_url);
-                            self.show_composer_plus_menu = false;
-                        }
-
-                        if ui.button("🎮 Custom Lobby / LCU Invite…").clicked() {
-                            self.active_modal = Some(ModalKind::GameLobbyInvite);
-                            self.show_composer_plus_menu = false;
-                        }
-
-                        if ui.button("📊 Create Poll").clicked() {
-                            self.active_modal = Some(ModalKind::CreatePoll);
-                            self.show_composer_plus_menu = false;
-                        }
-
-                        if ui.button("🕒 Send Later").clicked() {
-                            self.active_modal = Some(ModalKind::SendLater);
-                            self.show_composer_plus_menu = false;
-                        }
-
-                        if ui.button("📎 Upload a File").clicked() {
-                            let tx = self.picked_tx.clone();
-                            std::thread::spawn(move || {
-                                if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                                    let _ = tx.send(paths); // the app may have closed
-                                }
-                            });
-                            self.show_composer_plus_menu = false;
-                        }
-                    });
-                });
-            ui.add_space(6.0);
-        }
-
-        // Files dropped on the window join the pending uploads.
-        let dropped: Vec<_> = ui
-            .ctx()
-            .input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
-        self.pending_files.extend(dropped);
-        if !self.pending_files.is_empty() {
-            let mut remove = None;
-            ui.horizontal_wrapped(|ui| {
-                for (i, path) in self.pending_files.iter().enumerate() {
-                    let name = path.file_name().map(|n| n.to_string_lossy().to_string());
-                    Frame::new()
-                        .fill(BG_SIDEBAR)
-                        .stroke(Stroke::new(1.0_f32, BORDER))
-                        .corner_radius(CornerRadius::same(2))
-                        .inner_margin(Margin::symmetric(8, 4))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    RichText::new(name.unwrap_or_default())
-                                        .font(ui_font(12.5))
-                                        .color(TEXT),
-                                );
-                                if ui.small_button("x").on_hover_text("Remove").clicked() {
-                                    remove = Some(i);
-                                }
-                            });
-                        });
-                }
-            });
-            if let Some(i) = remove {
-                self.pending_files.remove(i);
-            }
-            ui.add_space(4.0);
-        }
-
-        // `.composer` bar (`background: var(--input)`, `border: 1px solid var(--border)`, `min-height: 44px`)
-        Frame::new()
+        let te_id = ui.make_persistent_id(("composer_text", &cid));
+        let focused = ui.memory(|m| m.has_focus(te_id));
+        let box_resp = Frame::new()
             .fill(BG_INPUT)
-            .stroke(Stroke::new(1.0_f32, BORDER))
-            .corner_radius(CornerRadius::same(2))
-            .inner_margin(Margin::symmetric(10, 6))
+            .stroke(Stroke::new(1.0_f32, if focused { FOCUS } else { BORDER }))
+            .corner_radius(if attached { CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 } } else { CornerRadius::same(3) })
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-
-                    // `+` attachment/actions popover button
-                    if icon_btn(
-                        ui,
-                        IconKind::Plus,
-                        "More actions (Upload, Poll, Share Game Lobby)",
-                        self.show_composer_plus_menu,
-                        false,
-                    )
-                    .clicked()
-                    {
-                        self.show_composer_plus_menu = !self.show_composer_plus_menu;
+                ui.set_width(ui.available_width());
+                // `.file-chips`: 200px cards with a preview, name, size and remove
+                if !self.pending_files.is_empty() {
+                    let mut remove = None;
+                    Frame::new().inner_margin(Margin { left: 12, right: 12, top: 18, bottom: 10 }).show(ui, |ui| {
+                        ScrollArea::horizontal().id_salt("file_chips").show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 14.0;
+                                for (i, path) in self.pending_files.iter().enumerate() {
+                                    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                                    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+                                    Frame::new()
+                                        .fill(BG_SIDEBAR)
+                                        .stroke(Stroke::new(1.0_f32, BORDER))
+                                        .corner_radius(CornerRadius::same(2))
+                                        .inner_margin(Margin::same(8))
+                                        .show(ui, |ui| {
+                                            ui.set_width(182.0);
+                                            ui.spacing_mut().item_spacing.y = 4.0;
+                                            let (r, _) = ui.allocate_exact_size(Vec2::new(182.0, 120.0), Sense::hover());
+                                            ui.painter().rect_filled(r, CornerRadius::same(2), BG_RAIL);
+                                            let is_img = matches!(
+                                                path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(),
+                                                Some("png" | "jpg" | "jpeg" | "gif" | "webp")
+                                            );
+                                            let uri = format!("bytes://pending/{}", path.display());
+                                            if is_img && !self.images.contains_key(&uri) {
+                                                // read once; egui keeps the bytes under the uri
+                                                let state = match std::fs::read(path) {
+                                                    Ok(b) => {
+                                                        ui.ctx().include_bytes(uri.clone(), b);
+                                                        super::ImageLoad::Ready
+                                                    }
+                                                    Err(_) => super::ImageLoad::Failed,
+                                                };
+                                                self.images.insert(uri.clone(), state);
+                                            }
+                                            if is_img && self.images.get(&uri) == Some(&super::ImageLoad::Ready) {
+                                                egui::Image::new(uri).fit_to_exact_size(r.size()).maintain_aspect_ratio(true).paint_at(ui, r);
+                                            } else {
+                                                draw_icon(ui.painter(), Rect::from_center_size(r.center(), Vec2::splat(40.0)), IconKind::File, INTERACTIVE);
+                                            }
+                                            ui.add(egui::Label::new(RichText::new(&name).font(ui_font(13.5)).color(TEXT)).truncate());
+                                            ui.horizontal(|ui| {
+                                                ui.label(RichText::new(format_size(size)).font(ui_font(12.0)).color(TEXT_MUTED));
+                                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                                    if toolbar_btn(ui, IconKind::Trash, false, true).on_hover_text(tr("Remove Attachment")).clicked() {
+                                                        remove = Some(i);
+                                                    }
+                                                });
+                                            });
+                                        });
+                                }
+                            });
+                        });
+                    });
+                    let r = ui.min_rect();
+                    ui.painter().hline(r.x_range(), r.max.y, Stroke::new(1.0_f32, BORDER));
+                    if let Some(i) = remove {
+                        self.pending_files.remove(i);
                     }
+                }
 
-                    // Input field
-                    let avail_w = (ui.available_width() - 112.0).max(100.0);
-                    let resp = ui.add_sized(
-                        Vec2::new(avail_w, 28.0),
-                        TextEdit::singleline(&mut self.composer_text)
-                            .font(ui_font(14.5))
-                            .text_color(TEXT)
-                            .hint_text(
-                                RichText::new(format!("Message #{ch_name}"))
-                                    .font(ui_font(14.5))
-                                    .color(TEXT_MUTED),
-                            )
-                            .frame(false),
-                    );
-                    if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        self.submit_composer();
-                    }
-
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        if icon_btn(ui, IconKind::Send, "Send Message", false, false).clicked() {
+                // `.composer-row`: 40x44 icon buttons around the text box
+                Frame::new().inner_margin(Margin::symmetric(8, 0)).show(ui, |ui| {
+                    ui.horizontal_top(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        if can_attach || can_poll {
+                            let plus = composer_btn(ui, IconKind::AddCircle, 24.0, self.show_composer_plus_menu)
+                                .on_hover_text(tr("More options"));
+                            if plus.clicked() {
+                                self.show_composer_plus_menu = !self.show_composer_plus_menu;
+                                self.plus_anchor = plus.rect.left_top();
+                            }
+                        }
+                        let right = if can_send { 40.0 * (1.0 + f32::from(u8::from(!self.composer_text.trim().is_empty() && self.pending_files.is_empty()))) } else { 0.0 };
+                        let w = (ui.available_width() - right).max(80.0);
+                        let submit = focused
+                            && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+                        let hint = if can_send {
+                            trf("Message {label}", &[("label", ch_name)])
+                        } else {
+                            tr("You do not have permission to send messages in this channel.").to_string()
+                        };
+                        Frame::new().inner_margin(Margin::symmetric(8, 11)).show(ui, |ui| {
+                            ui.add_enabled(
+                                can_send,
+                                TextEdit::multiline(&mut self.composer_text)
+                                    .id(te_id)
+                                    .font(ui_font(15.0))
+                                    .text_color(TEXT)
+                                    .hint_text(RichText::new(hint).font(ui_font(15.0)).color(TEXT_MUTED))
+                                    .desired_rows(1)
+                                    .desired_width(w - 16.0)
+                                    .frame(false)
+                                    .margin(Margin::ZERO),
+                            );
+                        });
+                        if submit {
                             self.submit_composer();
                         }
-                        if icon_btn(
-                            ui,
-                            IconKind::Poll,
-                            "Create Poll",
-                            false,
-                            false,
-                        )
-                        .clicked()
-                        {
-                            self.active_modal = Some(ModalKind::CreatePoll);
-                        }
-                        if icon_btn(
-                            ui,
-                            IconKind::Gamepad,
-                            "Post Game Lobby Invite Card",
-                            false,
-                            false,
-                        )
-                        .clicked()
-                        {
-                            let invite_url = self.build_active_lobby_invite_url();
-                            self.send_message_to_selected(&invite_url);
+                        if can_send {
+                            let smile = composer_btn(ui, IconKind::Smile, 24.0, matches!(self.emoji_picker, Some((EmojiTarget::Composer, _))))
+                                .on_hover_text(tr("Select emoji"));
+                            if smile.clicked() {
+                                self.emoji_picker = Some((EmojiTarget::Composer, smile.rect.right_top() - Vec2::new(0.0, 384.0)));
+                                self.emoji_query.clear();
+                            }
+                            if !self.composer_text.trim().is_empty() && self.pending_files.is_empty() && self.editing_message_id.is_none() {
+                                if composer_btn(ui, IconKind::Clock, 22.0, false).on_hover_text(tr("Send later")).clicked() {
+                                    self.schedule_time_input = (chrono::Local::now() + chrono::Duration::hours(1)).format("%Y-%m-%d %H:%M").to_string();
+                                    self.active_modal = Some(ModalKind::SendLater);
+                                }
+                            }
                         }
                     });
                 });
             });
+        let _ = box_resp;
+
+        // `+` menu above the button (Composer.tsx Popover: Upload a File, Create Poll, League lobby)
+        if self.show_composer_plus_menu {
+            let lobby = self.league_lobby.clone();
+            let items = usize::from(can_attach) + usize::from(can_poll) + usize::from(lobby.is_some());
+            let at = self.plus_anchor + Vec2::new(0.0, -(items as f32 * 34.0 + 12.0 + 6.0));
+            let mut pick = None;
+            let resp = egui::Area::new(egui::Id::new("composer_plus_menu"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(at)
+                .show(ui.ctx(), |ui| {
+                    menu_frame(ui, |ui| {
+                        ui.set_width(210.0);
+                        if can_attach && menu_item(ui, tr("Upload a File"), false).clicked() {
+                            pick = Some(0);
+                        }
+                        if can_poll && menu_item(ui, tr("Create Poll"), false).clicked() {
+                            pick = Some(1);
+                        }
+                        if let Some(l) = &lobby {
+                            let label = format!("🎮 {}", trf("Share League Lobby ({members}/{max})", &[("members", &l.member_count.to_string()), ("max", &l.max_party_size.to_string())]));
+                            if menu_item(ui, &label, false).clicked() {
+                                pick = Some(2);
+                            }
+                        }
+                    });
+                })
+                .response;
+            let outside = ui.ctx().input(|i| i.pointer.any_pressed())
+                && ui.ctx().pointer_interact_pos().is_some_and(|p| !resp.rect.contains(p) && !Rect::from_min_size(self.plus_anchor, Vec2::new(40.0, 44.0)).contains(p));
+            if pick.is_some() || outside {
+                self.show_composer_plus_menu = false;
+            }
+            match pick {
+                Some(0) => {
+                    let tx = self.picked_tx.clone();
+                    std::thread::spawn(move || {
+                        if let Some(paths) = rfd::FileDialog::new().pick_files() {
+                            let _ = tx.send(paths); // the app may have closed
+                        }
+                    });
+                }
+                Some(1) => {
+                    self.poll_question_input.clear();
+                    self.poll_answers = vec![String::new(), String::new()];
+                    self.poll_hours = 24;
+                    self.poll_multi = false;
+                    self.active_modal = Some(ModalKind::CreatePoll);
+                }
+                Some(2) => {
+                    let text = format!("{}\n{}", tr("Join my League of Legends party!"), self.build_active_lobby_invite_url());
+                    self.send_message_to_selected(&text);
+                }
+                _ => {}
+            }
+        }
     }
 
     pub fn submit_composer(&mut self) {
@@ -1807,6 +1822,23 @@ impl CillhubApp {
                 "answer_id": answer_id,
             }),
         ));
+    }
+}
+
+/// `.composer-row .icon-btn`: 40x44, interactive colour, hover header colour.
+fn composer_btn(ui: &mut Ui, icon: IconKind, size: f32, active: bool) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(40.0, 44.0), Sense::click());
+    let fg = if resp.hovered() || active { TEXT_HEADER } else { INTERACTIVE };
+    draw_icon(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(size)), icon, fg);
+    resp
+}
+
+/// File size like the web's formatSize.
+pub fn format_size(bytes: u64) -> String {
+    match bytes {
+        b if b < 1024 => format!("{b} B"),
+        b if b < 1024 * 1024 => format!("{:.1} KB", b as f64 / 1024.0),
+        b => format!("{:.2} MB", b as f64 / (1024.0 * 1024.0)),
     }
 }
 

@@ -161,6 +161,10 @@ pub struct CillhubApp {
     /// Files picked or dropped, sent with the next message.
     pub pending_files: Vec<std::path::PathBuf>,
     pub show_composer_plus_menu: bool,
+    pub plus_anchor: Pos2,
+    pub poll_answers: Vec<String>,
+    pub poll_hours: u32,
+    pub poll_multi: bool,
     pub reply_to_message: Option<Message>,
     pub editing_message_id: Option<String>,
     /// Spoilers clicked open: (message id, spoiler index).
@@ -283,6 +287,10 @@ impl CillhubApp {
             image_rx,
             lightbox: None,
             show_composer_plus_menu: false,
+            plus_anchor: Pos2::ZERO,
+            poll_answers: vec![String::new(), String::new()],
+            poll_hours: 24,
+            poll_multi: false,
             reply_to_message: None,
             editing_message_id: None,
             revealed_spoilers: Default::default(),
