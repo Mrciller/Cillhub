@@ -84,8 +84,10 @@ test('an overdue timer job that fails waits 5 s before it runs again', async () 
   addJob({ name: 'async fail', next: () => 0, run: async () => { async++; throw new Error('async failed'); } });
   startTimers();
   await wait(500);
-  stopTimers();
   assert.deepEqual([sync, async], [1, 1]);
+  await wait(5000);
+  stopTimers();
+  assert.deepEqual([sync, async], [2, 2], 'and runs again after the pause');
 });
 
 test('an async timer job that rejects is logged and does not run twice at once', async () => {
@@ -96,4 +98,16 @@ test('an async timer job that rejects is logged and does not run twice at once',
   await wait(400);
   stopTimers();
   assert.ok(runs >= 1 && runs <= 3, `runs ${runs}: no overlap while the first is pending`);
+});
+
+test('one failing insert hook does not stop the next one', async () => {
+  const { run } = await import('../src/db.js');
+  const { insertMessage, insertHooks } = await import('../src/message.js');
+  run("INSERT INTO users (id, email, username, password_hash, salt) VALUES ('9001', 'taylor@example.com', 'taylor', 'x', 'x')");
+  run("INSERT INTO channels (id, type) VALUES ('9002', 1)");
+  let seen = 0;
+  insertHooks.push(() => { throw new Error('hook failed'); }, () => { seen++; });
+  const m = insertMessage({ ch: { id: '9002', type: 1 }, authorId: '9001', content: 'hi' });
+  assert.equal(m.content, 'hi');
+  assert.equal(seen, 1);
 });
