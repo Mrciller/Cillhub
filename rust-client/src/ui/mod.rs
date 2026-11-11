@@ -1945,9 +1945,9 @@ impl CillhubApp {
                 continue; // asked before a logout or another login: never shown in this session
             }
             let state = match bytes {
-                Some((b, decoded)) => {
-                    // the budget counts decoded pixels: a tiny file can unpack to many MiB
-                    for old in self.image_cache.add(uri.clone(), decoded) {
+                Some((b, cost)) => {
+                    // the budget counts the kept file plus its decoded pixels (images::check)
+                    for old in self.image_cache.add(uri.clone(), cost) {
                         ctx.forget_image(&old);
                         self.images.remove(&old);
                     }
