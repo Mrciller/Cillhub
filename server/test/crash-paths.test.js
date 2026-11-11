@@ -77,6 +77,17 @@ test('an overdue async job that is still running does not make the other jobs ru
   assert.equal(hourly, 1, `hourly ran ${hourly} times while the overdue job was busy`);
 });
 
+test('an overdue timer job that fails waits 5 s before it runs again', async () => {
+  const { addJob, startTimers, stopTimers } = await import('../src/timers.js');
+  let sync = 0, async = 0;
+  addJob({ name: 'sync fail', next: () => 0, run: () => { sync++; throw new Error('sync failed'); } });
+  addJob({ name: 'async fail', next: () => 0, run: async () => { async++; throw new Error('async failed'); } });
+  startTimers();
+  await wait(500);
+  stopTimers();
+  assert.deepEqual([sync, async], [1, 1]);
+});
+
 test('an async timer job that rejects is logged and does not run twice at once', async () => {
   const { addJob, startTimers, stopTimers } = await import('../src/timers.js');
   let runs = 0;
