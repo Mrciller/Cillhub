@@ -146,7 +146,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
     val user = profile?.user ?: state.users[userId]
     val me = userId == state.me?.id
     val rel = state.relationships[userId]?.type
-    ModalBottomSheet(close) {
+    ModalBottomSheet(close, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 24.dp)) {
             val accent = profile?.userProfile?.accentColor?.let { Color(0xFF000000 or it.toLong()) } ?: MaterialTheme.colorScheme.primaryContainer
             Box(Modifier.fillMaxWidth().height(84.dp).padding(horizontal = 16.dp).clip(MaterialTheme.shapes.large).background(accent)) {
@@ -165,7 +165,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                     FlowRow(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button({
                             scope.launch { try { val c = Session.openDm(userId); close(); nav.openChannel(c.id) } catch (e: Exception) { error = errorText(ctx, e) } }
-                        }, shape = Hud) { Ic(R.drawable.ms_chat, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.message)) }
+                        }, shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_chat, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.message)) }
                         FilledTonalButton({
                             scope.launch { try { val c = Session.openDm(userId); close(); nav.openVoice(c.id, start = !state.calls.containsKey(c.id)) } catch (e: Exception) { error = errorText(ctx, e) } }
                         }, shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_call, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(s(R.string.call)) }
@@ -191,7 +191,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                             else -> {}
                         }
                         if (rel != 2 && user?.bot != true) {
-                            TextButton({ scope.launch { runCatching { Session.blockUser(userId) } } }) {
+                            TextButton({ scope.launch { runCatching { Session.blockUser(userId) } } }, shape = MaterialTheme.shapes.small) {
                                 Text(s(R.string.block_user), color = MaterialTheme.colorScheme.error)
                             }
                         }
@@ -266,7 +266,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                                     }
                                 }
                             },
-                            confirmButton = { TextButton({ dialog = null }) { Text(s(R.string.cancel)) } },
+                            confirmButton = { TextButton({ dialog = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
                         )
                         "nick" -> {
                             var nick by remember { mutableStateOf(target.nick ?: "") }
@@ -278,9 +278,9 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                                     TextButton({
                                         dialog = null
                                         act { Session.rest.request("PATCH", path, buildJsonObject { if (nick.isBlank()) put("nick", JsonNull) else put("nick", nick.trim()) }) }
-                                    }) { Text(s(R.string.save)) }
+                                    }, shape = MaterialTheme.shapes.small) { Text(s(R.string.save)) }
                                 },
-                                dismissButton = { TextButton({ dialog = null }) { Text(s(R.string.cancel)) } },
+                                dismissButton = { TextButton({ dialog = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
                             )
                         }
                         "timeout" -> AlertDialog(
@@ -298,7 +298,7 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                                         modifier = Modifier.clickable { dialog = null; act { Session.rest.request("PATCH", path, buildJsonObject { put("communication_disabled_until", JsonNull) }) } })
                                 }
                             },
-                            confirmButton = { TextButton({ dialog = null }) { Text(s(R.string.cancel)) } },
+                            confirmButton = { TextButton({ dialog = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
                         )
                         "kick", "ban" -> {
                             val ban = dialog == "ban"
@@ -330,9 +330,9 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                                             else Session.rest.request("DELETE", path)
                                             close()
                                         }
-                                    }) { Text(s(if (ban) R.string.ban else R.string.kick), color = MaterialTheme.colorScheme.error) }
+                                    }, shape = MaterialTheme.shapes.small) { Text(s(if (ban) R.string.ban else R.string.kick), color = MaterialTheme.colorScheme.error) }
                                 },
-                                dismissButton = { TextButton({ dialog = null }) { Text(s(R.string.cancel)) } },
+                                dismissButton = { TextButton({ dialog = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
                             )
                         }
                     }
@@ -350,9 +350,9 @@ fun ProfileSheet(userId: String, guildId: String?, close: () -> Unit) {
                 TextButton({
                     confirmRemove = false
                     scope.launch { runCatching { Session.removeRelationship(userId) } }
-                }) { Text(s(R.string.remove_friend), color = MaterialTheme.colorScheme.error) }
+                }, shape = MaterialTheme.shapes.small) { Text(s(R.string.remove_friend), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton({ confirmRemove = false }) { Text(s(R.string.cancel)) } },
+            dismissButton = { TextButton({ confirmRemove = false }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
         )
     }
 }
@@ -627,9 +627,9 @@ fun FriendsScreen() {
                     val id = u.id
                     confirmRemove = null
                     act { Session.removeRelationship(id) }
-                }) { Text(s(R.string.remove_friend), color = MaterialTheme.colorScheme.error) }
+                }, shape = MaterialTheme.shapes.small) { Text(s(R.string.remove_friend), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton({ confirmRemove = null }) { Text(s(R.string.cancel)) } },
+            dismissButton = { TextButton({ confirmRemove = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
         )
     }
 
@@ -705,18 +705,18 @@ private fun FriendCard(
                     when (r.type) {
                         1 -> {
                             Surface(
-                                shape = CircleShape,
+                                shape = MaterialTheme.shapes.small,
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).clickable {
+                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(MaterialTheme.shapes.small).clickable {
                                     act { val c = Session.openDm(r.id); nav.openChannel(c.id) }
                                 },
                             ) {
                                 Box(contentAlignment = Alignment.Center) { Ic(R.drawable.ms_chat, s(R.string.message), Modifier.size(20.dp)) }
                             }
                             Surface(
-                                shape = CircleShape,
+                                shape = MaterialTheme.shapes.small,
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).clickable {
+                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(MaterialTheme.shapes.small).clickable {
                                     act { val c = Session.openDm(r.id); nav.openVoice(c.id, start = !state.calls.containsKey(c.id)) }
                                 },
                             ) {
@@ -728,18 +728,18 @@ private fun FriendCard(
                         }
                         3 -> {
                             Surface(
-                                shape = CircleShape,
+                                shape = MaterialTheme.shapes.small,
                                 color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).clickable {
+                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(MaterialTheme.shapes.small).clickable {
                                     act { Session.acceptFriend(r.id) }
                                 },
                             ) {
                                 Box(contentAlignment = Alignment.Center) { Ic(R.drawable.ms_check, s(R.string.accept), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer) }
                             }
                             Surface(
-                                shape = CircleShape,
+                                shape = MaterialTheme.shapes.small,
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).clickable {
+                                modifier = Modifier.minimumInteractiveComponentSize().size(40.dp).clip(MaterialTheme.shapes.small).clickable {
                                     act { Session.removeRelationship(r.id) }
                                 },
                             ) {
@@ -793,10 +793,10 @@ fun AddFriendDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
             Button(
                 onClick = { onSubmit(name.trim()) },
                 enabled = name.isNotBlank(),
-             shape = Hud) { Text(s(R.string.send_request)) }
+             shape = MaterialTheme.shapes.small) { Text(s(R.string.send_request)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(s(R.string.cancel)) }
+            TextButton(onClick = onDismiss, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) }
         },
     )
 }
@@ -845,10 +845,10 @@ fun NewGroupDmDialog(
             Button(
                 onClick = { onCreate(picked.toList()) },
                 enabled = picked.isNotEmpty(),
-             shape = Hud) { Text(s(R.string.create)) }
+             shape = MaterialTheme.shapes.small) { Text(s(R.string.create)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(s(R.string.cancel)) }
+            TextButton(onClick = onDismiss, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) }
         },
     )
 }

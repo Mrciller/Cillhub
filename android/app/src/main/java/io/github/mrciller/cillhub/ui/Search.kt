@@ -106,14 +106,14 @@ fun SearchScreen(channelId: String) {
                             Column {
                                 MessageItem(state, m, true, ch.guildId, onLongPress = {}, onReply = {}, onReact = {}, onAddReaction = {}, onJump = {}, canReply = false)
                                 Row(Modifier.fillMaxWidth().padding(end = 8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
-                                    TextButton({ nav.openMessage(m.channelId, m.id) }) { Text(s(R.string.jump)) }
+                                    TextButton({ nav.openMessage(m.channelId, m.id) }, shape = MaterialTheme.shapes.small) { Text(s(R.string.jump)) }
                                 }
                             }
                         }
                     }
                     if (list.size < total) item(key = "more") {
                         Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            if (busy) CircularProgressIndicator(Modifier.size(24.dp)) else TextButton({ scope.launch { search(list.size) } }) { Text(s(R.string.load_more)) }
+                            if (busy) CircularProgressIndicator(Modifier.size(24.dp)) else TextButton({ scope.launch { search(list.size) } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.load_more)) }
                         }
                     }
                 }

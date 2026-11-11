@@ -449,13 +449,13 @@ fun MessageActions(
     val isThread = ch.isThread || ch.type == 11 || ch.parentId != null
     val canSolve = isThread && (ch.ownerId == state.me?.id || Perm.has(perms, Perm.MANAGE_THREADS))
 
-    ModalBottomSheet(onDismissRequest = onClose) {
+    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.padding(bottom = 16.dp)) {
             if (!m.pending && !m.failed && canReact) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                for (e in QUICK_REACTIONS) Surface(onClick = { vm.react(m, EmojiRef(name = e)); onClose() }, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.size(48.dp)) {
+                for (e in QUICK_REACTIONS) Surface(onClick = { vm.react(m, EmojiRef(name = e)); onClose() }, shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.size(48.dp)) {
                     Box(contentAlignment = Alignment.Center) { Text(e, fontSize = 22.sp, modifier = Modifier.semantics { contentDescription = e }) }
                 }
-                Surface(onClick = { onClose(); onPickReaction() }, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.size(48.dp)) {
+                Surface(onClick = { onClose(); onPickReaction() }, shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.size(48.dp)) {
                     Box(contentAlignment = Alignment.Center) { Ic(R.drawable.ms_add_reaction, s(R.string.add_reaction)) }
                 }
             }
@@ -502,13 +502,13 @@ fun ReactionPicker(close: () -> Unit, pick: (EmojiRef) -> Unit) {
         text = {
             Column {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    for (e in QUICK_REACTIONS) TextButton({ pick(EmojiRef(name = e)) }, Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) { Text(e, fontSize = 22.sp) }
+                    for (e in QUICK_REACTIONS) TextButton({ pick(EmojiRef(name = e)) }, Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp), shape = MaterialTheme.shapes.small) { Text(e, fontSize = 22.sp) }
                 }
                 OutlinedTextField(text, { text = it.trim() }, label = { Text(s(R.string.emoji_from_keyboard)) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
             }
         },
-        confirmButton = { TextButton({ pick(EmojiRef(name = text)) }, enabled = text.isNotEmpty() && text.length <= 16) { Text(s(R.string.react)) } },
-        dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+        confirmButton = { TextButton({ pick(EmojiRef(name = text)) }, enabled = text.isNotEmpty() && text.length <= 16, shape = MaterialTheme.shapes.small) { Text(s(R.string.react)) } },
+        dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
     )
 }
 
@@ -823,6 +823,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                             }
                             ctx.startActivity(Intent.createChooser(intent, ctx.getString(R.string.share_poll_results)))
                         },
+                        shape = MaterialTheme.shapes.small,
                     ) {
                         Text(s(R.string.poll_export_csv), style = MaterialTheme.typography.labelSmall)
                     }
@@ -842,7 +843,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                                     }
                                 }
                             },
-                            enabled = !busy,
+                            enabled = !busy, shape = MaterialTheme.shapes.small,
                         ) {
                             Text(s(R.string.poll_end), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         }
@@ -877,7 +878,7 @@ fun EditHistorySheet(channelId: String, messageId: String, onClose: () -> Unit) 
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onClose) {
+    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().padding(bottom = 24.dp)) {
             Text(s(R.string.edit_history), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
 

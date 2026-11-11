@@ -149,7 +149,6 @@ fun ForumScreen(channelId: String, showBack: Boolean = true) {
             if (canPost) {
                 FloatingActionButton(
                     onClick = { newPostOpen = true },
-                    shape = Hud,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 ) {
@@ -424,12 +423,12 @@ private fun NewPostDialog(forum: Channel, onDismiss: () -> Unit, onCreated: (Cha
                     }
                 },
                 enabled = canSubmit,
-             shape = Hud) {
+             shape = MaterialTheme.shapes.small) {
                 Text(s(R.string.forum_post))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) { Text(s(R.string.cancel)) }
+            TextButton(onClick = onDismiss, enabled = !busy, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) }
         },
     )
 }

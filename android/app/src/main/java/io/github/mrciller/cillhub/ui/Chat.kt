@@ -410,7 +410,7 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
                 when {
                     messages == null && vm.loadError != null -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(errorText(vm.loadError!!), color = MaterialTheme.colorScheme.error)
-                        TextButton({ vm.load(force = true) }) { Text(s(R.string.retry)) }
+                        TextButton({ vm.load(force = true) }, shape = MaterialTheme.shapes.small) { Text(s(R.string.retry)) }
                     }
                     messages == null -> Loading()
                     else -> LazyColumn(Modifier.fillMaxSize(), state = listState, reverseLayout = true, contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)) {
@@ -493,7 +493,7 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
                     }
                 }
                 androidx.compose.animation.AnimatedVisibility(!atBottom && !purgeMode, Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
-                    SmallFloatingActionButton({ scope.launch { listState.animateScrollToItem(0) } }, shape = Hud) { Ic(R.drawable.ms_expand_more, s(R.string.jump_to_present)) }
+                    SmallFloatingActionButton({ scope.launch { listState.animateScrollToItem(0) } }) { Ic(R.drawable.ms_expand_more, s(R.string.jump_to_present)) }
                 }
             }
         }
@@ -508,8 +508,8 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
             onDismissRequest = { confirmDelete = null },
             title = { Text(s(R.string.delete_message_title)) },
             text = { Text(s(R.string.delete_message_text)) },
-            confirmButton = { TextButton({ vm.delete(m); confirmDelete = null }) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton({ confirmDelete = null }) { Text(s(R.string.cancel)) } },
+            confirmButton = { TextButton({ vm.delete(m); confirmDelete = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton({ confirmDelete = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
         )
     }
 
@@ -531,11 +531,11 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
                             snack.showSnackbar(errorText(ctx, e))
                         }
                     }
-                }) {
+                }, shape = MaterialTheme.shapes.small) {
                     Text(s(R.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton({ confirmBulkDelete = false }) { Text(s(R.string.cancel)) } },
+            dismissButton = { TextButton({ confirmBulkDelete = false }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
         )
     }
 
@@ -655,7 +655,7 @@ private fun ChannelStart(state: State, ch: Channel) {
         Column(Modifier.padding(20.dp)) {
             val name = Sel.channelName(state, ch)
             Box(
-                Modifier.size(44.dp).clip(Hud).background(MaterialTheme.colorScheme.primaryContainer),
+                Modifier.size(44.dp).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center,
             ) {
                 Ic(if (isPrivate(ch)) R.drawable.ms_chat else channelIcon(ch), null, Modifier.size(22.dp), MaterialTheme.colorScheme.primary)
@@ -810,7 +810,7 @@ private fun ThreadNotifDialog(channelId: String, currentFlags: Int, close: () ->
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = close) { Text(s(R.string.cancel)) } },
+        dismissButton = { TextButton(onClick = close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
     )
 }
 
@@ -873,7 +873,7 @@ fun CreatePollDialog(channelId: String, close: () -> Unit) {
                 }
                 if (answers.size < 10) {
                     item {
-                        TextButton(onClick = { answers.add("") }) {
+                        TextButton(onClick = { answers.add("") }, shape = MaterialTheme.shapes.small) {
                             Ic(R.drawable.ms_add, null)
                             Spacer(Modifier.width(4.dp))
                             Text(s(R.string.add_option))
@@ -936,12 +936,12 @@ fun CreatePollDialog(channelId: String, close: () -> Unit) {
                     }
                 },
                 enabled = !busy && question.isNotBlank() && answers.count { it.isNotBlank() } >= 2,
-             shape = Hud) {
+             shape = MaterialTheme.shapes.small) {
                 Text(s(R.string.create))
             }
         },
         dismissButton = {
-            TextButton(onClick = close) { Text(s(R.string.cancel)) }
+            TextButton(onClick = close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) }
         },
     )
 }
@@ -950,7 +950,7 @@ fun CreatePollDialog(channelId: String, close: () -> Unit) {
 @Composable
 fun MediaGallerySheet(channelId: String, onClose: () -> Unit) {
     var tab by rememberSaveable { mutableStateOf("media") } // "media", "files", "links"
-    ModalBottomSheet(onDismissRequest = onClose) {
+    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             Text(s(R.string.media_files_links), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
 

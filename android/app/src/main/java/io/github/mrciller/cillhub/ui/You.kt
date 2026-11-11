@@ -128,7 +128,7 @@ fun YouScreen() {
             SettingRow(R.drawable.ms_logout, R.string.log_out, MaterialTheme.colorScheme.error, chevron = false) { logout = true }
         }
     }
-    if (statusSheet) ModalBottomSheet({ statusSheet = false }) {
+    if (statusSheet) ModalBottomSheet({ statusSheet = false }, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.padding(bottom = 24.dp).selectableGroup()) {
             Text(s(R.string.set_status), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp).semantics { heading() })
             for ((st, desc) in listOf("online" to null, "idle" to null, "dnd" to R.string.status_dnd_text, "invisible" to R.string.status_invisible_text)) {
@@ -147,8 +147,8 @@ fun YouScreen() {
         onDismissRequest = { logout = false },
         title = { Text(s(R.string.log_out)) },
         text = { Text(s(R.string.log_out_text)) },
-        confirmButton = { TextButton({ logout = false; Session.logout() }) { Text(s(R.string.log_out), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton({ logout = false }) { Text(s(R.string.cancel)) } },
+        confirmButton = { TextButton({ logout = false; Session.logout() }, shape = MaterialTheme.shapes.small) { Text(s(R.string.log_out), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ logout = false }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
     )
 }
 
@@ -200,7 +200,7 @@ private fun AccountSettings() {
     Section(R.string.profile_section)
     OutlinedTextField(name, { name = it.take(32) }, label = { Text(s(R.string.display_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
     Button({ scope.launch { msg = try { Session.patchMe(buildJsonObject { put("global_name", name.trim().ifEmpty { null }) }); ctx.getString(R.string.saved) } catch (e: Exception) { errorText(ctx, e) } } },
-        Modifier.padding(16.dp), enabled = name.trim() != (me?.globalName ?: ""), shape = Hud) { Text(s(R.string.save)) }
+        Modifier.padding(16.dp), enabled = name.trim() != (me?.globalName ?: ""), shape = MaterialTheme.shapes.small) { Text(s(R.string.save)) }
     msg?.let { Text(it, modifier = Modifier.padding(horizontal = 16.dp)) }
     Section(R.string.account_section)
     ListItem(headlineContent = { Text(s(R.string.username)) }, supportingContent = { Text(me?.username ?: "") }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
@@ -262,9 +262,9 @@ private fun AccountSettings() {
             },
             confirmButton = {
                 TextButton({ scope.launch { try { Session.patchMe(buildJsonObject { put("password", old); put("new_password", new) }); password = false; msg = ctx.getString(R.string.password_changed) } catch (e: Exception) { err = errorText(ctx, e) } } },
-                    enabled = old.isNotEmpty() && new.length >= 8) { Text(s(R.string.save)) }
+                    enabled = old.isNotEmpty() && new.length >= 8, shape = MaterialTheme.shapes.small) { Text(s(R.string.save)) }
             },
-            dismissButton = { TextButton({ password = false }) { Text(s(R.string.cancel)) } },
+            dismissButton = { TextButton({ password = false }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
         )
     }
 }

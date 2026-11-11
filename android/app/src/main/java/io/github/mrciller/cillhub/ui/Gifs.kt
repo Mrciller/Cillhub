@@ -95,7 +95,7 @@ fun GifPicker(close: () -> Unit, send: (String) -> Unit) {
         try { results = Session.gifs(query).map { FavoriteGif(it.url, it.src, it.width, it.height, gifFormat(it.url)) } }
         catch (e: Exception) { error = errorText(ctx, e) }
     }
-    ModalBottomSheet(close) {
+    ModalBottomSheet(close, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.fillMaxWidth().height(560.dp).padding(horizontal = 12.dp)) {
             PrimaryTabRow(tab, containerColor = Color.Transparent) {
                 Tab(tab == 0, { tab = 0; favQuery = "" }, text = { Text(s(R.string.gifs)) })

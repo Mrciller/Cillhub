@@ -185,7 +185,7 @@ fun ServerSettingsScreen(guildId: String) {
                             ListItem(
                                 headlineContent = { Text(s(p.label), style = MaterialTheme.typography.titleMedium) },
                                 leadingContent = {
-                                    Box(Modifier.size(40.dp).clip(Hud).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Ic(p.icon, null, Modifier.size(22.dp), MaterialTheme.colorScheme.primary) }
+                                    Box(Modifier.size(40.dp).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Ic(p.icon, null, Modifier.size(22.dp), MaterialTheme.colorScheme.primary) }
                                 },
                                 trailingContent = { Ic(R.drawable.ms_chevron_right, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
@@ -220,15 +220,15 @@ private fun Overview(g: Guild, act: (suspend () -> Unit) -> Unit) {
     }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Picture(guildIconUrl(g), g.name, g.id, 72.dp, Hud)
+            Picture(guildIconUrl(g), g.name, g.id, 72.dp, MaterialTheme.shapes.large)
             FilledTonalButton({ pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, shape = MaterialTheme.shapes.small) { Text(s(R.string.change_icon)) }
-            if (g.icon != null) TextButton({ act { Session.rest.request("PATCH", "/guilds/${g.id}", buildJsonObject { put("icon", JsonNull) }) } }) { Text(s(R.string.remove)) }
+            if (g.icon != null) TextButton({ act { Session.rest.request("PATCH", "/guilds/${g.id}", buildJsonObject { put("icon", JsonNull) }) } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.remove)) }
         }
         OutlinedTextField(name, { name = it.take(100) }, label = { Text(s(R.string.server_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(description, { description = it.take(300) }, label = { Text(s(R.string.server_description)) }, minLines = 2, modifier = Modifier.fillMaxWidth())
         Button({
             act { Session.rest.request("PATCH", "/guilds/${g.id}", buildJsonObject { put("name", name.trim()); if (description.isBlank()) put("description", JsonNull) else put("description", description.trim()) }) }
-        }, enabled = name.isNotBlank() && (name != g.name || description != (g.description ?: "")), shape = Hud) { Text(s(R.string.save)) }
+        }, enabled = name.isNotBlank() && (name != g.name || description != (g.description ?: "")), shape = MaterialTheme.shapes.small) { Text(s(R.string.save)) }
     }
 }
 
@@ -337,7 +337,7 @@ private fun RoleEditor(state: State, g: Guild, r: Role, act: (suspend () -> Unit
                         })
                         done()
                     }
-                }, enabled = everyone || name.isNotBlank(), shape = Hud) { Text(s(R.string.save)) }
+                }, enabled = everyone || name.isNotBlank(), shape = MaterialTheme.shapes.small) { Text(s(R.string.save)) }
                 if (!everyone) OutlinedButton({ confirmDelete = true }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete_role), color = MaterialTheme.colorScheme.error) }
             }
         }
@@ -360,8 +360,8 @@ private fun RoleEditor(state: State, g: Guild, r: Role, act: (suspend () -> Unit
                     check(Perm.keepsAdmin(g, meId, my, afterMe = my?.copy(roles = my.roles - r.id))) { ctx.getString(R.string.self_lockout) }
                     Session.rest.request("DELETE", "/guilds/${g.id}/roles/${r.id}"); done()
                 }
-            }) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton({ confirmDelete = false }) { Text(s(R.string.cancel)) } },
+            }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ confirmDelete = false }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
     )
 }
 
@@ -495,8 +495,8 @@ fun ChannelEditDialog(c: Channel, close: () -> Unit) {
                     }
                 }
                 if (c.type != 4) SwitchLine(s(R.string.age_restricted), nsfw) { nsfw = it }
-                if (Perm.has(Sel.perms(state, c.guildId, c), Perm.MANAGE_ROLES)) TextButton({ close(); nav.openChannelAccess(c.id) }) { Text(s(R.string.manage_channel_access)) }
-                TextButton({ confirmDelete = true }) { Text(s(if (c.type == 4) R.string.delete_category else R.string.delete_channel), color = MaterialTheme.colorScheme.error) }
+                if (Perm.has(Sel.perms(state, c.guildId, c), Perm.MANAGE_ROLES)) TextButton({ close(); nav.openChannelAccess(c.id) }, shape = MaterialTheme.shapes.small) { Text(s(R.string.manage_channel_access)) }
+                TextButton({ confirmDelete = true }, shape = MaterialTheme.shapes.small) { Text(s(if (c.type == 4) R.string.delete_category else R.string.delete_channel), color = MaterialTheme.colorScheme.error) }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -510,16 +510,16 @@ fun ChannelEditDialog(c: Channel, close: () -> Unit) {
                         if (c.type != 4) put("nsfw", nsfw)
                     })
                 }
-            }, enabled = name.isNotBlank()) { Text(s(R.string.save)) }
+            }, enabled = name.isNotBlank(), shape = MaterialTheme.shapes.small) { Text(s(R.string.save)) }
         },
-        dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+        dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
     )
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
         title = { Text(s(if (c.type == 4) R.string.delete_category else R.string.delete_channel)) },
         text = { Text(s(R.string.delete_channel_confirm, c.name ?: "")) },
-        confirmButton = { TextButton({ confirmDelete = false; run { Session.rest.request("DELETE", "/channels/${c.id}") } }) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton({ confirmDelete = false }) { Text(s(R.string.cancel)) } },
+        confirmButton = { TextButton({ confirmDelete = false; run { Session.rest.request("DELETE", "/channels/${c.id}") } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ confirmDelete = false }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
     )
 }
 
@@ -556,9 +556,9 @@ private fun CreateChannelDialog(g: Guild, categories: List<Channel>, act: (suspe
                         put("name", name.trim()); put("type", type); if (type != 4 && parent != null) put("parent_id", parent)
                     })
                 }
-            }, enabled = name.isNotBlank()) { Text(s(R.string.create)) }
+            }, enabled = name.isNotBlank(), shape = MaterialTheme.shapes.small) { Text(s(R.string.create)) }
         },
-        dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+        dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
     )
 }
 
@@ -645,9 +645,9 @@ private fun Emojis(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) {
                         else if (id != null) Session.rest.request("PATCH", "/guilds/${g.id}/emojis/$id", buildJsonObject { put("name", name) })
                         reload++
                     }
-                }, enabled = EMOJI_NAME.matches(name)) { Text(s(if (id == null) R.string.upload else R.string.save)) }
+                }, enabled = EMOJI_NAME.matches(name), shape = MaterialTheme.shapes.small) { Text(s(if (id == null) R.string.upload else R.string.save)) }
             },
-            dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+            dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
         )
     }
     deleting?.let { e ->
@@ -655,8 +655,8 @@ private fun Emojis(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) {
             onDismissRequest = { deleting = null },
             title = { Text(s(R.string.delete_emoji)) },
             text = { Text(s(R.string.delete_emoji_confirm, e.name)) },
-            confirmButton = { TextButton({ deleting = null; act { Session.rest.request("DELETE", "/guilds/${g.id}/emojis/${e.id}"); reload++ } }) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton({ deleting = null }) { Text(s(R.string.cancel)) } },
+            confirmButton = { TextButton({ deleting = null; act { Session.rest.request("DELETE", "/guilds/${g.id}/emojis/${e.id}"); reload++ } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton({ deleting = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
         )
     }
 }
@@ -711,7 +711,7 @@ private fun Bans(g: Guild, act: (suspend () -> Unit) -> Unit) {
                     headlineContent = { Text(b.user.displayName) },
                     supportingContent = b.reason?.takeIf { it.isNotBlank() }?.let { { Text(it) } },
                     leadingContent = { Avatar(b.user, 40.dp) },
-                    trailingContent = { TextButton({ act { Session.rest.request("DELETE", "/guilds/${g.id}/bans/${b.user.id}"); reload++ } }) { Text(s(R.string.unban)) } },
+                    trailingContent = { TextButton({ act { Session.rest.request("DELETE", "/guilds/${g.id}/bans/${b.user.id}"); reload++ } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.unban)) } },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
             }
@@ -783,7 +783,7 @@ private fun Audit(state: State, g: Guild) {
                 if (more) item(key = "more") {
                     Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                         if (busy) androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp))
-                        else TextButton({ load(list.last().id) }) { Text(s(R.string.load_more)) }
+                        else TextButton({ load(list.last().id) }, shape = MaterialTheme.shapes.small) { Text(s(R.string.load_more)) }
                     }
                 }
             }

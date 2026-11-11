@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -141,8 +140,7 @@ private fun ServerRail(state: State, selected: String?, select: (String) -> Unit
                 // selection / unread mark on the left edge (accent when selected)
                 if (isSel || badge.unread) Box(Modifier.align(Alignment.CenterStart).width(4.dp).height(if (isSel) 36.dp else 10.dp)
                     .background(if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface))
-                // the selected server carries the HUD bevel, the others a lighter cut
-                val shape = if (isSel) Hud else CutCornerShape(8.dp)
+                val shape = MaterialTheme.shapes.large
                 Box(
                     Modifier.size(50.dp).pressScale(interaction).clip(shape)
                         .then(if (isSel) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
@@ -163,7 +161,7 @@ private fun ServerRail(state: State, selected: String?, select: (String) -> Unit
         item {
             Box(Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
                 Surface(
-                    onClick = add, shape = CutCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    onClick = add, shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.size(50.dp),
                 ) {
@@ -271,7 +269,7 @@ private fun ChannelActionSheet(state: State, g: Guild, c: Channel, close: () -> 
     val clipboard = androidx.compose.ui.platform.LocalClipboard.current
     val category = c.type == 4
     var next by remember { mutableStateOf<ChannelAction?>(null) } // the dialog or sheet opened from here replaces this sheet
-    if (next == null) androidx.compose.material3.ModalBottomSheet(close) {
+    if (next == null) androidx.compose.material3.ModalBottomSheet(close, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             Text((if (category) "" else "#") + (c.name ?: ""), style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { heading() })
@@ -314,8 +312,8 @@ private fun ChannelActionSheet(state: State, g: Guild, c: Channel, close: () -> 
             onDismissRequest = close,
             title = { Text(s(if (category) R.string.delete_category else R.string.delete_channel)) },
             text = { Text(s(R.string.delete_channel_confirm, c.name ?: "")) },
-            confirmButton = { TextButton({ scope.launch { runCatching { Session.rest.request("DELETE", "/channels/${c.id}") }; close() } }) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+            confirmButton = { TextButton({ scope.launch { runCatching { Session.rest.request("DELETE", "/channels/${c.id}") }; close() } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
         )
         else -> {}
     }
@@ -342,9 +340,9 @@ private fun ChannelRow(
     }
     val accent = MaterialTheme.colorScheme.primary
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp).clip(Hud)
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp).clip(MaterialTheme.shapes.extraSmall)
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
-            // the open channel: bevelled row with an accent edge
+            // the open channel: row with an accent edge
             .drawBehind { if (selected) drawRect(accent, size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) }
             .combinedClickable(onClick = onClick, onLongClickLabel = s(R.string.channel_options), onLongClick = onLongClick).heightIn(min = 48.dp).padding(horizontal = 12.dp)
             .semantics(mergeDescendants = true) {
@@ -408,9 +406,9 @@ private fun CloneChannelDialog(channel: Channel, close: () -> Unit) {
                     }
                 },
                 enabled = !busy && name.isNotBlank(),
-             shape = Hud) { Text(s(R.string.clone)) }
+             shape = MaterialTheme.shapes.small) { Text(s(R.string.clone)) }
         },
-        dismissButton = { TextButton(onClick = close) { Text(s(R.string.cancel)) } },
+        dismissButton = { TextButton(onClick = close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel)) } },
     )
 }
 
@@ -444,7 +442,7 @@ private fun AddServerDialog(close: () -> Unit) {
                         Session.store.dispatch("GUILD_CREATE", io.github.mrciller.cillhub.data.json.parseToJsonElement(g).jsonObject)
                         (sys as? kotlinx.serialization.json.JsonPrimitive)?.content?.let { nav.openChannel(it) }
                     }
-                }) { Text(s(R.string.join_server)) }
+                }, shape = MaterialTheme.shapes.small) { Text(s(R.string.join_server)) }
                 HorizontalDivider()
                 OutlinedTextField(name, { name = it }, label = { Text(s(R.string.new_server_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 TextButton(enabled = name.isNotBlank() && !busy, onClick = {
@@ -452,10 +450,10 @@ private fun AddServerDialog(close: () -> Unit) {
                         val g = Session.rest.request("POST", "/guilds", buildJsonObject { put("name", name.trim()) })
                         Session.store.dispatch("GUILD_CREATE", io.github.mrciller.cillhub.data.json.parseToJsonElement(g).jsonObject)
                     }
-                }) { Text(s(R.string.create_server)) }
+                }, shape = MaterialTheme.shapes.small) { Text(s(R.string.create_server)) }
                 if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error)
             }
         },
-        confirmButton = { TextButton(close) { Text(s(R.string.close)) } },
+        confirmButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.close)) } },
     )
 }
