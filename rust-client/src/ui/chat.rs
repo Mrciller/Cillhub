@@ -1560,9 +1560,10 @@ impl CillhubApp {
             match pick {
                 Some(0) => {
                     let tx = self.picked_tx.clone();
+                    let what = (self.session_gen, self.front.clone(), self.front_gen(), self.selected_channel_id.clone());
                     std::thread::spawn(move || {
                         if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                            let _ = tx.send(paths); // the app may have closed
+                            let _ = tx.send((what.0, what.1, what.2, what.3, paths)); // the app may have closed
                         }
                     });
                 }

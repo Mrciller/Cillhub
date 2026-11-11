@@ -185,6 +185,10 @@ impl AppSettings {
     }
 
     pub fn save(&self) -> std::io::Result<()> {
+        #[cfg(test)]
+        if FAIL_SAVE.with(|f| f.get()) {
+            return Err(std::io::Error::other("disk full (test)"));
+        }
         if cfg!(test) {
             return Ok(());
         }
@@ -315,6 +319,12 @@ pub fn node_key(hub_origin: &str, hub_user: &str, node_origin: &str) -> String {
 }
 
 const SESSION: &str = "session-token";
+
+#[cfg(test)]
+thread_local! {
+    /// Makes save() fail on this test thread (tests never write the real file).
+    pub static FAIL_SAVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
 
 /// Puts `token` into the keyring entry `account` (or deletes it); returns what the settings file must keep instead.
 fn keep(account: &str, token: Option<&str>) -> Option<String> {

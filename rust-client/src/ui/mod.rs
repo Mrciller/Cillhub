@@ -142,6 +142,9 @@ pub enum DrawerKind {
 
 pub use settings_view::{ServerTab, SettingsTab};
 
+/// Files from the picker with what they were picked for: (session, connection, its generation, channel, paths).
+pub type Picked = (u64, connections::Conn, u64, Option<String>, Vec<std::path::PathBuf>);
+
 pub struct CillhubApp {
     pub settings: AppSettings,
     pub state: State,
@@ -162,6 +165,9 @@ pub struct CillhubApp {
     revoke_tx: Sender<(String, bool)>,
     revoke_rx: Receiver<(String, bool)>,
     revoking: std::collections::HashSet<String>,
+    /// Sign-outs whose record could not be saved yet: (id, node origin, token), saved again with each retry.
+    unsaved_revokes: Vec<(String, String, String)>,
+    unsaved_seq: u64,
     /// Nodes found over their limits while their data was in front; cut off in tick_nodes.
     cut_off: Vec<String>,
     last_revoke_retry: Instant,
@@ -216,7 +222,7 @@ pub struct CillhubApp {
     composer_rev: u64,
     /// Inline image attachments by egui URI; bytes arrive from fetch threads.
     pub images: std::collections::HashMap<String, ImageLoad>,
-    image_jobs: Sender<(u64, String, String)>,
+    image_jobs: Sender<images::Job>,
     image_rx: Receiver<images::Done>,
     image_cache: images::Cache,
     /// Full-size image view: (egui URI, file name, absolute URL).
@@ -238,8 +244,8 @@ pub struct CillhubApp {
     /// Set by logout: the next frame drops every image egui holds.
     forget_images: bool,
     /// Results of the file dialog, which runs off the UI thread (a stuck portal must not freeze the app).
-    pub picked_tx: Sender<Vec<std::path::PathBuf>>,
-    picked_rx: Receiver<Vec<std::path::PathBuf>>,
+    pub picked_tx: Sender<Picked>,
+    picked_rx: Receiver<Picked>,
     /// Files picked or dropped, sent with the next message. Each attach is its own instance (Arc identity), so an
     /// upload finishing removes only what it sent, not the same file attached again.
     pub pending_files: Vec<std::sync::Arc<std::path::PathBuf>>,
@@ -376,6 +382,8 @@ impl CillhubApp {
             revoke_rx,
             revoking: Default::default(),
             cut_off: Vec::new(),
+            unsaved_revokes: Vec::new(),
+            unsaved_seq: 0,
             last_revoke_retry: Instant::now(),
             signin_tx,
             signin_rx,
@@ -572,6 +580,7 @@ impl CillhubApp {
     pub fn logout(&mut self) {
         self.new_session();
         self.loading_history.clear();
+        self.loading_members.clear();
         if let Some(tx) = &self.gateway_cmd_tx {
             let _ = tx.send(GatewayCommand::Shutdown);
         }
@@ -1044,15 +1053,18 @@ impl CillhubApp {
         }
         let gid = guild_id.to_string();
         let scope = self.scope_now("history");
+        // one outstanding request per server across READYs: a newer READY waits for it, then asks again
         let sent = self.api_get(format!("/guilds/{gid}/members?limit=1000"), move |app, r| {
             app.loading_members.remove(&gid);
-            if !app.in_scope("history", scope) || !app.state.guilds.contains_key(&gid) {
+            if !app.in_scope("history", scope) {
+                return app.load_members(&gid);
+            }
+            if !app.state.guilds.contains_key(&gid) {
                 return;
             }
             if let Some(list) = report(&mut app.status_banner, r) {
                 report(&mut app.status_banner, app.state.set_members(&gid, list));
             }
-            app.check_node_limits();
         });
         if !sent {
             self.loading_members.remove(guild_id);
@@ -1189,7 +1201,6 @@ impl CillhubApp {
                         // requests started before READY belong to the replaced state
                         self.new_scope("history");
                         self.loading_history.clear();
-                        self.loading_members.clear();
                         self.poll_pending.clear(); // choices come from the reloaded history now
                         let ids: Vec<String> = self.state.guilds.keys().cloned().collect();
                         ids.iter().for_each(|id| self.load_members(id));
@@ -1978,7 +1989,13 @@ impl CillhubApp {
         if self.images.contains_key(uri) {
             return;
         }
-        let queued = self.api.is_some() && self.image_jobs.send((self.session_gen, uri.to_string(), url)).is_ok();
+        // a node's media only from the node's own origin (scheme, host, port), without redirects
+        let pinned = self.front.is_some();
+        let allowed = match &self.front {
+            None => true,
+            Some(o) => Url::parse(&url).is_ok_and(|u| u.origin().ascii_serialization() == *o),
+        };
+        let queued = allowed && self.api.is_some() && self.image_jobs.send((self.session_gen, uri.to_string(), url, pinned)).is_ok();
         self.images.insert(uri.to_string(), if queued { ImageLoad::Loading } else { ImageLoad::Failed });
     }
 
@@ -2045,13 +2062,30 @@ impl CillhubApp {
 
     /// A node is shown only with one of its servers open; User Settings (account data) shows the hub's data and
     /// puts the node view aside until it closes.
-    fn keep_view_consistent(&mut self) {
+    /// Files from the picker go only into the draft they were picked for (else they are dropped).
+    pub fn take_picked_files(&mut self) {
+        while let Ok((session, conn, gen, channel, paths)) = self.picked_rx.try_recv() {
+            // only into the draft it was picked for: same session, same connection, same channel
+            if session != self.session_gen || !self.conn_alive(&conn, gen) {
+                continue;
+            }
+            self.with_conn(&conn, |app| {
+                if app.selected_channel_id == channel {
+                    app.pending_files.extend(paths.into_iter().map(std::sync::Arc::new));
+                }
+            });
+        }
+    }
+
+    pub fn keep_view_consistent(&mut self) {
         let settings_open = self.active_modal == Some(ModalKind::UserSettings);
         if let Some(o) = self.shown.clone().filter(|_| settings_open) {
             self.node_view = Some(o);
             self.show(&None);
-        } else if let Some(o) = self.node_view.take().filter(|_| !settings_open) {
-            self.show(&Some(o)); // its selection waited with its data
+        } else if !settings_open {
+            if let Some(o) = self.node_view.take() {
+                self.show(&Some(o)); // its selection waited with its data
+            }
         }
         if self.shown.is_some() && self.selected_guild_id.is_none() {
             self.show(&None);
@@ -2079,9 +2113,7 @@ impl CillhubApp {
         self.pump_bg();
         self.process_background_events();
         self.keep_view_consistent();
-        while let Ok(paths) = self.picked_rx.try_recv() {
-            self.pending_files.extend(paths.into_iter().map(std::sync::Arc::new));
-        }
+        self.take_picked_files();
         if !self.failed_drafts.is_empty() {
             self.restore_failed_draft();
         }
@@ -2230,6 +2262,10 @@ impl CillhubApp {
                 self.render_guild_rail(ui);
             });
 
+        // an action above may have left a node view without a server, or opened User Settings: hub-only
+        // surfaces (Home, DMs, friends, account) never draw with a node's data, not even for one frame
+        self.keep_view_consistent();
+
         // 2. Channel / DM Sidebar (216px)
         SidePanel::left("channel_sidebar_panel")
             .exact_width(216.0)
@@ -2270,22 +2306,21 @@ impl CillhubApp {
             }
         }
 
+        self.keep_view_consistent();
         // 4. Center Main View (Chat / Stage / Friends)
         CentralPanel::default()
             .frame(Frame::new().fill(BG_CHAT()))
             .show(ctx, |ui| {
-                if let Some(cid) = self.selected_channel_id.clone() {
-                    if let Some(ch) = self.state.channels.get(&cid).cloned() {
-                        self.render_chat_view(ui, &ch);
-                    } else {
-                        self.render_friends_view(ui);
-                    }
-                } else {
-                    self.render_friends_view(ui);
+                let channel = self.selected_channel_id.as_ref().and_then(|c| self.state.channels.get(c)).cloned();
+                match channel {
+                    Some(ch) => self.render_chat_view(ui, &ch),
+                    None if self.front.is_none() => self.render_friends_view(ui),
+                    None => {} // a node server without an open channel: friends are the hub's
                 }
             });
 
         // 5. Floating Modals
+        self.keep_view_consistent();
         self.render_modals(ctx);
         self.render_message_menu(ctx);
         self.render_emoji_picker(ctx);

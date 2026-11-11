@@ -7,6 +7,9 @@ use serde_json::Value;
 use std::sync::{mpsc, Arc, Mutex};
 
 type UiFn = Box<dyn FnOnce(&mut CillhubApp) + Send>;
+
+/// Jobs waiting or running at most; more are refused (the caller sees false), so nothing can queue without bound.
+pub const MAX_JOBS: usize = 1000;
 type Job = (u64, Box<dyn FnOnce() -> UiFn + Send>);
 
 pub struct Workers {
@@ -44,15 +47,19 @@ impl CillhubApp {
         ordered: bool,
         job: impl FnOnce() -> R + Send + 'static,
         done: impl FnOnce(&mut CillhubApp, R) + Send + 'static,
-    ) {
+    ) -> bool {
+        if self.bg.pending >= MAX_JOBS {
+            eprintln!("cillhub: too much background work queued; dropped a job");
+            return false;
+        }
         let job = Box::new(move || {
             let r = job();
             Box::new(move |app: &mut CillhubApp| done(app, r)) as UiFn
         });
         let queue = if ordered { &self.bg.ordered } else { &self.bg.pool };
-        if queue.send((self.session_gen, job)).is_ok() {
-            self.bg.pending += 1;
-        }
+        let sent = queue.send((self.session_gen, job)).is_ok();
+        self.bg.pending += sent as usize;
+        sent
     }
 
     /// A request with the session's API client: reads in the pool, writes (`ordered`) in order.
@@ -76,9 +83,16 @@ impl CillhubApp {
                     app.terms_gate = Some(e.message.clone());
                 }
             }
-            app.with_conn(&conn, |app| done(app, r));
-        });
-        true
+            app.with_conn(&conn, |app| {
+                // a node's answer is counted against its budget before any of it goes in
+                if let Ok(v) = &r {
+                    if conn.is_some() && !app.within_budget(super::connections::weight(v)) {
+                        return;
+                    }
+                }
+                done(app, r)
+            });
+        })
     }
 
     pub fn api_get(&mut self, path: String, done: impl FnOnce(&mut CillhubApp, Result<Value, ApiError>) + Send + 'static) -> bool {

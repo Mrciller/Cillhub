@@ -212,6 +212,7 @@ fn role_color(c: u32) -> Color32 {
 
 impl CillhubApp {
     pub fn render_user_settings(&mut self, ctx: &Context) {
+        self.keep_view_consistent(); // account data is the hub's: never drawn (or drafted) from a node's
         let tabs = [SettingsTab::Account, SettingsTab::Appearance, SettingsTab::Language, SettingsTab::Nodes, SettingsTab::Games, SettingsTab::Desktop];
         let sections = vec![
             (tr("User Settings").to_string(), vec![tr("My Account")]),

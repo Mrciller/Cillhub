@@ -19,9 +19,13 @@ const CACHE_COUNT: usize = 300;
 /// A finished image job: the session it was asked in, its uri, and the bytes with their cache cost (or None).
 pub type Done = (u64, String, Option<(Vec<u8>, usize)>);
 
-/// Starts the workers. Send (session, uri, url) jobs; the result comes back on `done`.
-pub fn spawn_workers(done: mpsc::Sender<Done>) -> mpsc::Sender<(u64, String, String)> {
-    let (tx, rx) = mpsc::channel::<(u64, String, String)>();
+/// An image job: (session, uri, url, pinned). A pinned job (a private node's media) follows no redirect: the
+/// address was checked to be on the node's own origin and must stay there.
+pub type Job = (u64, String, String, bool);
+
+/// Starts the workers. Send jobs; the result comes back on `done`.
+pub fn spawn_workers(done: mpsc::Sender<Done>) -> mpsc::Sender<Job> {
+    let (tx, rx) = mpsc::channel::<Job>();
     let rx = Arc::new(Mutex::new(rx));
     for _ in 0..WORKERS {
         let (rx, done) = (rx.clone(), done.clone());
@@ -31,9 +35,10 @@ pub fn spawn_workers(done: mpsc::Sender<Done>) -> mpsc::Sender<(u64, String, Str
                 .timeout(Duration::from_secs(30))
                 .build()
                 .expect("TLS backend");
+            let pinned_client = crate::api::no_redirect_client(30);
             loop {
-                let Ok(Ok((session, uri, url))) = rx.lock().map(|r| r.recv()) else { return };
-                let bytes = fetch(&client, &url).and_then(|b| check(&b).map(|n| (b, n)));
+                let Ok(Ok((session, uri, url, pinned))) = rx.lock().map(|r| r.recv()) else { return };
+                let bytes = fetch(if pinned { &pinned_client } else { &client }, &url).and_then(|b| check(&b).map(|n| (b, n)));
                 if let Err(e) = &bytes {
                     eprintln!("cillhub: image {url}: {e}");
                 }
@@ -52,6 +57,9 @@ pub fn fetch(client: &reqwest::blocking::Client, url: &str) -> Result<Vec<u8>, S
         .send()
         .and_then(|r| r.error_for_status())
         .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("answer {}", resp.status())); // a redirect the client did not follow
+    }
     if resp.content_length().is_some_and(|n| n > MAX_IMAGE_BYTES) {
         return Err("image too large".into());
     }
