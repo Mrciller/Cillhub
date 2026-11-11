@@ -77,6 +77,19 @@ export function tokenFor(url: string, hub: { origin: string; token: string | nul
   return own.length === 1 ? own[0].token : null
 }
 
-/** A background sign-in that finished may be kept only in the hub session it started in (`session`: logout count and hub
- *  user) and only while its node is still saved; otherwise its token is revoked on the node. */
+/** A background sign-in or list change that finished may be used only in the hub session it started in (`session`: the hub
+ *  token as stored, shared by all tabs, so a logout or login in any tab ends it) and, for a sign-in, only while its node is
+ *  still saved; otherwise its token is revoked on the node. */
 export const keepSignIn = (started: string, now: string, saved: SavedNode[], origin: string) => started === now && saved.some((n) => n.origin === origin)
+
+/** Ends node sessions we will not keep: retried on network errors, 429 and 5xx (2 s doubling, `tries` times), done on
+ *  2xx or 401 (already gone). Resolves false when it gave up. `send` posts and resolves the status (0 = no answer). */
+export const revoker = (send: (url: string, token: string) => Promise<number>, wait = (ms: number) => new Promise((r) => setTimeout(r, ms)), tries = 5) =>
+  async (origin: string, token: string) => {
+    for (let i = 0; i < tries; i++) {
+      const status = await send(`${origin}/api/v9/auth/logout`, token).catch(() => 0)
+      if ((status >= 200 && status < 300) || status === 401) return true
+      if (i < tries - 1) await wait(Math.min(60_000, 2000 * 2 ** i))
+    }
+    return false
+  }

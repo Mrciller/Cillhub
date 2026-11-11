@@ -8,9 +8,9 @@ import { createGateway, type Gateway } from '../gateway'
 import { t } from '../i18n'
 import { notifyEvent } from '../notifications/notify'
 import { navigate } from '../router'
-import { keepSignIn, MAX_NODES, normalizeServerUrl, type SavedNode } from '../privateNodes'
-import { apply, byId, getState, mergeSettings, setState, setToken } from '../store'
-import type { GuildPayload, Presence, ReadState, User, UserGuildSettings, UserSettings } from '../types'
+import { keepSignIn, MAX_NODES, normalizeServerUrl, revoker } from '../privateNodes'
+import { apply, byId, getState, setState, setToken } from '../store'
+import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
 import { inbound, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, tokenOf, type InstanceInfo } from './registry'
 
@@ -237,7 +237,6 @@ export function disconnectInstance(id: string) {
 
 /** Hub logout: node tokens and the private node list belong to this hub account. */
 export function forgetInstances() {
-  generation++ // background sign-ins still running belong to the old account: their tokens are revoked, never stored
   stopNodes()
   for (const i of instances()) removeInstance(i.id)
   for (const n of savedNodes()) forget(n.origin)
@@ -266,12 +265,15 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>()
 const busy = new Set<string>() // origins with a sign-in under way (READY, the settings echo and an add can all ask at once)
 const OWN_LOGIN = 'own-login'
 
-const putNodes = (list: SavedNode[]) => api<UserSettings>('/users/@me/settings', { method: 'PATCH', body: { private_nodes: list } }).then(mergeSettings)
-let generation = 0 // bumped on hub logout
-const session = () => `${generation}:${getState().me?.id ?? ''}`
-/** Ends a node session we will not keep. Only the node's own origin, no cookies, no redirects. */
+// The hub session as stored (all tabs share it): a logout or login in any tab ends what this tab started before.
+const session = () => localStorage.getItem('token') ?? ''
+// List changes go to the hub one at a time; their answers are not merged (an older answer could undo a newer change):
+// USER_SETTINGS_UPDATE on the gateway brings the list, in order.
+const changeNodes = (path: string, method: 'PUT' | 'DELETE', body?: unknown) => api(`/users/@me/settings/private-nodes${path}`, { method, body })
+/** Ends a node session we will not keep (retried a few times). Only the node's own origin, no cookies, no redirects. */
+const revokeOnNode = revoker((url, token) => fetch(url, { method: 'POST', headers: { Authorization: token }, credentials: 'omit', redirect: 'error' }).then((r) => r.status))
 const revoke = (node: InstanceInfo, token: string) =>
-  void fetch(`${node.url}/api/v9/auth/logout`, { method: 'POST', headers: { Authorization: token }, credentials: 'omit', redirect: 'error' }).catch(() => {})
+  void revokeOnNode(node.url, token).then((ok) => ok || console.warn(`Could not end the unused session on ${node.url}; it expires there on its own.`))
 
 /** On the hub's READY and on USER_SETTINGS_UPDATE: the hub copy wins (removals on another device too); an account that never
  *  saved a list takes this device's. Then every saved node that is not connected gets a try. */
@@ -279,7 +281,7 @@ export function syncPrivateNodes() {
   const fromHub = getState().settings.private_nodes
   const before = savedNodes()
   if (fromHub == null) {
-    if (before.length) putNodes(before).catch(() => {}) // next READY tries again
+    if (before.length) changeNodes('/initial', 'PUT', { nodes: before }).catch(() => {}) // only while the account has none; next READY tries again
   } else {
     saveNodes(fromHub)
     const now = savedNodes()
@@ -369,26 +371,23 @@ async function signInQuietly(node: InstanceInfo, live: () => boolean): Promise<s
   return out.token
 }
 
-// One add or remove applied on the hub to its current list (never a whole list from a possibly stale copy).
-const changeNodes = (path: string, method: 'PUT' | 'DELETE', body?: unknown) =>
-  api<UserSettings>(`/users/@me/settings/private-nodes${path}`, { method, body }).then((r) => (mergeSettings(r), saveNodes(r.private_nodes ?? [])))
-
 /** Adds a node to the account's list and connects it; the refusal reason when it cannot be added. */
 export async function addPrivateNode(origin: string, name: string): Promise<'invalid' | 'duplicate' | 'full' | null> {
-  if (getState().settings.private_nodes == null && savedNodes().length) await putNodes(savedNodes()) // first list of this account
-  const fresh = getState().settings.private_nodes ?? []
+  const started = session()
+  const fresh = getState().settings.private_nodes ?? savedNodes()
   if (fresh.some((n) => n.origin === origin)) return 'duplicate'
   if (fresh.length >= MAX_NODES) return 'full'
+  if (getState().settings.private_nodes == null && fresh.length) await changeNodes('/initial', 'PUT', { nodes: fresh }) // first list of this account
   await changeNodes('', 'PUT', { origin, name })
-  tries.delete(origin)
-  void connectSaved(origin)
+  if (session() === started) tries.delete(origin) // the gateway's list update connects it
   return null
 }
 
 /** Removes a node from the account's list (all devices), signs out there and drops its servers and token. */
 export async function removePrivateNode(origin: string) {
+  const started = session()
   await changeNodes(qs({ origin }), 'DELETE')
-  forget(origin, true)
+  if (session() === started) forget(origin, true) // after a logout or account change the node may be someone else's now
 }
 
 function forget(origin: string, signOut = false) {

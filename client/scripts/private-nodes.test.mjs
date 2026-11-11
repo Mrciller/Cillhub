@@ -1,7 +1,7 @@
 // Saved private nodes and add links (src/privateNodes.ts). Run: npm test (node strips the TypeScript types).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { addLink, addNode, cleanName, MAX_NODES, normalizeServerUrl, parseAddLink, parseNodes, tokenFor, keepSignIn } from '../src/privateNodes.ts'
+import { addLink, addNode, cleanName, MAX_NODES, normalizeServerUrl, parseAddLink, parseNodes, tokenFor, keepSignIn, revoker } from '../src/privateNodes.ts'
 
 test('addresses become origins; http only for localhost', () => {
   assert.equal(normalizeServerUrl('chat.example.org/'), 'https://chat.example.org')
@@ -81,4 +81,18 @@ test('a sign-in that finishes after logout, an account change or removal is not 
   assert.equal(keepSignIn('1:100', '2:', saved, 'https://a.example.org'), false, 'logged out meanwhile')
   assert.equal(keepSignIn('1:100', '2:200', saved, 'https://a.example.org'), false, 'another account now, same node in its list')
   assert.equal(keepSignIn('1:100', '1:100', [], 'https://a.example.org'), false, 'node removed meanwhile')
+  // the session is the stored hub token: another tab logging out ('') or in as someone else changes it
+  assert.equal(keepSignIn('hub-token-a', '', saved, 'https://a.example.org'), false)
+  assert.equal(keepSignIn('hub-token-a', 'hub-token-b', saved, 'https://a.example.org'), false)
+})
+
+test('revoking a node session retries failures a few times and stops on success or 401', async () => {
+  const run = async (answers, tries) => {
+    const calls = []
+    const ok = await revoker(async (url, token) => { calls.push([url, token]); const a = answers[calls.length - 1]; if (a === 'net') throw new Error('down'); return a }, async () => {}, tries)('https://a.example.org', 'tok')
+    return [ok, calls.length, calls[0]]
+  }
+  assert.deepEqual(await run(['net', 500, 429, 204]), [true, 4, ['https://a.example.org/api/v9/auth/logout', 'tok']])
+  assert.deepEqual((await run([401])).slice(0, 2), [true, 1])
+  assert.deepEqual((await run([500, 500, 500], 3)).slice(0, 2), [false, 3])
 })

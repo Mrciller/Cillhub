@@ -10,6 +10,7 @@ import { addLink, addNode, MAX_NODES, parseAddLink, type SavedNode } from '../pr
 import { addPrivateNode, removePrivateNode, signInWindow } from '../instances/nodes'
 import { STATUS_TEXT } from '../instances/InstanceUI'
 import { useInstances, useNodeIssues } from '../instances/registry'
+import { useStore } from '../store'
 
 const host = (url: string) => new URL(url).host
 const REFUSED = { invalid: 'Enter only the server address, with https:// (http only for localhost), e.g. https://chat.example.org.', duplicate: 'This server is already in your list.', full: 'You can save up to {n} nodes.' }
@@ -62,7 +63,8 @@ export function PrivateNodes() {
       check(list.at(-1)!.origin)
     })
   }
-  useEffect(() => setNodes(savedNodes()), [instances.length, issues]) // the list may change on another device
+  const fromHub = useStore((s) => s.settings.private_nodes)
+  useEffect(() => setNodes(savedNodes()), [instances.length, issues, fromHub]) // the gateway brings every list change
   const remove = (n: SavedNode) =>
     void ask({ title: t('Remove {name}?', { name: n.name }), confirm: t('Remove'), danger: true,
       body: <p>{t('{address} leaves the list on all your devices. Cillhub signs you out there and its servers leave your server list. Your account there stays as it is.', { address: n.origin })}</p> })
