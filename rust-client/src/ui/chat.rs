@@ -1131,10 +1131,15 @@ impl CillhubApp {
         }
     }
 
+    /// What parsed Markdown is cached for: names in it resolve against this connection's data and server.
+    pub fn md_key(&self) -> (super::connections::Conn, u64, Option<String>) {
+        (self.front.clone(), self.front_gen(), self.selected_guild_id.clone())
+    }
+
     /// Message text through the web client's Markdown rules (see crate::markdown).
     fn render_formatted_content(&mut self, ui: &mut Ui, msg_id: &str, content: &str) {
-        let gid = self.selected_guild_id.clone();
-        // parsed once per content; names and relative times may be a minute old
+        let gid = self.md_key();
+        // parsed once per content and connection; names and relative times may be a minute old
         let (born, cache_gid, cache) = &mut self.md_cache;
         if born.elapsed() > std::time::Duration::from_secs(60) || *cache_gid != gid || cache.len() > 2000 {
             *born = std::time::Instant::now();
@@ -1147,12 +1152,12 @@ impl CillhubApp {
         }
         let state = &self.state;
         let user = |id: &str| {
-            let m = gid.as_ref().and_then(|g| state.members.get(g)).and_then(|m| m.get(id));
+            let m = gid.2.as_ref().and_then(|g| state.members.get(g)).and_then(|m| m.get(id));
             m.and_then(|m| m.nick.clone())
                 .or_else(|| state.users.get(id).map(|u| u.display_name().to_string()))
         };
         let role = |id: &str| {
-            let g = gid.as_ref().and_then(|g| state.guilds.get(g));
+            let g = gid.2.as_ref().and_then(|g| state.guilds.get(g));
             g.and_then(|g| g.roles.iter().find(|r| r.id == id)).map(|r| r.name.clone())
         };
         let channel = |id: &str| state.channels.get(id).and_then(|c| c.name.clone());
@@ -1596,11 +1601,15 @@ impl CillhubApp {
             if self.api.is_some() {
                 // The gateway's MESSAGE_UPDATE shows the edit; on failure keep the draft.
                 let (path, body) = (format!("/channels/{cid}/messages/{edit_id}"), json!({ "content": content }));
-                self.api_bg(true, move |api| api.patch(&path, body), move |app, r| {
+                let (text, id) = (content.clone(), edit_id.clone());
+                let sent = self.api_bg(true, move |api| api.patch(&path, body), move |app, r| {
                     if let Err(e) = r {
                         app.keep_failed(&cid, FailedDraft { text: content, edit_id: Some(edit_id), reply: None }, e);
                     }
                 });
+                if !sent {
+                    (self.composer_text, self.editing_message_id) = (text, Some(id)); // not even sent: the edit stays open
+                }
                 return;
             }
             if let Some(list) = self.state.messages.get_mut(&cid) {

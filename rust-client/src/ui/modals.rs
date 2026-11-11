@@ -53,6 +53,16 @@ impl CillhubApp {
         }
     }
 
+    /// A name lookup's answer, only for the add-link dialog that asked (another link may have replaced it).
+    pub fn add_dialog_answer(&mut self, origin: &str, dialog: u64, name: Option<String>) {
+        if self.add_dialog_gen != dialog {
+            return;
+        }
+        if let Some(q) = self.pending_add_node.as_mut().filter(|q| q.origin == origin) {
+            q.check = Some(name.map_or(crate::nodes::NodeCheck::Down, crate::nodes::NodeCheck::Up));
+        }
+    }
+
     /// `cillhub://add-node#<address>`: the node's name and full address, that it is a separate server; only Add saves it.
     fn render_add_node(&mut self, ctx: &Context) {
         use crate::nodes::NodeCheck;
@@ -61,12 +71,9 @@ impl CillhubApp {
             if let Some(q) = &mut self.pending_add_node {
                 q.check = Some(NodeCheck::Checking);
             }
-            let origin = p.origin.clone();
-            self.spawn_bg(false, move || crate::nodes::fetch_name(&origin), |app, name| {
-                if let Some(q) = &mut app.pending_add_node {
-                    q.check = Some(name.map_or(NodeCheck::Down, NodeCheck::Up));
-                }
-            });
+            let (origin, dialog) = (p.origin.clone(), self.add_dialog_gen);
+            let o = origin.clone();
+            self.spawn_bg(false, move || crate::nodes::fetch_name(&o), move |app, name| app.add_dialog_answer(&origin, dialog, name));
         }
         let host = p.origin.split("://").nth(1).unwrap_or(&p.origin).to_string();
         let error = p.error.clone().or_else(|| (p.check == Some(NodeCheck::Down)).then(|| tr("Could not connect to node at this address.").to_string()));

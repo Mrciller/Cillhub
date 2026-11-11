@@ -492,7 +492,7 @@ impl CillhubApp {
             let fallback = if n.name.is_empty() { host(&n.origin) } else { n.name.clone() };
             self.node_row(ui, &n.origin, &fallback, Some(&n));
         }
-        let pending = self.settings.pending_revokes.len() + self.unsaved_revokes.len();
+        let pending = self.settings.pending_revokes.len() + self.unsaved_revokes.len() + self.removing.len();
         if pending > 0 {
             ui.label(RichText::new(trf("Sign-out still pending on {n} node(s).", &[("n", &pending.to_string())])).font(ui_font(13.0)).color(TEXT_MUTED()));
             ui.add_space(6.0);

@@ -66,6 +66,7 @@ const NATIVE_DE: &[(&str, &str)] = &[
     ("Needs its own login · not connected", "Braucht eigene Anmeldung · nicht verbunden"),
     ("Not connected: {reason} Retrying…", "Nicht verbunden: {reason} Neuer Versuch folgt …"),
     ("Not connected", "Nicht verbunden"),
+    ("Sign-out pending", "Abmeldung steht aus"),
     ("Too much is going on right now. Try again in a moment.", "Gerade ist zu viel los. Versuch es gleich noch einmal."),
     ("Direct messages and friends are not available on private nodes yet.", "Direktnachrichten und Freunde gibt es auf Private Nodes noch nicht."),
     ("This node sent more data than the app keeps.", "Dieser Node hat mehr Daten geschickt, als die App behält."),

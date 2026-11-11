@@ -302,11 +302,14 @@ impl AppSettings {
         Ok(key)
     }
 
-    /// Journal entries whose token can no longer be read (keyring entry gone) cannot be signed out: dropped.
+    /// Journal entries whose keyring entry is confirmed gone cannot be signed out: dropped. Any other keyring
+    /// error (locked, no backend right now) keeps the entry for a later try.
     pub fn prune_pending_revokes(&mut self) {
-        let readable: Vec<String> = self.pending_revoke_list().into_iter().map(|(k, _, _)| k).collect();
         let before = self.pending_revokes.len();
-        self.pending_revokes.retain(|k, _| readable.contains(k));
+        self.pending_revokes.retain(|k, fallback| {
+            fallback.is_some()
+                || !keyring_entry(&format!("node-revoke:{k}")).is_some_and(|e| matches!(e.get_password(), Err(keyring::Error::NoEntry)))
+        });
         if self.pending_revokes.len() != before {
             let _ = self.save();
         }

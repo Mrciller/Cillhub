@@ -169,6 +169,10 @@ pub struct CillhubApp {
     pub pending_nav: Option<(connections::Conn, String)>,
     /// Sign-outs whose record could not be saved yet: (id, node origin, token), saved again with each retry.
     unsaved_revokes: Vec<(String, String, String)>,
+    /// Nodes whose removal waits until its sign-out can be recorded (the connection and token stay meanwhile).
+    removing: std::collections::HashSet<String>,
+    /// Bumped whenever the add-link dialog shows another node: older name lookups are dropped.
+    add_dialog_gen: u64,
     unsaved_seq: u64,
     /// Nodes found over their limits while their data was in front; cut off in tick_nodes.
     cut_off: Vec<String>,
@@ -265,7 +269,8 @@ pub struct CillhubApp {
     pub revealed_spoilers: std::collections::HashSet<(String, u16)>,
     /// Parsed message Markdown by content: (made at, for guild, blocks).
     #[allow(clippy::type_complexity)]
-    md_cache: (Instant, Option<String>, std::collections::HashMap<String, std::rc::Rc<Vec<crate::markdown::Block>>>),
+    /// (made at, for connection + its generation + guild, blocks): names resolve against that connection's data
+    md_cache: (Instant, (connections::Conn, u64, Option<String>), std::collections::HashMap<String, std::rc::Rc<Vec<crate::markdown::Block>>>),
     /// Message whose toolbar was shown last frame (keeps it while the pointer is on the toolbar).
     pub toolbar_msg: Option<String>,
     /// Open "More" menu: (message id, anchor).
@@ -386,6 +391,8 @@ impl CillhubApp {
             cut_off: Vec::new(),
             pending_nav: None,
             unsaved_revokes: Vec::new(),
+            removing: Default::default(),
+            add_dialog_gen: 0,
             unsaved_seq: 0,
             last_revoke_retry: Instant::now(),
             signin_tx,
@@ -442,7 +449,7 @@ impl CillhubApp {
             canvas_cid: None,
             row_heights: Default::default(),
             poll_pending: Default::default(),
-            md_cache: (Instant::now(), None, Default::default()),
+            md_cache: (Instant::now(), (None, 0, None), Default::default()),
             show_composer_plus_menu: false,
             plus_anchor: Pos2::ZERO,
             poll_answers: vec![String::new(), String::new()],
@@ -550,7 +557,10 @@ impl CillhubApp {
                 DeepLinkTarget::GameInvite(invite) => self.pending_game_invite = Some(invite),
                 // shown first: only the user's click on Add saves it
                 DeepLinkTarget::AddNode(origin) => {
+                {
+                    self.add_dialog_gen += 1;
                     self.pending_add_node = Some(crate::nodes::PendingNode { origin, check: None, added: false, error: None })
+                }
                 }
             }
         }

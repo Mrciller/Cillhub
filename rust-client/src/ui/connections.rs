@@ -313,7 +313,9 @@ impl CillhubApp {
         let (gen, live, tx, origin) = (self.session_gen, self.session_live.clone(), self.signin_tx.clone(), origin.to_string());
         let hub_token = api.token.clone().unwrap_or_default();
         let o = origin.clone();
-        let started = self.spawn_bg(
+        // its network work talks to the node: on the node workers, never holding up the hub's
+        let started = self.spawn_in(
+            true,
             false,
             move || {
                 // the hub session and this very node connection (not removed, not signed in another way meanwhile)
@@ -409,7 +411,7 @@ impl CillhubApp {
         for o in std::mem::take(&mut self.cut_off) {
             self.cut_off_node(&o); // found by a member-list answer
         }
-        if !(self.settings.pending_revokes.is_empty() && self.unsaved_revokes.is_empty()) && self.last_revoke_retry.elapsed() >= Duration::from_secs(60) {
+        if !(self.settings.pending_revokes.is_empty() && self.unsaved_revokes.is_empty() && self.removing.is_empty()) && self.last_revoke_retry.elapsed() >= Duration::from_secs(60) {
             self.last_revoke_retry = Instant::now();
             // not saved yet: save again (then it is an ordinary pending sign-out), else try the node again
             for (id, origin, token) in std::mem::take(&mut self.unsaved_revokes) {
@@ -422,6 +424,9 @@ impl CillhubApp {
                 }
             }
             self.retry_revokes(); // a node that was down may be back; each try is bounded (nodes::revoke)
+            for o in self.removing.clone() {
+                self.drop_node(&o, true); // a removal whose sign-out could not be recorded yet
+            }
         }
         while let Ok((key, ok)) = self.revoke_rx.try_recv() {
             self.revoking.remove(&key);
@@ -488,7 +493,12 @@ impl CillhubApp {
                 }
                 let w = weight(&d);
                 if name == "READY" {
-                    // READY replaces the node's data: only its own weight counts
+                    // a READY that does not parse replaces nothing, so it resets nothing either
+                    if crate::model::parse::<crate::model::Ready>(d.clone()).is_err() {
+                        eprintln!("cillhub: {origin} sent a READY that does not parse: dropped");
+                        return;
+                    }
+                    // it replaces the node's data: only its own weight counts
                     if let Some(c) = self.conns.get_mut(origin) {
                         (c.used, c.measured_at) = (0, Some(Instant::now()));
                     }
@@ -606,23 +616,35 @@ impl CillhubApp {
     /// memory first) is revoked on the node; until the node confirms, that sign-out stays saved and is retried.
     pub fn drop_node(&mut self, origin: &str, sign_out: bool) {
         let key = self.node_key(origin);
-        let live = self.conns.remove(origin).and_then(|mut c| {
-            c.close();
-            c.api.take().and_then(|a| a.token)
-        });
-        self.drop_node_data(origin);
+        let live = self.conns.get(origin).and_then(|c| c.api.as_ref()).and_then(|a| a.token.clone());
         let stored = self.settings.node_token(&key);
-        let mut keep_credential = false;
         if sign_out {
-            for token in live.into_iter().chain(stored).collect::<HashSet<_>>() {
-                // not saved: the stored credential stays too, the only durable way to sign out there later
-                keep_credential |= !self.sign_out_later(origin, token);
+            let tokens: HashSet<String> = live.into_iter().chain(stored).collect();
+            let mut failed = None;
+            for token in tokens {
+                match self.settings.add_pending_revoke(origin, &token) {
+                    Ok(k) => self.revoke_async(k, origin.to_string(), token),
+                    Err(e) => failed = Some(e),
+                }
+            }
+            if let Some(e) = failed {
+                // nothing durable records the sign-out yet: the connection (with its token) and the stored
+                // credential stay, the removal is tried again (tick_nodes); the node is no longer used meanwhile
+                self.status_banner = Some(e.to_string());
+                self.removing.insert(origin.to_string());
+                if let Some(c) = self.conns.get_mut(origin) {
+                    c.close();
+                    c.link = NodeLink::Down(tr("Sign-out pending").to_string());
+                }
+                self.drop_node_data(origin);
+                return;
             }
         }
-        if !keep_credential {
-            // also when the keyring could not be read: the entry is tombstoned before it is deleted
-            super::report(&mut self.status_banner, self.settings.set_node_token(&key, None));
-        }
+        self.removing.remove(origin);
+        self.conns.remove(origin); // Drop closes it and ends it for every worker
+        self.drop_node_data(origin);
+        // also when the keyring could not be read: the entry is tombstoned before it is deleted
+        super::report(&mut self.status_banner, self.settings.set_node_token(&key, None));
     }
 
     /// Hub logout: node sessions and the private node list belong to this hub account.
@@ -1172,14 +1194,16 @@ mod tests {
         let a = "http://127.0.0.1:1"; // offline: the sign-out cannot be confirmed now
         let key = app.node_key(a);
         app.settings.set_node_token(&key, Some("node-token")).unwrap();
+        fake_node(&mut app, a, None);
         crate::settings::FAIL_SAVE.with(|f| f.set(true));
         app.drop_node(a, true);
         crate::settings::FAIL_SAVE.with(|f| f.set(false));
         assert_eq!(app.settings.node_token(&key).as_deref(), Some("node-token"), "the only durable record stays");
-        assert_eq!(app.unsaved_revokes.len(), 1);
+        assert!(app.conns.contains_key(a) && app.removing.contains(a), "the removal is not done yet");
         app.last_revoke_retry = Instant::now() - Duration::from_secs(61);
         app.tick_nodes();
-        assert!(app.unsaved_revokes.is_empty() && app.settings.pending_revokes.len() == 1, "saved now, retried until confirmed");
+        assert!(app.removing.is_empty() && !app.conns.contains_key(a) && app.settings.pending_revokes.len() == 1, "recorded now, then removed");
+        assert_eq!(app.settings.node_token(&key), None);
     }
 
     /// Round 4, finding 1: short strings and arrays weigh too, member answers are cut to what was asked for.
@@ -1205,9 +1229,9 @@ mod tests {
         assert!(s.pending_revokes.is_empty(), "no half-written record");
         let k = s.add_pending_revoke("https://a.example", "t").unwrap();
         assert_eq!(s.pending_revoke_list(), vec![(k, "https://a.example".to_string(), "t".to_string())]);
-        s.pending_revokes.insert("1-0|https://b.example".into(), None); // its keyring entry is gone
+        s.pending_revokes.insert("1-0|https://b.example".into(), None); // its keyring cannot be asked right now
         s.prune_pending_revokes();
-        assert_eq!(s.pending_revokes.len(), 1);
+        assert_eq!(s.pending_revokes.len(), 2, "kept: only a confirmed missing entry is dropped");
     }
 
     /// Round 4, finding 5: navigation from inside a message waits until the frame is drawn.
@@ -1261,6 +1285,67 @@ mod tests {
         app.create_guild();
         assert_eq!((app.state.guilds.len(), app.new_guild_name_input.as_str()), (guilds, "Taylor's"));
         app.bg.pending = 1; // the one real job above
+    }
+
+    /// Round 5, finding 1: a READY that does not parse changes nothing, the budget included.
+    #[test]
+    fn a_broken_ready_resets_nothing() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example";
+        let tx = fake_node(&mut app, a, None);
+        send(&tx, "READY", json!({ "session_id": "s", "user": { "id": "n1", "username": "alex" }, "guilds": [{ "id": "g", "name": "n" }] }));
+        app.tick_nodes();
+        app.conns.get_mut(a).unwrap().used = 4000;
+        send(&tx, "READY", json!({}));
+        app.tick_nodes();
+        assert_eq!(app.conns[a].used, 4000);
+        assert!(app.conn_state(&Some(a.into())).unwrap().guilds.contains_key("g"));
+    }
+
+    /// Round 5, finding 5: an edit that could not even be sent stays open with its text.
+    #[test]
+    fn a_refused_edit_stays_open() {
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(crate::api::ApiClient::new(url::Url::parse("http://localhost:9/").unwrap(), None));
+        app.selected_channel_id = Some("c_general".into());
+        (app.editing_message_id, app.composer_text) = (Some("m_1".into()), "fixed".into());
+        app.bg.pending = crate::ui::background::MAX_JOBS;
+        app.submit_composer();
+        app.bg.pending = 0;
+        assert_eq!((app.editing_message_id.as_deref(), app.composer_text.as_str()), (Some("m_1"), "fixed"));
+    }
+
+    /// Round 5, findings 6 and 7: parsed Markdown is cached per connection; a late name lookup reaches only the
+    /// add-link dialog that asked.
+    #[test]
+    fn markdown_and_dialog_answers_stay_with_their_owner() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example";
+        fake_node(&mut app, a, None);
+        let hub = app.md_key();
+        app.show(&Some(a.into()));
+        app.selected_guild_id = hub.2.clone(); // a node server named like the hub's
+        assert_ne!(app.md_key(), hub);
+        app.add_dialog_gen = 2;
+        app.pending_add_node = Some(crate::nodes::PendingNode { origin: "https://b.example".into(), check: None, added: false, error: None });
+        app.add_dialog_answer("https://a.example", 1, Some("Node A".into()));
+        app.add_dialog_answer("https://b.example", 1, Some("Node A".into()));
+        assert_eq!(app.pending_add_node.as_ref().unwrap().check, None);
+        app.add_dialog_answer("https://b.example", 2, Some("Node B".into()));
+        assert_eq!(app.pending_add_node.as_ref().unwrap().check, Some(crate::nodes::NodeCheck::Up("Node B".into())));
+    }
+
+    /// Round 5, finding 8: a node's sign-in runs on the node workers: a full hub queue does not stop it.
+    #[test]
+    fn node_sign_in_uses_the_node_workers() {
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(crate::api::ApiClient::new(url::Url::parse("http://localhost:9/").unwrap(), None));
+        let a = "https://a.example";
+        fake_node(&mut app, a, None);
+        app.bg.pending = crate::ui::background::MAX_JOBS; // all hub work
+        app.start_sign_in(a);
+        assert!(app.conns[a].busy && app.bg.node_pending == 1, "started on the node workers");
+        app.bg.pending = 1;
     }
 
     #[test]
