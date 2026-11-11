@@ -12,7 +12,7 @@ import { gatewayOk, inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revoca
 import { apply, byId, getState, setState, setToken } from '../store'
 import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
-import { admit, outbound, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
+import { admit, outbound, overBudget, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
 
 /** The hub's node directory record (§2), from GET /federation/nodes. */
 export type NodeRecord = {
@@ -29,6 +29,7 @@ const NODE_FRAME_BYTES = 4 * 1024 * 1024 // a node gateway frame above this clos
 // What the node boundary (registry.ts admit) may ask about the client's state.
 setView({
   user: (id) => getState().users[id],
+  channel: (id) => getState().channels[id],
   interaction: (nonce) => {
     const p = typeof nonce === 'string' ? sentInteractions.get(nonce) : undefined
     return p && Date.now() - p.at < 15 * 60_000 ? p : undefined
@@ -40,7 +41,7 @@ const statusOf = (id: string) => instanceById(id)?.status
 
 /** Opens the gateways of saved instances that have a token and are not cut off (after the hub's READY). */
 export function startNodes() {
-  for (const i of instances()) if (!conns.has(i.id) && tokenOf(i.id) && i.status !== 'suspended' && i.status !== 'signed-out') open(i)
+  for (const i of instances()) if (!conns.has(i.id) && tokenOf(i.id) && i.status !== 'suspended' && i.status !== 'signed-out' && i.status !== 'cut-off') open(i)
   void refreshStatus()
   syncPrivateNodes()
 }
@@ -74,6 +75,13 @@ function open(i: InstanceInfo) {
   conns.set(i.id, g)
   g.connect()
 }
+/** Over its budget (registry.ts): disconnected, its servers dropped, the state shown, until the next start. */
+function cutOff(id: string) {
+  close(id)
+  if (nodeOf(getState().voice.guildId) === id) leaveVoice()
+  for (const g of Object.keys(getState().guilds)) if (nodeOf(g) === id) apply('GUILD_DELETE', { id: g })
+  setLive(id, { status: 'cut-off' })
+}
 function close(id: string) {
   conns.get(id)?.disconnect()
   conns.delete(id)
@@ -83,7 +91,7 @@ function dispatch(id: string, t: string, raw: any) {
   if (t === 'READY' && /^\d{1,20}$/.test(raw?.user?.id ?? '')) setLive(id, { meId: raw.user.id, sessionId: typeof raw.session_id === 'string' ? raw.session_id : null })
   // The one way in for node events: shape, ids, event type, target ownership and users are checked there.
   const d = admit(id, t, raw)
-  if (!d) return
+  if (!d) return void (overBudget(id) && cutOff(id))
   if (t === 'READY') return ready(id, d)
   const s = getState()
   apply(t, d)

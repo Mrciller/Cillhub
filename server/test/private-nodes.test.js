@@ -50,15 +50,15 @@ test('private-nodes add/remove: one change at a time on the stored list, so a re
   }
 });
 
-test('rail order and folders take node servers as <node id>:<snowflake>, nothing else', async () => {
+test('rail order and folders take node servers as <node id>~<snowflake>, nothing else', async () => {
   const srv = await startServer();
   try {
     const robin = await srv.register('robin');
     const patch = body => srv.api('PATCH', '/users/@me/settings', robin.token, body);
-    const ok = await patch({ guild_positions: ['123', '1570069810111315968:456'], guild_folders: [{ id: 1, guild_ids: ['1570069810111315968:456'], name: 'n', color: null }] });
+    const ok = await patch({ guild_positions: ['123', '1570069810111315968~456'], guild_folders: [{ id: 1, guild_ids: ['1570069810111315968~456'], name: 'n', color: null }] });
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
-    assert.deepEqual(ok.body.guild_positions, ['123', '1570069810111315968:456']);
-    for (const bad of [['a:1'], ['1:'], ['1:2:3'], ['../1']]) assert.equal((await patch({ guild_positions: bad })).status, 400, bad[0]);
+    assert.deepEqual(ok.body.guild_positions, ['123', '1570069810111315968~456']);
+    for (const bad of [['a~1'], ['1~'], ['1~2~3'], ['1:2'], ['../1']]) assert.equal((await patch({ guild_positions: bad })).status, 400, bad[0]);
   } finally {
     await srv.stop();
   }

@@ -1,6 +1,6 @@
 import { DEFAULT_HUB_URL } from './hub'
 import { t } from './i18n'
-import { admitRest, instanceById, instances, outbound, outboundPath, route, tokenOf } from './instances/registry'
+import { admitRest, instanceById, instances, outbound, outboundPath, pathFits, route, tokenOf } from './instances/registry'
 import { cleanName, normalizeServerUrl, parseNodes, safePath, tokenFor, type SavedNode } from './privateNodes'
 
 export { normalizeServerUrl }
@@ -121,7 +121,8 @@ function target(path: string, body: unknown, instance?: string) {
   if (!safePath(path)) throw new ApiError(0, { message: t('Request failed ({status})', { status: 0 }) })
   const node = instance ?? route(path, body)
   const info = instanceById(node)
-  if (node && !info) throw new ApiError(0, null) // a node id of a node we no longer have: never to the hub
+  // a node id of a node we no longer have, or ids of another server in the path: never sent
+  if ((node && !info) || !pathFits(path, node)) throw new ApiError(0, { message: t('Request failed ({status})', { status: 0 }) })
   const base = apiOrigin() + '/api/v9'
   return info ? { node: info.id, url: info.url + '/api/v9' + outboundPath(info.id, path), body: outbound(info.id, body) } : { node: undefined, url: base + path, body }
 }
@@ -193,7 +194,11 @@ export const serverOffset = () => (Number.isFinite(lo) && Number.isFinite(hi) ? 
 
 /** Multipart POST with upload progress (fetch has no upload progress events). */
 export function upload<T>(path: string, form: FormData, onProgress: (fraction: number) => void = () => {}): Promise<T> {
-  const to = target(path, undefined)
+  // The JSON part decides where it goes (an interaction's channel) and goes out in that server's ids.
+  let payload: unknown
+  try { payload = JSON.parse(String(form.get('payload_json') ?? 'null')) } catch { payload = null }
+  const to = target(path, payload ?? undefined)
+  if (to.node && payload) form.set('payload_json', JSON.stringify(to.body))
   // A node upload never follows a redirect (XHR would re-send the files elsewhere): fetch, without progress steps.
   if (to.node) {
     return fetch(to.url, { method: 'POST', headers: auth(to.url), body: form, redirect: 'error' }).then(async (res) => {

@@ -82,5 +82,8 @@ export const v8: Record<string, string> = {
   'Add {name}?': '{name} hinzufügen?', 'Add and sign in': 'Hinzufügen und anmelden', 'Sign in': 'Anmelden', 'Not connected': 'Nicht verbunden',
   'Needs its own login · not connected': 'Braucht eigene Anmeldung · nicht verbunden', 'Not connected: {reason} Retrying…': 'Nicht verbunden: {reason} Neuer Versuch folgt …',
   '{name} is not reachable right now.': '{name} ist gerade nicht erreichbar.',
+  'Cut off: sent too much data': 'Getrennt: zu viele Daten gesendet',
+  '{name} sent more data than Cillhub keeps for one server and was disconnected. It connects again on the next start.':
+    '{name} hat mehr Daten geschickt, als Cillhub für einen Server behält, und wurde getrennt. Beim nächsten Start verbindet es sich wieder.',
   'From {instance}, a separate server. What you enter goes there.': 'Von {instance}, einem eigenen Server. Was du eingibst, geht dorthin.',
 }

@@ -259,8 +259,8 @@ export const byId = <T extends { id: string }>(xs: T[]) => Object.fromEntries(xs
 const omit = <T,>(r: Record<string, T>, key: string) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== key))
 /** Snowflake order (node ids compare by their snowflake part). */
 export const cmpId = (a: string, b: string) => {
-  const x = a.slice(a.indexOf(':') + 1)
-  const y = b.slice(b.indexOf(':') + 1)
+  const x = a.slice(a.indexOf('~') + 1)
+  const y = b.slice(b.indexOf('~') + 1)
   return x.length - y.length || (x < y ? -1 : x > y ? 1 : 0)
 }
 export const displayName = (u?: User | null) => (u ? u.global_name || u.username : 'Unknown')

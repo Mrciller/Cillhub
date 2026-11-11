@@ -273,7 +273,7 @@ async function multiInstance(browser, errors) {
   await popup.screenshot({ path: shot('consent') })
   await popup.getByRole('button', { name: 'Authorize' }).click()
   await popup.waitForEvent('close')
-  await page.waitForURL(`**/channels/7000:${NG}/7000:7101`) // node ids carry their node's id
+  await page.waitForURL(`**/channels/7000~${NG}/7000~7101`) // node ids carry their node's id
   assert.equal(await page.evaluate(() => localStorage.getItem('instance-token:7000')), 'node-token', 'the node token is stored per instance')
   assert.ok(!st.hubCalls.some((c) => JSON.stringify(c).includes('node-token')), 'the node token never goes to the hub')
   const join = st.nodeCalls.find((c) => c.p === `/guilds/${NG}/members/@me`)
@@ -330,14 +330,14 @@ async function multiInstance(browser, errors) {
   await add.getByText('elsewhere.example is not linked to this hub. Open the invite on its own site instead.').waitFor()
   await add.getByLabel('Invite link from another instance').fill(`${NODE}/invite/abc`)
   await add.getByRole('button', { name: 'Sign in and join' }).click()
-  await page.waitForURL(`**/channels/7000:${NG2}/7000:7201`)
+  await page.waitForURL(`**/channels/7000~${NG2}/7000~7201`)
   assert.equal(st.nodeCalls.find((c) => c.p === '/invites/abc').auth, 'node-token')
   await rail.getByRole('link', { name: /^Node Scrims on Dana's Node/ }).waitFor()
   console.log('ok v7 6 - node invite link: linked node joined with the stored token, unknown instance refused')
 
   // Offline: the node drops the connection and does not answer; servers greyed out, status line; then it comes back.
   await nodeIcon.click()
-  await page.waitForURL(`**/channels/7000:${NG}/**`)
+  await page.waitForURL(`**/channels/7000~${NG}/**`)
   st.nodeOffline = true
   st.nodeSock.close({ code: 1011 })
   await page.getByRole('status').getByText("Dana's Node is not reachable right now.", { exact: false }).waitFor()

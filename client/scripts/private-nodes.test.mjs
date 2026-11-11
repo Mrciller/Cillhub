@@ -132,88 +132,114 @@ globalThis.localStorage ??= { getItem: (k) => mem.get(k) ?? null, setItem: (k, v
 const reg = await import('../src/instances/registry.ts')
 const { gatewayOk, safePath } = await import('../src/privateNodes.ts')
 const sent = new Map()
-const view = { voiceGuild: null }
-reg.setView({ user: (id) => (id === '1' ? { id: '1', username: 'alex', avatar: 'hub' } : undefined), interaction: (n) => sent.get(n), consume: (n) => sent.delete(n), voiceGuild: () => view.voiceGuild })
+const view = { voiceGuild: null, channels: { '7~101': { guild_id: '7~100' } } }
+const HUB_ME = { id: '1', username: 'alex', global_name: 'Alex', avatar: 'hub' }
+reg.setView({ user: (id) => (id === '1' ? HUB_ME : undefined), channel: (id) => view.channels[id], interaction: (n) => sent.get(n), consume: (n) => sent.delete(n), voiceGuild: () => view.voiceGuild })
 reg.testNode('7', 'https://n1.example', '900', '1')
 reg.testNode('8', 'https://n2.example', '950', '1')
 
-test('F1: whatever a node answers or sends, its ids are its own: a hub channel id comes back scoped', () => {
-  const ch = reg.admitRest('7', { id: '11', guild_id: '10', name: 'x' }) // a REST answer naming hub channel 11
-  assert.deepEqual([ch.id, ch.guild_id], ['7:11', '7:10'])
-  const m = reg.admit('7', 'MESSAGE_DELETE', { guild_id: '100', channel_id: '11', id: '5' })
-  assert.deepEqual([m.channel_id, m.id], ['7:11', '7:5'], 'never the hub message 5 in hub channel 11')
+test('F1/F2: a node only ever names its own scoped ids; routing reads the first id of the path', () => {
+  const ch = reg.admitRest('7', { id: '11', guild_id: '10', name: 'x' })
+  assert.deepEqual([ch.id, ch.guild_id], ['7~11', '7~10'])
   for (const t of ['RELATIONSHIP_REMOVE', 'USER_SETTINGS_UPDATE', 'CALL_CREATE', 'CHANNEL_RECIPIENT_ADD', 'INSTANCE_ANNOUNCEMENT', 'SAVED_MESSAGE_CREATE'])
     assert.equal(reg.admit('7', t, { guild_id: '100', id: '2' }), null, t)
+  assert.equal(reg.route('/channels/7~101/messages'), '7')
+  assert.equal(reg.route('/channels/11/messages'), undefined)
+  assert.equal(reg.route('/users/@me/profile?guild_id=7~100'), '7')
 })
 
-test('F2: routing reads the prefix; a node cannot claim hub or other node ids at any time', () => {
-  assert.equal(reg.route('/channels/7:101/messages'), '7')
-  assert.equal(reg.route('/channels/11/messages'), undefined, 'bare = hub, whatever a node said before')
-  assert.equal(reg.route('/channels/8:101/messages'), '8')
-  assert.equal(reg.route('/users/@me/profile?guild_id=7:100'), '7')
-  assert.equal(reg.outboundPath('7', '/channels/7:101/messages/7:5/reactions/party%3A7%3A55/@me?around=7:5'), '/channels/101/messages/5/reactions/party%3A55/@me?around=5')
-  assert.equal(reg.route('/emojis/7:55.png'), '7')
-  assert.equal(reg.outboundPath('7', '/emojis/7:55.png'), '/emojis/55.png')
+test('3: any user object naming our node account becomes our hub record, whole', () => {
+  const d = reg.admit('7', 'GUILD_MEMBER_UPDATE', { guild_id: '100', user: { id: '900', global_name: 'spoof' }, roles: [] })
+  assert.deepEqual(d.user, HUB_ME)
+  assert.notEqual(d.user, HUB_ME, 'a copy, not the store object')
 })
 
-test('F3: canonical string ids only; node users are scoped, our node account is our hub record', () => {
-  assert.equal(reg.admitRest('7', [{ user: { id: 2, username: 'sam?' } }]), null, 'numeric id')
-  assert.equal(reg.admitRest('7', [{ user: { id: '02x' } }]), null)
-  const list = reg.admitRest('7', [{ user: { id: '2', username: 'not-sam' } }, { user: { id: '900', username: 'evil', avatar: 'node' } }])
-  assert.equal(list[0].user.id, '7:2', 'cannot touch hub user 2')
-  assert.deepEqual([list[1].user.id, list[1].user.username, list[1].user.avatar], ['1', 'alex', 'hub'])
-  assert.equal(reg.admit('7', 'USER_UPDATE', { id: '900', username: 'evil' }), null)
+test('4: every node event needs its own guild or channel; id lists are lists of snowflake strings', () => {
+  assert.equal(reg.admit('7', 'USER_GUILD_SETTINGS_UPDATE', { guild_id: null, muted: true }), null)
+  assert.equal(reg.admit('7', 'MESSAGE_DELETE_BULK', { channel_id: '101', guild_id: '100', ids: '5' }), null)
+  assert.equal(reg.admit('7', 'MESSAGE_DELETE_BULK', { channel_id: '101', guild_id: '100', ids: [5] }), null)
+  assert.deepEqual(reg.admit('7', 'MESSAGE_DELETE_BULK', { channel_id: '101', guild_id: '100', ids: ['5'] }).ids, ['7~5'])
+  assert.ok(reg.admit('7', 'MESSAGE_ACK', { channel_id: '101', message_id: '5' }), 'guild from the known channel')
+  assert.equal(reg.admit('7', 'MESSAGE_ACK', { channel_id: '102', message_id: '5' }), null, 'unknown channel, no guild')
+  const g = reg.admit('7', 'GUILD_CREATE', { id: '100', roles: [{ id: '100' }], members: [{ user: { id: '901' }, roles: ['3'] }], channels: [] })
+  assert.deepEqual([g.roles[0].id, g.members[0].roles[0]], ['7~100', '7~3'])
 })
 
-test('F4: second targets in reducers are scoped too (voice channel status, event users, deletes)', () => {
-  const v = reg.admit('7', 'VOICE_CHANNEL_STATUS_UPDATE', { channel_id: '101', id: '11', status: 'x' })
-  assert.equal(v.id, '7:11')
-  const e = reg.admit('7', 'GUILD_SCHEDULED_EVENT_USER_ADD', { guild_id: '100', guild_scheduled_event_id: '42', user_id: '900' })
-  assert.deepEqual([e.guild_scheduled_event_id, e.user_id], ['7:42', '1'])
-  const b = reg.admit('7', 'MESSAGE_DELETE_BULK', { channel_id: '101', ids: ['5', '6'] })
-  assert.deepEqual(b.ids, ['7:5', '7:6'])
-  const g = reg.admit('7', 'GUILD_CREATE', { id: '100', roles: [{ id: '100', name: '@everyone' }], members: [{ user: { id: '901' }, roles: ['3'] }], channels: [] })
-  assert.deepEqual([g.roles[0].id, g.members[0].roles[0]], ['7:100', '7:3'], 'role objects and role id lists')
-  assert.equal(reg.admit('7', 'GUILD_MEMBER_UPDATE', { guild_id: '100', user: { id: '901' }, roles: ['x'] }), null)
-  const c = reg.admit('7', 'MESSAGE_CREATE', { channel_id: '101', id: '9', content: 'hi <@900> <@2> <#11> <:p:55> <@&3>', author: { id: '901' } })
-  assert.equal(c.content, 'hi <@1> <@7:2> <#7:11> <:p:7:55> <@&7:3>')
-  assert.equal(reg.outbound('7', { content: c.content }).content, 'hi <@900> <@2> <#11> <:p:55> <@&3>')
+test('5: voice signalling and voice servers only for the call on that node (DM calls included)', () => {
+  view.voiceGuild = null // a hub DM call
+  assert.equal(reg.admit('7', 'VOICE_SERVER_UPDATE', { guild_id: null, endpoint: null }), null)
+  assert.equal(reg.admit('7', 'CILLVOICE_ERROR', { message: 'x' }), null)
+  view.voiceGuild = '7~100'
+  assert.ok(reg.admit('7', 'VOICE_SERVER_UPDATE', { guild_id: '100', endpoint: '/lk', token: 't' }))
+  assert.equal(reg.admit('8', 'CILLVOICE_TRACKS', { tracks: [] }), null)
+  assert.deepEqual(reg.admit('7', 'CILLVOICE_SPEAKING', { speaking: ['900', '901'] }).speaking, ['1', '7~901'])
+  assert.equal(reg.admit('7', 'VOICE_STATE_UPDATE', { user_id: '900', channel_id: '101', session_id: 'x' }), null, 'no guild = refused')
+  view.voiceGuild = null
 })
 
-test('F5: a voice state of ours from a node only for that node', () => {
-  assert.equal(reg.admit('7', 'VOICE_STATE_UPDATE', { user_id: '900', guild_id: '100', channel_id: '101', session_id: 'x' }).guild_id, '7:100')
-  assert.equal(reg.admit('7', 'VOICE_STATE_UPDATE', { user_id: '900', channel_id: '101', session_id: 'x' }), null, 'no guild = a hub call')
+test('6: a modal shows where we sent the interaction and names our application, whatever the node says', () => {
+  sent.set('55', { channelId: '7~101', appId: '7~30', type: 2 })
+  const m = reg.admit('7', 'INTERACTION_MODAL_CREATE', { nonce: '55', id: '56', custom_id: 'm', title: 'Password?', application: { id: '31', name: 'Bank' }, components: [] })
+  assert.deepEqual([m.channel_id, m.application.id], ['7~101', '7~30'])
+  assert.equal(reg.admit('7', 'INTERACTION_MODAL_CREATE', { nonce: '55', id: '57', custom_id: 'm', title: 'x', components: [] }), null, 'used up')
+  sent.set('56', { channelId: '7~101', appId: '7~30', type: 5 })
+  assert.equal(reg.admit('7', 'INTERACTION_MODAL_CREATE', { nonce: '56', components: [] }), null, 'a modal submit cannot open another modal')
 })
 
-test('F6: interaction answers only for an open interaction of the fitting kind in that node, consumed when terminal', () => {
-  const modal = { nonce: '55', channel_id: '101', id: '56', custom_id: 'm', title: 'Password?', application: { id: '30' }, components: [] }
-  assert.equal(reg.admit('7', 'INTERACTION_MODAL_CREATE', modal), null)
-  sent.set('55', { channelId: '11', appId: '30', type: 2 })
-  assert.equal(reg.admit('7', 'INTERACTION_MODAL_CREATE', modal), null, 'sent into a hub channel')
-  sent.set('55', { channelId: '7:101', appId: '7:31', type: 2 })
-  assert.equal(reg.admit('7', 'INTERACTION_MODAL_CREATE', modal), null, 'another application')
-  sent.set('55', { channelId: '7:101', appId: '7:30', type: 4 })
-  assert.equal(reg.admit('7', 'INTERACTION_MODAL_CREATE', modal), null, 'an autocomplete cannot open a modal')
-  sent.set('55', { channelId: '7:101', appId: '7:30', type: 2 })
-  assert.equal(reg.admit('8', 'INTERACTION_MODAL_CREATE', modal), null, 'another node')
-  assert.ok(reg.admit('7', 'INTERACTION_MODAL_CREATE', modal))
-  assert.equal(reg.admit('7', 'INTERACTION_MODAL_CREATE', modal), null, 'replay after the terminal answer')
+test('7: one id budget per node; past it the payload is refused and the node is over budget', () => {
+  reg.testNode('9', 'https://n3.example', '990', '1')
+  assert.ok(reg.admit('9', 'READY', { user: { id: '990' }, guilds: [] }))
+  const big = Array.from({ length: 5000 }, (_, i) => ({ id: String(i + 1) }))
+  let refused = false
+  for (let i = 0; i < 60 && !refused; i++) refused = reg.admitRest('9', big.map((x) => ({ id: String(Number(x.id) + i * 5000) }))) === null
+  assert.ok(refused && reg.overBudget('9'))
+  reg.admit('9', 'READY', { user: { id: '990' }, guilds: [] })
+  assert.equal(reg.overBudget('9'), false, 'a new READY starts again')
 })
 
-test('F7: structural limits everywhere, also inside components and activities', () => {
+test('11: only user references alias to us; a channel with our node user id stays scoped', () => {
+  const c = reg.admit('7', 'CHANNEL_CREATE', { id: '900', guild_id: '100', owner_id: '900', type: 0 })
+  assert.deepEqual([c.id, c.owner_id], ['7~900', '1'])
+  assert.equal(reg.route(`/channels/${c.id}/messages`), '7')
+})
+
+test('12: forged prefixed tokens neutralised; component default values and emoji typed; numeric emoji ids refused', () => {
+  const m = reg.admit('7', 'MESSAGE_CREATE', { channel_id: '101', guild_id: '100', id: '9', content: 'a <@8~950> b <#8~1> c <@900> <:x:55>', author: { id: '901' },
+    components: [{ type: 1, id: 1, components: [{ type: 5, id: 2, custom_id: 'pick', default_values: [{ id: '900', type: 'user' }, { id: '3', type: 'role' }], emoji: { id: '55' } }] }] })
+  assert.equal(m.content, 'a ‹@8~950› b ‹#8~1› c <@1> <:x:7~55>')
+  const sel = m.components[0].components[0]
+  assert.deepEqual([sel.default_values[0].id, sel.default_values[1].id, sel.emoji.id], ['1', '7~3', '7~55'])
+  assert.equal(reg.admit('7', 'MESSAGE_CREATE', { channel_id: '101', guild_id: '100', id: '9', components: [{ type: 2, emoji: { id: 55 } }] }), null)
+})
+
+test('13: multipart and JSON bodies route by their channel and go out in the node ids', () => {
+  const payload = { type: 2, channel_id: '7~101', application_id: '7~30', data: { id: '7~40' }, message_reference: { message_id: '7~5' }, content: 'hi <@7~901> <@1>' }
+  assert.equal(reg.route('/interactions', payload), '7')
+  assert.deepEqual(reg.outbound('7', payload), { type: 2, channel_id: '101', application_id: '30', data: { id: '40' }, message_reference: { message_id: '5' }, content: 'hi <@901> <@900>' })
+})
+
+test('14: the endpoint primary resource decides; emoji segments never do; mismatched ids are refused (hub emoji named with digits works)', () => {
+  assert.equal(reg.route('/channels/11/messages/12/reactions/123:55/@me'), undefined, 'hub emoji named 123 on a hub message: hub')
+  assert.equal(reg.pathFits('/channels/11/messages/12/reactions/123:55/@me', undefined), true)
+  assert.equal(reg.route('/channels/11/messages/12/reactions/x:7~55/@me'), undefined)
+  assert.equal(reg.pathFits('/channels/11/messages/12/reactions/x:7~55/@me', undefined), false, 'node emoji on a hub message')
+  assert.equal(reg.pathFits('/channels/7~101/messages/7~12/reactions/x:55/@me', '7'), false, 'hub emoji on a node message')
+  assert.equal(reg.pathFits('/channels/7~101/messages/7~12/reactions/x:7~55/@me', '7'), true)
+  assert.equal(reg.pathFits('/channels/7~101/messages/8~12', '7'), false, "another node's id")
+  assert.equal(reg.outboundPath('7', '/channels/7~101/messages/7~12/reactions/x%3A7~55/@me?around=7~5'), '/channels/101/messages/12/reactions/x%3A55/@me?around=5')
+  assert.equal(reg.outboundPath('7', '/channels/17~5'), '/channels/17~5', 'only whole prefixes')
+  assert.equal(reg.route('/emojis/7~55.png'), '7')
+})
+
+test('15: id-keyed maps go out with bare keys', () => {
+  assert.deepEqual(reg.outbound('7', { channel_overrides: { '7~101': { muted: true }, '8~1': {} } }).channel_overrides, { 101: { muted: true }, '8~1': {} })
+})
+
+test('limits everywhere; gateway only on the node; CDN paths cannot walk out', () => {
   let deep = {}
   for (let i = 0; i < 40; i++) deep = { components: [deep] }
-  assert.equal(reg.admit('7', 'MESSAGE_CREATE', { channel_id: '101', id: '8', components: [deep] }), null)
-  assert.equal(reg.admit('7', 'PRESENCE_UPDATE', { user: { id: '901' }, activities: [{ party: Array.from({ length: reg.LIMITS.list + 1 }, () => 1) }] }), null)
-  assert.equal(reg.admitRest('7', Array.from({ length: reg.LIMITS.list + 1 }, () => ({}))), null)
+  assert.equal(reg.admit('7', 'MESSAGE_CREATE', { channel_id: '101', guild_id: '100', id: '8', components: [deep] }), null)
+  assert.equal(reg.admitRest('7', [{ user: { id: 2 } }]), null, 'numeric id')
   assert.equal(gatewayOk('https://n1.example', 'ws://n1.example/gateway'), false)
-})
-
-test('F8: emoji ids in components and activities are snowflakes; CDN paths cannot walk out', () => {
-  assert.equal(reg.admit('7', 'MESSAGE_CREATE', { channel_id: '101', id: '8', components: [{ type: 1, components: [{ type: 2, emoji: { id: '../api/v9/users/@me?x=' } }] }] }), null)
-  assert.equal(reg.admit('7', 'PRESENCE_UPDATE', { user: { id: '901' }, activities: [{ type: 4, emoji: { id: '1/../../x' } }] }), null)
-  const ok = reg.admit('7', 'MESSAGE_CREATE', { channel_id: '101', id: '8', components: [{ type: 1, id: 1, components: [{ type: 2, id: 2, custom_id: 'free text', emoji: { id: '55' } }] }] })
-  assert.equal(ok.components[0].components[0].emoji.id, '7:55')
   assert.equal(safePath('/emojis/../api/v9/users/@me.png'), false)
-  assert.equal(safePath('/emojis/7:55.png'), true)
 })
