@@ -124,53 +124,14 @@ fn run_once(
     let _ = sender.send(GatewayEvent::Connected);
     let mut protocol = Gateway::default();
     let mut heartbeat: Option<(Duration, Instant)> = None;
+    let mut outbox = Outbox::default();
     loop {
         while let Ok(cmd) = commands.try_recv() {
-            match cmd {
-                GatewayCommand::Shutdown => return Ok(true),
-                GatewayCommand::UpdatePresence {
-                    status,
-                    custom_status,
-                    game,
-                } => {
-                    *last_presence = (status.clone(), custom_status.clone(), game.clone());
-                    let env = Gateway::presence_envelope(
-                        &status,
-                        custom_status.as_ref(),
-                        game.as_ref(),
-                    );
-                    socket.send(
-                        Opcode::Text,
-                        &serde_json::to_vec(&env).map_err(io::Error::other)?,
-                    )?;
-                }
-                GatewayCommand::UpdateVoiceState {
-                    guild_id,
-                    channel_id,
-                    self_mute,
-                    self_deaf,
-                    self_video,
-                    self_stream,
-                } => {
-                    let env = Gateway::voice_state_envelope(
-                        guild_id.as_deref(),
-                        channel_id.as_deref(),
-                        self_mute,
-                        self_deaf,
-                        self_video,
-                        self_stream,
-                    );
-                    socket.send(
-                        Opcode::Text,
-                        &serde_json::to_vec(&env).map_err(io::Error::other)?,
-                    )?;
-                }
-                GatewayCommand::Send(env) => {
-                    socket.send(
-                        Opcode::Text,
-                        &serde_json::to_vec(&env).map_err(io::Error::other)?,
-                    )?;
-                }
+            if matches!(cmd, GatewayCommand::Shutdown) {
+                return Ok(true);
+            }
+            if let Some(env) = outbox.command(cmd, last_presence) {
+                socket.send(Opcode::Text, &serde_json::to_vec(&env).map_err(io::Error::other)?)?;
             }
         }
         match socket.read_frame() {
@@ -178,6 +139,8 @@ fn run_once(
                 Opcode::Text => {
                     let envelope: Envelope =
                         serde_json::from_slice(&frame.payload).map_err(io::Error::other)?;
+                    outbox.identified |= envelope.op == 10;
+                    let ready = envelope.op == 0 && matches!(envelope.t.as_deref(), Some("READY" | "RESUMED"));
                     let actions = protocol.receive_with_presence(
                         envelope,
                         Some(token),
@@ -187,6 +150,11 @@ fn run_once(
                     );
                     if !apply_actions(&mut socket, &mut heartbeat, actions, sender)? {
                         return Ok(false);
+                    }
+                    if ready {
+                        for env in outbox.ready(last_presence) {
+                            socket.send(Opcode::Text, &serde_json::to_vec(&env).map_err(io::Error::other)?)?;
+                        }
                     }
                 }
                 Opcode::Ping => socket.send(Opcode::Pong, &frame.payload)?,
@@ -227,6 +195,56 @@ fn run_once(
     }
 }
 
+type Presence = (String, Option<CustomStatus>, Option<GameActivity>);
+
+/// Before READY the hub accepts only IDENTIFY and heartbeats (anything else closes the socket with 4003).
+/// Presence is kept for IDENTIFY and sent again after READY only if it changed after IDENTIFY went out;
+/// other commands wait for READY.
+#[derive(Default)]
+struct Outbox {
+    identified: bool,
+    ready: bool,
+    held: Vec<Envelope>,
+    presence_changed: bool,
+}
+
+impl Outbox {
+    /// What to send now for a UI command (Shutdown is handled by the caller).
+    fn command(&mut self, cmd: GatewayCommand, presence: &mut Presence) -> Option<Envelope> {
+        let env = match cmd {
+            GatewayCommand::UpdatePresence { status, custom_status, game } => {
+                *presence = (status, custom_status, game);
+                if !self.ready {
+                    self.presence_changed |= self.identified;
+                    return None;
+                }
+                Gateway::presence_envelope(&presence.0, presence.1.as_ref(), presence.2.as_ref())
+            }
+            GatewayCommand::UpdateVoiceState { guild_id, channel_id, self_mute, self_deaf, self_video, self_stream } => {
+                Gateway::voice_state_envelope(guild_id.as_deref(), channel_id.as_deref(), self_mute, self_deaf, self_video, self_stream)
+            }
+            GatewayCommand::Send(env) => env,
+            GatewayCommand::Shutdown => return None,
+        };
+        if self.ready {
+            return Some(env);
+        }
+        self.held.push(env);
+        None
+    }
+
+    /// READY arrived: everything held, in order.
+    fn ready(&mut self, presence: &Presence) -> Vec<Envelope> {
+        self.ready = true;
+        let mut out = Vec::new();
+        if std::mem::take(&mut self.presence_changed) {
+            out.push(Gateway::presence_envelope(&presence.0, presence.1.as_ref(), presence.2.as_ref()));
+        }
+        out.append(&mut self.held);
+        out
+    }
+}
+
 fn apply_actions(
     socket: &mut WebSocket,
     heartbeat: &mut Option<(Duration, Instant)>,
@@ -258,4 +276,28 @@ fn apply_actions(
 
 fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nothing_but_identify_before_ready() {
+        let mut out = Outbox::default();
+        let mut presence: Presence = ("online".into(), None, None);
+        let set = |s: &str| GatewayCommand::UpdatePresence { status: s.into(), custom_status: None, game: None };
+        // queued at login, before HELLO: only remembered, IDENTIFY carries it
+        assert_eq!(out.command(set("idle"), &mut presence), None);
+        assert_eq!(presence.0, "idle");
+        out.identified = true;
+        let voice = GatewayCommand::UpdateVoiceState { guild_id: None, channel_id: None, self_mute: false, self_deaf: false, self_video: false, self_stream: false };
+        assert_eq!(out.command(voice, &mut presence), None);
+        assert_eq!(out.command(set("dnd"), &mut presence), None);
+        let sent = out.ready(&presence);
+        assert_eq!(sent.iter().map(|e| e.op).collect::<Vec<_>>(), vec![3, 4]);
+        assert_eq!(sent[0].d["status"], "dnd");
+        assert_eq!(out.command(set("online"), &mut presence).map(|e| e.op), Some(3));
+        assert!(Outbox::default().ready(&presence).is_empty(), "an unchanged presence is not sent twice");
+    }
 }
