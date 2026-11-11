@@ -162,6 +162,14 @@ echo "$2  $t/update.deb" | sha512sum -c --status
 /// Runs a staged installer after checking it once more. The caller exits afterwards (the installer relaunches the app).
 pub fn run_installer(staged: &Staged) -> std::io::Result<()> {
     use std::process::Command;
+    // Windows: hold the file open, denying write and delete to others, from the check until the installer has
+    // started, so the checked bytes are the ones that run. Untested here (no Windows).
+    #[cfg(windows)]
+    let _hold = {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 1;
+        std::fs::OpenOptions::new().read(true).share_mode(FILE_SHARE_READ).open(&staged.path)?
+    };
     verify_staged(staged, PINNED_KEYS).map_err(std::io::Error::other)?;
     let path = staged.path.as_path();
     match package() {
