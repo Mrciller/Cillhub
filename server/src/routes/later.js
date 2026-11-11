@@ -97,7 +97,9 @@ function deleteScheduled(ctx) {
 }
 
 // at send time the author's current permissions decide; a refused message is dropped and the author told why.
-// Any other failure (storage, a rolled-back send) is thrown: the row stays for a later run.
+// Any other failure (storage, a rolled-back send) is thrown: the row stays for a later run, but at most GIVE_UP past
+// its time, so no row retries forever. A forwarded file that is gone is a refusal (the live forward fails on it too).
+const GIVE_UP = 60 * 60 * 1000;
 async function deliverScheduled(r) {
   const gone = { id: r.id, channel_id: r.channel_id, guild_id: null };
   try {
@@ -115,7 +117,10 @@ async function deliverScheduled(r) {
     }
     sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { ...gone, message_id: r.message_id });
   } catch (e) {
-    if (!(e instanceof HttpError)) throw e;
+    if (!(e instanceof HttpError)) {
+      if (!(e.code === 'ENOENT' && e.syscall === 'copyfile') && Date.now() - r.send_at < GIVE_UP) throw e;
+      console.error('scheduled message dropped:', e);
+    }
     sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { ...gone, failed: true, code: e.body?.code ?? 0 });
   }
 }

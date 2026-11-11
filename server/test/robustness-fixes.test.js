@@ -115,6 +115,40 @@ test('a scheduled message whose send is rolled back stays scheduled and is sent 
   assert.ok(sent.id);
 });
 
+test('a scheduled forward of a file that is gone is dropped and reported; the next due row is still sent', { timeout: 20_000 }, async () => {
+  const gw = await srv.gateway(alex.token);
+  const src = (await srv.upload(g.general.id, alex.token, { content: 'with file' }, [['gone.txt', Buffer.from('x'), 'text/plain']])).body;
+  rmSync(join(srv.dataDir, 'attachments', g.general.id, src.attachments[0].id));
+  const path = `/channels/${g.general.id}/scheduled-messages`;
+  const fwd = (await api('POST', path, alex.token, { message_reference: { type: 1, channel_id: g.general.id, message_id: src.id }, send_at: soon(600) })).body;
+  const ok = (await api('POST', path, alex.token, { content: 'healthy row', send_at: soon(700) })).body;
+  db(d => d.prepare('UPDATE scheduled_messages SET send_at = ? WHERE id IN (?, ?)').run(Date.now() + 600, fwd.id, ok.id)); // due in one run
+  const done = (await gw.wait(f => f.t === 'SCHEDULED_MESSAGE_DELETE' && f.d.id === fwd.id, 10_000)).d;
+  assert.equal(done.failed, true);
+  await gw.wait(f => f.t === 'MESSAGE_CREATE' && f.d.content === 'healthy row', 10_000);
+  assert.equal(db(d => d.prepare('SELECT COUNT(*) AS n FROM scheduled_messages WHERE id IN (?, ?)').get(fwd.id, ok.id), true).n, 0);
+});
+
+test('a scheduled message that keeps failing is dropped an hour after its time, not before', { timeout: 20_000 }, async () => {
+  const gw = await srv.gateway(alex.token);
+  const path = `/channels/${g.general.id}/scheduled-messages`;
+  const late = (await api('POST', path, alex.token, { content: 'stuck late', send_at: soon(60_000) })).body;
+  const recent = (await api('POST', path, alex.token, { content: 'stuck recent', send_at: soon(60_000) })).body;
+  db(d => d.exec("CREATE TRIGGER no_stuck BEFORE INSERT ON messages WHEN NEW.content LIKE 'stuck %' BEGIN SELECT RAISE(ABORT, 'refused'); END"));
+  try {
+    db(d => d.prepare('UPDATE scheduled_messages SET send_at = ? WHERE id = ?').run(Date.now() - 61 * 60_000, late.id));
+    db(d => d.prepare('UPDATE scheduled_messages SET send_at = ? WHERE id = ?').run(Date.now() - 60_000, recent.id));
+    await api('PATCH', `/users/@me/scheduled-messages/${recent.id}`, alex.token, { content: 'stuck recent' }); // re-arms the timer
+    const done = (await gw.wait(f => f.t === 'SCHEDULED_MESSAGE_DELETE' && f.d.id === late.id, 10_000)).d;
+    assert.equal(done.failed, true);
+    assert.ok(db(d => d.prepare('SELECT 1 FROM scheduled_messages WHERE id = ?').get(recent.id), true), 'a minute late: kept for a retry');
+    assert.ok(await gw.none(f => f.t === 'SCHEDULED_MESSAGE_DELETE' && f.d.id === recent.id, 300));
+  } finally {
+    db(d => d.exec('DROP TRIGGER no_stuck'));
+    await api('DELETE', `/users/@me/scheduled-messages/${recent.id}`, alex.token);
+  }
+});
+
 test('a group DM lifetime can be set and covers only messages from then on', async () => {
   const grp = (await api('POST', '/users/@me/channels', sam.token, { recipients: [] })).body;
   const old = (await api('POST', `/channels/${grp.id}/messages`, sam.token, { content: 'kept' })).body;
