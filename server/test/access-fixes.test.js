@@ -76,8 +76,17 @@ test('bots without message content read no content through pins, search or edit 
   assert.equal(pins.find(p => p.id === m.id).content, '');
   const edits = (await api('GET', `/channels/${g.general.id}/messages/${m.id}/edits`, bot)).body.edits;
   assert.deepEqual(edits.map(e => e.content), ['']);
-  const found = await until(async () => (await api('GET', `/guilds/${g.guild.id}/messages/search?content=words`, bot)).body.messages?.flat().find(x => x.id === m.id), 3000);
-  assert.equal(found.content, '');
+  // search matches only text the bot may read: no hit (and no count) on hidden text, a hit when it is mentioned
+  await api('POST', `/channels/${g.general.id}/messages`, alex.token, { content: 'see https://example.org' });
+  const ping = (await api('POST', `/channels/${g.general.id}/messages`, alex.token, { content: `<@${app.id}> more words` })).body;
+  const search = async q => (await api('GET', `/guilds/${g.guild.id}/messages/search?${q}`, bot)).body;
+  const found = await until(async () => (await search('content=words')).messages?.flat().find(x => x.id === ping.id), 3000);
+  assert.equal(found.content, `<@${app.id}> more words`);
+  const res = await search('content=words');
+  assert.deepEqual([res.total_results, res.messages.flat().map(x => x.id)], [1, [ping.id]], 'the hidden message is not matched by its text');
+  assert.equal((await search(`content=second&min_id=${BigInt(m.id) - 1n}&max_id=${BigInt(m.id) + 1n}`)).total_results, 0);
+  assert.equal((await search(`has=link&author_id=${alex.id}`)).total_results, 0, 'nor by what it contains');
+  assert.equal((await api('GET', `/guilds/${g.guild.id}/messages/search?content=second`, alex.token)).body.total_results, 1, 'people still find it');
   assert.deepEqual((await api('GET', `/channels/${g.general.id}/messages/${m.id}/edits`, alex.token)).body.edits.map(e => e.content), ['first words'], 'people still see them');
 });
 

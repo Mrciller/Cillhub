@@ -4,7 +4,7 @@ import { invalid, intParam, idParam, notFound } from '../errors.js';
 import { P, has, need, channelPerms, isThread } from '../permissions.js';
 import { messageObj, getChannel } from '../message.js';
 import { loadChannel } from './channels.js';
-import { forViewer } from './messages.js';
+import { forViewer, seesContent } from './messages.js';
 
 const HAS = {
   link: "(m.content LIKE '%http://%' OR m.content LIKE '%https://%')",
@@ -72,6 +72,14 @@ function search(query, readable, userId) {
       args.unshift(fts);
     }
   }
+  const viewer = userById(userId);
+  // a bot without message content matches text and contents only where redact() would show them: DMs, its own
+  // messages, messages mentioning it; otherwise hits and total_results would reveal what it cannot read
+  if ((join || query.has('has')) && !seesContent(viewer)) {
+    where.push(`(m.channel_id IN (SELECT value FROM json_each(?)) OR (m.author_id = ? AND m.webhook_id IS NULL)
+      OR m.content LIKE '%<@' || ? || '>%' OR m.content LIKE '%<@!' || ? || '>%')`);
+    args.push(JSON.stringify(channels.filter(c => !c.guild_id).map(c => c.id)), userId, userId, userId);
+  }
   const authors = [...ids(query, 'author_id'), ...ids(query, 'from'), ...ids(query, 'author')];
   if (authors.length) {
     where.push('((m.webhook_id IS NULL AND m.author_id IN (SELECT value FROM json_each(?))) OR m.webhook_id IN (SELECT value FROM json_each(?)))');
@@ -99,7 +107,6 @@ function search(query, readable, userId) {
   const total = get(`SELECT COUNT(*) AS n ${from}`, ...args).n;
   const rows = all(`SELECT m.* ${from} ORDER BY ${relevance ? 'f.rank' : `CAST(m.id AS INTEGER) ${dir}`} LIMIT ? OFFSET ?`, ...args, limit, offset);
   const threads = [...new Set(rows.map(m => m.channel_id))].map(getChannel).filter(isThread);
-  const viewer = userById(userId);
   return {
     analytics_id: randomBytes(16).toString('hex'), doing_deep_historical_index: false, total_results: total,
     messages: rows.map(m => {

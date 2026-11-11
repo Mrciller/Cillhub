@@ -14,11 +14,9 @@ import { loadChannel } from './channels.js';
 import { reopened } from './threads.js';
 
 // bots without the MESSAGE_CONTENT flag on their application read content only where the docs allow it
-export function forViewer(m, user) {
-  if (!user.bot) return m;
-  const flags = get('SELECT flags FROM applications WHERE id = ?', user.id)?.flags ?? 0;
-  return privilegedAllowed(flags) & I.MESSAGE_CONTENT ? m : redact(m, user.id);
-}
+export const seesContent = user => !user.bot
+  || !!(privilegedAllowed(get('SELECT flags FROM applications WHERE id = ?', user.id)?.flags ?? 0) & I.MESSAGE_CONTENT);
+export const forViewer = (m, user) => (seesContent(user) ? m : redact(m, user.id));
 
 export function loadMessage({ params, user }) {
   const ch = loadChannel(params.id, user);
