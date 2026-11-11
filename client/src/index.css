@@ -1325,3 +1325,13 @@ a.update-reload { color: inherit; text-decoration: none; }
 .canvas-panel .canvas-empty p { margin-bottom: 16px; font-size: 13.5px; }
 .canvas-panel .canvas-footer { padding: 8px 16px; background: var(--sidebar); border-top: 1px solid var(--border); color: var(--muted); flex: none; }
 
+/* Settings › Private Nodes */
+.node-row { flex-wrap: wrap; }
+.node-row .session-text { min-width: 0; }
+.node-row .session-text > span { overflow-wrap: anywhere; }
+.node-tag { margin-left: 8px; padding: 1px 6px; border-radius: var(--radius-s); background: var(--bg); color: var(--muted); font-size: 11px; font-weight: 600; vertical-align: middle; }
+.node-state::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--muted); vertical-align: 0; }
+.node-state.up::before { background: var(--online, #3ba55d); }
+.node-state.down::before { background: var(--danger, #ff4c4c); }
+.node-row .danger-link { color: var(--danger-text, var(--danger)); }
+.add-node-address { overflow-wrap: anywhere; font-family: var(--font-mono, monospace); }

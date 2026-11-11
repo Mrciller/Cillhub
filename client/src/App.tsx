@@ -12,6 +12,7 @@ import { Redirect, usePath } from './router'
 import { useStore } from './store'
 import { useInstance } from './admin/instance'
 import { InstanceCallback } from './instances/InstanceUI'
+import { AddNodePage } from './settings/PrivateNodes'
 
 const DeveloperPortal = lazy(() => import('./developers/DeveloperPortal').then((m) => ({ default: m.DeveloperPortal })))
 const AdminPage = lazy(() => import('./admin/AdminPage').then((m) => ({ default: m.AdminPage })))
@@ -46,6 +47,7 @@ function Page() {
   // Template links open "Add a server" with the code (templates/Templates.tsx); after login when needed.
   if (section === 'template' && a) return sessionStorage.setItem('template-code', decodeURIComponent(a)), <Redirect to="/channels/@me" />
   if (section === 'reset') return <ResetPage />
+  if (section === 'add-node') return <AddNodePage />
   if (section === 'download') return <Suspense fallback={null}><DownloadPage /></Suspense>
   if (!token) return section === 'login' || section === 'register' ? <><Auth key={section} mode={section} /><DialogHost /></> : <Redirect to={`/login${section === 'oauth2' || section === 'developers' || section === 'directory' ? `?next=${encodeURIComponent(location.pathname + location.search)}` : ''}`} />
   if (section === 'developers' && a === 'applications') return <Suspense fallback={null}><DeveloperPortal appId={b} tab={path.split('/')[4]} /></Suspense>
