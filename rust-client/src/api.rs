@@ -171,17 +171,27 @@ pub struct ApiClient {
 #[cfg(feature = "native-net")]
 impl ApiClient {
     pub fn new(origin: Url, token: Option<String>) -> Self {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-            .unwrap_or_else(|_| reqwest::blocking::Client::new());
         Self {
-            client,
+            client: no_redirect_client(15),
             origin,
             token,
         }
     }
+}
 
+/// For every request that carries a token or credentials: a redirect could replay the body (password, MFA code,
+/// reset token) to another host or over plain HTTP, so none is followed.
+#[cfg(feature = "native-net")]
+pub fn no_redirect_client(timeout_secs: u64) -> reqwest::blocking::Client {
+    reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("TLS backend")
+}
+
+#[cfg(feature = "native-net")]
+impl ApiClient {
     pub fn request(
         &self,
         method: reqwest::Method,
@@ -365,6 +375,28 @@ mod tests {
         assert!(req.contains(r#""message_reference":{"message_id":"m0"}"#));
         assert!(req.contains("name=\"files[0]\"; filename=\"board.png\""));
         assert!(req.contains("Content-Type: image/png"));
+    }
+
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn login_body_never_follows_a_redirect() {
+        use std::io::{Read, Write};
+        let hub = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        other.set_nonblocking(true).unwrap();
+        let (hub_port, other_port) = (hub.local_addr().unwrap().port(), other.local_addr().unwrap().port());
+        let server = std::thread::spawn(move || {
+            let (mut sock, _) = hub.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = sock.read(&mut buf);
+            let head = format!("HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1:{other_port}/collect\r\nContent-Length: 0\r\n\r\n");
+            sock.write_all(head.as_bytes()).unwrap();
+        });
+        let api = ApiClient::new(normalize_server_url(&format!("http://localhost:{hub_port}")).unwrap(), None);
+        let err = api.post("/auth/login", json!({ "login": "alex", "password": "secret" })).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(err.status, 307);
+        assert!(other.accept().is_err(), "the password went to the redirect target");
     }
 
     #[test]

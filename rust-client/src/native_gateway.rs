@@ -56,10 +56,7 @@ pub fn spawn_with_commands(
     commands: Receiver<GatewayCommand>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_else(|_| reqwest::blocking::Client::new());
+        let client = crate::api::no_redirect_client(10);
         let mut backoff = 1u64;
         let mut last_presence: (String, Option<CustomStatus>, Option<GameActivity>) =
             ("online".to_string(), None, None);
