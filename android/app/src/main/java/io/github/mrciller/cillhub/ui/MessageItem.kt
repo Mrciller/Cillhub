@@ -184,7 +184,7 @@ fun MessageItem(
         val bar = LocalExtra.current.mention
         Column(
             Modifier.fillMaxWidth()
-                .background(if (mentionsMe) LocalExtra.current.mentionBg else MaterialTheme.colorScheme.surfaceContainer)
+                .background(if (mentionsMe) LocalExtra.current.mentionBg else MaterialTheme.colorScheme.surface)
                 // a mention of us: tinted row with a bar on the leading edge
                 .drawBehind { if (mentionsMe) drawRect(bar, size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) }
                 .combinedClickable(onClick = { if (m.failed) onLongPress() }, onLongClick = onLongPress, onLongClickLabel = a11yMore)
@@ -381,12 +381,12 @@ private fun EmbedView(e: Embed, state: State, guildId: String?) {
         Box(Modifier.width(4.dp).fillMaxHeight().background(bar))
         Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             e.provider?.name?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            e.author?.name?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.labelLarge) }
+            e.author?.name?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
             e.title?.let { t -> Text(t, fontWeight = FontWeight.SemiBold, color = if (e.url != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 modifier = if (e.url != null) Modifier.clickable(onClickLabel = s(R.string.open_link)) { io.github.mrciller.cillhub.data.Md.safeUrl(e.url)?.let { openUrl(ctx, it) } } else Modifier) }
             e.description?.takeIf { it.isNotBlank() }?.let { MarkdownText(it, state, guildId, style = MaterialTheme.typography.bodyMedium) }
             for (f in e.fields) Column {
-                Text(f.name, style = MaterialTheme.typography.labelLarge)
+                Text(f.name, style = MaterialTheme.typography.titleSmall)
                 MarkdownText(f.value, state, guildId, style = MaterialTheme.typography.bodyMedium)
             }
             val img = e.image ?: e.thumbnail?.takeIf { e.type == "video" || e.type == "article" && e.image == null }
