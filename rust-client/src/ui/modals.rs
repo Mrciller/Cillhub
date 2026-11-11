@@ -662,7 +662,7 @@ impl CillhubApp {
                     );
                     ui.add_space(8.0);
                     if primary_btn(ui, tr("Save")).clicked() {
-                        if let Some(cid) = &self.selected_channel_id {
+                        if let Some(cid) = &self.canvas_cid {
                             // the web's saveCanvas: PUT { content }
                             let (path, body) = (format!("/channels/{cid}/canvas"), json!({ "content": self.canvas_doc_input }));
                             self.api_bg(true, move |api| api.put(&path, Some(body)), |app, r| {

@@ -10,13 +10,18 @@ use std::time::Duration;
 pub const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
 /// egui textures are limited to this on common GPUs; a larger picture is not decoded at all.
 pub const MAX_IMAGE_SIDE: u32 = 8192;
+/// Decoded RGBA is 4 bytes a pixel: 16 MP is 64 MiB. A larger picture is not decoded at all.
+pub const MAX_IMAGE_PIXELS: u64 = 16 * 1024 * 1024;
 const WORKERS: usize = 4;
 const CACHE_BYTES: usize = 256 * 1024 * 1024;
 const CACHE_COUNT: usize = 300;
 
-/// Starts the workers. Send (uri, url) jobs; (uri, bytes or None) comes back on `done`.
-pub fn spawn_workers(done: mpsc::Sender<(String, Option<Vec<u8>>)>) -> mpsc::Sender<(String, String)> {
-    let (tx, rx) = mpsc::channel::<(String, String)>();
+/// A finished image job: the session it was asked in, its uri, and the bytes with their decoded size (or None).
+pub type Done = (u64, String, Option<(Vec<u8>, usize)>);
+
+/// Starts the workers. Send (session, uri, url) jobs; the result comes back on `done`.
+pub fn spawn_workers(done: mpsc::Sender<Done>) -> mpsc::Sender<(u64, String, String)> {
+    let (tx, rx) = mpsc::channel::<(u64, String, String)>();
     let rx = Arc::new(Mutex::new(rx));
     for _ in 0..WORKERS {
         let (rx, done) = (rx.clone(), done.clone());
@@ -27,12 +32,12 @@ pub fn spawn_workers(done: mpsc::Sender<(String, Option<Vec<u8>>)>) -> mpsc::Sen
                 .build()
                 .expect("TLS backend");
             loop {
-                let Ok(Ok((uri, url))) = rx.lock().map(|r| r.recv()) else { return };
-                let bytes = fetch(&client, &url).and_then(|b| check(&b).map(|_| b));
+                let Ok(Ok((session, uri, url))) = rx.lock().map(|r| r.recv()) else { return };
+                let bytes = fetch(&client, &url).and_then(|b| check(&b).map(|n| (b, n)));
                 if let Err(e) = &bytes {
                     eprintln!("cillhub: image {url}: {e}");
                 }
-                if done.send((uri, bytes.ok())).is_err() {
+                if done.send((session, uri, bytes.ok())).is_err() {
                     return; // the app has closed
                 }
             }
@@ -60,17 +65,17 @@ pub fn fetch(client: &reqwest::blocking::Client, url: &str) -> Result<Vec<u8>, S
     Ok(bytes)
 }
 
-/// Reads only the header: a small file can still claim a huge picture.
-pub fn check(bytes: &[u8]) -> Result<(), String> {
+/// Reads only the header: a small file can still claim a huge picture. Returns the decoded size in bytes.
+pub fn check(bytes: &[u8]) -> Result<usize, String> {
     let (w, h) = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| e.to_string())?
         .into_dimensions()
         .map_err(|e| e.to_string())?;
-    if w == 0 || h == 0 || w > MAX_IMAGE_SIDE || h > MAX_IMAGE_SIDE {
+    if w == 0 || h == 0 || w > MAX_IMAGE_SIDE || h > MAX_IMAGE_SIDE || w as u64 * h as u64 > MAX_IMAGE_PIXELS {
         return Err(format!("image is {w}x{h}"));
     }
-    Ok(())
+    Ok(w as usize * h as usize * 4)
 }
 
 /// Loaded images, oldest first. Past the limits the oldest go (egui frees them; a later view loads them again).
@@ -124,7 +129,9 @@ mod tests {
 
     #[test]
     fn header_size_and_byte_limits() {
-        assert_eq!(check(&png_header(400, 300)), Ok(()));
+        assert_eq!(check(&png_header(400, 300)), Ok(400 * 300 * 4));
+        assert!(check(&png_header(8192, 8192)).is_err(), "within the side limit, but 256 MiB decoded");
+        assert_eq!(check(&png_header(4096, 4096)), Ok(64 << 20));
         assert!(check(&png_header(100_000, 100_000)).is_err());
         assert!(check(b"not an image").is_err());
 

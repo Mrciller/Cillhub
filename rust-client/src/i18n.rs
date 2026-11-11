@@ -44,6 +44,9 @@ const NATIVE_DE: &[(&str, &str)] = &[
     ("Report illegal content", "Rechtswidrige Inhalte melden"),
     ("Tick the boxes above to create an account.", "Setze die Häkchen oben, um ein Konto zu erstellen."),
     ("Open the website", "Website öffnen"),
+    ("Not sent", "Nicht gesendet"),
+    ("Older messages: use search.", "Ältere Nachrichten: nutze die Suche."),
+    ("The server changed while logging in. Log in again.", "Der Server wurde während der Anmeldung gewechselt. Melde dich erneut an."),
     // the web shows these in English (missing in its dictionary)
     ("Active Now", "Gerade aktiv"),
     ("It's quiet for now…", "Gerade ist es ruhig …"),

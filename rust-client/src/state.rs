@@ -33,10 +33,14 @@ pub struct State {
     pub due_reminders: Vec<SavedMessage>,
     pub notes: HashMap<String, String>,
     pub typing: HashMap<String, Vec<(String, u64)>>,
+    /// channels whose history is loading: live messages wait here and join the snapshot
+    pub pending_history: HashMap<String, Vec<Message>>,
 }
 
 /// Messages kept per channel.
 pub const MAX_WINDOW: usize = 500;
+/// With "Load older" a channel may hold more, up to this; then paging back stops.
+pub const MAX_HISTORY: usize = 2000;
 
 impl State {
     pub fn apply(&mut self, name: &str, payload: Value) -> Result<bool, serde_json::Error> {
@@ -58,6 +62,7 @@ impl State {
                 self.scheduled_events.clear();
                 self.calls.clear();
                 self.watch_sessions.clear();
+                self.pending_history.clear();
 
                 self.users.insert(ready.user.id.clone(), ready.user);
                 for user in ready.users {
@@ -663,17 +668,40 @@ impl State {
     }
 
     /// Adds a new message to a loaded history (once). The newest MAX_WINDOW stay; "Load older" fetches the rest.
+    /// While older pages are loaded (more than MAX_WINDOW) the window grows to MAX_HISTORY, so a live message
+    /// does not cut away what is being read.
     pub fn push_message(&mut self, message: Message) {
         if let Some(history) = self.messages.get_mut(&message.channel_id) {
             if !history.iter().any(|m| m.id == message.id) {
+                let cap = if history.len() > MAX_WINDOW { MAX_HISTORY } else { MAX_WINDOW };
                 history.push(message);
-                let extra = history.len().saturating_sub(MAX_WINDOW);
+                let extra = history.len().saturating_sub(cap);
                 history.drain(..extra);
+            }
+        } else if let Some(waiting) = self.pending_history.get_mut(&message.channel_id) {
+            if !waiting.iter().any(|m| m.id == message.id) && waiting.len() < MAX_WINDOW {
+                waiting.push(message);
             }
         }
     }
 
-    pub fn set_history(&mut self, channel_id: String, messages: Vec<Message>) {
+    /// A history request started: live messages until its answer are kept for it.
+    pub fn begin_history(&mut self, channel_id: &str) {
+        self.pending_history.entry(channel_id.to_string()).or_default();
+    }
+
+    /// The request failed: nothing to join.
+    pub fn end_history(&mut self, channel_id: &str) {
+        self.pending_history.remove(channel_id);
+    }
+
+    pub fn set_history(&mut self, channel_id: String, mut messages: Vec<Message>) {
+        // live messages that came while the snapshot loaded (and are not in it) follow it
+        for m in self.pending_history.remove(&channel_id).unwrap_or_default() {
+            if !messages.iter().any(|x| x.id == m.id) {
+                messages.push(m);
+            }
+        }
         for m in &messages {
             if let Some(author) = &m.author {
                 self.users.insert(author.id.clone(), author.clone());
@@ -773,6 +801,28 @@ mod tests {
         assert_eq!(list[0].id, "20");
         st.apply("MESSAGE_CREATE", serde_json::json!({"id": "x", "channel_id": "other", "content": "x"})).unwrap();
         assert!(!st.messages.contains_key("other"), "no history is made up for a channel never opened");
+    }
+
+    #[test]
+    fn live_messages_during_a_history_load_join_the_snapshot() {
+        let mut st = State::default();
+        let m = |id: &str| serde_json::json!({"id": id, "channel_id": "c", "content": "x"});
+        st.begin_history("c");
+        st.apply("MESSAGE_CREATE", m("3")).unwrap();
+        let snapshot: Vec<Message> = ["1", "2"].iter().map(|i| parse(m(i)).unwrap()).collect();
+        st.set_history("c".into(), snapshot);
+        assert_eq!(st.messages["c"].iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), ["1", "2", "3"]);
+        assert!(st.pending_history.is_empty());
+    }
+
+    #[test]
+    fn paging_back_is_not_cut_by_a_live_message() {
+        let mut st = State::default();
+        let list: Vec<Message> = (0..MAX_WINDOW + 50).map(|i| parse(serde_json::json!({"id": i.to_string(), "channel_id": "c"})).unwrap()).collect();
+        st.set_history("c".into(), list); // what "Load older" leaves behind
+        st.apply("MESSAGE_CREATE", serde_json::json!({"id": "new", "channel_id": "c", "content": "x"})).unwrap();
+        assert_eq!(st.messages["c"].len(), MAX_WINDOW + 51);
+        assert_eq!(st.messages["c"][0].id, "0", "the page being read stays");
     }
 
     use super::*;

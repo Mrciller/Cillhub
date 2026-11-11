@@ -75,6 +75,9 @@ pub fn report<T, E: std::fmt::Display>(banner: &mut Option<String>, r: Result<T,
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SearchResults {
     pub query: String,
+    /// "/guilds/{id}" or "/channels/{id}": Load more stays in the scope of the first page
+    pub scope: String,
+    pub generation: u64,
     pub total: usize,
     pub hits: Vec<Message>,
     pub loading: bool,
@@ -156,6 +159,8 @@ pub struct CillhubApp {
     pub auth_age_ok: bool,
     pub auth_password_input: String,
     pub auth_mfa_ticket: String,
+    /// the server that issued the ticket
+    pub auth_mfa_origin: Option<Url>,
     pub auth_mfa_code: String,
     pub auth_reset_token: String,
     pub auth_error: Option<String>,
@@ -179,13 +184,15 @@ pub struct CillhubApp {
     pub account_name_draft: Option<String>,
     pub guild_name_draft: Option<String>,
     pub status_banner: Option<String>,
+    /// the server's terms gate message (403 accept_terms); "" once closed
+    pub terms_gate: Option<String>,
 
     // Chat & Composer state
     pub composer_text: String,
     /// Inline image attachments by egui URI; bytes arrive from fetch threads.
     pub images: std::collections::HashMap<String, ImageLoad>,
-    image_jobs: Sender<(String, String)>,
-    image_rx: Receiver<(String, Option<Vec<u8>>)>,
+    image_jobs: Sender<(u64, String, String)>,
+    image_rx: Receiver<images::Done>,
     image_cache: images::Cache,
     /// Full-size image view: (egui URI, file name, absolute URL).
     pub lightbox: Option<(String, String, String)>,
@@ -194,6 +201,13 @@ pub struct CillhubApp {
     session_gen: u64,
     /// Channels whose history request is in flight.
     loading_history: std::collections::HashSet<String>,
+    /// newest request per key (new_scope / in_scope)
+    scopes: std::collections::HashMap<String, u64>,
+    /// the channel the canvas editor holds
+    pub canvas_cid: Option<String>,
+    pub row_heights: chat::RowHeights,
+    /// my answers per poll message while a vote is on its way
+    pub poll_pending: std::collections::HashMap<String, Vec<u32>>,
     /// Set by logout: the next frame drops every image egui holds.
     forget_images: bool,
     /// Results of the file dialog, which runs off the UI thread (a stuck portal must not freeze the app).
@@ -327,6 +341,7 @@ impl CillhubApp {
             auth_age_ok: false,
             auth_password_input: String::new(),
             auth_mfa_ticket: String::new(),
+            auth_mfa_origin: None,
             auth_mfa_code: String::new(),
             auth_reset_token: String::new(),
             auth_error: None,
@@ -346,6 +361,7 @@ impl CillhubApp {
             account_name_draft: None,
             guild_name_draft: None,
             status_banner: None,
+            terms_gate: None,
             composer_text: String::new(),
             pending_files: Vec::new(),
             picked_tx,
@@ -359,6 +375,10 @@ impl CillhubApp {
             bg: background::Workers::new(),
             session_gen: 0,
             loading_history: Default::default(),
+            scopes: Default::default(),
+            canvas_cid: None,
+            row_heights: Default::default(),
+            poll_pending: Default::default(),
             md_cache: (Instant::now(), None, Default::default()),
             show_composer_plus_menu: false,
             plus_anchor: Pos2::ZERO,
@@ -485,6 +505,7 @@ impl CillhubApp {
     fn clear_auth_secrets(&mut self) {
         self.auth_password_input.clear();
         self.auth_mfa_ticket.clear();
+        self.auth_mfa_origin = None;
         self.auth_mfa_code.clear();
         self.auth_reset_token.clear();
     }
@@ -537,6 +558,8 @@ impl CillhubApp {
         self.search = None;
         self.quick_switcher_query.clear();
         self.canvas_doc_input.clear();
+        self.canvas_cid = None;
+        self.row_heights = Default::default();
         self.custom_status_input.clear();
         self.pending_game_invite = None;
         self.confirm_remove_node = None;
@@ -921,14 +944,21 @@ impl CillhubApp {
             return;
         }
         let cid = channel_id.to_string();
+        let scope = self.new_scope("history"); // READY starts a new one: older answers belong to the old state
+        self.state.begin_history(&cid);
         let sent = self.api_get(format!("/channels/{cid}/messages?limit=50"), move |app, r| {
+            if !app.in_scope("history", scope) {
+                return;
+            }
             app.loading_history.remove(&cid);
-            if let Some(list) = report(&mut app.status_banner, r).map(|v| parse_messages(&v)) {
-                app.state.set_history(cid, list);
+            match report(&mut app.status_banner, r).map(|v| parse_messages(&v)) {
+                Some(list) => app.state.set_history(cid, list),
+                None => app.state.end_history(&cid),
             }
         });
         if !sent {
             self.loading_history.remove(channel_id);
+            self.state.end_history(channel_id);
         }
     }
 
@@ -945,6 +975,10 @@ impl CillhubApp {
     pub fn load_older_messages(&mut self, channel_id: &str) {
         let oldest = self.state.messages.get(channel_id).and_then(|l| l.first()).map(|m| m.id.clone());
         let Some(before) = oldest else { return };
+        if self.state.messages.get(channel_id).is_some_and(|l| l.len() >= crate::state::MAX_HISTORY) {
+            self.status_banner = Some(tr("Older messages: use search.").to_string());
+            return;
+        }
         let cid = channel_id.to_string();
         self.api_get(format!("/channels/{cid}/messages?limit=50&before={before}"), move |app, r| {
             let Some(mut older) = report(&mut app.status_banner, r).map(|v| parse_messages(&v)) else { return };
@@ -983,19 +1017,23 @@ impl CillhubApp {
             return;
         }
         let offset = if more { self.search.as_ref().map_or(0, |s| s.hits.len()) } else { 0 };
-        if !more {
-            self.search = Some(SearchResults { query: q.clone(), ..Default::default() });
+        if !more || self.search.is_none() {
+            let scope = match &self.selected_guild_id {
+                Some(gid) => format!("/guilds/{gid}"),
+                None => format!("/channels/{cid}"),
+            };
+            let generation = self.new_scope("search");
+            self.search = Some(SearchResults { query: q.clone(), scope, generation, ..Default::default() });
         }
-        if let Some(s) = self.search.as_mut() {
-            s.loading = true;
-        }
+        let Some(s) = self.search.as_mut() else { return };
+        s.loading = true;
+        let (scope, generation) = (s.scope.clone(), s.generation);
         let encoded = percent_encoding::utf8_percent_encode(&q, percent_encoding::NON_ALPHANUMERIC).to_string();
-        let scope = match &self.selected_guild_id {
-            Some(gid) => format!("/guilds/{gid}"),
-            None => format!("/channels/{cid}"),
-        };
         self.api_get(format!("{scope}/messages/search?content={encoded}&offset={offset}"), move |app, r| {
-            let Some(s) = app.search.as_mut().filter(|s| s.query == q) else { return };
+            if !app.in_scope("search", generation) {
+                return; // a newer search (maybe in another server) replaced this one
+            }
+            let Some(s) = app.search.as_mut() else { return };
             s.loading = false;
             let Some(v) = report(&mut app.status_banner, r) else { return };
             s.total = v.get("total_results").and_then(Value::as_u64).unwrap_or(0) as usize;
@@ -1042,6 +1080,9 @@ impl CillhubApp {
                         self.load_members(&id);
                     }
                     if is_ready {
+                        // requests started before READY belong to the replaced state
+                        self.new_scope("history");
+                        self.loading_history.clear();
                         // READY replaced the state: keep a selection that still exists and load its history again
                         let gone = |c: &Option<String>, ok: &dyn Fn(&str) -> bool| c.as_deref().is_some_and(|c| !ok(c));
                         if gone(&self.selected_guild_id, &|g| self.state.guilds.contains_key(g))
@@ -1809,7 +1850,7 @@ impl CillhubApp {
         if self.images.contains_key(uri) {
             return;
         }
-        let queued = self.api.is_some() && self.image_jobs.send((uri.to_string(), url)).is_ok();
+        let queued = self.api.is_some() && self.image_jobs.send((self.session_gen, uri.to_string(), url)).is_ok();
         self.images.insert(uri.to_string(), if queued { ImageLoad::Loading } else { ImageLoad::Failed });
     }
 
@@ -1899,10 +1940,14 @@ impl CillhubApp {
         if std::mem::take(&mut self.forget_images) {
             ctx.forget_all_images();
         }
-        while let Ok((uri, bytes)) = self.image_rx.try_recv() {
+        while let Ok((session, uri, bytes)) = self.image_rx.try_recv() {
+            if session != self.session_gen {
+                continue; // asked before a logout or another login: never shown in this session
+            }
             let state = match bytes {
-                Some(b) => {
-                    for old in self.image_cache.add(uri.clone(), b.len()) {
+                Some((b, decoded)) => {
+                    // the budget counts decoded pixels: a tiny file can unpack to many MiB
+                    for old in self.image_cache.add(uri.clone(), decoded) {
                         ctx.forget_image(&old);
                         self.images.remove(&old);
                     }
@@ -1978,7 +2023,7 @@ impl CillhubApp {
         }
 
         // The server asks to accept its terms first (403 accept_terms): its message and a way to the website
-        let gate = crate::api::TERMS_GATE.lock().ok().and_then(|g| g.clone()).filter(|m| !m.is_empty());
+        let gate = self.terms_gate.clone().filter(|m| !m.is_empty());
         if let (Some(msg), Some(origin)) = (gate, self.api.as_ref().map(|a| a.origin.to_string())) {
             TopBottomPanel::top("terms_gate_panel")
                 .frame(Frame::new().fill(ACCENT_SOFT()).stroke(Stroke::new(1.0_f32, ACCENT())).inner_margin(Margin::symmetric(14, 6)))
@@ -1991,9 +2036,7 @@ impl CillhubApp {
                                 open_external(&mut self.status_banner, &origin);
                             }
                             if close {
-                                if let Ok(mut g) = crate::api::TERMS_GATE.lock() {
-                                    *g = Some(String::new());
-                                }
+                                self.terms_gate = Some(String::new());
                             }
                         });
                     });
@@ -2351,6 +2394,54 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         app.pump_bg();
+    }
+
+    #[test]
+    fn a_login_answer_for_another_server_is_dropped() {
+        let mut app = CillhubApp::new(None, true);
+        app.settings.server_target = "hub".into();
+        let node = normalize_server_url("https://node.example").unwrap();
+        app.auth_answer(node, Ok(serde_json::json!({ "mfa": true, "ticket": "t" })));
+        assert!(app.auth_mfa_ticket.is_empty() && app.auth_mfa_origin.is_none() && app.auth_error.is_some());
+        let hub = normalize_server_url(crate::config::HUB_URL).unwrap();
+        app.auth_answer(hub.clone(), Ok(serde_json::json!({ "mfa": true, "ticket": "t" })));
+        assert_eq!((app.auth_mfa_ticket.as_str(), app.auth_mfa_origin.as_ref()), ("t", Some(&hub)));
+    }
+
+    #[test]
+    fn only_the_newest_request_of_a_scope_counts() {
+        let mut app = CillhubApp::new(None, true);
+        let a = app.new_scope("canvas");
+        let b = app.new_scope("canvas");
+        assert!(!app.in_scope("canvas", a) && app.in_scope("canvas", b));
+        assert!(!app.in_scope("search", b), "scopes are separate");
+    }
+
+    #[test]
+    fn a_failed_send_never_lands_in_another_channels_draft() {
+        let mut app = CillhubApp::new(None, true);
+        let err = || crate::api::parse_api_error(500, serde_json::json!({ "message": "boom" }));
+        app.selected_channel_id = Some("b".into());
+        app.keep_failed("a", "for a".into(), err(), |_| {});
+        assert!(app.composer_text.is_empty() && app.status_banner.as_deref().is_some_and(|b| b.contains("for a")));
+        app.keep_failed("b", "for b".into(), err(), |_| {});
+        assert_eq!(app.composer_text, "for b");
+        app.keep_failed("b", "again".into(), err(), |_| {});
+        assert_eq!(app.composer_text, "for b", "a newer draft is kept");
+    }
+
+    #[test]
+    fn the_terms_gate_comes_only_through_the_session() {
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(crate::api::ApiClient::new(normalize_server_url("http://127.0.0.1:9").unwrap(), None));
+        let gate = || Err(crate::api::parse_api_error(403, serde_json::json!({ "message": "Accept the terms.", "required_actions": ["accept_terms"] })));
+        app.api_bg(false, move |_| gate(), |_, _| {});
+        app.new_session(); // logout / another login before the answer
+        app.api_bg(false, move |_| gate(), |_, _| {});
+        settle(&mut app);
+        assert_eq!(app.terms_gate.as_deref(), Some("Accept the terms."));
+        app.new_session();
+        assert!(app.terms_gate.is_none());
     }
 
     #[test]

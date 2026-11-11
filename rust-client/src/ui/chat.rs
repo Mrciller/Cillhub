@@ -287,9 +287,8 @@ impl CillhubApp {
                             let is_head = prev_author_id.as_deref() != Some(cur_author.as_str())
                                 || msg.referenced_message.is_some();
                             // rows off screen take their height from the last time they were drawn
-                            let h_id = egui::Id::new(("msg_h", &msg.id, is_head, ui.available_width() as i32));
                             let top = ui.cursor().top();
-                            let known = ui.data(|d| d.get_temp::<f32>(h_id));
+                            let known = self.row_heights.get(ui.available_width() as i32, &msg.id, is_head);
                             let view = ui.clip_rect().expand(400.0);
                             match known {
                                 Some(h) if top + h < view.top() || top > view.bottom() => {
@@ -298,7 +297,7 @@ impl CillhubApp {
                                 _ => {
                                     self.render_message_row(ui, &cid, msg, is_head);
                                     let h = ui.cursor().top() - top - ui.spacing().item_spacing.y;
-                                    ui.data_mut(|d| d.insert_temp(h_id, h.max(0.0)));
+                                    self.row_heights.put(&msg.id, is_head, h.max(0.0));
                                 }
                             }
                             prev_author_id = Some(cur_author);
@@ -1590,9 +1589,8 @@ impl CillhubApp {
                 // The gateway's MESSAGE_UPDATE shows the edit; on failure keep the draft.
                 let (path, body) = (format!("/channels/{cid}/messages/{edit_id}"), json!({ "content": content }));
                 self.api_bg(true, move |api| api.patch(&path, body), move |app, r| {
-                    if report(&mut app.status_banner, r).is_none() {
-                        app.editing_message_id = Some(edit_id);
-                        app.composer_text = content;
+                    if let Err(e) = r {
+                        app.keep_failed(&cid, content, e, |app| app.editing_message_id = Some(edit_id));
                     }
                 });
                 return;
@@ -1639,13 +1637,17 @@ impl CillhubApp {
         let reply = self.reply_to_message.as_ref().map(|m| m.id.clone());
         let payload = crate::api::upload_payload(content, &names, reply.as_deref());
         // the files and text stay in the composer until the upload succeeded
-        let (cid, sent) = (cid.to_string(), self.pending_files.clone());
-        let upload = move |api: &crate::api::ApiClient| api.upload_message(&cid, &payload, &files);
+        let (cid, sent, text) = (cid.to_string(), self.pending_files.clone(), content.to_string());
+        let upload_cid = cid.clone();
+        let upload = move |api: &crate::api::ApiClient| api.upload_message(&upload_cid, &payload, &files);
         self.api_bg(true, upload, move |app, r| {
             let Some(val) = report(&mut app.status_banner, r) else { return };
             app.pending_files.retain(|p| !sent.contains(p));
-            app.composer_text.clear();
-            app.reply_to_message = None;
+            // only the draft that was sent goes: a newer one (or another channel's) stays
+            if app.selected_channel_id.as_deref() == Some(cid.as_str()) && app.composer_text.trim() == text {
+                app.composer_text.clear();
+                app.reply_to_message = None;
+            }
             if let Some(msg) = report(&mut app.status_banner, crate::model::parse::<Message>(val)) {
                 app.state.push_message(msg);
             }
@@ -1670,14 +1672,8 @@ impl CillhubApp {
                         app.state.push_message(msg);
                     }
                 }
-                Err(e) => {
-                    // Keep the text so the user can retry; never show it as sent.
-                    if app.composer_text.is_empty() {
-                        app.composer_text = content;
-                        app.reply_to_message = reply_ref;
-                    }
-                    app.status_banner = Some(e.to_string());
-                }
+                // keep the text so the user can retry; never show it as sent
+                Err(e) => app.keep_failed(&cid, content, e, |app| app.reply_to_message = reply_ref),
             });
             return;
         }
@@ -1693,6 +1689,19 @@ impl CillhubApp {
             ..Default::default()
         };
         self.state.messages.entry(cid).or_default().push(msg);
+    }
+
+    /// A send or edit failed: its text goes back into the composer only in its own channel and only over an empty
+    /// draft (`restore` puts back the reply or edit target too); otherwise the banner keeps the text.
+    pub fn keep_failed(&mut self, cid: &str, content: String, e: crate::api::ApiError, restore: impl FnOnce(&mut CillhubApp)) {
+        if self.selected_channel_id.as_deref() == Some(cid) && self.composer_text.is_empty() && self.editing_message_id.is_none() {
+            self.composer_text = content;
+            restore(self);
+            self.status_banner = Some(e.to_string());
+        } else {
+            let short: String = content.chars().take(200).collect();
+            self.status_banner = Some(format!("{e} ({}: {short})", tr("Not sent")));
+        }
     }
 
     pub fn delete_message(&mut self, channel_id: &str, message_id: &str) {
@@ -1759,10 +1768,13 @@ impl CillhubApp {
     }
 
     /// The channel canvas text (web getCanvas: GET /channels/{id}/canvas -> { content }).
+    /// Read in the ordered worker, so it comes after a pending Save; only the newest read fills the editor.
     pub fn load_canvas(&mut self, cid: &str) {
         self.canvas_doc_input.clear();
-        self.api_get(format!("/channels/{cid}/canvas"), |app, r| {
-            if let Ok(v) = r {
+        self.canvas_cid = Some(cid.to_string());
+        let (scope, path) = (self.new_scope("canvas"), format!("/channels/{cid}/canvas"));
+        self.api_bg(true, move |api| api.get(&path), move |app, r| {
+            if let (Ok(v), true) = (r, app.in_scope("canvas", scope)) {
                 app.canvas_doc_input = v.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
             }
         });
@@ -1832,15 +1844,18 @@ impl CillhubApp {
         if self.api.is_some() {
             // like the web's votePoll: PUT the whole set of my answers
             let poll = self.state.messages.get(channel_id).and_then(|l| l.iter().find(|m| m.id == message_id)).and_then(|m| m.poll.clone());
-            let mine = poll.as_ref().and_then(|p| p.results.as_ref()).map(|r| r.answer_counts.iter().filter(|c| c.me_voted).map(|c| c.id).collect::<Vec<u32>>()).unwrap_or_default();
-            let ids: Vec<u32> = match (add, poll.is_some_and(|p| p.allow_multiselect)) {
-                (true, true) => mine.into_iter().filter(|&i| i != answer_id).chain([answer_id]).collect(),
-                (true, false) => vec![answer_id],
-                (false, _) => mine.into_iter().filter(|&i| i != answer_id).collect(),
-            };
-            let path = format!("/channels/{channel_id}/polls/{message_id}/answers/@me");
+            // a click before the gateway confirmed the last one builds on that click, not on the old state
+            let mine = self.poll_pending.get(message_id).cloned().unwrap_or_else(|| {
+                poll.as_ref().and_then(|p| p.results.as_ref()).map(|r| r.answer_counts.iter().filter(|c| c.me_voted).map(|c| c.id).collect()).unwrap_or_default()
+            });
+            let ids = next_answers(mine, answer_id, add, poll.is_some_and(|p| p.allow_multiselect));
+            self.poll_pending.insert(message_id.to_string(), ids.clone());
+            let (path, mid, sent) = (format!("/channels/{channel_id}/polls/{message_id}/answers/@me"), message_id.to_string(), ids.clone());
             // the gateway's MESSAGE_POLL_VOTE_ADD/REMOVE updates the count (no double count)
-            self.api_bg(true, move |api| api.put(&path, Some(json!({ "answer_ids": ids }))), |app, r| {
+            self.api_bg(true, move |api| api.put(&path, Some(json!({ "answer_ids": ids }))), move |app, r| {
+                if app.poll_pending.get(&mid) == Some(&sent) {
+                    app.poll_pending.remove(&mid); // the newest click is done; the state has it from here
+                }
                 report(&mut app.status_banner, r);
             });
             return;
@@ -2063,6 +2078,27 @@ pub fn inline_image_size(att: &crate::model::Attachment) -> Option<Vec2> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rapid_poll_clicks_build_on_each_other() {
+        let first = next_answers(vec![], 1, true, true);
+        assert_eq!(next_answers(first, 2, true, true), vec![1, 2]);
+        assert_eq!(next_answers(vec![1, 2], 1, false, true), vec![2]);
+        assert_eq!(next_answers(vec![1], 2, true, false), vec![2]);
+    }
+
+    #[test]
+    fn row_heights_are_bounded_and_per_width() {
+        let mut rh = RowHeights::default();
+        assert_eq!(rh.get(800, "a", true), None);
+        rh.put("a", true, 40.0);
+        assert_eq!(rh.get(800, "a", true), Some(40.0));
+        assert_eq!(rh.get(900, "a", true), None, "another width starts over");
+        for i in 0..4 * crate::state::MAX_HISTORY + 1 {
+            rh.put(&i.to_string(), false, 1.0);
+        }
+        assert!(rh.map.len() <= 4 * crate::state::MAX_HISTORY);
+    }
     use crate::model::Attachment;
 
     #[test]
@@ -2087,5 +2123,39 @@ mod tests {
         assert_eq!(inline_image_size(&att("image/webp", None, None)), Some(Vec2::new(400.0, 300.0)));
         assert_eq!(inline_image_size(&att("image/svg+xml", Some(10), Some(10))), None);
         assert_eq!(inline_image_size(&att("application/pdf", None, None)), None);
+    }
+}
+
+/// The whole set of my answers after a click (the server takes the full set, like the web's votePoll).
+pub fn next_answers(mine: Vec<u32>, answer_id: u32, add: bool, multiselect: bool) -> Vec<u32> {
+    match (add, multiselect) {
+        (true, true) => mine.into_iter().filter(|&i| i != answer_id).chain([answer_id]).collect(),
+        (true, false) => vec![answer_id],
+        (false, _) => mine.into_iter().filter(|&i| i != answer_id).collect(),
+    }
+}
+
+/// Measured message row heights for one list width. Unlike egui's temp data it is bounded: a new width or too
+/// many rows start over, and logout drops it.
+#[derive(Default)]
+pub struct RowHeights {
+    width: i32,
+    map: std::collections::HashMap<(String, bool), f32>,
+}
+
+impl RowHeights {
+    pub fn get(&mut self, width: i32, id: &str, head: bool) -> Option<f32> {
+        if width != self.width {
+            self.width = width;
+            self.map.clear();
+        }
+        self.map.get(&(id.to_string(), head)).copied()
+    }
+
+    pub fn put(&mut self, id: &str, head: bool, h: f32) {
+        if self.map.len() >= 4 * crate::state::MAX_HISTORY {
+            self.map.clear();
+        }
+        self.map.insert((id.to_string(), head), h);
     }
 }

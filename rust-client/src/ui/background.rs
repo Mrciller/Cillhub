@@ -64,12 +64,33 @@ impl CillhubApp {
         done: impl FnOnce(&mut CillhubApp, Result<Value, ApiError>) + Send + 'static,
     ) -> bool {
         let Some(api) = self.api.clone() else { return false };
-        self.spawn_bg(ordered, move || req(&api), done);
+        // runs after the session check in pump_bg, so an old session's answer cannot raise the gate
+        self.spawn_bg(ordered, move || req(&api), move |app, r| {
+            if let Err(e) = &r {
+                if e.accept_terms() && app.terms_gate.is_none() {
+                    app.terms_gate = Some(e.message.clone());
+                }
+            }
+            done(app, r)
+        });
         true
     }
 
     pub fn api_get(&mut self, path: String, done: impl FnOnce(&mut CillhubApp, Result<Value, ApiError>) + Send + 'static) -> bool {
         self.api_bg(false, move |api| api.get(&path), done)
+    }
+
+    /// A new request for `key` (a canvas, a search, the history after READY): answers to older ones become stale.
+    /// The session check in pump_bg drops other sessions' answers; this drops older answers within one session.
+    pub fn new_scope(&mut self, key: &str) -> u64 {
+        let g = self.scopes.entry(key.to_string()).or_default();
+        *g += 1;
+        *g
+    }
+
+    /// Whether `generation` is still the newest request for `key`.
+    pub fn in_scope(&self, key: &str, generation: u64) -> bool {
+        self.scopes.get(key) == Some(&generation)
     }
 
     /// Applies finished background work (every frame).
@@ -88,10 +109,7 @@ impl CillhubApp {
         // their lookups are dropped with the session, and the next one may be another hub
         self.invite_cards.clear();
         self.invite_lookups = 0;
-        // a terms gate belongs to the session's server
-        if let Ok(mut g) = crate::api::TERMS_GATE.lock() {
-            *g = None;
-        }
+        self.terms_gate = None; // it belongs to the session's server
         // node checks in flight are dropped too: run them again
         self.node_status = None;
         self.node_busy = false;

@@ -59,6 +59,13 @@ pub struct ApiError {
     pub raw: Value,
 }
 
+impl ApiError {
+    /// The server asks to accept its terms first (403 with required_actions accept_terms).
+    pub fn accept_terms(&self) -> bool {
+        self.raw.get("required_actions").and_then(Value::as_array).is_some_and(|a| a.iter().any(|v| v == "accept_terms"))
+    }
+}
+
 impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.fields.is_empty() {
@@ -74,10 +81,6 @@ impl std::fmt::Display for ApiError {
     }
 }
 
-/// The server's terms gate message (403 with required_actions accept_terms); "" once the user closed it.
-/// This app has no accept screen, so the UI points to the website.
-pub static TERMS_GATE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-
 pub fn parse_api_error(status: u16, data: Value) -> ApiError {
     let code = data.get("code").and_then(Value::as_u64).unwrap_or(0);
     let message = data
@@ -86,12 +89,6 @@ pub fn parse_api_error(status: u16, data: Value) -> ApiError {
         .unwrap_or("Request failed")
         .to_string();
     let retry_after = data.get("retry_after").and_then(Value::as_f64);
-    let gated = data.get("required_actions").and_then(Value::as_array).is_some_and(|a| a.iter().any(|v| v == "accept_terms"));
-    if gated {
-        if let Ok(mut g) = TERMS_GATE.lock() {
-            g.get_or_insert_with(|| message.clone());
-        }
-    }
     let mut fields = HashMap::new();
     if let Some(errors) = data.get("errors").and_then(Value::as_object) {
         flatten_errors("", errors, &mut fields);
@@ -410,12 +407,10 @@ mod tests {
     }
 
     #[test]
-    fn terms_gate_message_is_kept_once() {
-        let msg = "Accept the updated terms of use to continue.";
-        parse_api_error(403, json!({ "code": 0, "message": msg, "required_actions": ["accept_terms"] }));
-        parse_api_error(403, json!({ "code": 0, "message": "other", "required_actions": ["accept_terms"] }));
-        assert_eq!(TERMS_GATE.lock().unwrap().as_deref(), Some(msg));
-        *TERMS_GATE.lock().unwrap() = None;
+    fn terms_gate_is_recognised() {
+        let gated = parse_api_error(403, json!({ "code": 0, "message": "Accept the terms.", "required_actions": ["accept_terms"] }));
+        assert!(gated.accept_terms());
+        assert!(!parse_api_error(403, json!({ "code": 0, "message": "x", "required_actions": ["update_password"] })).accept_terms());
     }
 
     #[test]

@@ -653,26 +653,41 @@ impl CillhubApp {
         } else {
             ("/auth/login", login_body)
         };
-        self.spawn_bg(true, move || api.post(result.0, result.1), move |app, result| match result {
+        self.spawn_bg(true, move || api.post(result.0, result.1), move |app, result| app.auth_answer(origin, result));
+    }
+
+    /// A login, sign-up or 2FA answer from `origin`; dropped when the user picked another server meanwhile,
+    /// so a token or ticket never ends up saved with (or sent to) the other server.
+    pub fn auth_answer(&mut self, origin: url::Url, result: Result<Value, crate::api::ApiError>) {
+        if normalize_server_url(self.picked_server_url()).as_ref() != Some(&origin) {
+            self.auth_mfa_ticket.clear();
+            self.auth_mfa_origin = None;
+            self.auth_mode = AuthMode::Login;
+            self.auth_error = Some(tr("The server changed while logging in. Log in again.").to_string());
+            return;
+        }
+        match result {
             Ok(data) => {
                 if let Some(token) = data.get("token").and_then(Value::as_str) {
-                    app.complete_login(origin, token.to_string());
+                    self.complete_login(origin, token.to_string());
                 } else if data.get("mfa").and_then(Value::as_bool) == Some(true) {
-                    app.auth_mfa_ticket = data.get("ticket").and_then(Value::as_str).unwrap_or("").to_string();
-                    app.auth_password_input.clear(); // the ticket replaces it
-                    app.auth_mode = AuthMode::Mfa;
-                    app.auth_error = None;
+                    self.auth_mfa_ticket = data.get("ticket").and_then(Value::as_str).unwrap_or("").to_string();
+                    self.auth_mfa_origin = Some(origin);
+                    self.auth_password_input.clear(); // the ticket replaces it
+                    self.auth_mode = AuthMode::Mfa;
+                    self.auth_error = None;
                 } else {
-                    app.auth_error = Some("Unexpected login response from server.".to_string());
+                    self.auth_error = Some("Unexpected login response from server.".to_string());
                 }
             }
-            Err(err) => app.auth_error = Some(err.to_string()),
-        });
+            Err(err) => self.auth_error = Some(err.to_string()),
+        }
     }
 
     pub fn submit_mfa(&mut self) {
-        let raw_url = self.picked_server_url();
-        let Some(origin) = normalize_server_url(raw_url) else {
+        // the ticket goes only to the server that issued it
+        let Some(origin) = self.auth_mfa_origin.clone() else {
+            self.auth_mode = AuthMode::Login;
             return;
         };
         let api = crate::api::ApiClient::new(origin.clone(), None);
@@ -683,14 +698,7 @@ impl CillhubApp {
             "/auth/mfa/totp"
         };
         let body = json!({ "ticket": self.auth_mfa_ticket, "code": code });
-        self.spawn_bg(true, move || api.post(path, body), move |app, r| match r {
-            Ok(data) => {
-                if let Some(token) = data.get("token").and_then(Value::as_str) {
-                    app.complete_login(origin, token.to_string());
-                }
-            }
-            Err(err) => app.auth_error = Some(err.to_string()),
-        });
+        self.spawn_bg(true, move || api.post(path, body), move |app, r| app.auth_answer(origin, r));
     }
 
     pub fn submit_password_reset(&mut self) {
