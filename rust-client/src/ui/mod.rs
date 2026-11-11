@@ -2164,7 +2164,8 @@ mod tests {
         app.api = Some(ApiClient::new(origin, None));
         app.vote_poll("c_general", &msg.id, 1, true);
         settle(&mut app);
-        hub.join().unwrap();
+        let seen = hub.join().unwrap();
+        assert!(seen[0].starts_with(&format!("PUT /api/v9/channels/c_general/polls/{}/answers/@me ", msg.id)), "{seen:?}");
         assert_eq!(app.state.messages["c_general"][0], msg, "the count comes with the gateway event");
         dispatch(&mut app, "MESSAGE_POLL_VOTE_ADD", serde_json::json!({"channel_id": "c_general", "message_id": msg.id, "user_id": "u_me", "answer_id": 1}));
         let counts = &app.state.messages["c_general"][0].poll.as_ref().unwrap().results.as_ref().unwrap().answer_counts;
@@ -2226,6 +2227,66 @@ mod tests {
         let seen = hub.join().unwrap();
         assert!(seen[0].starts_with("GET /api/v9/guilds/g_arena/messages/search?content=old%20one&offset=0 "), "{seen:?}");
         assert!(seen[1].contains("&offset=1 "), "{seen:?}");
+    }
+
+    /// Against a real test hub with the seed data of the review scripts (user alex, a poll and 60+ newer messages in
+    /// #general). Restarts the hub container to check the reconnect. Run with XDG_CONFIG_HOME/HOME pointing at a
+    /// scratch dir: CILLHUB_TEST_HUB=http://127.0.0.1:3391 CILLHUB_TEST_CONTAINER=<name> cargo test real_hub -- --ignored
+    #[test]
+    #[ignore]
+    fn real_hub_login_reconnect_vote_search_logout() {
+        let hub = std::env::var("CILLHUB_TEST_HUB").expect("CILLHUB_TEST_HUB");
+        let wait = |app: &mut CillhubApp, what: &str, ok: &dyn Fn(&CillhubApp) -> bool| {
+            let t = Instant::now();
+            while !ok(app) {
+                assert!(t.elapsed() < Duration::from_secs(30), "timed out waiting for {what}: {:?}", app.status_banner);
+                app.pump_bg();
+                app.process_background_events();
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        let mut app = CillhubApp::new(None, false);
+        app.settings.server_target = "node".into();
+        app.auth_server_url = hub;
+        app.auth_login_input = "alex".into();
+        app.auth_password_input = "review-pass-1234".into();
+        app.submit_auth();
+        wait(&mut app, "READY", &|a| a.state.me.is_some());
+        assert!(app.auth_password_input.is_empty(), "password cleared after login");
+        let cid = app.selected_channel_id.clone().expect("a channel is open");
+        wait(&mut app, "history", &|a| a.state.messages.get(&cid).is_some_and(|l| l.len() == 50));
+
+        let session = app.state.session_id.clone();
+        let container = std::env::var("CILLHUB_TEST_CONTAINER").expect("CILLHUB_TEST_CONTAINER");
+        assert!(std::process::Command::new("docker").args(["restart", &container]).status().unwrap().success());
+        wait(&mut app, "a new READY", &|a| a.state.session_id.is_some() && a.state.session_id != session);
+        wait(&mut app, "history after reconnect", &|a| a.state.messages.get(&cid).is_some_and(|l| l.len() == 50));
+        assert_eq!(app.selected_channel_id.as_deref(), Some(cid.as_str()));
+
+        let poll_id = app.state.messages[&cid].iter().rev().find(|m| m.poll.is_some()).expect("the seeded poll").id.clone();
+        let count = |a: &CillhubApp| {
+            let m = a.state.messages[&cid].iter().find(|m| m.id == poll_id).cloned().unwrap();
+            m.poll.and_then(|p| p.results).and_then(|r| r.answer_counts.into_iter().find(|c| c.id == 1)).map_or(0, |c| c.count)
+        };
+        let before = count(&app);
+        app.vote_poll(&cid, &poll_id, 1, true);
+        wait(&mut app, "the vote event", &|a| count(a) > before);
+        let t = Instant::now();
+        while t.elapsed() < Duration::from_secs(2) {
+            app.pump_bg();
+            app.process_background_events();
+        }
+        assert_eq!(count(&app), before + 1, "one vote counts once");
+
+        app.search_query = "Morning everyone".into();
+        app.run_search(false);
+        wait(&mut app, "search", &|a| a.search.as_ref().is_some_and(|s| !s.loading));
+        let hit = app.search.as_ref().unwrap().hits.iter().find(|m| m.content.starts_with("Morning everyone")).cloned().expect("old message found");
+        assert!(!app.state.messages[&cid].iter().any(|m| m.id == hit.id), "outside the loaded window");
+
+        app.logout();
+        assert!(app.auth_login_input.is_empty() && app.auth_password_input.is_empty() && app.auth_mode == AuthMode::Login);
+        assert!(!app.authenticated && app.state.me.is_none());
     }
 
     /// Applies background results until no request is in flight.

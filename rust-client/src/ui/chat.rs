@@ -1729,10 +1729,17 @@ impl CillhubApp {
 
     pub fn vote_poll(&mut self, channel_id: &str, message_id: &str, answer_id: u32, add: bool) {
         if self.api.is_some() {
-            let path =
-                format!("/channels/{channel_id}/polls/{message_id}/answers/{answer_id}/@me");
+            // like the web's votePoll: PUT the whole set of my answers
+            let poll = self.state.messages.get(channel_id).and_then(|l| l.iter().find(|m| m.id == message_id)).and_then(|m| m.poll.clone());
+            let mine = poll.as_ref().and_then(|p| p.results.as_ref()).map(|r| r.answer_counts.iter().filter(|c| c.me_voted).map(|c| c.id).collect::<Vec<u32>>()).unwrap_or_default();
+            let ids: Vec<u32> = match (add, poll.is_some_and(|p| p.allow_multiselect)) {
+                (true, true) => mine.into_iter().filter(|&i| i != answer_id).chain([answer_id]).collect(),
+                (true, false) => vec![answer_id],
+                (false, _) => mine.into_iter().filter(|&i| i != answer_id).collect(),
+            };
+            let path = format!("/channels/{channel_id}/polls/{message_id}/answers/@me");
             // the gateway's MESSAGE_POLL_VOTE_ADD/REMOVE updates the count (no double count)
-            self.api_bg(true, move |api| if add { api.put(&path, None) } else { api.delete(&path) }, |app, r| {
+            self.api_bg(true, move |api| api.put(&path, Some(json!({ "answer_ids": ids }))), |app, r| {
                 report(&mut app.status_banner, r);
             });
             return;
