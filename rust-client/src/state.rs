@@ -33,8 +33,20 @@ pub struct State {
     pub due_reminders: Vec<SavedMessage>,
     pub notes: HashMap<String, String>,
     pub typing: HashMap<String, Vec<(String, u64)>>,
-    /// channels whose history is loading: live messages wait here and join the snapshot
-    pub pending_history: HashMap<String, Vec<Message>>,
+    /// channels whose history is loading: live events wait here and join the snapshot
+    pub pending_history: HashMap<String, PendingHistory>,
+    /// channels with older pages loaded ("Load older"): live messages do not cut them (push_message)
+    pub paged: std::collections::HashSet<String>,
+}
+
+/// What happened in a channel while its history snapshot was loading.
+#[derive(Debug, Default, Clone)]
+pub struct PendingHistory {
+    pub created: Vec<Message>,
+    /// MESSAGE_UPDATE payloads, in order
+    pub updates: Vec<Value>,
+    /// deleted ids: the snapshot may still carry them
+    pub deleted: std::collections::HashSet<String>,
 }
 
 /// Messages kept per channel.
@@ -63,6 +75,7 @@ impl State {
                 self.calls.clear();
                 self.watch_sessions.clear();
                 self.pending_history.clear();
+                self.paged.clear();
 
                 self.users.insert(ready.user.id.clone(), ready.user);
                 for user in ready.users {
@@ -267,6 +280,10 @@ impl State {
                             *old =
                                 parse(merge_existing(Some(&*old), payload.clone())?)?;
                         }
+                    } else if let Some(p) = self.pending_history.get_mut(channel) {
+                        if p.updates.len() < MAX_WINDOW {
+                            p.updates.push(payload.clone()); // applied over the snapshot (set_history)
+                        }
                     }
                 }
             }
@@ -275,9 +292,7 @@ impl State {
                     payload.get("channel_id").and_then(Value::as_str),
                     payload.get("id").and_then(Value::as_str),
                 ) {
-                    if let Some(history) = self.messages.get_mut(channel) {
-                        history.retain(|m| m.id != id);
-                    }
+                    self.delete_messages(channel, &[id]);
                 }
             }
             "MESSAGE_DELETE_BULK" => {
@@ -285,10 +300,8 @@ impl State {
                     payload.get("channel_id").and_then(Value::as_str),
                     payload.get("ids").and_then(Value::as_array),
                 ) {
-                    if let Some(history) = self.messages.get_mut(channel) {
-                        history
-                            .retain(|m| !ids.iter().any(|id| id.as_str() == Some(m.id.as_str())));
-                    }
+                    let ids: Vec<&str> = ids.iter().filter_map(Value::as_str).collect();
+                    self.delete_messages(channel, &ids);
                 }
             }
             "MESSAGE_ACK" => {
@@ -667,22 +680,51 @@ impl State {
         );
     }
 
+    /// Removes messages from a loaded history, or remembers them as deleted while its snapshot loads.
+    fn delete_messages(&mut self, channel: &str, ids: &[&str]) {
+        if let Some(history) = self.messages.get_mut(channel) {
+            history.retain(|m| !ids.contains(&m.id.as_str()));
+        } else if let Some(p) = self.pending_history.get_mut(channel) {
+            p.created.retain(|m| !ids.contains(&m.id.as_str()));
+            p.deleted.extend(ids.iter().take(MAX_HISTORY.saturating_sub(p.deleted.len())).map(|s| s.to_string()));
+        }
+    }
+
     /// Adds a new message to a loaded history (once). The newest MAX_WINDOW stay; "Load older" fetches the rest.
-    /// While older pages are loaded (more than MAX_WINDOW) the window grows to MAX_HISTORY, so a live message
-    /// does not cut away what is being read.
+    /// After paging back (`paged`) live messages may add MAX_WINDOW on top of MAX_HISTORY before the oldest go,
+    /// so what is being read is not cut.
+    /// shortcut: past MAX_WINDOW live messages while reading old pages the oldest still go; a window anchored
+    /// at the viewed end would fix that if it matters.
     pub fn push_message(&mut self, message: Message) {
         if let Some(history) = self.messages.get_mut(&message.channel_id) {
             if !history.iter().any(|m| m.id == message.id) {
-                let cap = if history.len() > MAX_WINDOW { MAX_HISTORY } else { MAX_WINDOW };
+                let cap = if self.paged.contains(&message.channel_id) { MAX_HISTORY + MAX_WINDOW } else { MAX_WINDOW };
                 history.push(message);
                 let extra = history.len().saturating_sub(cap);
                 history.drain(..extra);
             }
         } else if let Some(waiting) = self.pending_history.get_mut(&message.channel_id) {
-            if !waiting.iter().any(|m| m.id == message.id) && waiting.len() < MAX_WINDOW {
-                waiting.push(message);
+            if !waiting.created.iter().any(|m| m.id == message.id) && waiting.created.len() < MAX_WINDOW {
+                waiting.created.push(message);
             }
         }
+    }
+
+    /// Puts an older page ("Load older") in front of a channel's history, if its oldest message is still
+    /// `before`. The result holds at most MAX_HISTORY: the oldest of the page go first.
+    pub fn prepend_history(&mut self, channel_id: &str, before: &str, mut older: Vec<Message>) {
+        for m in &older {
+            if let Some(a) = &m.author {
+                self.users.entry(a.id.clone()).or_insert_with(|| a.clone());
+            }
+        }
+        let Some(existing) = self.messages.get_mut(channel_id).filter(|l| l.first().is_some_and(|m| m.id == before)) else { return };
+        older.retain(|m| !existing.iter().any(|x| x.id == m.id));
+        let extra = (older.len() + existing.len()).saturating_sub(MAX_HISTORY).min(older.len());
+        older.drain(..extra);
+        older.append(existing);
+        *existing = older;
+        self.paged.insert(channel_id.to_string());
     }
 
     /// A history request started: live messages until its answer are kept for it.
@@ -696,12 +738,23 @@ impl State {
     }
 
     pub fn set_history(&mut self, channel_id: String, mut messages: Vec<Message>) {
-        // live messages that came while the snapshot loaded (and are not in it) follow it
-        for m in self.pending_history.remove(&channel_id).unwrap_or_default() {
+        // live events that came while the snapshot loaded: deletes and edits apply to it, new messages follow it
+        let p = self.pending_history.remove(&channel_id).unwrap_or_default();
+        messages.retain(|m| !p.deleted.contains(&m.id));
+        for m in p.created {
             if !messages.iter().any(|x| x.id == m.id) {
                 messages.push(m);
             }
         }
+        for u in p.updates {
+            let id = u.get("id").and_then(Value::as_str);
+            if let Some(old) = messages.iter_mut().find(|m| Some(m.id.as_str()) == id) {
+                if let Ok(new) = merge_existing(Some(&*old), u).and_then(parse) {
+                    *old = new;
+                }
+            }
+        }
+        self.paged.remove(&channel_id);
         for m in &messages {
             if let Some(author) = &m.author {
                 self.users.insert(author.id.clone(), author.clone());
@@ -817,12 +870,43 @@ mod tests {
 
     #[test]
     fn paging_back_is_not_cut_by_a_live_message() {
+        let page = |from: usize, n: usize| -> Vec<Message> {
+            (from..from + n).map(|i| parse(serde_json::json!({"id": format!("{i:05}"), "channel_id": "c"})).unwrap()).collect()
+        };
+        let live = |st: &mut State| st.apply("MESSAGE_CREATE", serde_json::json!({"id": "new", "channel_id": "c", "content": "x"})).unwrap();
+        // exactly MAX_WINDOW after one page
         let mut st = State::default();
-        let list: Vec<Message> = (0..MAX_WINDOW + 50).map(|i| parse(serde_json::json!({"id": i.to_string(), "channel_id": "c"})).unwrap()).collect();
-        st.set_history("c".into(), list); // what "Load older" leaves behind
-        st.apply("MESSAGE_CREATE", serde_json::json!({"id": "new", "channel_id": "c", "content": "x"})).unwrap();
-        assert_eq!(st.messages["c"].len(), MAX_WINDOW + 51);
-        assert_eq!(st.messages["c"][0].id, "0", "the page being read stays");
+        st.set_history("c".into(), page(50, MAX_WINDOW - 50));
+        st.prepend_history("c", "00050", page(0, 50));
+        assert_eq!(st.messages["c"].len(), MAX_WINDOW);
+        live(&mut st);
+        assert_eq!((st.messages["c"].len(), st.messages["c"][0].id.as_str()), (MAX_WINDOW + 1, "00000"), "the page being read stays");
+        // a page that would pass MAX_HISTORY is clamped, and a live message still cuts nothing
+        let mut st = State::default();
+        st.set_history("c".into(), page(100, MAX_HISTORY - 20));
+        st.prepend_history("c", "00100", page(50, 50));
+        assert_eq!((st.messages["c"].len(), st.messages["c"][0].id.as_str()), (MAX_HISTORY, "00080"));
+        live(&mut st);
+        assert_eq!((st.messages["c"].len(), st.messages["c"][0].id.as_str()), (MAX_HISTORY + 1, "00080"));
+        st.prepend_history("c", "00999", page(0, 50));
+        assert_eq!(st.messages["c"][0].id, "00080", "a page for another window is dropped");
+    }
+
+    #[test]
+    fn deletes_and_edits_during_a_history_load_reach_the_snapshot() {
+        let mut st = State::default();
+        let m = |id: &str, text: &str| serde_json::json!({"id": id, "channel_id": "c", "content": text});
+        st.begin_history("c");
+        st.apply("MESSAGE_CREATE", m("4", "new")).unwrap();
+        st.apply("MESSAGE_DELETE", json!({"id": "4", "channel_id": "c"})).unwrap();
+        st.apply("MESSAGE_DELETE_BULK", json!({"ids": ["1"], "channel_id": "c"})).unwrap();
+        st.apply("MESSAGE_UPDATE", m("2", "edited")).unwrap();
+        st.apply("MESSAGE_CREATE", m("5", "kept")).unwrap();
+        st.apply("MESSAGE_UPDATE", m("5", "kept, edited")).unwrap();
+        let snapshot: Vec<Message> = ["1", "2", "3", "4"].iter().map(|i| parse(m(i, "old")).unwrap()).collect();
+        st.set_history("c".into(), snapshot);
+        let got: Vec<(&str, &str)> = st.messages["c"].iter().map(|x| (x.id.as_str(), x.content.as_str())).collect();
+        assert_eq!(got, [("2", "edited"), ("3", "old"), ("5", "kept, edited")]);
     }
 
     use super::*;
