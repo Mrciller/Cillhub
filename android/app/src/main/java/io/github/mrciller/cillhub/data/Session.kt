@@ -137,9 +137,11 @@ object Session {
     suspend fun mfa(ticket: String, code: String, backup: Boolean): LoginAnswer =
         rest.call("POST", if (backup) "/auth/mfa/backup" else "/auth/mfa/totp", buildJsonObject { put("ticket", ticket); put("code", code) })
 
-    suspend fun register(email: String, username: String, password: String, code: String?, captcha: String? = null): LoginAnswer =
+    /** [checked]: the sign-up boxes were ticked (7.11 servers; older ones ignore the two fields). */
+    suspend fun register(email: String, username: String, password: String, code: String?, captcha: String? = null, checked: Boolean = false): LoginAnswer =
         rest.call("POST", "/auth/register", buildJsonObject {
             put("email", email); put("username", username); put("password", password)
+            if (checked) { put("age_confirmed", true); put("terms_accepted", true) }
             if (!code.isNullOrBlank()) put("registration_code", code.trim())
             if (captcha != null) put("captcha_key", captcha)
         })

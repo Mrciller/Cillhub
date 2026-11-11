@@ -86,6 +86,12 @@
     <string name="username">Username</string>
     <string name="password_new_hint">New password (at least 8 characters)</string>
     <string name="registration_code">Registration code</string>
+    <string name="signup_terms">I accept the terms of use and have read the privacy notice.</string>
+    <string name="signup_age">I am at least %1$d years old.</string>
+    <string name="legal_imprint">Imprint</string>
+    <string name="legal_privacy">Privacy notice</string>
+    <string name="legal_terms">Terms of use</string>
+    <string name="legal_report">Report illegal content</string>
     <string name="registration_closed">Registration is closed on this server. Ask its admin for an account.</string>
     <string name="mfa_title">Two-factor authentication</string>
     <string name="mfa_text">Enter the 6-digit code from your authenticator app.</string>

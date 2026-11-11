@@ -22,12 +22,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -65,6 +68,7 @@ import io.github.mrciller.cillhub.CaptchaActivity
 import io.github.mrciller.cillhub.Config
 import io.github.mrciller.cillhub.R
 import io.github.mrciller.cillhub.data.ApiError
+import io.github.mrciller.cillhub.data.LegalInfo
 import io.github.mrciller.cillhub.data.LoginAnswer
 import io.github.mrciller.cillhub.data.Session
 import kotlinx.coroutines.launch
@@ -111,12 +115,13 @@ fun AuthFlow() {
                 }
                 Spacer(Modifier.height(24.dp))
                 when (step) {
-                    "register" -> RegisterForm(info?.registrationMode ?: "open", { step = "login" }) { a, pw -> finish(a, pw) }
+                    "register" -> RegisterForm(info?.registrationMode ?: "open", info?.legal, { step = "login" }) { a, pw -> finish(a, pw) }
                     "forgot" -> ForgotForm { step = "login" }
                     "mfa" -> MfaForm(ticket, { step = "login" }) { a -> finish(a, "") }
                     "renew" -> RenewForm(renewToken, renewOld) { Session.signedIn(it) }
                     else -> LoginForm({ step = "register" }, if (info?.passwordReset == true) ({ step = "forgot" }) else null) { a, pw -> finish(a, pw) }
                 }
+                if (info?.legal != null) LegalLinks()
             }
         }
     }
@@ -229,12 +234,35 @@ private fun ForgotForm(back: () -> Unit) {
     TextButton(back, Modifier.padding(top = 8.dp)) { Text(s(R.string.back)) }
 }
 
+/** The server's own legal pages (7.11), opened in the browser. */
 @Composable
-private fun RegisterForm(mode: String, toLogin: () -> Unit, done: (LoginAnswer, String) -> Unit) {
+private fun LegalLinks() {
+    val ctx = LocalContext.current
+    Column(Modifier.padding(top = 24.dp)) {
+        for ((label, path) in listOf(R.string.legal_imprint to "imprint", R.string.legal_privacy to "privacy", R.string.legal_terms to "terms", R.string.legal_report to "report-content")) {
+            TextButton({ openUrl(ctx, "${Config.APP_URL}/$path") }) { Text(s(label)) }
+        }
+    }
+}
+
+/** A sign-up checkbox; the whole row toggles it. */
+@Composable
+private fun Check(checked: Boolean, onChange: (Boolean) -> Unit, label: String) {
+    Row(Modifier.fillMaxWidth().toggleable(checked, role = Role.Checkbox, onValueChange = onChange).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked, null)
+        Spacer(Modifier.width(8.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun RegisterForm(mode: String, legal: LegalInfo?, toLogin: () -> Unit, done: (LoginAnswer, String) -> Unit) {
     var email by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var code by rememberSaveable { mutableStateOf("") }
+    var termsOk by rememberSaveable { mutableStateOf(false) }
+    var ageOk by rememberSaveable { mutableStateOf(false) }
     var busy by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -246,12 +274,15 @@ private fun RegisterForm(mode: String, toLogin: () -> Unit, done: (LoginAnswer, 
         return
     }
     Spacer(Modifier.height(16.dp))
-    val ok = email.contains('@') && username.trim().length in 2..32 && password.length >= 8 && (mode != "invite" || code.isNotBlank())
+    // 7.11 servers: the age always, the terms once the operator published terms or a privacy notice
+    val askTerms = legal?.acceptVersion != null
+    val checked = legal != null && ageOk && (termsOk || !askTerms)
+    val ok = email.contains('@') && username.trim().length in 2..32 && password.length >= 8 && (mode != "invite" || code.isNotBlank()) && (legal == null || checked)
     val captcha = rememberCaptcha()
     fun attempt(token: String?) {
         scope.launch {
             busy = true; error = null
-            try { done(Session.register(email.trim(), username.trim(), password, code, token), password) } catch (e: ApiError) {
+            try { done(Session.register(email.trim(), username.trim(), password, code, token, checked), password) } catch (e: ApiError) {
                 if (e.captcha && token == null) captcha { attempt(it) } else error = errorText(ctx, e)
             }
             busy = false
@@ -262,6 +293,17 @@ private fun RegisterForm(mode: String, toLogin: () -> Unit, done: (LoginAnswer, 
     Field(username, { username = it }, s(R.string.username), ContentType.NewUsername)
     Field(password, { password = it }, s(R.string.password_new_hint), ContentType.NewPassword, password = true, ime = if (mode == "invite") ImeAction.Next else ImeAction.Go, onDone = { submit() })
     if (mode == "invite") Field(code, { code = it }, s(R.string.registration_code), ime = ImeAction.Go, onDone = { submit() })
+    if (legal != null) {
+        if (askTerms) {
+            Check(termsOk, { termsOk = it }, s(R.string.signup_terms))
+            Row {
+                TextButton({ openUrl(ctx, "${Config.APP_URL}/terms") }) { Text(s(R.string.legal_terms)) }
+                TextButton({ openUrl(ctx, "${Config.APP_URL}/privacy") }) { Text(s(R.string.legal_privacy)) }
+            }
+        }
+        Check(ageOk, { ageOk = it }, s(R.string.signup_age, legal.minAge))
+        Spacer(Modifier.height(12.dp))
+    }
     ErrorLine(error)
     Submit(s(R.string.register), busy, ok) { submit() }
     TextButton(toLogin, Modifier.padding(top = 8.dp)) { Text(s(R.string.have_account)) }

@@ -390,7 +390,13 @@ data class Profile(
 @Serializable
 data class InstanceInfo(val name: String? = null, val motd: String? = null, val registrationMode: String = "open", val maxUploadBytes: Long = 25L * 1024 * 1024, val setupPending: Boolean = false,
     /** 7.10: password reset by email is offered. */
-    val passwordReset: Boolean = false)
+    val passwordReset: Boolean = false,
+    /** 7.11: the legal pages and sign-up checks; null on older servers (no checkboxes then). */
+    val legal: LegalInfo? = null)
+
+/** GET /instance `legal`: which pages the operator filled in, the terms version sign-up accepts, the minimum age. */
+@Serializable
+data class LegalInfo(val imprint: Boolean = false, val privacy: Boolean = false, val terms: Boolean = false, val acceptVersion: Long? = null, val minAge: Int = 14)
 
 /** POST /auth/login: a token, or an MFA ticket (CONTRACT-v4 section 5). */
 @Serializable
