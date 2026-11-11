@@ -547,6 +547,8 @@ impl CillhubApp {
                                             })
                                             .map(|a| (a.count, a.me_voted))
                                             .unwrap_or((0, false));
+                                        // a click not yet confirmed decides (a double click adds, then removes)
+                                        let chosen = self.poll_chosen(&msg.id, ans.answer_id).unwrap_or(count.1);
                                         ui.horizontal(|ui| {
                                             let votes = if count.0 == 1 { tr("{n} vote") } else { tr("{n} votes") };
                                             let label = format!(
@@ -554,12 +556,12 @@ impl CillhubApp {
                                                 ans.poll_media.text.as_deref().unwrap_or(""),
                                                 votes.replace("{n}", &count.0.to_string())
                                             );
-                                            if ui.selectable_label(count.1, label).clicked() {
+                                            if ui.selectable_label(chosen, label).clicked() {
                                                 self.vote_poll(
                                                     channel_id,
                                                     &msg.id,
                                                     ans.answer_id,
-                                                    !count.1,
+                                                    !chosen,
                                                 );
                                             }
                                         });
@@ -1637,14 +1639,14 @@ impl CillhubApp {
         let reply = self.reply_to_message.as_ref().map(|m| m.id.clone());
         let payload = crate::api::upload_payload(content, &names, reply.as_deref());
         // the files and text stay in the composer until the upload succeeded
-        let (cid, sent, text) = (cid.to_string(), self.pending_files.clone(), content.to_string());
+        let (cid, sent, rev) = (cid.to_string(), self.pending_files.clone(), self.composer_rev());
         let upload_cid = cid.clone();
         let upload = move |api: &crate::api::ApiClient| api.upload_message(&upload_cid, &payload, &files);
         self.api_bg(true, upload, move |app, r| {
             let Some(val) = report(&mut app.status_banner, r) else { return };
             app.pending_files.retain(|p| !sent.iter().any(|s| std::sync::Arc::ptr_eq(s, p)));
             // only the draft that was sent goes: a newer one (or another channel's) stays
-            if app.selected_channel_id.as_deref() == Some(cid.as_str()) && app.composer_text.trim() == text {
+            if app.selected_channel_id.as_deref() == Some(cid.as_str()) && app.composer_rev() == rev {
                 app.composer_text.clear();
                 if app.reply_to_message.as_ref().map(|m| &m.id) == reply.as_ref() {
                     app.reply_to_message = None;
@@ -2142,6 +2144,21 @@ impl CillhubApp {
     fn my_poll_answers(&self, channel_id: &str, message_id: &str) -> Vec<u32> {
         let poll = self.state.messages.get(channel_id).and_then(|l| l.iter().find(|m| m.id == message_id)).and_then(|m| m.poll.as_ref());
         poll.and_then(|p| p.results.as_ref()).map(|r| r.answer_counts.iter().filter(|c| c.me_voted).map(|c| c.id).collect()).unwrap_or_default()
+    }
+
+    /// The composer's draft revision: it moves on every change of its text (checked each frame and when asked), so
+    /// an upload clears only the draft it sent, even if a newer one has the same text.
+    pub fn composer_rev(&mut self) -> u64 {
+        if self.composer_text != self.composer_seen {
+            self.composer_seen.clone_from(&self.composer_text);
+            self.composer_rev += 1;
+        }
+        self.composer_rev
+    }
+
+    /// Whether an answer is in my pending (not yet confirmed) choice; None without one.
+    pub fn poll_chosen(&self, message_id: &str, answer_id: u32) -> Option<bool> {
+        self.poll_pending.get(message_id).map(|p| p.contains(&answer_id))
     }
 
     /// Drops the chosen answers once the gateway's state shows them (not on HTTP success: its events may lag).

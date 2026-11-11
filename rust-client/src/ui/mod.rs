@@ -189,6 +189,9 @@ pub struct CillhubApp {
 
     // Chat & Composer state
     pub composer_text: String,
+    /// see composer_rev()
+    composer_seen: String,
+    composer_rev: u64,
     /// Inline image attachments by egui URI; bytes arrive from fetch threads.
     pub images: std::collections::HashMap<String, ImageLoad>,
     image_jobs: Sender<(u64, String, String)>,
@@ -367,6 +370,8 @@ impl CillhubApp {
             status_banner: None,
             terms_gate: None,
             composer_text: String::new(),
+            composer_seen: String::new(),
+            composer_rev: 0,
             pending_files: Vec::new(),
             failed_drafts: Default::default(),
             picked_tx,
@@ -946,6 +951,12 @@ impl CillhubApp {
     }
 
     pub fn load_channel_history(&mut self, channel_id: &str) {
+        self.fetch_history(channel_id, true);
+    }
+
+    /// `refetch`: whether a load whose live-event buffer overflowed may ask once more (then the snapshot is
+    /// taken as it is).
+    fn fetch_history(&mut self, channel_id: &str, refetch: bool) {
         if self.state.messages.contains_key(channel_id) || !self.loading_history.insert(channel_id.to_string()) {
             return;
         }
@@ -958,6 +969,10 @@ impl CillhubApp {
             }
             app.loading_history.remove(&cid);
             match report(&mut app.status_banner, r).map(|v| parse_messages(&v)) {
+                Some(_) if refetch && app.state.history_dirty(&cid) => {
+                    app.state.end_history(&cid);
+                    app.fetch_history(&cid, false);
+                }
                 Some(list) => app.state.set_history(cid, list),
                 None => app.state.end_history(&cid),
             }
@@ -1089,6 +1104,7 @@ impl CillhubApp {
                         // requests started before READY belong to the replaced state
                         self.new_scope("history");
                         self.loading_history.clear();
+                        self.poll_pending.clear(); // choices come from the reloaded history now
                         // READY replaced the state: keep a selection that still exists and load its history again
                         let gone = |c: &Option<String>, ok: &dyn Fn(&str) -> bool| c.as_deref().is_some_and(|c| !ok(c));
                         if gone(&self.selected_guild_id, &|g| self.state.guilds.contains_key(g))
@@ -1938,6 +1954,7 @@ impl CillhubApp {
         crate::theme::set_custom_families_ready(families_ready);
 
         crate::i18n::set_locale(&self.locale);
+        self.composer_rev(); // last frame's typing counts before upload answers are applied
         self.pump_bg();
         self.process_background_events();
         while let Ok(paths) = self.picked_rx.try_recv() {
@@ -2258,6 +2275,50 @@ mod tests {
         assert_eq!(app.state.messages.get("c_general").map(|l| l[0].content.as_str()), Some("again"));
         let seen = hub.join().unwrap();
         assert!(seen.iter().any(|r| r.starts_with("GET /api/v9/channels/c_general/messages")), "{seen:?}");
+    }
+
+    #[test]
+    fn an_overflowing_history_load_asks_once_more() {
+        let mut app = CillhubApp::new(None, true);
+        let (origin, hub) = fake_hub(r#"[{"id":"m","channel_id":"c","content":"v2"}]"#, 2);
+        app.api = Some(ApiClient::new(origin, None));
+        app.load_channel_history("c");
+        for i in 0..=crate::state::MAX_WINDOW {
+            report(&mut app.status_banner, app.state.apply("MESSAGE_UPDATE", serde_json::json!({"id": format!("o{i}"), "channel_id": "c"})));
+        }
+        settle(&mut app); // dirty: asks again; the second answer is installed as it is
+        settle(&mut app);
+        assert_eq!(app.state.messages.get("c").map(|l| l[0].content.as_str()), Some("v2"));
+        assert_eq!(hub.join().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_double_click_on_a_poll_answer_adds_then_removes_and_ready_forgets_choices() {
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(ApiClient::new(normalize_server_url("http://127.0.0.1:9").unwrap(), None));
+        let poll = serde_json::json!({ "question": { "text": "q" }, "answers": [], "allow_multiselect": true });
+        app.state.set_history("c".into(), vec![crate::model::parse(serde_json::json!({ "id": "m", "channel_id": "c", "poll": poll })).unwrap()]);
+        let click = |app: &mut CillhubApp| {
+            let chosen = app.poll_chosen("m", 1).unwrap_or(false);
+            app.vote_poll("c", "m", 1, !chosen);
+        };
+        click(&mut app);
+        assert_eq!(app.poll_pending["m"], vec![1]);
+        click(&mut app);
+        assert_eq!(app.poll_pending["m"], Vec::<u32>::new(), "the second click removes");
+        dispatch(&mut app, "READY", serde_json::json!({"session_id": "s", "user": {"id": "me", "username": "me"}}));
+        assert!(app.poll_pending.is_empty());
+    }
+
+    #[test]
+    fn the_draft_revision_moves_on_every_change() {
+        let mut app = CillhubApp::new(None, true);
+        app.composer_text = "hello".into();
+        let sent = app.composer_rev();
+        app.composer_text = "other".into();
+        app.composer_rev(); // a frame sees the change
+        app.composer_text = "hello".into();
+        assert_ne!(app.composer_rev(), sent, "same text, newer draft");
     }
 
     #[test]
