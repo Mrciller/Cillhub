@@ -60,6 +60,8 @@ pub fn spawn_with_commands(
         let mut backoff = 1u64;
         let mut last_presence: (String, Option<CustomStatus>, Option<GameActivity>) =
             ("online".to_string(), None, None);
+        // one outbox for every attempt: commands held for READY survive a reconnect
+        let mut outbox = Outbox::default();
         loop {
             match run_once(
                 &client,
@@ -68,10 +70,12 @@ pub fn spawn_with_commands(
                 &sender,
                 &commands,
                 &mut last_presence,
+                &mut outbox,
             ) {
                 Ok(true) => break, // clean shutdown
                 Ok(false) => backoff = 1,
                 Err(error) => {
+                    outbox.reconnect(); // commands from now on wait for the next READY
                     let _ = sender.send(GatewayEvent::ConnectionError(error.to_string()));
                     let sleep_until = Instant::now() + Duration::from_secs(backoff);
                     while Instant::now() < sleep_until {
@@ -85,7 +89,9 @@ pub fn spawn_with_commands(
                                 } => {
                                     last_presence = (status, custom_status, game);
                                 }
-                                _ => {}
+                                other => {
+                                    outbox.command(other, &mut last_presence); // held for the next READY
+                                }
                             }
                         }
                         thread::sleep(Duration::from_millis(100));
@@ -104,6 +110,7 @@ fn run_once(
     sender: &Sender<GatewayEvent>,
     commands: &Receiver<GatewayCommand>,
     last_presence: &mut (String, Option<CustomStatus>, Option<GameActivity>),
+    outbox: &mut Outbox,
 ) -> io::Result<bool> {
     let endpoint = api_url(origin, "/gateway").ok_or_else(|| invalid("Invalid gateway API URL"))?;
     let data: Value = client
@@ -124,7 +131,7 @@ fn run_once(
     let _ = sender.send(GatewayEvent::Connected);
     let mut protocol = Gateway::default();
     let mut heartbeat: Option<(Duration, Instant)> = None;
-    let mut outbox = Outbox::default();
+    outbox.reconnect();
     loop {
         while let Ok(cmd) = commands.try_recv() {
             if matches!(cmd, GatewayCommand::Shutdown) {
@@ -200,6 +207,8 @@ type Presence = (String, Option<CustomStatus>, Option<GameActivity>);
 /// Before READY the hub accepts only IDENTIFY and heartbeats (anything else closes the socket with 4003).
 /// Presence is kept for IDENTIFY and sent again after READY only if it changed after IDENTIFY went out;
 /// other commands wait for READY.
+const MAX_HELD: usize = 100;
+
 #[derive(Default)]
 struct Outbox {
     identified: bool,
@@ -229,8 +238,17 @@ impl Outbox {
         if self.ready {
             return Some(env);
         }
+        if self.held.len() >= MAX_HELD {
+            self.held.remove(0); // bounded: a connection that never gets READY cannot pile up commands
+        }
         self.held.push(env);
         None
+    }
+
+    /// A new connection: nothing is sent before its READY; held commands stay.
+    fn reconnect(&mut self) {
+        self.identified = false;
+        self.ready = false;
     }
 
     /// READY arrived: everything held, in order.
@@ -299,5 +317,19 @@ mod tests {
         assert_eq!(sent[0].d["status"], "dnd");
         assert_eq!(out.command(set("online"), &mut presence).map(|e| e.op), Some(3));
         assert!(Outbox::default().ready(&presence).is_empty(), "an unchanged presence is not sent twice");
+    }
+
+    #[test]
+    fn held_commands_survive_a_reconnect_and_stay_bounded() {
+        let mut out = Outbox::default();
+        let mut presence: Presence = ("online".into(), None, None);
+        let send = |i: usize| GatewayCommand::Send(Envelope { op: 99, d: serde_json::json!(i), s: None, t: None });
+        for i in 0..MAX_HELD + 5 {
+            assert_eq!(out.command(send(i), &mut presence), None);
+        }
+        out.reconnect();
+        let sent = out.ready(&presence);
+        assert_eq!(sent.len(), MAX_HELD);
+        assert_eq!(sent[0].d, serde_json::json!(5), "the oldest went first");
     }
 }
