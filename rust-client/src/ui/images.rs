@@ -16,12 +16,13 @@ const WORKERS: usize = 4;
 const CACHE_BYTES: usize = 256 * 1024 * 1024;
 const CACHE_COUNT: usize = 300;
 
-/// A finished image job: the session it was asked in, its uri, and the bytes with their cache cost (or None).
-pub type Done = (u64, String, Option<(Vec<u8>, usize)>);
+/// A finished image job: the session it was asked in, its uri, the connection and its generation, and the bytes
+/// with their cache cost (or None).
+pub type Done = (u64, String, Option<String>, u64, Option<(Vec<u8>, usize)>);
 
-/// An image job: (session, uri, url, pinned). A pinned job (a private node's media) follows no redirect: the
-/// address was checked to be on the node's own origin and must stay there.
-pub type Job = (u64, String, String, bool);
+/// An image job: (session, uri, url, connection, its generation). A node's job (Some connection) follows no
+/// redirect: the address was checked to be on the node's own origin and must stay there.
+pub type Job = (u64, String, String, Option<String>, u64);
 
 /// Starts the workers. Send jobs; the result comes back on `done`.
 pub fn spawn_workers(done: mpsc::Sender<Done>) -> mpsc::Sender<Job> {
@@ -37,12 +38,12 @@ pub fn spawn_workers(done: mpsc::Sender<Done>) -> mpsc::Sender<Job> {
                 .expect("TLS backend");
             let pinned_client = crate::api::no_redirect_client(30);
             loop {
-                let Ok(Ok((session, uri, url, pinned))) = rx.lock().map(|r| r.recv()) else { return };
-                let bytes = fetch(if pinned { &pinned_client } else { &client }, &url).and_then(|b| check(&b).map(|n| (b, n)));
+                let Ok(Ok((session, uri, url, conn, gen))) = rx.lock().map(|r| r.recv()) else { return };
+                let bytes = fetch(if conn.is_some() { &pinned_client } else { &client }, &url).and_then(|b| check(&b).map(|n| (b, n)));
                 if let Err(e) = &bytes {
                     eprintln!("cillhub: image {url}: {e}");
                 }
-                if done.send((session, uri, bytes.ok())).is_err() {
+                if done.send((session, uri, conn, gen, bytes.ok())).is_err() {
                     return; // the app has closed
                 }
             }

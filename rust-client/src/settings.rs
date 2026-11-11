@@ -284,16 +284,32 @@ impl AppSettings {
     }
 
     /// Remembers a sign-out to confirm on the node (see pending_revokes); returns its key "<id>|<node origin>".
+    /// The journal entry is saved first (its id names the keyring entry), then the token goes to the keyring (or,
+    /// if that fails, into the entry). A keyring entry therefore always has a saved journal entry that finds it;
+    /// an entry whose token is gone is cleaned up by `prune_pending_revokes`. Err: nothing durable, keep the credential.
     pub fn add_pending_revoke(&mut self, origin: &str, token: &str) -> std::io::Result<String> {
         let id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         let key = format!("{id}-{}|{origin}", self.pending_revokes.len());
-        let kept = keyring_entry(&format!("node-revoke:{key}")).is_some_and(|k| k.set_password(token).is_ok());
-        self.pending_revokes.insert(key.clone(), (!kept).then(|| token.to_string()));
+        self.pending_revokes.insert(key.clone(), Some(token.to_string())); // in the file until the keyring has it
         if let Err(e) = self.save() {
-            self.pending_revokes.remove(&key); // not durable: the caller keeps the credential
+            self.pending_revokes.remove(&key);
             return Err(e);
         }
+        if keyring_entry(&format!("node-revoke:{key}")).is_some_and(|k| k.set_password(token).is_ok()) {
+            self.pending_revokes.insert(key.clone(), None);
+            let _ = self.save(); // if this fails, the file still holds the token: still durable
+        }
         Ok(key)
+    }
+
+    /// Journal entries whose token can no longer be read (keyring entry gone) cannot be signed out: dropped.
+    pub fn prune_pending_revokes(&mut self) {
+        let readable: Vec<String> = self.pending_revoke_list().into_iter().map(|(k, _, _)| k).collect();
+        let before = self.pending_revokes.len();
+        self.pending_revokes.retain(|k, _| readable.contains(k));
+        if self.pending_revokes.len() != before {
+            let _ = self.save();
+        }
     }
 
     /// (key, node origin, token) of every sign-out not confirmed yet.

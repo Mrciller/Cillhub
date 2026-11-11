@@ -9,7 +9,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// Server-backed state. View selection, drafts, and media state belong to the platform UI.
-#[derive(Default, Debug, Clone)]
+/// Serialize: a node's data is measured by its serialized size (ui::connections::retained), every field counted.
+#[derive(Default, Debug, Clone, serde::Serialize)]
 pub struct State {
     pub session_id: Option<String>,
     pub me: Option<User>,
@@ -40,7 +41,7 @@ pub struct State {
 }
 
 /// What happened in a channel while its history snapshot was loading.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct PendingHistory {
     pub created: Vec<Message>,
     /// MESSAGE_UPDATE payloads, in order
@@ -50,6 +51,9 @@ pub struct PendingHistory {
     /// a buffer overflowed: replaying it would be wrong, the history is fetched again
     pub dirty: bool,
 }
+
+/// Members asked for per server (GET /guilds/{id}/members?limit=); an answer is cut to this.
+pub const MEMBER_PAGE: usize = 1000;
 
 /// Messages kept per channel.
 pub const MAX_WINDOW: usize = 500;
@@ -61,23 +65,10 @@ impl State {
         match name {
             "READY" => {
                 let ready: Ready = parse(payload)?;
+                // READY replaces everything (nothing of the old session accumulates); settings stay until it sends its own
+                *self = State { user_settings: std::mem::take(&mut self.user_settings), ..State::default() };
                 self.session_id = Some(ready.session_id);
                 self.me = Some(ready.user.clone());
-                self.users.clear();
-                self.guilds.clear();
-                self.channels.clear();
-                self.messages.clear();
-                self.members.clear();
-                self.presences.clear();
-                self.voice_states.clear();
-                self.relationships.clear();
-                self.read_states.clear();
-                self.stage_instances.clear();
-                self.scheduled_events.clear();
-                self.calls.clear();
-                self.watch_sessions.clear();
-                self.pending_history.clear();
-                self.paged.clear();
 
                 self.users.insert(ready.user.id.clone(), ready.user);
                 for user in ready.users {
@@ -789,7 +780,8 @@ impl State {
 
     /// Stores a guild's member list from GET /guilds/{id}/members (READY carries none).
     pub fn set_members(&mut self, guild_id: &str, list: Value) -> Result<(), serde_json::Error> {
-        let list: Vec<Value> = parse(list)?;
+        let mut list: Vec<Value> = parse(list)?;
+        list.truncate(MEMBER_PAGE); // never more than was asked for
         let map = self.members.entry(guild_id.to_string()).or_default();
         for item in list {
             let member: Member = match parse(item) {
@@ -890,6 +882,22 @@ mod tests {
         st.set_history("c".into(), snapshot);
         assert_eq!(st.messages["c"].iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), ["1", "2", "3"]);
         assert!(st.pending_history.is_empty());
+    }
+
+    /// Every field of State is serialized, so a node's data is measured in full (ui::connections::retained): a new
+    /// field must be listed here, and READY must replace it (see the READY arm).
+    #[test]
+    fn every_state_field_is_measured() {
+        let v = serde_json::to_value(State::default()).unwrap();
+        let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort();
+        assert_eq!(keys, ["calls", "canvases", "channels", "due_reminders", "guilds", "me", "members", "messages", "notes", "paged",
+            "pending_history", "presences", "read_states", "relationships", "saved_messages", "scheduled_events", "session_id",
+            "stage_instances", "typing", "user_guild_settings", "user_settings", "users", "voice_states", "watch_sessions"]);
+        let mut st = State::default();
+        st.notes.insert("u".into(), "n".into());
+        st.apply("READY", serde_json::json!({ "session_id": "s", "user": { "id": "u", "username": "u" } })).unwrap();
+        assert!(st.notes.is_empty(), "READY replaces what it does not resend");
     }
 
     /// Finding 9: counts from a server never overflow.

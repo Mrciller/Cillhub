@@ -165,6 +165,8 @@ pub struct CillhubApp {
     revoke_tx: Sender<(String, bool)>,
     revoke_rx: Receiver<(String, bool)>,
     revoking: std::collections::HashSet<String>,
+    /// Navigation asked for while drawing (connection, server): done once the frame is drawn.
+    pub pending_nav: Option<(connections::Conn, String)>,
     /// Sign-outs whose record could not be saved yet: (id, node origin, token), saved again with each retry.
     unsaved_revokes: Vec<(String, String, String)>,
     unsaved_seq: u64,
@@ -382,6 +384,7 @@ impl CillhubApp {
             revoke_rx,
             revoking: Default::default(),
             cut_off: Vec::new(),
+            pending_nav: None,
             unsaved_revokes: Vec::new(),
             unsaved_seq: 0,
             last_revoke_retry: Instant::now(),
@@ -1054,7 +1057,7 @@ impl CillhubApp {
         let gid = guild_id.to_string();
         let scope = self.scope_now("history");
         // one outstanding request per server across READYs: a newer READY waits for it, then asks again
-        let sent = self.api_get(format!("/guilds/{gid}/members?limit=1000"), move |app, r| {
+        let sent = self.api_get(format!("/guilds/{gid}/members?limit={}", crate::state::MEMBER_PAGE), move |app, r| {
             app.loading_members.remove(&gid);
             if !app.in_scope("history", scope) {
                 return app.load_members(&gid);
@@ -1975,27 +1978,32 @@ impl eframe::App for CillhubApp {
 impl CillhubApp {
     /// Attachment URLs are paths on the server the message came from (the web client's cdn()).
     pub fn absolute_url(&self, url: &str) -> String {
+        self.absolute_url_in(&self.front.clone(), url)
+    }
+
+    /// `url` of a message of `conn` as an absolute address on that connection's server.
+    pub fn absolute_url_in(&self, conn: &connections::Conn, url: &str) -> String {
         if url.starts_with("https://") || url.starts_with("http://") {
             return url.to_string();
         }
-        self.front_api()
-            .and_then(|api| api.origin.join(url).ok())
-            .map(|u| u.to_string())
-            .unwrap_or_else(|| url.to_string())
+        let api = match conn {
+            None => self.api.as_ref(),
+            Some(o) => self.conns.get(o).and_then(|c| c.api.as_ref()),
+        };
+        api.and_then(|api| api.origin.join(url).ok()).map(|u| u.to_string()).unwrap_or_else(|| url.to_string())
     }
 
-    /// Queues an image for the download workers; the bytes reach egui in headless_tick.
-    pub fn request_image(&mut self, uri: &str, url: String) {
+    /// Queues an image of a message of (`conn`, `gen`) for the download workers; the bytes reach egui in
+    /// headless_tick. A node's media only from the node's own origin (scheme, host, port), without redirects.
+    pub fn request_image(&mut self, conn: &connections::Conn, gen: u64, uri: &str, url: String) {
         if self.images.contains_key(uri) {
             return;
         }
-        // a node's media only from the node's own origin (scheme, host, port), without redirects
-        let pinned = self.front.is_some();
-        let allowed = match &self.front {
+        let allowed = match conn {
             None => true,
             Some(o) => Url::parse(&url).is_ok_and(|u| u.origin().ascii_serialization() == *o),
         };
-        let queued = allowed && self.api.is_some() && self.image_jobs.send((self.session_gen, uri.to_string(), url, pinned)).is_ok();
+        let queued = allowed && self.api.is_some() && self.image_jobs.send((self.session_gen, uri.to_string(), url, conn.clone(), gen)).is_ok();
         self.images.insert(uri.to_string(), if queued { ImageLoad::Loading } else { ImageLoad::Failed });
     }
 
@@ -2120,9 +2128,9 @@ impl CillhubApp {
         if std::mem::take(&mut self.forget_images) {
             ctx.forget_all_images();
         }
-        while let Ok((session, uri, bytes)) = self.image_rx.try_recv() {
-            if session != self.session_gen {
-                continue; // asked before a logout or another login: never shown in this session
+        while let Ok((session, uri, conn, gen, bytes)) = self.image_rx.try_recv() {
+            if !self.image_wanted(session, &conn, gen) {
+                continue; // asked before a logout, another login, or for a node connection that is gone
             }
             let state = match bytes {
                 Some((b, cost)) => {
@@ -2326,6 +2334,20 @@ impl CillhubApp {
         self.render_emoji_picker(ctx);
         self.render_confirm_delete(ctx);
         self.render_edit_channel(ctx);
+        self.navigate_after_frame();
+    }
+
+    /// An image result is used only for the session and the very node connection it was asked for.
+    pub fn image_wanted(&self, session: u64, conn: &connections::Conn, gen: u64) -> bool {
+        session == self.session_gen && self.conn_alive(conn, gen)
+    }
+
+    /// Navigation asked for while a message was drawn happens here, after the whole frame.
+    pub fn navigate_after_frame(&mut self) {
+        if let Some((conn, gid)) = self.pending_nav.take() {
+            self.show(&conn);
+            self.open_guild(&gid);
+        }
     }
 }
 

@@ -65,33 +65,24 @@ per_connection! {
     guild_name_draft: Option<String>,
 }
 
-/// What one node's data may keep, in items (a record, or 256 bytes of text; see `retained`). Anything that would
-/// pass it is refused before it goes in and the node is cut off ("too much data").
-const MAX_ITEMS: usize = if cfg!(test) { 5_000 } else { 500_000 };
+/// What one node's data may weigh (see `weight`: about 64 bytes a unit). Anything that would pass it is refused
+/// before it goes in and the node is cut off ("too much data").
+const MAX_ITEMS: usize = if cfg!(test) { 5_000 } else { 2_000_000 };
+/// How often a node's data is measured in full; in between, what goes in is added to the last measure.
+const MEASURE_EVERY: Duration = Duration::from_secs(300);
 
-/// The items a connection's data keeps: every collection a node can fill, text counted by size.
+/// What a connection's data weighs: all of it, every field (State is measured through its serialized form).
 pub fn retained(st: &State) -> usize {
-    let guilds: usize = st.guilds.values().map(|g| {
-        1 + g.roles.len() + g.channels.len() + g.threads.len() + g.members.len() + g.voice_states.len() + g.presences.len()
-            + g.emojis.len() + g.stickers.len() + g.soundboard_sounds.len() + g.stage_instances.len() + g.guild_scheduled_events.len() + g.features.len()
-    }).sum();
-    let messages: usize = st.messages.values().flatten().map(|m| {
-        1 + m.content.len() / 256 + m.mentions.len() + m.mention_roles.len() + m.attachments.len() + m.embeds.len() + m.reactions.len() + m.sticker_items.len()
-    }).sum();
-    let canvases: usize = st.canvases.values().map(|c| 1 + c.doc.len() / 256 + c.notes.len()).sum();
-    let pending: usize = st.pending_history.values().map(|p| p.created.len() + p.updates.len() + p.deleted.len()).sum();
-    guilds + messages + canvases + pending + st.channels.len() + st.users.len() + st.presences.len() + st.voice_states.len()
-        + st.members.values().map(|m| m.len()).sum::<usize>() + st.typing.values().map(Vec::len).sum::<usize>()
-        + st.scheduled_events.values().map(Vec::len).sum::<usize>() + st.stage_instances.len()
+    serde_json::to_value(st).map_or(usize::MAX, |v| weight(&v))
 }
 
-/// The most a payload can add: its objects plus its text by size.
+/// What a payload weighs: one unit per value, plus one per 64 bytes of text (keys too).
 pub fn weight(v: &Value) -> usize {
     match v {
-        Value::Object(m) => 1 + m.iter().map(|(k, v)| k.len() / 256 + weight(v)).sum::<usize>(),
-        Value::Array(a) => a.iter().map(weight).sum(),
-        Value::String(s) => s.len() / 256,
-        _ => 0,
+        Value::Object(m) => 1 + m.iter().map(|(k, v)| 1 + k.len() / 64 + weight(v)).sum::<usize>(),
+        Value::Array(a) => 1 + a.iter().map(weight).sum::<usize>(),
+        Value::String(s) => 1 + s.len() / 64,
+        _ => 1,
     }
 }
 
@@ -111,12 +102,13 @@ const NODE_EVENTS: &[&str] = &[
     "STAGE_INSTANCE_DELETE", "CHANNEL_CANVAS_UPDATE",
 ];
 
+
 pub struct NodeConn {
     pub link: NodeLink,
     rx: Option<Receiver<GatewayEvent>>,
     cmd: Option<Sender<GatewayCommand>>,
     /// requests to this node: its origin and token, nothing else
-    api: Option<crate::api::ApiClient>,
+    pub(super) api: Option<crate::api::ApiClient>,
     tries: u32,
     retry_at: Option<Instant>,
     busy: bool,
@@ -124,12 +116,15 @@ pub struct NodeConn {
     pub gen: u64,
     /// `gen` for workers: a sign-in checks it right before it posts the consent (u64::MAX once removed)
     live: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// what its data weighs: last full measure plus everything let in since (None: measure now)
+    used: usize,
+    measured_at: Option<Instant>,
 }
 
 impl NodeConn {
     fn new(gen: u64) -> Self {
         let live = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(gen));
-        Self { link: NodeLink::Connecting, rx: None, cmd: None, api: None, tries: 0, retry_at: None, busy: false, gen, live }
+        Self { link: NodeLink::Connecting, rx: None, cmd: None, api: None, tries: 0, retry_at: None, busy: false, gen, live, used: 0, measured_at: None }
     }
     fn set_gen(&mut self, gen: u64) {
         self.gen = gen;
@@ -240,10 +235,10 @@ impl CillhubApp {
         self.front.is_some()
     }
 
-    /// The image key of an attachment: per connection, so a node naming a hub attachment's id gets its own image.
-    pub fn attachment_uri(&self, id: &str, filename: &str) -> String {
-        let conn = self.front.as_deref().map_or_else(|| "hub".to_string(), |o| o.replace("://", "_").replace(':', "_"));
-        format!("bytes://attachment/{conn}/{id}/{filename}")
+    /// The image key of an attachment: per connection and its generation, so a node naming a hub attachment's id gets its own image.
+    pub fn attachment_uri(conn: &Conn, gen: u64, id: &str, filename: &str) -> String {
+        let conn = conn.as_deref().map_or_else(|| "hub".to_string(), |o| o.replace("://", "_").replace(':', "_"));
+        format!("bytes://attachment/{conn}/{gen}/{id}/{filename}")
     }
 
     /// The saved node's name for marks and rows.
@@ -403,6 +398,7 @@ impl CillhubApp {
 
     /// Sign-outs that a node has not confirmed yet (from this run or an earlier one) are tried again.
     pub fn retry_revokes(&mut self) {
+        self.settings.prune_pending_revokes();
         for (key, origin, token) in self.settings.pending_revoke_list() {
             self.revoke_async(key, origin, token);
         }
@@ -463,13 +459,11 @@ impl CillhubApp {
         let origins: Vec<String> = self.conns.keys().cloned().collect();
         for origin in origins {
             let events: Vec<GatewayEvent> = self.conns.get(&origin).and_then(|c| c.rx.as_ref()).map(|rx| rx.try_iter().take(EVENT_BUDGET).collect()).unwrap_or_default();
-            // counted once per batch; each event adds its weight before it is applied
-            let mut used = if events.is_empty() { 0 } else { self.with_conn(&Some(origin.clone()), |app| retained(&app.state)).unwrap_or(0) };
             for ev in events {
-                if self.conn_state(&Some(origin.clone())).is_none() && self.conns.get(&origin).is_some_and(|c| c.rx.is_none()) {
+                if self.conns.get(&origin).is_none_or(|c| c.rx.is_none()) {
                     break; // cut off by an earlier event of this batch
                 }
-                self.node_event(&origin, ev, &mut used);
+                self.node_event(&origin, ev);
             }
             let due = self.conns.get(&origin).is_some_and(|c| c.retry_at.is_some_and(|t| t <= Instant::now()));
             if due {
@@ -484,7 +478,7 @@ impl CillhubApp {
         }
     }
 
-    fn node_event(&mut self, origin: &str, ev: GatewayEvent, used: &mut usize) {
+    fn node_event(&mut self, origin: &str, ev: GatewayEvent) {
         let conn = Some(origin.to_string());
         match ev {
             GatewayEvent::Dispatch(name, d) => {
@@ -492,10 +486,14 @@ impl CillhubApp {
                     eprintln!("cillhub: {origin} sent {name}: dropped");
                     return;
                 }
-                // READY replaces the node's data: only its own size counts
                 let w = weight(&d);
-                *used = if name == "READY" { w } else { *used + w };
-                if *used > MAX_ITEMS {
+                if name == "READY" {
+                    // READY replaces the node's data: only its own weight counts
+                    if let Some(c) = self.conns.get_mut(origin) {
+                        (c.used, c.measured_at) = (0, Some(Instant::now()));
+                    }
+                }
+                if !self.with_conn(&conn, |app| app.within_budget(w)).unwrap_or(false) {
                     return self.cut_off_node(origin);
                 }
                 self.with_conn(&conn, |app| app.apply_node_event(&conn, &name, d));
@@ -563,7 +561,14 @@ impl CillhubApp {
     /// off (tick_nodes) and nothing may be added. The hub is not limited.
     pub fn within_budget(&mut self, extra: usize) -> bool {
         let Some(o) = self.front.clone() else { return true };
-        if retained(&self.state) + extra <= MAX_ITEMS {
+        let stale = self.conns.get(&o).is_none_or(|c| c.measured_at.is_none_or(|t| t.elapsed() >= MEASURE_EVERY));
+        let measured = stale.then(|| retained(&self.state));
+        let Some(c) = self.conns.get_mut(&o) else { return false };
+        if let Some(m) = measured {
+            (c.used, c.measured_at) = (m, Some(Instant::now()));
+        }
+        c.used = c.used.saturating_add(extra);
+        if c.used <= MAX_ITEMS {
             return true;
         }
         if !self.cut_off.contains(&o) {
@@ -977,9 +982,11 @@ mod tests {
         let mut app = CillhubApp::new(None, true);
         let a = "https://a.example:8443";
         fake_node(&mut app, a, None);
-        let hub = app.attachment_uri("1", "a.png");
-        app.show(&Some(a.into()));
-        assert_ne!(app.attachment_uri("1", "a.png"), hub);
+        let conn = Some(a.to_string());
+        let hub = CillhubApp::attachment_uri(&None, 0, "1", "a.png");
+        let gen = app.conns[a].gen;
+        assert_ne!(CillhubApp::attachment_uri(&conn, gen, "1", "a.png"), hub);
+        assert_ne!(CillhubApp::attachment_uri(&conn, gen + 1, "1", "a.png"), CillhubApp::attachment_uri(&conn, gen, "1", "a.png"), "per generation too");
     }
 
     /// Finding 5: member records for servers the node does not have are dropped, member lists are asked once per
@@ -997,6 +1004,9 @@ mod tests {
         // records that keep no user object still count
         let members: Vec<Value> = (0..MAX_ITEMS).map(|i| json!({ "guild_id": "g1", "user_id": i.to_string() })).collect();
         for m in members.chunks(EVENT_BUDGET) {
+            if app.conn_state(&conn).is_none() {
+                break;
+            }
             for m in m {
                 send(&tx, "GUILD_MEMBER_ADD", m.clone());
             }
@@ -1097,10 +1107,11 @@ mod tests {
         app.api = Some(crate::api::ApiClient::new(url::Url::parse("http://localhost:9/").unwrap(), None));
         let a = "https://a.example:8443";
         fake_node(&mut app, a, None);
-        app.show(&Some(a.into()));
-        app.request_image("bytes://x1", "http://127.0.0.1:8080/admin".into());
-        app.request_image("bytes://x2", "https://a.example/a.png".into()); // another port
-        app.request_image("bytes://x3", "https://a.example:8443/attachments/a.png".into());
+        let (conn, gen) = (Some(a.to_string()), app.conns[a].gen);
+        // the hub in front (a switch while drawing): the message's own connection still decides
+        app.request_image(&conn, gen, "bytes://x1", "http://127.0.0.1:8080/admin".into());
+        app.request_image(&conn, gen, "bytes://x2", "https://a.example/a.png".into()); // another port
+        app.request_image(&conn, gen, "bytes://x3", "https://a.example:8443/attachments/a.png".into());
         assert_eq!((app.images["bytes://x1"], app.images["bytes://x2"], app.images["bytes://x3"]), (ImageLoad::Failed, ImageLoad::Failed, ImageLoad::Loading));
         let (to, seen) = crate::api::testing::serve(1, |_| (302, String::new()));
         assert!(crate::ui::images::fetch(&crate::api::no_redirect_client(5), &format!("{to}/a.png")).is_err(), "a redirect is refused");
@@ -1120,6 +1131,7 @@ mod tests {
         app.selected_guild_id = Some("g".into());
         app.active_modal = Some(super::super::ModalKind::UserSettings);
         let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, false); // other tests may have switched the custom faces on
         let mut input = egui::RawInput::default();
         input.screen_rect = Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(1280.0, 800.0)));
         let _ = ctx.run(input.clone(), |ctx| app.render_user_settings(ctx));
@@ -1168,6 +1180,87 @@ mod tests {
         app.last_revoke_retry = Instant::now() - Duration::from_secs(61);
         app.tick_nodes();
         assert!(app.unsaved_revokes.is_empty() && app.settings.pending_revokes.len() == 1, "saved now, retried until confirmed");
+    }
+
+    /// Round 4, finding 1: short strings and arrays weigh too, member answers are cut to what was asked for.
+    #[test]
+    fn every_byte_and_record_weighs() {
+        let roles: Vec<String> = (0..1000).map(|i| i.to_string()).collect();
+        assert!(weight(&json!({ "user_id": "1", "roles": roles })) > 1000);
+        let mut st = State::default();
+        let list: Vec<Value> = (0..=crate::state::MEMBER_PAGE).map(|i| json!({ "user": { "id": i.to_string(), "username": "u" } })).collect();
+        st.set_members("g", Value::Array(list)).unwrap();
+        assert_eq!(st.members["g"].len(), crate::state::MEMBER_PAGE);
+        assert!(retained(&st) > crate::state::MEMBER_PAGE * 3, "members with their users are all counted");
+    }
+
+    /// Round 4, finding 2: the journal entry is saved before anything else; without it nothing is recorded (and
+    /// the caller keeps the credential); entries whose token is gone are cleaned up.
+    #[test]
+    fn the_sign_out_journal_comes_first() {
+        let mut s = crate::settings::AppSettings::default();
+        crate::settings::FAIL_SAVE.with(|f| f.set(true));
+        assert!(s.add_pending_revoke("https://a.example", "t").is_err());
+        crate::settings::FAIL_SAVE.with(|f| f.set(false));
+        assert!(s.pending_revokes.is_empty(), "no half-written record");
+        let k = s.add_pending_revoke("https://a.example", "t").unwrap();
+        assert_eq!(s.pending_revoke_list(), vec![(k, "https://a.example".to_string(), "t".to_string())]);
+        s.pending_revokes.insert("1-0|https://b.example".into(), None); // its keyring entry is gone
+        s.prune_pending_revokes();
+        assert_eq!(s.pending_revokes.len(), 1);
+    }
+
+    /// Round 4, finding 5: navigation from inside a message waits until the frame is drawn.
+    #[test]
+    fn navigation_from_a_message_waits_for_the_frame() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example";
+        fake_node(&mut app, a, None);
+        app.show(&Some(a.into()));
+        app.selected_guild_id = Some("g".into());
+        app.pending_nav = Some((None, "g_arena".into())); // what Joined on a hub invite card asks for
+        assert_eq!(app.front.as_deref(), Some(a), "the rest of the node's message is drawn with the node's data");
+        app.navigate_after_frame();
+        assert_eq!((app.shown.as_deref(), app.selected_guild_id.as_deref()), (None, Some("g_arena")));
+    }
+
+    /// Round 4, finding 8: image results of a node connection that was replaced or removed are not used.
+    #[test]
+    fn stale_image_results_are_dropped() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example";
+        fake_node(&mut app, a, None);
+        let (conn, gen, session) = (Some(a.to_string()), app.conns[a].gen, app.session_gen);
+        assert!(app.image_wanted(session, &conn, gen));
+        app.drop_node(a, false);
+        fake_node(&mut app, a, None); // added again
+        assert!(!app.image_wanted(session, &conn, gen));
+        assert!(!app.image_wanted(session + 1, &None, 0), "another session");
+    }
+
+    /// Round 4, finding 9: hub and node work are bounded apart; a refused send keeps its draft.
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn a_busy_queue_keeps_the_draft_and_nodes_cannot_starve_the_hub() {
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(crate::api::ApiClient::new(url::Url::parse("http://localhost:9/").unwrap(), None));
+        app.bg.pending = crate::ui::background::MAX_JOBS;
+        app.bg.node_pending = crate::ui::background::MAX_JOBS; // the nodes' queue is full, the hub's is not
+        assert!(app.spawn_bg(false, || (), |_, ()| {}), "the hub still gets work done");
+        assert!(!app.spawn_in(true, false, || (), |_, ()| {}));
+        app.bg.node_pending = 0; // now the hub's is full
+        app.bg.pending = crate::ui::background::MAX_JOBS;
+        app.selected_channel_id = Some("c_general".into());
+        app.composer_text = "keep me".into();
+        let before = app.state.messages["c_general"].len();
+        app.submit_composer();
+        assert_eq!(app.composer_text, "keep me");
+        assert_eq!(app.state.messages["c_general"].len(), before, "nothing made up locally");
+        app.new_guild_name_input = "Taylor's".into();
+        let guilds = app.state.guilds.len();
+        app.create_guild();
+        assert_eq!((app.state.guilds.len(), app.new_guild_name_input.as_str()), (guilds, "Taylor's"));
+        app.bg.pending = 1; // the one real job above
     }
 
     #[test]

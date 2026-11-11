@@ -684,12 +684,14 @@ impl CillhubApp {
             return;
         }
         // a failed request reports why and keeps the name for a retry
-        if self.api_bg(true, move |api| api.post("/guilds", json!({ "name": name })), |app, r| {
-            if let Some(val) = report(&mut app.status_banner, r) {
-                app.new_guild_name_input.clear();
-                report(&mut app.status_banner, app.state.apply("GUILD_CREATE", val));
-            }
-        }) {
+        if self.api.is_some() {
+            // refused (busy): the name stays in the field and the banner says why
+            self.api_bg(true, move |api| api.post("/guilds", json!({ "name": name })), |app, r| {
+                if let Some(val) = report(&mut app.status_banner, r) {
+                    app.new_guild_name_input.clear();
+                    report(&mut app.status_banner, app.state.apply("GUILD_CREATE", val));
+                }
+            });
             return;
         }
         let name = self.new_guild_name_input.trim().to_string();

@@ -331,6 +331,8 @@ impl CillhubApp {
             .map(|u| u.id.clone())
             .unwrap_or_else(|| "system".to_string());
         let author_game = self.state.user_game(&author_id).map(|g| g.name.clone());
+        // the connection this message came from: its media are resolved, checked and cached for it alone
+        let (msg_conn, msg_gen) = (self.front.clone(), self.front_gen());
         let game_invite = parse_game_invite(&msg.content);
         // invite cards are the hub's links (also inside a node's messages); they are looked up and joined on the hub
         let origin = self.api.as_ref().map(|a| a.origin.to_string()).unwrap_or_default();
@@ -461,10 +463,10 @@ impl CillhubApp {
                         // Attachments: images inline (fit into 400x300, click = full size), other files as a card
                         for att in &msg.attachments {
                             ui.add_space(4.0);
-                            let url = self.absolute_url(&att.url);
+                            let url = self.absolute_url_in(&msg_conn, &att.url);
                             if let Some(size) = inline_image_size(att) {
-                                let uri = self.attachment_uri(&att.id, &att.filename);
-                                self.request_image(&uri, url.clone());
+                                let uri = Self::attachment_uri(&msg_conn, msg_gen, &att.id, &att.filename);
+                                self.request_image(&msg_conn, msg_gen, &uri, url.clone());
                                 if self.images.get(&uri) == Some(&super::ImageLoad::Ready) {
                                     // `.att-image`: 1px border, sidebar behind transparent pixels
                                     let resp = Frame::new()
@@ -1067,11 +1069,8 @@ impl CillhubApp {
                         let resp = ui.add_enabled_ui(!card.joining, |ui| if joined { secondary_btn(ui, label) } else { primary_btn(ui, label) }).inner;
                         if resp.clicked() {
                             match &card.lookup {
-                                InviteLookup::Found { guild_id, .. } if joined => {
-                                    let gid = guild_id.clone();
-                                    self.show(&None);
-                                    self.open_guild(&gid);
-                                }
+                                // after this frame: the rest of this message still belongs to its own connection
+                                InviteLookup::Found { guild_id, .. } if joined => self.pending_nav = Some((None, guild_id.clone())),
                                 _ => self.join_invite(code.to_string()),
                             }
                         }
@@ -1676,16 +1675,21 @@ impl CillhubApp {
             if let Some(rep) = &reply_ref {
                 body["message_reference"] = json!({ "message_id": rep.id, "channel_id": cid });
             }
-            let (path, content) = (format!("/channels/{cid}/messages"), content.to_string());
-            self.api_bg(true, move |api| api.post(&path, body), move |app, r| match r {
+            let (path, text) = (format!("/channels/{cid}/messages"), content.to_string());
+            let reply_back = reply_ref.clone();
+            let sent = self.api_bg(true, move |api| api.post(&path, body), move |app, r| match r {
                 Ok(val) => {
                     if let Ok(msg) = crate::model::parse::<Message>(val) {
                         app.state.push_message(msg);
                     }
                 }
                 // keep the text so the user can retry; never show it as sent
-                Err(e) => app.keep_failed(&cid, FailedDraft { text: content, edit_id: None, reply: reply_ref }, e),
+                Err(e) => app.keep_failed(&cid, FailedDraft { text, edit_id: None, reply: reply_ref }, e),
             });
+            if !sent {
+                // not even sent (too busy, or the node is not connected): the draft comes back as it was
+                (self.composer_text, self.reply_to_message) = (content.to_string(), reply_back);
+            }
             return;
         }
 
