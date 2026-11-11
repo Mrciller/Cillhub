@@ -149,13 +149,24 @@ pub fn fetch_update(base: &str, current: &str) -> Result<Option<Staged>, String>
     }
 }
 
+/// Runs as root through pkexec with the staged package ($1) and its signed SHA-512 ($2): copies it into a
+/// root-only directory, checks that copy against the hash and installs only that copy, so the user-writable
+/// file cannot be swapped between the app's check and dpkg.
+pub const DEB_INSTALL: &str = r#"set -e
+t=$(mktemp -d)
+trap 'rm -rf "$t"' EXIT
+cp -- "$1" "$t/update.deb"
+echo "$2  $t/update.deb" | sha512sum -c --status
+/usr/bin/dpkg -i "$t/update.deb""#;
+
 /// Runs a staged installer after checking it once more. The caller exits afterwards (the installer relaunches the app).
 pub fn run_installer(staged: &Staged) -> std::io::Result<()> {
     use std::process::Command;
     verify_staged(staged, PINNED_KEYS).map_err(std::io::Error::other)?;
     let path = staged.path.as_path();
     match package() {
-        Some(Package::Nsis) => Command::new(path).args(["/P", "/R"]).spawn().map(|_| ()),
+        // the NSIS script's update path: silent, then it starts the app again (--force-run). Untested here (no Windows).
+        Some(Package::Nsis) => Command::new(path).args(["/S", "--force-run"]).spawn().map(|_| ()),
         Some(Package::AppImage(image)) => {
             #[cfg(unix)]
             std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o755))?;
@@ -163,11 +174,17 @@ pub fn run_installer(staged: &Staged) -> std::io::Result<()> {
             Command::new(image).spawn().map(|_| ())
         }
         Some(Package::Deb) => {
-            let s = Command::new("pkexec").args(["dpkg", "-i"]).arg(path).status()?;
+            // before dpkg: afterwards /proc/self/exe names the replaced, deleted file
+            let exe = std::env::current_exe()?;
+            let s = Command::new("pkexec")
+                .args(["/bin/sh", "-c", DEB_INSTALL, "sh"])
+                .arg(path)
+                .arg(&staged.sha512_hex)
+                .status()?;
             if !s.success() {
                 return Err(std::io::Error::other(format!("dpkg: {s}")));
             }
-            Command::new(std::env::current_exe()?).spawn().map(|_| ())
+            Command::new(exe).spawn().map(|_| ())
         }
         None => Err(std::io::Error::other("no installer for this build")),
     }
@@ -304,6 +321,20 @@ pub fn pick_file<'a>(feed: &'a Feed, pkg: &Package) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deb_install_checks_its_own_copy() {
+        let dir = private_dir(&std::env::temp_dir()).unwrap();
+        let deb = dir.join("x.deb");
+        std::fs::write(&deb, b"package bytes").unwrap();
+        let good = hex(&Sha512::digest(b"package bytes"));
+        // dpkg replaced by a check that the root-only copy exists
+        let script = DEB_INSTALL.replace("/usr/bin/dpkg -i", "test -s");
+        let run = |hash: &str| std::process::Command::new("/bin/sh").args(["-c", &script, "sh"]).arg(&deb).arg(hash).status().unwrap().success();
+        assert!(run(&good));
+        assert!(!run(&"0".repeat(128)), "a copy with another hash is not installed");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     use ed25519_dalek::{Signer, SigningKey};
 
     fn pem(k: &SigningKey) -> String {

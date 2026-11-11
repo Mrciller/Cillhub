@@ -51,9 +51,10 @@ InstallDirRegKey HKCU "Software\Cillhub" "InstallDir"
 Section "Install" SecInstall
   SetShellVarContext current
 
-  ; Terminate any running old Tauri/Electron or Rust Cillhub instance so files are unlocked
-  nsExec::ExecToLog 'taskkill /F /IM Cillhub.exe /T'
-  nsExec::ExecToLog 'taskkill /F /IM cillhub.exe /T'
+  ; Terminate any running old Tauri/Electron or Rust Cillhub instance so files are unlocked.
+  ; No /T: the app starts this installer for an update, and a tree kill would end the installer too.
+  nsExec::ExecToLog 'taskkill /F /IM Cillhub.exe'
+  nsExec::ExecToLog 'taskkill /F /IM cillhub.exe'
   Sleep 500
 
   SetOutPath "$INSTDIR"
