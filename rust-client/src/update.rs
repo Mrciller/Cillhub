@@ -1,7 +1,9 @@
-//! Auto-update from the hub's feed (latest.yml / latest-linux.yml next to the installers; scripts/publish.js writes
-//! them). The sha512 in the feed comes from the same server as the installer, so only the Ed25519 signature in
-//! <installer>.sig, made with the self-host release key over "cillhub-desktop\n<version>\n<sha512 hex>\n", makes a
-//! download trusted: an older signed installer cannot be served as a newer version. The pinned keys are compiled in.
+//! Auto-update from the hub's native feed (native-latest.yml / native-latest-linux.yml next to the installers;
+//! desktop-rust/scripts/publish.js writes them). The sha512 in the feed comes from the same server as the installer, so
+//! only the Ed25519 signature in <installer>.sig, made with the self-host release key over
+//! "cillhub-native\n<version>\n<sha512 hex>\n", makes a download trusted: an older signed installer cannot be served as
+//! a newer version, and an installer of the old desktop app (signed over "cillhub-desktop\n…") never verifies here.
+//! The pinned keys are compiled in.
 
 use base64::Engine;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -122,7 +124,7 @@ pub fn fetch_update(base: &str, current: &str) -> Result<Option<Staged>, String>
             .and_then(|r| r.error_for_status())
             .map_err(|e| e.to_string())
     };
-    let feed_name = if cfg!(windows) { "latest.yml" } else { "latest-linux.yml" };
+    let feed_name = if cfg!(windows) { "native-latest.yml" } else { "native-latest-linux.yml" };
     let yml = get(format!("{base}{feed_name}"))?.text().map_err(|e| e.to_string())?;
     let feed = parse_feed(&yml).ok_or("feed has no version")?;
     if !is_newer(&feed.version, current) {
@@ -181,7 +183,7 @@ pub fn is_newer(offered: &str, current: &str) -> bool {
 }
 
 pub fn message(sha512_hex: &str, version: &str) -> Vec<u8> {
-    format!("cillhub-desktop\n{version}\n{sha512_hex}\n").into_bytes()
+    format!("cillhub-native\n{version}\n{sha512_hex}\n").into_bytes()
 }
 
 pub fn parse_keys(pem: &str) -> Vec<VerifyingKey> {
@@ -287,14 +289,15 @@ pub fn package() -> Option<Package> {
 }
 
 pub fn pick_file<'a>(feed: &'a Feed, pkg: &Package) -> Option<&'a str> {
-    let want = match pkg {
-        Package::Nsis => ".exe",
-        Package::AppImage(_) => ".AppImage",
-        Package::Deb => ".deb",
+    // only this app's artifacts (publish.js names); no AppImage of it exists
+    let (prefix, suffix) = match pkg {
+        Package::Nsis => ("Cillhub-Rust-Setup-", ".exe"),
+        Package::AppImage(_) => return None,
+        Package::Deb => ("cillhub-desktop-rust_", "_amd64.deb"),
     };
     feed.files
         .iter()
-        .find(|f| f.ends_with(want) && !f.contains(['/', '\\', ':']) && !f.starts_with('.'))
+        .find(|f| f.starts_with(prefix) && f.ends_with(suffix) && !f.contains(['/', '\\', ':']))
         .map(String::as_str)
 }
 
@@ -410,18 +413,14 @@ mod tests {
 
     #[test]
     fn feed_and_versions() {
-        let yml = "version: 3.0.1\nfiles:\n  - url: Cillhub-3.0.1.AppImage\n    sha512: x\n    size: 1\n  - url: cillhub_3.0.1_amd64.deb\n    sha512: y\n    size: 2\npath: Cillhub-3.0.1.AppImage\nsha512: x\nreleaseDate: '2026-11-10T00:00:00.000Z'\n";
+        let yml = "version: 3.0.1\nfiles:\n  - url: Cillhub-3.0.1.AppImage\n    sha512: x\n    size: 1\n  - url: cillhub_3.0.1_amd64.deb\n    sha512: y\n    size: 2\n  - url: cillhub-desktop-rust_3.0.1_amd64.deb\n    sha512: z\n    size: 3\n  - url: Cillhub-Setup-3.0.1.exe\n    sha512: w\n    size: 4\npath: Cillhub-3.0.1.AppImage\nsha512: x\nreleaseDate: '2026-11-10T00:00:00.000Z'\n";
         let feed = parse_feed(yml).unwrap();
         assert_eq!(feed.version, "3.0.1");
-        assert_eq!(
-            pick_file(&feed, &Package::AppImage("/x".into())),
-            Some("Cillhub-3.0.1.AppImage")
-        );
-        assert_eq!(
-            pick_file(&feed, &Package::Deb),
-            Some("cillhub_3.0.1_amd64.deb")
-        );
+        // the old desktop app's artifacts are never picked
+        assert_eq!(pick_file(&feed, &Package::AppImage("/x".into())), None);
+        assert_eq!(pick_file(&feed, &Package::Deb), Some("cillhub-desktop-rust_3.0.1_amd64.deb"));
         assert_eq!(pick_file(&feed, &Package::Nsis), None);
+        assert_eq!(message("ab", "3.0.1"), b"cillhub-native\n3.0.1\nab\n");
         assert!(parse_feed("files: []").is_none());
         for evil in [
             "../../x.deb",

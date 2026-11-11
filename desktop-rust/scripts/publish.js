@@ -1,7 +1,15 @@
 // Packages and publishes the 100% pure-Rust Cillhub desktop client installers & portable archives to
 // <download dir>/desktop/ and updates <download dir>/index.html (served at /download/):
 //   DOWNLOAD_DIR=/path/to/download npm run publish      or      node scripts/publish.js /path/to/download
-// Older versions and existing signed feeds (latest.yml, latest-linux.yml) are preserved.
+// The updater's installers (setup .exe, .deb) get <file>.sig, an Ed25519 signature with the self-host release key over
+// "cillhub-native\n<version>\n<sha512 hex>\n" (rust-client/src/update.rs verifies it). The native app has its own
+// feeds, native-latest.yml and native-latest-linux.yml, written last; the old desktop app's latest.yml and
+// latest-linux.yml are left alone, and neither app accepts the other's signatures. Env like
+// selfhost/scripts/sign-release.sh:
+//   RELEASE_KEY  Ed25519 private key (required);  PASSIN  openssl -passin source (else openssl asks on the terminal)
+//   PUBLIC_KEY   the pinned key list the app ships (default selfhost/release-public-key.pem)
+//   CARGO_TARGET_DIR  where cargo built the binaries (default desktop-rust/target)
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -15,13 +23,20 @@ if (!ROOT) {
 }
 
 const PROJECT_DIR = path.join(__dirname, '..');
+const { RELEASE_KEY, PASSIN } = process.env;
+const PUBLIC_KEY = process.env.PUBLIC_KEY || path.join(PROJECT_DIR, '..', 'selfhost', 'release-public-key.pem');
+if (!RELEASE_KEY) {
+  console.error('set RELEASE_KEY to the release private key (and PASSIN for its passphrase): updates must be signed');
+  process.exit(2);
+}
+const TARGET = process.env.CARGO_TARGET_DIR || path.join(PROJECT_DIR, 'target');
 const DEST = path.join(ROOT, 'desktop');
 const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_DIR, 'package.json'), 'utf8'));
 const version = pkg.version;
 
-const linuxBin = path.join(PROJECT_DIR, 'target', 'release', 'cillhub');
-const winBin = path.join(PROJECT_DIR, 'target', 'x86_64-pc-windows-msvc', 'release', 'cillhub.exe');
-const winSetup = path.join(PROJECT_DIR, 'target', 'x86_64-pc-windows-msvc', 'release', `Cillhub-Rust-Setup-${version}.exe`);
+const linuxBin = path.join(TARGET, 'release', 'cillhub');
+const winBin = path.join(TARGET, 'x86_64-pc-windows-msvc', 'release', 'cillhub.exe');
+const winSetup = path.join(TARGET, 'x86_64-pc-windows-msvc', 'release', `Cillhub-Rust-Setup-${version}.exe`);
 
 if (!fs.existsSync(linuxBin)) {
   throw new Error(`missing ${linuxBin}: run "npm run build" first`);
@@ -107,7 +122,31 @@ try {
   const winZip = path.join(stage, `Cillhub-Rust-${version}-windows-x64.zip`);
   execFileSync('zip', ['-q', '-9', '-j', winZip, stagedWinExe], { stdio: 'inherit' });
 
-  // 5. Atomically publish all pure-Rust artifacts to <ROOT>/desktop/
+  // 5. Sign the updater's installers before anything is published, so a wrong key or passphrase publishes nothing.
+  const winFeedFile = `Cillhub-Rust-Setup-${version}.exe`;
+  const debFeedFile = `cillhub-desktop-rust_${version}_amd64.deb`;
+  const signed = { [winFeedFile]: winSetup, [debFeedFile]: debOut };
+  const sha512 = (file, enc) => crypto.createHash('sha512').update(fs.readFileSync(file)).digest(enc);
+  const keys = (pem) => (String(pem).match(/-----BEGIN PUBLIC KEY-----[A-Za-z0-9+/=\s]+-----END PUBLIC KEY-----/g) ?? [])
+    .map((p) => crypto.createPublicKey(p)).filter((k) => k.asymmetricKeyType === 'ed25519');
+  const message = (file) => Buffer.from(`cillhub-native\n${version}\n${sha512(file, 'hex')}\n`);
+  const sigs = {};
+  for (const [name, from] of Object.entries(signed)) {
+    const msg = path.join(stage, 'msg');
+    fs.writeFileSync(msg, message(from));
+    execFileSync('openssl', ['pkeyutl', '-sign', '-rawin', '-inkey', RELEASE_KEY, ...(PASSIN ? ['-passin', PASSIN] : []), '-in', msg, '-out', path.join(stage, 'sig')], { stdio: 'inherit' });
+    const sig = fs.readFileSync(path.join(stage, 'sig'));
+    if (!keys(fs.readFileSync(PUBLIC_KEY, 'utf8')).some((k) => crypto.verify(null, message(from), k, sig))) {
+      throw new Error(`the signature of ${name} does not verify against ${PUBLIC_KEY}: RELEASE_KEY is not a pinned key`);
+    }
+    sigs[`${name}.sig`] = sig;
+  }
+  // electron-builder's feed layout, which src/update.rs reads (version, then url/sha512 per file)
+  const releaseDate = new Date().toISOString();
+  const entry = (name) => `  - url: ${name}\n    sha512: ${sha512(signed[name], 'base64')}\n    size: ${fs.statSync(signed[name]).size}\n`;
+  const feed = (main) => `version: ${version}\nfiles:\n${entry(main)}path: ${main}\nsha512: ${sha512(signed[main], 'base64')}\nreleaseDate: '${releaseDate}'\n`;
+
+  // 6. Atomically publish all pure-Rust artifacts to <ROOT>/desktop/
   for (const d of [ROOT, DEST]) {
     fs.mkdirSync(d, { recursive: true, mode: 0o755 });
     fs.chmodSync(d, 0o755);
@@ -136,8 +175,9 @@ try {
   for (const [name, from] of Object.entries(rustArtifacts)) {
     put(name, { from });
   }
+  for (const [name, sig] of Object.entries(sigs)) put(name, sig); // before the feeds, like the installers
 
-  // 6. Render and atomically publish download-page/index.html -> <ROOT>/index.html
+  // 7. Render and atomically publish download-page/index.html -> <ROOT>/index.html
   const winFile = `Cillhub-Setup-${version}.exe`;
   const appImage = `Cillhub-${version}.AppImage`;
   const deb = `cillhub_${version}_amd64.deb`;
@@ -162,8 +202,12 @@ try {
   if (/\{\{\w+\}\}/.test(page)) throw new Error('unfilled template variable in download page');
   put('index.html', page, ROOT);
 
+  // 8. Feeds last, so clients only see a new version once its files are in place.
+  put('native-latest.yml', feed(winFeedFile));
+  put('native-latest-linux.yml', feed(debFeedFile));
+
   console.log(`published pure-Rust desktop client ${version} to ${DEST}`);
-  for (const f of Object.keys(rustArtifacts).sort()) {
+  for (const f of [...Object.keys(rustArtifacts), ...Object.keys(sigs), 'native-latest.yml', 'native-latest-linux.yml'].sort()) {
     const st = fs.statSync(path.join(DEST, f));
     console.log(`${(st.mode & 0o777).toString(8)} ${String(st.size).padStart(11)}  ${f}`);
   }
