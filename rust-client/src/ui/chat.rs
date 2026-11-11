@@ -205,6 +205,37 @@ impl CillhubApp {
         // If this is a Stage channel (type 13), show Stage controls banner
         if channel.kind == 13 {
             self.render_stage_banner(ui, channel);
+        } else if channel.kind == 2 {
+            let mut here: Vec<String> = self
+                .state
+                .voice_states
+                .values()
+                .filter(|vs| vs.channel_id.as_deref() == Some(channel.id.as_str()))
+                .map(|vs| {
+                    self.state
+                        .users
+                        .get(&vs.user_id)
+                        .map(|u| u.display_name().to_string())
+                        .unwrap_or_else(|| vs.user_id.clone())
+                })
+                .collect();
+            here.sort();
+            let who = if here.is_empty() {
+                "Nobody is in this channel.".to_string()
+            } else {
+                format!("In this channel: {}", here.join(", "))
+            };
+            Frame::new()
+                .fill(BG_PANEL)
+                .inner_margin(Margin::symmetric(16, 10))
+                .show(ui, |ui| {
+                    ui.label(RichText::new(who).font(bold_font(13.0)).color(TEXT_HEADER));
+                    ui.label(
+                        RichText::new(super::VOICE_UNAVAILABLE)
+                            .font(ui_font(12.5))
+                            .color(TEXT_MUTED),
+                    );
+                });
         }
 
         // 2. Bottom `.composer-wrap` reserved first so `.messages` fills remaining height
@@ -344,37 +375,11 @@ impl CillhubApp {
                         );
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let in_this_voice =
-                            self.active_voice_channel_id.as_deref() == Some(&channel.id);
-                        if !in_this_voice {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        RichText::new("JOIN STAGE")
-                                            .font(display_font(13.0))
-                                            .color(Color32::BLACK),
-                                    )
-                                    .fill(GREEN),
-                                )
-                                .clicked()
-                            {
-                                self.join_voice_channel(
-                                    channel.guild_id.clone(),
-                                    channel.id.clone(),
-                                );
-                            }
-                        } else {
-                            if ui.button("✋ Raise Hand").clicked() {
-                                self.status_banner =
-                                    Some("Requested to speak on stage.".to_string());
-                            }
-                            if ui
-                                .button(RichText::new("Leave Stage").color(DANGER))
-                                .clicked()
-                            {
-                                self.leave_voice_channel();
-                            }
-                        }
+                        ui.label(
+                            RichText::new(super::VOICE_UNAVAILABLE)
+                                .font(ui_font(12.5))
+                                .color(TEXT_MUTED),
+                        );
                     });
                 });
             });

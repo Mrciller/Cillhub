@@ -7,8 +7,6 @@ pub mod friends;
 pub mod modals;
 
 use crate::api::{normalize_server_url, ApiClient};
-use crate::audio::denoise_rnnoise::RNNOISE_FRAME_SIZE;
-use crate::audio::pipeline::{AudioMetrics, AudioPipeline};
 use crate::config::HUB_URL;
 use crate::deeplink::{parse_deep_link, DeepLinkTarget};
 use crate::games::{GameActivity, GameTracker};
@@ -47,6 +45,8 @@ pub fn report<T, E: std::fmt::Display>(banner: &mut Option<String>, r: Result<T,
         }
     }
 }
+
+pub const VOICE_UNAVAILABLE: &str = "Voice calls are not available in this app yet.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthMode {
@@ -146,15 +146,11 @@ pub struct CillhubApp {
     pub quick_switcher_query: String,
     pub canvas_doc_input: String,
 
-    // Voice & 48 kHz Audio DSP state
-    pub active_voice_guild_id: Option<String>,
-    pub active_voice_channel_id: Option<String>,
+    // Voice: no audio I/O or media transport yet, so the client never joins a call.
     pub self_mute: bool,
     pub self_deaf: bool,
     pub self_video: bool,
     pub self_stream: bool,
-    pub audio_processor: AudioPipeline,
-    pub last_audio_metrics: AudioMetrics,
 
     // Game Activity & League of Legends Lobby state
     pub game_tracker: GameTracker,
@@ -212,7 +208,6 @@ impl CillhubApp {
                     .ok()
                     .and_then(|c| c.fetch_lobby(&creds).ok().flatten())
             });
-        let audio_processor = AudioPipeline::new(48_000, &settings.audio_config);
 
         let mut app = Self {
             settings,
@@ -246,14 +241,10 @@ impl CillhubApp {
             search_query: String::new(),
             quick_switcher_query: String::new(),
             canvas_doc_input: "# Arena Match Notes\n- Mid prio at 3:15\n- Objective control".to_string(),
-            active_voice_guild_id: None,
-            active_voice_channel_id: None,
             self_mute: false,
             self_deaf: false,
             self_video: false,
             self_stream: false,
-            audio_processor,
-            last_audio_metrics: AudioMetrics::default(),
             game_tracker: tracker,
             current_game: initial_game,
             last_game_scan: Instant::now(),
@@ -282,8 +273,6 @@ impl CillhubApp {
             local_counter: 100,
             fonts_installed: false,
         };
-
-        app.run_audio_dsp_test_frame();
 
         if demo_mode {
             app.enter_demo_arena();
@@ -441,7 +430,7 @@ impl CillhubApp {
             id: "c_voice".to_string(),
             kind: 2,
             guild_id: Some(gid.clone()),
-            name: Some("Team Comms 48kHz".to_string()),
+            name: Some("Lounge".to_string()),
             status: Some("Ranked 5v5 Scrims".to_string()),
             ..Default::default()
         };
@@ -734,63 +723,10 @@ impl CillhubApp {
         ));
     }
 
-    pub fn join_voice_channel(&mut self, guild_id: Option<String>, channel_id: String) {
-        self.active_voice_guild_id = guild_id.clone();
-        self.active_voice_channel_id = Some(channel_id.clone());
-        if let Some(tx) = &self.gateway_cmd_tx {
-            let _ = tx.send(GatewayCommand::UpdateVoiceState {
-                guild_id: guild_id.clone(),
-                channel_id: Some(channel_id.clone()),
-                self_mute: self.self_mute,
-                self_deaf: self.self_deaf,
-                self_video: self.self_video,
-                self_stream: self.self_stream,
-            });
-        }
-        if let Some(me) = &self.state.me {
-            self.state.voice_states.insert(
-                me.id.clone(),
-                VoiceState {
-                    user_id: me.id.clone(),
-                    guild_id,
-                    channel_id: Some(channel_id),
-                    self_mute: self.self_mute,
-                    self_deaf: self.self_deaf,
-                    self_video: self.self_video,
-                    self_stream: self.self_stream,
-                    ..Default::default()
-                },
-            );
-        }
-        self.run_audio_dsp_test_frame();
-    }
-
-    pub fn leave_voice_channel(&mut self) {
-        let gid = self.active_voice_guild_id.take();
-        self.active_voice_channel_id = None;
-        if let Some(tx) = &self.gateway_cmd_tx {
-            let _ = tx.send(GatewayCommand::UpdateVoiceState {
-                guild_id: gid,
-                channel_id: None,
-                self_mute: self.self_mute,
-                self_deaf: self.self_deaf,
-                self_video: false,
-                self_stream: false,
-            });
-        }
-        if let Some(me) = &self.state.me {
-            self.state.voice_states.remove(&me.id);
-        }
-    }
-
-    pub fn run_audio_dsp_test_frame(&mut self) {
-        let mut frame: Vec<f32> = (0..RNNOISE_FRAME_SIZE)
-            .map(|i| {
-                let t = i as f32 / 48_000.0;
-                (2.0 * std::f32::consts::PI * 220.0 * t).sin() * 0.28
-            })
-            .collect();
-        self.last_audio_metrics = self.audio_processor.process_frame(&mut frame);
+    /// Voice calls need audio I/O and the hub's media transport, which this app does not have
+    /// yet. It does not send a voice state either: others would see a silent member.
+    pub fn show_voice_unavailable(&mut self) {
+        self.status_banner = Some(VOICE_UNAVAILABLE.to_string());
     }
 
     pub fn load_channel_history(&mut self, channel_id: &str) {
@@ -1097,54 +1033,6 @@ impl CillhubApp {
                 ui.painter()
                     .hline(r.x_range(), r.min.y, Stroke::new(1.0_f32, BORDER));
 
-                // 1. `.voice-bar` when connected to a voice or stage channel
-                if let Some(vc_id) = self.active_voice_channel_id.clone() {
-                    let vc_name = self
-                        .state
-                        .channels
-                        .get(&vc_id)
-                        .and_then(|c| c.name.clone())
-                        .unwrap_or_else(|| "Voice".to_string());
-                    Frame::new()
-                        .fill(BG_PANEL)
-                        .inner_margin(Margin::symmetric(10, 8))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
-                                    ui.label(
-                                        RichText::new("VOICE CONNECTED")
-                                            .font(display_font(12.5))
-                                            .color(GREEN),
-                                    );
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "{vc_name} · 48kHz RNNoise ({:.0} dB)",
-                                            self.last_audio_metrics.output_rms_dbfs
-                                        ))
-                                        .font(ui_font(11.0))
-                                        .color(TEXT_MUTED),
-                                    );
-                                });
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if icon_btn(
-                                        ui,
-                                        IconKind::Phone,
-                                        "Disconnect",
-                                        false,
-                                        true,
-                                    )
-                                    .clicked()
-                                    {
-                                        self.leave_voice_channel();
-                                    }
-                                });
-                            });
-                        });
-                    let vr = ui.min_rect();
-                    ui.painter()
-                        .hline(vr.x_range(), vr.max.y, Stroke::new(1.0_f32, BORDER));
-                }
-
                 // 2. `.user-panel` (`height: 48px`, `padding: 0 8px`) matching `UserPanel.tsx`
                 Frame::new()
                     .fill(BG_PANEL)
@@ -1351,8 +1239,8 @@ impl CillhubApp {
                                 let row_resp =
                                     Self::sidebar_channel_row(ui, icon_kind, name, active, None);
                                 if row_resp.clicked() {
-                                    if ch.kind == 2 {
-                                        self.join_voice_channel(Some(gid.clone()), ch.id.clone());
+                                    if matches!(ch.kind, 2 | 13) {
+                                        self.show_voice_unavailable();
                                     }
                                     self.selected_channel_id = Some(ch.id.clone());
                                     self.load_channel_history(&ch.id);
@@ -1934,6 +1822,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn voice_channel_never_claims_a_call() {
+        let mut app = CillhubApp::new(None, true);
+        let (tx, rx) = mpsc::channel();
+        app.gateway_cmd_tx = Some(tx);
+        app.selected_channel_id = Some("c_voice".into());
+        app.show_voice_unavailable();
+        let ctx = egui::Context::default();
+        install_fonts(&ctx, false);
+        let mut input = egui::RawInput::default();
+        input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
+        let out = ctx.run(input, |ctx| app.headless_tick(ctx));
+        assert!(!out.shapes.is_empty());
+        assert!(rx.try_recv().is_err(), "no voice state may be sent");
+        assert!(!app.state.voice_states.contains_key("u_me"));
+        assert_eq!(app.status_banner.as_deref(), Some(VOICE_UNAVAILABLE));
+    }
+
+    #[test]
     fn headless_ui_renders_arena_game_activity_and_lobby_invite_modal() {
         let ctx = egui::Context::default();
         install_fonts(&ctx, false);
@@ -1978,7 +1884,7 @@ mod tests {
         });
         assert!(!out_friends.shapes.is_empty());
 
-        // 4. Render User Settings (Game Activity & 48kHz Audio DSP tabs)
+        // 4. Render User Settings (Game Activity & Voice tabs)
         app.active_modal = Some(ModalKind::UserSettings);
         app.settings_tab = SettingsTab::Games;
         let _ = ctx.run(input.clone(), |ctx| {

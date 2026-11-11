@@ -1,5 +1,5 @@
 //! Modals and Right-Side Drawers: Game Lobby Invite, User Settings (Game Activity,
-//! Custom Games, League LCU, 48 kHz Audio DSP, Appearance, Security, Desktop/Updates),
+//! Custom Games, League LCU, Voice, Appearance, Security, Desktop/Updates),
 //! Server Settings & Role Permissions, Create/Join Server, Create Poll, Send Later,
 //! Quick Switcher, and Threads/Pins/Saved/Search/Canvas Drawers.
 
@@ -414,84 +414,9 @@ impl CillhubApp {
                                 }
                             }
                             SettingsTab::Voice => {
-                                ui.heading("48 kHz Real-Time Audio DSP Pipeline");
+                                ui.heading("Voice");
                                 ui.add_space(6.0);
-                                let mut cfg = self.settings.audio_config.clone();
-                                let mut changed = false;
-                                changed |= ui
-                                    .checkbox(
-                                        &mut cfg.high_pass,
-                                        "80 Hz 2nd-Order Butterworth High-Pass Filter",
-                                    )
-                                    .changed();
-                                if cfg.high_pass {
-                                    changed |= ui
-                                        .add(
-                                            Slider::new(&mut cfg.high_pass_cutoff_hz, 40.0..=160.0)
-                                                .text("High-Pass Cutoff (Hz)"),
-                                        )
-                                        .changed();
-                                }
-                                changed |= ui
-                                    .checkbox(
-                                        &mut cfg.noise_gate,
-                                        "Hysteresis Noise Gate (Attack/Hold/Release)",
-                                    )
-                                    .changed();
-                                if cfg.noise_gate {
-                                    changed |= ui
-                                        .add(
-                                            Slider::new(
-                                                &mut cfg.gate_open_threshold_db,
-                                                -75.0..=-15.0,
-                                            )
-                                            .text("Gate Open Threshold (dBFS)"),
-                                        )
-                                        .changed();
-                                    changed |= ui
-                                        .add(
-                                            Slider::new(
-                                                &mut cfg.gate_close_threshold_db,
-                                                -80.0..=-20.0,
-                                            )
-                                            .text("Gate Close Threshold (dBFS)"),
-                                        )
-                                        .changed();
-                                }
-                                changed |= ui
-                                    .checkbox(
-                                        &mut cfg.rnnoise_enabled,
-                                        "RNNoise Neural Denoiser (480-sample 10 ms frames)",
-                                    )
-                                    .changed();
-                                changed |= ui
-                                    .checkbox(
-                                        &mut cfg.limiter_enabled,
-                                        "Soft-Clipping Peak Limiter",
-                                    )
-                                    .changed();
-
-                                if changed {
-                                    self.audio_processor.update_config(&cfg);
-                                    self.settings.audio_config = cfg;
-                                    report(&mut self.status_banner, self.settings.save());
-                                }
-
-                                ui.add_space(10.0);
-                                if ui.button("🎙 Run Live 48 kHz Audio DSP Test Frame").clicked() {
-                                    self.run_audio_dsp_test_frame();
-                                }
-                                ui.label(
-                                    RichText::new(format!(
-                                        "Input: {:.1} dBFS  →  Output: {:.1} dBFS  ·  Gate: {} (gain {:.2})",
-                                        self.last_audio_metrics.input_rms_dbfs,
-                                        self.last_audio_metrics.output_rms_dbfs,
-                                        self.last_audio_metrics.gate_state,
-                                        self.last_audio_metrics.gate_gain
-                                    ))
-                                    .monospace()
-                                    .color(GREEN),
-                                );
+                                ui.label(RichText::new(super::VOICE_UNAVAILABLE).color(TEXT_MUTED));
                             }
                             SettingsTab::Appearance => {
                                 ui.heading("Appearance & Language");
