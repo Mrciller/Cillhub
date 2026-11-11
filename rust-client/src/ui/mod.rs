@@ -5,6 +5,7 @@ pub mod auth;
 pub mod chat;
 pub mod friends;
 pub mod modals;
+pub mod settings_view;
 
 use crate::api::{normalize_server_url, ApiClient};
 use crate::config::HUB_URL;
@@ -94,7 +95,6 @@ pub enum ModalKind {
     CreatePoll,
     SendLater,
     QuickSwitcher,
-    Directory,
     CreateChannel,
     Events,
 }
@@ -116,14 +116,7 @@ pub enum DrawerKind {
     Canvas,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsTab {
-    Account,
-    Games,
-    Voice,
-    Appearance,
-    Desktop,
-}
+pub use settings_view::{ServerTab, SettingsTab};
 
 pub struct CillhubApp {
     pub settings: AppSettings,
@@ -156,6 +149,10 @@ pub struct CillhubApp {
     pub active_modal: Option<ModalKind>,
     pub active_drawer: Option<DrawerKind>,
     pub settings_tab: SettingsTab,
+    pub server_tab: ServerTab,
+    pub role_draft: Option<Role>,
+    pub account_name_draft: Option<String>,
+    pub guild_name_draft: Option<String>,
     pub status_banner: Option<String>,
 
     // Chat & Composer state
@@ -296,7 +293,11 @@ impl CillhubApp {
             show_member_list: true,
             active_modal: None,
             active_drawer: None,
-            settings_tab: SettingsTab::Games,
+            settings_tab: SettingsTab::Account,
+            server_tab: ServerTab::Overview,
+            role_draft: None,
+            account_name_draft: None,
+            guild_name_draft: None,
             status_banner: None,
             composer_text: String::new(),
             pending_files: Vec::new(),
@@ -403,14 +404,11 @@ impl CillhubApp {
         self.api = Some(ApiClient::new(origin.clone(), Some(token.clone())));
         let (ev_tx, ev_rx) = mpsc::channel();
         let (cmd_tx, cmd_rx) = mpsc::channel();
-        spawn_with_commands(origin.clone(), token, ev_tx, cmd_rx);
+        spawn_with_commands(origin, token, ev_tx, cmd_rx);
         self.gateway_rx = Some(ev_rx);
         self.gateway_cmd_tx = Some(cmd_tx);
         self.authenticated = true;
         self.auth_error = None;
-        // GET /instance: the rail shows Explore servers only on a hub (like the web's useInstance)
-        self.instance_info = self.api.as_ref().and_then(|a| a.get("/instance").ok());
-        self.instance_for = origin.to_string();
         self.broadcast_presence();
     }
 
@@ -995,8 +993,8 @@ impl CillhubApp {
         }
     }
 
-    /// `.rail` (GuildRail.tsx): Direct Messages, separator, servers, add a server, and explore
-    /// servers only on a hub. No download entry: this is the desktop app.
+    /// `.rail` (GuildRail.tsx): Direct Messages, separator, servers, add a server. No download
+    /// entry (this is the desktop app) and no Explore servers (no directory in this app yet).
     fn render_guild_rail(&mut self, ui: &mut Ui) {
         let rail_rect = ui.max_rect();
         ui.painter().vline(
@@ -1046,20 +1044,6 @@ impl CillhubApp {
                 self.active_modal = Some(ModalKind::CreateJoinGuild);
             }
 
-            let hub = self
-                .instance_info
-                .as_ref()
-                .and_then(|v| v.pointer("/federation/role"))
-                .and_then(Value::as_str)
-                == Some("hub");
-            if hub {
-                let dir_resp = Self::rail_icon_slot(ui, rail_rect.min.x, false, true, |painter, rect, fg| {
-                    draw_icon(painter, Rect::from_center_size(rect.center(), Vec2::splat(24.0)), IconKind::Compass, fg);
-                });
-                if dir_resp.on_hover_text(tr("Explore servers")).clicked() {
-                    self.active_modal = Some(ModalKind::Directory);
-                }
-            }
         });
     }
 
@@ -1854,22 +1838,18 @@ impl CillhubApp {
             self.edit_channel = None;
         }
 
-        // Full-size image view (the web client's lightbox)
-        if let Some((uri, name, url)) = self.lightbox.clone() {
-            let mut open = true;
+        // Full-size image view (the web's lightbox: dimmed page, the image, a link to open it)
+        if let Some((uri, _name, url)) = self.lightbox.clone() {
             let max = ctx.screen_rect().size() * 0.85;
             let banner = &mut self.status_banner;
-            egui::Window::new(name)
-                .open(&mut open)
-                .collapsible(false)
-                .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-                .show(ctx, |ui| {
-                    ui.add(egui::Image::new(uri.as_str()).max_size(max).shrink_to_fit());
-                    if ui.button("Open in Browser").clicked() {
-                        report(banner, open::that(&url));
-                    }
-                });
-            if !open {
+            let (_, dim) = modals::overlay(ctx, "lightbox", max.x.min(900.0), |ui| {
+                ui.add(egui::Image::new(uri.as_str()).max_size(max - Vec2::splat(48.0)).shrink_to_fit());
+                ui.add_space(8.0);
+                if ui.add(egui::Label::new(RichText::new(tr("Open in Browser")).color(FOCUS)).sense(Sense::click())).clicked() {
+                    report(banner, open::that(&url));
+                }
+            });
+            if dim {
                 self.lightbox = None;
             }
         }
@@ -2099,7 +2079,7 @@ mod tests {
         let _ = ctx.run(input.clone(), |ctx| {
             app.headless_tick(ctx);
         });
-        app.settings_tab = SettingsTab::Voice;
+        app.settings_tab = SettingsTab::Appearance;
         let out_voice = ctx.run(input, |ctx| {
             app.headless_tick(ctx);
         });
