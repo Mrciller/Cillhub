@@ -4,6 +4,7 @@
 pub mod auth;
 pub mod chat;
 pub mod friends;
+pub mod images;
 pub mod modals;
 pub mod settings_view;
 
@@ -159,8 +160,9 @@ pub struct CillhubApp {
     pub composer_text: String,
     /// Inline image attachments by egui URI; bytes arrive from fetch threads.
     pub images: std::collections::HashMap<String, ImageLoad>,
-    image_tx: Sender<(String, Option<Vec<u8>>)>,
+    image_jobs: Sender<(String, String)>,
     image_rx: Receiver<(String, Option<Vec<u8>>)>,
+    image_cache: images::Cache,
     /// Full-size image view: (egui URI, file name, absolute URL).
     pub lightbox: Option<(String, String, String)>,
     /// Set by logout: the next frame drops every image egui holds.
@@ -308,8 +310,9 @@ impl CillhubApp {
             picked_tx,
             picked_rx,
             images: Default::default(),
-            image_tx,
+            image_jobs: images::spawn_workers(image_tx),
             image_rx,
+            image_cache: images::Cache::default(),
             lightbox: None,
             forget_images: false,
             show_composer_plus_menu: false,
@@ -450,6 +453,7 @@ impl CillhubApp {
         // account-bound views and caches
         self.lightbox = None;
         self.images.clear();
+        self.image_cache = images::Cache::default();
         self.forget_images = true;
         self.revealed_spoilers.clear();
         self.msg_menu = None;
@@ -1705,29 +1709,13 @@ impl CillhubApp {
             .unwrap_or_else(|| url.to_string())
     }
 
-    /// Starts one background download per image; the bytes reach egui in headless_tick.
+    /// Queues an image for the download workers; the bytes reach egui in headless_tick.
     pub fn request_image(&mut self, uri: &str, url: String) {
         if self.images.contains_key(uri) {
             return;
         }
-        self.images.insert(uri.to_string(), ImageLoad::Loading);
-        let (Some(api), tx, uri) = (self.api.clone(), self.image_tx.clone(), uri.to_string()) else {
-            self.images.insert(uri.to_string(), ImageLoad::Failed);
-            return;
-        };
-        std::thread::spawn(move || {
-            let bytes = api
-                .client
-                .get(&url)
-                .send()
-                .and_then(|r| r.error_for_status())
-                .and_then(|r| r.bytes())
-                .map(|b| b.to_vec());
-            if let Err(e) = &bytes {
-                eprintln!("cillhub: image {url}: {e}");
-            }
-            let _ = tx.send((uri, bytes.ok())); // the app may have closed
-        });
+        let queued = self.api.is_some() && self.image_jobs.send((uri.to_string(), url)).is_ok();
+        self.images.insert(uri.to_string(), if queued { ImageLoad::Loading } else { ImageLoad::Failed });
     }
 
     /// Saves a theme or language choice locally and, for what the hub stores, in the user's
@@ -1816,6 +1804,10 @@ impl CillhubApp {
         while let Ok((uri, bytes)) = self.image_rx.try_recv() {
             let state = match bytes {
                 Some(b) => {
+                    for old in self.image_cache.add(uri.clone(), b.len()) {
+                        ctx.forget_image(&old);
+                        self.images.remove(&old);
+                    }
                     ctx.include_bytes(uri.clone(), b);
                     ImageLoad::Ready
                 }

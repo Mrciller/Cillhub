@@ -1294,12 +1294,17 @@ impl CillhubApp {
                                             let uri = format!("bytes://pending/{}", path.display());
                                             if is_img && !self.images.contains_key(&uri) {
                                                 // read once; egui keeps the bytes under the uri
-                                                let state = match std::fs::read(path) {
-                                                    Ok(b) => {
+                                                let bytes = std::fs::metadata(path)
+                                                    .ok()
+                                                    .filter(|m| m.len() <= super::images::MAX_IMAGE_BYTES)
+                                                    .and_then(|_| std::fs::read(path).ok())
+                                                    .filter(|b| super::images::check(b).is_ok());
+                                                let state = match bytes {
+                                                    Some(b) => {
                                                         ui.ctx().include_bytes(uri.clone(), b);
                                                         super::ImageLoad::Ready
                                                     }
-                                                    Err(_) => super::ImageLoad::Failed,
+                                                    None => super::ImageLoad::Failed,
                                                 };
                                                 self.images.insert(uri.clone(), state);
                                             }
