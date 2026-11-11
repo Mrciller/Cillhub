@@ -21,7 +21,7 @@ class Prefs(ctx: Context) {
         get() = p.getString("server_url", null)
         set(v) = p.edit().putString("server_url", v).apply()
 
-    /** "system" | "light" | "dark" */
+    /** "system" | "light" | "dark" | "ash" | "onyx" */
     var theme: String
         get() = p.getString("theme", "system") ?: "system"
         set(v) = p.edit().putString("theme", v).apply()

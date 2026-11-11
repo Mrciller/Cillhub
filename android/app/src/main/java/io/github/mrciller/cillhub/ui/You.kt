@@ -408,7 +408,8 @@ private fun AppearanceSettings() {
     val dynamic by AppearancePrefs.dynamic.collectAsStateWithLifecycle()
     Section(R.string.theme)
     Column(Modifier.selectableGroup()) {
-        for ((v, l) in listOf("system" to R.string.theme_system, "dark" to R.string.theme_dark, "light" to R.string.theme_light))
+        for ((v, l) in listOf("system" to R.string.theme_system, "dark" to R.string.theme_dark, "light" to R.string.theme_light,
+            "ash" to R.string.theme_ash, "onyx" to R.string.theme_onyx))
             RadioRow(s(l), theme == v) { prefs.theme = v; AppearancePrefs.theme.value = v }
     }
     if (Build.VERSION.SDK_INT >= 31) ListItem(
