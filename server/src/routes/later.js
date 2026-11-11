@@ -6,7 +6,7 @@ import { P, has, need, channelPerms, isThread, MESSAGEABLE } from '../permission
 import { sendToUsers } from '../gateway.js';
 import { prepare, send, checkVerification, checkThreadOpen } from '../compose.js';
 import { moderateMessage } from '../automod.js';
-import { messageObj, getChannel } from '../message.js';
+import { messageObj, getChannel, SOURCE_GONE } from '../message.js';
 import { pushTo } from '../push.js';
 import { addJob, schedule } from '../timers.js';
 import { blockedEither } from './relationships.js';
@@ -118,7 +118,7 @@ async function deliverScheduled(r) {
     sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { ...gone, message_id: r.message_id });
   } catch (e) {
     if (!(e instanceof HttpError)) {
-      if (!(e.code === 'ENOENT' && e.syscall === 'copyfile') && Date.now() - r.send_at < GIVE_UP) throw e;
+      if (e.code !== SOURCE_GONE && Date.now() - r.send_at < GIVE_UP) throw e;
       console.error('scheduled message dropped:', e);
     }
     sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { ...gone, failed: true, code: e.body?.code ?? 0 });

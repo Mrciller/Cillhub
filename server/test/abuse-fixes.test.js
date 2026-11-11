@@ -130,7 +130,9 @@ test('a key in a live overflow entry stays there when room frees up, until that 
   const ov = capKey(map, 3, stale, 'victim', 'report', '198.51.100.7');
   assert.notEqual(ov, 'victim', 'full: overflow');
   map.set(ov, { count: 5, reset: Date.now() + 2000 }); // exhausted there
-  await wait(1100); // the short entries expire and the next sweep may run
+  await wait(1100); // the short entries expire
+  for (const [k, v] of map) if (stale(v)) map.delete(k);
+  assert.ok(map.size < 3, 'room again');
   assert.equal(capKey(map, 3, stale, 'victim', 'report', '198.51.100.7'), ov, 'still the exhausted overflow entry');
   assert.equal(capKey(map, 3, stale, 'newcomer', 'report', '198.51.100.7'), ov, 'its shard too');
   await wait(1000);

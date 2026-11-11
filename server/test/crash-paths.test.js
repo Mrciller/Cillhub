@@ -111,3 +111,40 @@ test('one failing insert hook does not stop the next one', async () => {
   assert.equal(m.content, 'hi');
   assert.equal(seen, 1);
 });
+
+test('a scheduled forward whose copy fails while its source file is there stays scheduled', { timeout: 20_000 }, async () => {
+  const { run, get } = await import('../src/db.js');
+  await import('../src/routes/later.js');
+  const { startTimers, stopTimers } = await import('../src/timers.js');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const fsp = (await import('node:fs/promises')).default;
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const { dirname } = await import('node:path');
+  run("INSERT OR IGNORE INTO users (id, email, username, password_hash, salt) VALUES ('9001', 'taylor@example.com', 'taylor', 'x', 'x')");
+  run("INSERT OR IGNORE INTO channels (id, type) VALUES ('9002', 1), ('9005', 1)");
+  run("INSERT INTO dm_recipients (channel_id, user_id) VALUES ('9002', '9001'), ('9005', '9001')");
+  run("INSERT INTO messages (id, channel_id, author_id, content, timestamp) VALUES ('9003', '9002', '9001', 'file', ?)", new Date().toISOString());
+  run("INSERT INTO attachments (id, message_id, channel_id, filename, size, content_type) VALUES ('9004', '9003', '9002', 'a.txt', 1, 'text/plain')");
+  mkdirSync(join(process.env.DATA_DIR, 'attachments', '9002'), { recursive: true });
+  writeFileSync(join(process.env.DATA_DIR, 'attachments', '9002', '9004'), 'x');
+  run("INSERT INTO scheduled_messages (id, user_id, channel_id, body, send_at, created_at) VALUES ('9006', '9001', '9005', ?, ?, ?)",
+    JSON.stringify({ message_reference: { type: 1, channel_id: '9002', message_id: '9003' } }), Date.now() - 1000, Date.now());
+  // the destination folder disappears right before the copy (as during maintenance): ENOENT, but the source is there
+  const copy = fsp.copyFile;
+  fsp.copyFile = async (from, to, ...rest) => { rmSync(dirname(to), { recursive: true, force: true }); return copy(from, to, ...rest); };
+  syncBuiltinESMExports();
+  try {
+    startTimers();
+    await wait(500);
+  } finally {
+    stopTimers();
+    fsp.copyFile = copy;
+    syncBuiltinESMExports();
+  }
+  assert.ok(get("SELECT 1 FROM scheduled_messages WHERE id = '9006'"), 'kept for a retry');
+  startTimers();
+  await wait(5500); // the retry after the pause
+  stopTimers();
+  assert.equal(get("SELECT 1 FROM scheduled_messages WHERE id = '9006'"), undefined);
+  assert.ok(get("SELECT 1 FROM messages WHERE channel_id = '9005' AND snapshot IS NOT NULL"), 'sent on the retry');
+});
