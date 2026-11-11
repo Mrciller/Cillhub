@@ -66,6 +66,17 @@ test('an upload whose temp file cannot be written fails the request instead of t
   await assert.rejects(parseMultipart(req, { maxTotal: 1e6, maxFile: 1e6 }), /ENOENT/);
 });
 
+test('an overdue async job that is still running does not make the other jobs run again and again', async () => {
+  const { addJob, startTimers, stopTimers } = await import('../src/timers.js');
+  let hourly = 0, slowDone = false;
+  addJob({ name: 'hourly', next: () => Date.now() + 3_600_000, run: () => { hourly++; } });
+  addJob({ name: 'slow', next: () => (slowDone ? Date.now() + 3_600_000 : 0), run: async () => { await wait(100); slowDone = true; } });
+  startTimers();
+  await wait(250);
+  stopTimers();
+  assert.equal(hourly, 1, `hourly ran ${hourly} times while the overdue job was busy`);
+});
+
 test('an async timer job that rejects is logged and does not run twice at once', async () => {
   const { addJob, startTimers, stopTimers } = await import('../src/timers.js');
   let runs = 0;

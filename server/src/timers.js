@@ -13,7 +13,7 @@ function fire() {
     if (j.busy) continue; // an async run from the last firing is still going
     try {
       const r = j.run(now);
-      if (r?.then) (j.busy = true, r.catch(e => console.error(`timer ${j.name} failed:`, e)).finally(() => { j.busy = false; }));
+      if (r?.then) (j.busy = true, r.catch(e => console.error(`timer ${j.name} failed:`, e)).finally(() => { j.busy = false; if (handle) schedule(); }));
     } catch (e) { console.error(`timer ${j.name} failed:`, e); }
   }
   schedule();
@@ -24,6 +24,7 @@ export function schedule() {
   const now = Date.now();
   let next = now + MAX_WAIT;
   for (const j of jobs) {
+    if (j.busy) continue; // re-armed when it settles; its overdue deadline would fire the timer again and again
     try { next = Math.min(next, j.next() ?? Infinity); } catch (e) { console.error(`timer ${j.name} failed:`, e); }
   }
   clearTimeout(handle);
