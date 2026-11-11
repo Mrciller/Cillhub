@@ -19,6 +19,18 @@ use crate::theme::ui_font;
 
 impl CillhubApp {
     pub fn render_modals(&mut self, ctx: &Context) {
+        if let Some(invite) = self.pending_game_invite.clone() {
+            let (cancel, dim) = overlay(ctx, "game_invite", 448.0, |ui| {
+                modal_title(ui, tr("Game invite"));
+                self.render_game_invite_card(ui, &invite);
+                ui.add_space(12.0);
+                secondary_btn(ui, tr("Cancel")).clicked()
+            });
+            if cancel || dim {
+                self.pending_game_invite = None;
+            }
+            return;
+        }
         let Some(modal) = self.active_modal else {
             return;
         };

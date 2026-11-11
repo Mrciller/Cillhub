@@ -203,6 +203,8 @@ pub struct CillhubApp {
     pub lobby_form_queue: String,
     pub lobby_form_host: String,
     pub lobby_form_party_id: String,
+    /// A game invite from a deep link, waiting for the user to click Join.
+    pub pending_game_invite: Option<GameInviteData>,
     pub lobby_form_members: u32,
     pub lobby_form_max_members: u32,
     pub custom_game_exe_input: String,
@@ -331,6 +333,7 @@ impl CillhubApp {
             lobby_form_queue: "Ranked Solo/Duo".to_string(),
             lobby_form_host: String::new(),
             lobby_form_party_id: "arena-party-77".to_string(),
+            pending_game_invite: None,
             lobby_form_members: 2,
             lobby_form_max_members: 5,
             custom_game_exe_input: String::new(),
@@ -381,9 +384,8 @@ impl CillhubApp {
                     self.join_invite_code_input = code;
                     self.join_invite_code();
                 }
-                DeepLinkTarget::GameInvite(invite) => {
-                    self.join_game_party(&invite);
-                }
+                // shown first: only the user's click on Join accepts it
+                DeepLinkTarget::GameInvite(invite) => self.pending_game_invite = Some(invite),
             }
         }
     }
@@ -759,6 +761,7 @@ impl CillhubApp {
     /// Join Party on a game invite card: accepts the invite in the local League client, like the
     /// web's desktop bridge (acceptLeagueInvite).
     pub fn join_game_party(&mut self, invite: &GameInviteData) {
+        self.pending_game_invite = None;
         let client = find_lockfile_path(self.game_tracker.last_processes())
             .and_then(|p| read_lockfile(&p))
             .and_then(|creds| LeagueClient::new().ok().map(|c| (c, creds)));

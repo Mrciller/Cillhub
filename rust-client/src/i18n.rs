@@ -53,6 +53,7 @@ const NATIVE_DE: &[(&str, &str)] = &[
     ("Share League Lobby ({members}/{max})", "League-Lobby teilen ({members}/{max})"),
     ("Session expired. Please log in again.", "Sitzung abgelaufen. Bitte melde dich erneut an."),
     ("Gateway reconnecting: {error}", "Verbindung wird wiederhergestellt: {error}"),
+    ("Game invite", "Spieleinladung"),
 ];
 
 fn table() -> &'static HashMap<&'static str, &'static str> {

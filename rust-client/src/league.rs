@@ -99,7 +99,7 @@ pub fn parse_game_invite(content: &str) -> Option<GameInviteData> {
     }
     let game = params.get("game")?.trim().to_string();
     let party_id = params.get("partyId")?.trim().to_string();
-    if game.is_empty() || party_id.is_empty() {
+    if game.is_empty() || !valid_invite_id(&party_id) {
         return None;
     }
     let queue_name = params
@@ -138,6 +138,12 @@ pub fn parse_game_invite(content: &str) -> Option<GameInviteData> {
         members,
         max_members,
     })
+}
+
+/// Invitation and party ids of the League client are UUIDs. Anything outside this grammar is refused, so an id
+/// can never add path segments, a query or a fragment to a request on the local client.
+pub fn valid_invite_id(id: &str) -> bool {
+    (1..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// Formats `GameInviteData` as a `cillhub://game-invite?...` link (matching client/src/chat/GameInvite.tsx).
@@ -188,7 +194,7 @@ pub fn parse_lockfile(content: &str) -> Option<LockfileCredentials> {
         parts[4].to_string()
     };
 
-    if password.is_empty() || port == 0 {
+    if password.is_empty() || port == 0 || !matches!(protocol.as_str(), "http" | "https") {
         return None;
     }
 
@@ -433,28 +439,25 @@ impl LeagueClient {
                 "{}://127.0.0.1:{}/lol-lobby/v2/received-invitations",
                 creds.protocol, creds.port
             );
-            if let Ok(resp) = self
+            let list: serde_json::Value = self
                 .client
                 .get(&list_url)
                 .header("Authorization", self.make_auth_header(&creds.password))
                 .send()
-            {
-                if let Ok(arr) = resp.json::<serde_json::Value>() {
-                    arr.as_array()
-                        .and_then(|a| a.first())
-                        .and_then(|item| item.get("invitationId"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("default")
-                        .to_string()
-                } else {
-                    "default".to_string()
-                }
-            } else {
-                "default".to_string()
-            }
+                .and_then(|r| r.json())
+                .map_err(|e| e.to_string())?;
+            list.as_array()
+                .and_then(|a| a.first())
+                .and_then(|item| item.get("invitationId"))
+                .and_then(|v| v.as_str())
+                .ok_or("no pending League invitation")?
+                .to_string()
         } else {
             invitation_id.to_string()
         };
+        if !valid_invite_id(&resolved_id) {
+            return Err("invalid League invitation id".into());
+        }
 
         let url = format!(
             "{}://127.0.0.1:{}/lol-lobby/v2/received-invitations/{}/accept",
@@ -547,5 +550,17 @@ mod tests {
         let msg = format!("Join my League of Legends party!\n{url}");
         let parsed = parse_game_invite(&msg).expect("should parse game invite");
         assert_eq!(parsed, invite);
+    }
+
+    #[test]
+    fn invite_ids_cannot_leave_their_path_segment() {
+        for evil in ["../../../some-endpoint%23", "a%2Fb", "a%3Fx%3D1", "a%23", "a.b", "a+b", ""] {
+            let url = format!("cillhub://game-invite?game=League&partyId={evil}");
+            assert_eq!(parse_game_invite(&url), None, "{evil}");
+        }
+        assert!(valid_invite_id("6f1c2e3a-9b8d-4c7e-a1f2-0123456789ab"));
+        assert!(!valid_invite_id(&"a".repeat(65)));
+        assert!(parse_lockfile("LeagueClient:1:2:pw:file").is_none());
+        assert!(parse_lockfile("LeagueClient:1:2:pw:http").is_some());
     }
 }
