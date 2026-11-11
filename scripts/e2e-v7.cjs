@@ -545,7 +545,8 @@ async function main() {
       const entry = alice.locator('.admin-card').filter({ hasText: ARENA })
       await entry.getByText('posts invite spam in other servers').waitFor()
       await entry.getByRole('button', { name: 'Hide' }).click()
-      await modal(alice, `Hide ${ARENA} from the directory?`).getByLabel('Reason (the server owner sees it)').fill('spam reports')
+      await modal(alice, `Hide ${ARENA} from the directory?`).getByLabel('Reason').selectOption('spam') // 7.10.3: a statement of reasons
+      await modal(alice, `Hide ${ARENA} from the directory?`).getByLabel('Explanation for the affected user').fill('spam reports')
       await confirmIn(alice, `Hide ${ARENA} from the directory?`, 'Hide')
       await alice.getByText('Hidden from the directory.').waitFor()
       await alice.getByRole('button', { name: 'Hidden' }).click()

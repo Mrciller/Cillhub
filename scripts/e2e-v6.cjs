@@ -460,6 +460,9 @@ async function main() {
       await drawer.getByRole('button', { name: 'Delete Server' }).click()
       await modal(alice, `Delete ${DEN}?`).getByLabel('Type the server name to confirm').fill(DEN)
       await confirmIn(alice, `Delete ${DEN}?`, 'Continue')
+      await modal(alice, `Delete ${DEN}?`).getByLabel('Reason').selectOption('spam') // 7.10.3: a statement of reasons for the owner
+      await modal(alice, `Delete ${DEN}?`).getByLabel('Explanation for the affected user').fill('Spam links')
+      await confirmIn(alice, `Delete ${DEN}?`, 'Continue')
       await modal(alice, `Delete ${DEN}?`).getByLabel('Authentication or backup code').fill(await freshCode(aliceSecret))
       await confirmIn(alice, `Delete ${DEN}?`, 'Delete Server')
       await until('the server to be gone for Bob', async () => (await api(bob, 'GET', `/guilds/${den.id}`)).status === 404)
@@ -486,6 +489,10 @@ async function main() {
       const t = modal(alice, /^Timeout /)
       await t.getByLabel('Minutes (1 to 40320)').fill('30')
       await t.getByRole('button', { name: 'Timeout', exact: true }).click()
+      const why = modal(alice, 'Author timed out') // 7.10.3: a statement of reasons for Carol
+      await why.getByLabel('Reason').selectOption('spam')
+      await why.getByLabel('Explanation for the affected user').fill('Spam links')
+      await why.getByRole('button', { name: 'Confirm', exact: true }).click()
       await card.waitFor({ state: 'detached' })
       const m = await ok(api(alice, 'GET', `/guilds/${ids.guild}/members/${ids.carol}`))
       check(Date.parse(m.communication_disabled_until) > Date.now() + 25 * 60e3, `Carol timed out until ${m.communication_disabled_until}`)
