@@ -163,6 +163,8 @@ pub struct CillhubApp {
     image_rx: Receiver<(String, Option<Vec<u8>>)>,
     /// Full-size image view: (egui URI, file name, absolute URL).
     pub lightbox: Option<(String, String, String)>,
+    /// Set by logout: the next frame drops every image egui holds.
+    forget_images: bool,
     /// Results of the file dialog, which runs off the UI thread (a stuck portal must not freeze the app).
     pub picked_tx: Sender<Vec<std::path::PathBuf>>,
     picked_rx: Receiver<Vec<std::path::PathBuf>>,
@@ -309,6 +311,7 @@ impl CillhubApp {
             image_tx,
             image_rx,
             lightbox: None,
+            forget_images: false,
             show_composer_plus_menu: false,
             plus_anchor: Pos2::ZERO,
             poll_answers: vec![String::new(), String::new()],
@@ -410,7 +413,16 @@ impl CillhubApp {
         self.gateway_cmd_tx = Some(cmd_tx);
         self.authenticated = true;
         self.auth_error = None;
+        self.clear_auth_secrets();
         self.broadcast_presence();
+    }
+
+    /// Nothing that could log in again stays in memory once it has been used.
+    fn clear_auth_secrets(&mut self) {
+        self.auth_password_input.clear();
+        self.auth_mfa_ticket.clear();
+        self.auth_mfa_code.clear();
+        self.auth_reset_token.clear();
     }
 
     pub fn logout(&mut self) {
@@ -431,6 +443,33 @@ impl CillhubApp {
         self.composer_text.clear();
         report(&mut self.status_banner, self.settings.set_token(None));
         self.active_modal = None;
+        self.clear_auth_secrets();
+        self.auth_login_input.clear();
+        self.auth_email_input.clear();
+        self.auth_mode = AuthMode::Login;
+        // account-bound views and caches
+        self.lightbox = None;
+        self.images.clear();
+        self.forget_images = true;
+        self.revealed_spoilers.clear();
+        self.msg_menu = None;
+        self.emoji_picker = None;
+        self.confirm_delete = None;
+        self.edit_channel = None;
+        self.toolbar_msg = None;
+        self.active_drawer = None;
+        self.role_draft = None;
+        self.account_name_draft = None;
+        self.guild_name_draft = None;
+        self.add_friend_input.clear();
+        self.add_friend_result = None;
+        self.events.clear();
+        self.search_query.clear();
+        self.quick_switcher_query.clear();
+        self.canvas_doc_input.clear();
+        self.custom_status_input.clear();
+        self.pending_game_invite = None;
+        self.show_composer_plus_menu = false;
     }
 
     pub fn enter_demo_arena(&mut self) {
@@ -1771,6 +1810,9 @@ impl CillhubApp {
         while let Ok(paths) = self.picked_rx.try_recv() {
             self.pending_files.extend(paths);
         }
+        if std::mem::take(&mut self.forget_images) {
+            ctx.forget_all_images();
+        }
         while let Ok((uri, bytes)) = self.image_rx.try_recv() {
             let state = match bytes {
                 Some(b) => {
@@ -1998,7 +2040,19 @@ mod tests {
     #[test]
     fn logout_forgets_the_session() {
         let mut app = CillhubApp::new(None, true);
+        app.auth_login_input = "alex".into();
+        app.auth_password_input = "secret".into();
+        app.auth_mfa_ticket = "ticket".into();
+        app.auth_mfa_code = "123456".into();
+        app.auth_reset_token = "reset".into();
+        app.auth_mode = AuthMode::Mfa;
+        app.lightbox = Some(("bytes://a".into(), "a.png".into(), "https://x/a.png".into()));
+        app.images.insert("bytes://a".into(), ImageLoad::Ready);
         app.logout();
+        assert!(app.auth_login_input.is_empty() && app.auth_password_input.is_empty());
+        assert!(app.auth_mfa_ticket.is_empty() && app.auth_mfa_code.is_empty() && app.auth_reset_token.is_empty());
+        assert_eq!(app.auth_mode, AuthMode::Login);
+        assert!(app.lightbox.is_none() && app.images.is_empty());
         assert!(app.state.guilds.is_empty() && app.state.me.is_none());
         assert!(app.selected_guild_id.is_none() && app.selected_channel_id.is_none());
     }

@@ -685,6 +685,8 @@ impl CillhubApp {
                 }),
             ) {
                 Ok(_) => {
+                    self.auth_reset_token.clear();
+                    self.auth_password_input.clear();
                     self.auth_mode = AuthMode::Login;
                     self.status_banner =
                         Some(tr("Password updated! You can now log in.").to_string());
