@@ -34,7 +34,7 @@ pub mod palette {
     pub const ACCENT_HOVER: Color32 = Color32::from_rgb(0xff, 0x87, 0x47); // --accent-hover: #ff8747
     pub const ON_ACCENT: Color32 = Color32::from_rgb(0x17, 0x09, 0x00); // --on-accent: #170900
     pub const ACCENT_SOFT: Color32 = Color32::from_rgb(0x3a, 0x20, 0x14);
-    pub const ARGON_ACCENT: Color32 = Color32::from_rgb(0x00, 0xd2, 0xeb); // #00d2eb (Betacord Argon)
+    pub const ARGON_ACCENT: Color32 = Color32::from_rgb(0x00, 0xd2, 0xeb); // #00d2eb
     pub const GREEN: Color32 = Color32::from_rgb(0x2f, 0xd3, 0x6a); // --online: #2fd36a
     pub const YELLOW: Color32 = Color32::from_rgb(0xff, 0xb0, 0x20); // --idle: #ffb020
     pub const DANGER: Color32 = Color32::from_rgb(0xff, 0x4d, 0x4d); // --danger: #ff4d4d
@@ -167,7 +167,7 @@ pub fn apply_theme(ctx: &Context, theme_name: &str, font_scale: f32) {
 
     if !is_light {
         let (chat_bg, sidebar_bg, input_bg, accent) = match theme_name {
-            "argon" | "betacord" => (
+            "argon" => (
                 Color32::from_rgb(0x14, 0x1a, 0x26),
                 Color32::from_rgb(0x0f, 0x14, 0x1e),
                 Color32::from_rgb(0x1b, 0x23, 0x33),

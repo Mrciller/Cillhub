@@ -415,7 +415,12 @@ impl CillhubApp {
                             ui.add_space(24.0);
                             ui.vertical_centered(|ui| {
                                 ui.label(
-                                    RichText::new("No one's around to play with Wumpus.")
+                                    RichText::new(match self.friends_tab {
+                                        FriendsTab::Pending => "There are no pending friend requests.",
+                                        FriendsTab::Blocked => "You have not blocked anyone.",
+                                        FriendsTab::Online => "No one's around to play with.",
+                                        _ => "You have no friends yet. Add some with their username!",
+                                    })
                                         .font(ui_font(14.0))
                                         .color(TEXT_MUTED),
                                 );

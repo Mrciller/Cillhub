@@ -1,7 +1,7 @@
 //! Authentication screen matching `client/src/components/Auth.tsx` and `client/src/index.css`:
 //! 40px × 40px `.auth-bg` arena grid, notched `.auth-card` HUD polygon with 4px top accent bar,
 //! `.auth-brand` badge, `Barlow Condensed` display headings (`READY UP` / `JOIN THE ROSTER`),
-//! `.server-choice` selector (Main Hub / Betacord / Private Node), and styled inputs/buttons.
+//! `.server-choice` selector (Main Hub / Private Node), and styled inputs/buttons.
 
 use super::report;
 use crate::api::normalize_server_url;
@@ -93,19 +93,16 @@ impl CillhubApp {
                             .inner_margin(Margin::same(10))
                             .show(ui, |ui| {
                                 ui.set_width(ui.available_width());
-                                let is_hub = self.settings.server_target == "hub"
-                                    || (self.settings.server_target != "node"
-                                        && self.settings.server_target != "betacord");
-                                let is_betacord = self.settings.server_target == "betacord";
+                                let is_hub = self.settings.server_target != "node";
                                 let is_node = self.settings.server_target == "node";
 
                                 ui.horizontal(|ui| {
                                     ui.spacing_mut().item_spacing.x = 6.0;
-                                    let tab_w = (ui.available_width() - 12.0) / 3.0;
+                                    let tab_w = (ui.available_width() - 6.0) / 2.0;
 
                                     if Self::server_tab_btn(
                                         ui,
-                                        Vec2::new(tab_w + 10.0, 32.0),
+                                        Vec2::new(tab_w, 32.0),
                                         "🌐 Main Hub",
                                         Some("DEFAULT"),
                                         is_hub,
@@ -119,22 +116,7 @@ impl CillhubApp {
 
                                     if Self::server_tab_btn(
                                         ui,
-                                        Vec2::new(tab_w - 8.0, 32.0),
-                                        "⚡ Betacord",
-                                        None,
-                                        is_betacord,
-                                    )
-                                    .clicked()
-                                    {
-                                        self.settings.server_target = "betacord".to_string();
-                                        self.auth_server_url =
-                                            "https://betacord.cillerian.org".to_string();
-                                        report(&mut self.status_banner, self.settings.save());
-                                    }
-
-                                    if Self::server_tab_btn(
-                                        ui,
-                                        Vec2::new(tab_w - 2.0, 32.0),
+                                        Vec2::new(tab_w, 32.0),
                                         "🔒 Private Node",
                                         None,
                                         is_node,
@@ -603,12 +585,16 @@ impl CillhubApp {
         resp
     }
 
-    pub fn submit_auth(&mut self) {
-        let raw_url = match self.settings.server_target.as_str() {
+    /// The server the user picked on the login screen: the hub or their private node.
+    fn picked_server_url(&self) -> &str {
+        match self.settings.server_target.as_str() {
             "node" => self.auth_server_url.trim(),
-            "betacord" => "https://betacord.cillerian.org",
             _ => HUB_URL,
-        };
+        }
+    }
+
+    pub fn submit_auth(&mut self) {
+        let raw_url = self.picked_server_url();
         let Some(origin) = normalize_server_url(raw_url) else {
             self.auth_error =
                 Some("Invalid server URL. Use https:// or http://localhost.".to_string());
@@ -657,11 +643,7 @@ impl CillhubApp {
     }
 
     pub fn submit_mfa(&mut self) {
-        let raw_url = match self.settings.server_target.as_str() {
-            "node" => self.auth_server_url.trim(),
-            "betacord" => "https://betacord.cillerian.org",
-            _ => HUB_URL,
-        };
+        let raw_url = self.picked_server_url();
         let Some(origin) = normalize_server_url(raw_url) else {
             return;
         };
@@ -691,11 +673,7 @@ impl CillhubApp {
     }
 
     pub fn submit_password_reset(&mut self) {
-        let raw_url = match self.settings.server_target.as_str() {
-            "node" => self.auth_server_url.trim(),
-            "betacord" => "https://betacord.cillerian.org",
-            _ => HUB_URL,
-        };
+        let raw_url = self.picked_server_url();
         let Some(origin) = normalize_server_url(raw_url) else {
             return;
         };

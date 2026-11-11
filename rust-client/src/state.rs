@@ -759,7 +759,7 @@ mod tests {
         state
             .apply(
                 "READY",
-                json!({"session_id":"s","user":{"id":"u","username":"Ada"},"guilds":[{"id":"g","name":"Guild","channels":[{"id":"c","type":0,"guild_id":"g"}]}]}),
+                json!({"session_id":"s","user":{"id":"u","username":"taylor"},"guilds":[{"id":"g","name":"Guild","channels":[{"id":"c","type":0,"guild_id":"g"}]}]}),
             )
             .unwrap();
         assert!(state.channels.contains_key("c"));

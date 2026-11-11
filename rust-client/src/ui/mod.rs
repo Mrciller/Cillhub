@@ -195,8 +195,6 @@ impl CillhubApp {
         let server_url = if settings.server_target == "node" && !settings.custom_node_url.is_empty()
         {
             settings.custom_node_url.clone()
-        } else if settings.server_target == "betacord" {
-            "https://betacord.cillerian.org".to_string()
         } else {
             HUB_URL.to_string()
         };
@@ -263,7 +261,7 @@ impl CillhubApp {
             last_league_scan: Instant::now(),
             lobby_form_game: "League of Legends".to_string(),
             lobby_form_queue: "Ranked Solo/Duo".to_string(),
-            lobby_form_host: "Cillerian".to_string(),
+            lobby_form_host: String::new(),
             lobby_form_party_id: "arena-party-77".to_string(),
             lobby_form_members: 2,
             lobby_form_max_members: 5,
@@ -350,27 +348,27 @@ impl CillhubApp {
         self.authenticated = true;
         let me = User {
             id: "u_me".to_string(),
-            username: "cillerian".to_string(),
-            global_name: Some("Cillerian".to_string()),
+            username: "alex".to_string(),
+            global_name: Some("Alex".to_string()),
             ..Default::default()
         };
-        let faker = User {
-            id: "u_faker".to_string(),
-            username: "faker".to_string(),
-            global_name: Some("Faker".to_string()),
+        let sam = User {
+            id: "u_sam".to_string(),
+            username: "sam".to_string(),
+            global_name: Some("Sam".to_string()),
             ..Default::default()
         };
-        let ada = User {
-            id: "u_ada".to_string(),
-            username: "ada".to_string(),
-            global_name: Some("Ada Lovelace".to_string()),
+        let robin = User {
+            id: "u_robin".to_string(),
+            username: "robin".to_string(),
+            global_name: Some("Robin".to_string()),
             ..Default::default()
         };
 
         self.state.me = Some(me.clone());
         self.state.users.insert(me.id.clone(), me.clone());
-        self.state.users.insert(faker.id.clone(), faker.clone());
-        self.state.users.insert(ada.id.clone(), ada.clone());
+        self.state.users.insert(sam.id.clone(), sam.clone());
+        self.state.users.insert(robin.id.clone(), robin.clone());
 
         let active_game = self.current_game.clone().unwrap_or(GameActivity {
             name: "League of Legends".to_string(),
@@ -380,8 +378,8 @@ impl CillhubApp {
 
         for (uid, gname) in [
             ("u_me", active_game.name.as_str()),
-            ("u_faker", "League of Legends"),
-            ("u_ada", "Counter-Strike 2"),
+            ("u_sam", "League of Legends"),
+            ("u_robin", "Counter-Strike 2"),
         ] {
             self.state.presences.insert(
                 uid.to_string(),
@@ -404,20 +402,20 @@ impl CillhubApp {
         }
 
         self.state.relationships.insert(
-            faker.id.clone(),
+            sam.id.clone(),
             Relationship {
-                id: faker.id.clone(),
+                id: sam.id.clone(),
                 kind: 1,
-                user: Some(faker.clone()),
+                user: Some(sam.clone()),
                 nickname: None,
             },
         );
         self.state.relationships.insert(
-            ada.id.clone(),
+            robin.id.clone(),
             Relationship {
-                id: ada.id.clone(),
+                id: robin.id.clone(),
                 kind: 1,
-                user: Some(ada.clone()),
+                user: Some(robin.clone()),
                 nickname: None,
             },
         );
@@ -491,12 +489,12 @@ impl CillhubApp {
                     ..Default::default()
                 },
                 Member {
-                    user: Some(faker.clone()),
+                    user: Some(sam.clone()),
                     roles: vec!["r_captain".to_string()],
                     ..Default::default()
                 },
                 Member {
-                    user: Some(ada.clone()),
+                    user: Some(robin.clone()),
                     roles: vec![],
                     ..Default::default()
                 },
@@ -517,9 +515,9 @@ impl CillhubApp {
         self.state.guilds.insert(gid.clone(), guild);
 
         self.state.voice_states.insert(
-            faker.id.clone(),
+            sam.id.clone(),
             VoiceState {
-                user_id: faker.id.clone(),
+                user_id: sam.id.clone(),
                 guild_id: Some(gid.clone()),
                 channel_id: Some("c_voice".to_string()),
                 ..Default::default()
@@ -531,7 +529,7 @@ impl CillhubApp {
             party_id: "arena-party-77".to_string(),
             queue_name: "Ranked Solo/Duo".to_string(),
             queue_id: Some(420),
-            host_name: "Faker".to_string(),
+            host_name: "Sam".to_string(),
             host_puuid: None,
             members: 2,
             max_members: 5,
@@ -544,7 +542,7 @@ impl CillhubApp {
                     id: "m_1".to_string(),
                     channel_id: "c_general".to_string(),
                     content: "Welcome to the 100% pure-Rust Cillhub desktop client! Game Activity detection and Game Lobby Invites are live.".to_string(),
-                    author: Some(ada.clone()),
+                    author: Some(robin.clone()),
                     timestamp: Some("2026-11-10T20:30:00Z".to_string()),
                     ..Default::default()
                 },
@@ -552,7 +550,7 @@ impl CillhubApp {
                     id: "m_2".to_string(),
                     channel_id: "c_general".to_string(),
                     content: format!("Need +3 for Ranked Queue — click Join Party below!\n{demo_invite}"),
-                    author: Some(faker),
+                    author: Some(sam),
                     timestamp: Some("2026-11-10T20:32:00Z".to_string()),
                     ..Default::default()
                 },
