@@ -8,6 +8,15 @@
      "date": null,
      "groups": [
       {
+       "title": "Added",
+       "items": [
+        "Encrypted direct messages: turn them on under Settings › Encrypted Messages. A DM or group DM is end-to-end encrypted as soon as all its members have turned them on. The server stores only encrypted text and files.",
+        "A recovery key, shown once, unlocks your encrypted messages on a new device. Each conversation shows a lock and a 60-digit security code you can compare with the other person.",
+        "Reporting an encrypted message sends its text and files to the admins, and up to 10 earlier messages if you choose. The server checks that the text is really the one that was sent.",
+        "Limits: one key for all your devices, the web app comes from the server you use, and the server still sees who writes to whom and when. Polls, scheduled messages, voice messages and forwards are not available in encrypted conversations yet."
+       ]
+      },
+      {
        "title": "Changed",
        "items": [
         "Loading older messages uses a new database index, so scrolling back in channels with a long history no longer reads the whole channel.",
@@ -723,6 +732,15 @@
      "version": "Unreleased",
      "date": null,
      "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Verschlüsselte Direktnachrichten: Einschalten unter Einstellungen › Verschlüsselte Nachrichten. Eine DM oder Gruppen-DM ist Ende-zu-Ende-verschlüsselt, sobald alle Mitglieder das eingeschaltet haben. Der Server speichert Text und Dateien nur verschlüsselt.",
+        "Ein Wiederherstellungsschlüssel, der nur einmal angezeigt wird, entsperrt deine verschlüsselten Nachrichten auf einem neuen Gerät. Jede Unterhaltung zeigt ein Schloss und einen 60-stelligen Sicherheitscode, den du mit der anderen Person vergleichen kannst.",
+        "Wer eine verschlüsselte Nachricht meldet, schickt ihren Text und ihre Dateien an die Admins, auf Wunsch auch bis zu 10 Nachrichten davor. Der Server prüft, dass der Text wirklich der gesendete ist.",
+        "Grenzen: ein Schlüssel für alle deine Geräte, die Web-App kommt vom Server, den du nutzt, und der Server sieht weiterhin, wer wem wann schreibt. Umfragen, geplante Nachrichten, Sprachnachrichten und Weiterleiten gibt es in verschlüsselten Unterhaltungen noch nicht."
+       ]
+      },
       {
        "title": "Geändert",
        "items": [

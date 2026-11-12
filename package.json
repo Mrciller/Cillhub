@@ -11,6 +11,7 @@
     "e2e:v5-apps": "node scripts/e2e-v5-apps.cjs",
     "e2e:v6": "node scripts/e2e-v6.cjs",
     "e2e:v7": "node scripts/e2e-v7.cjs",
-    "e2e:v8": "node scripts/e2e-v8.cjs"
+    "e2e:v8": "node scripts/e2e-v8.cjs",
+    "e2e:e2ee": "node scripts/e2e-e2ee.cjs"
   }
 }

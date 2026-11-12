@@ -21,6 +21,7 @@ Cillhub is a chat platform you can host yourself: servers with text channels, vo
 
 ### Chat
 - Text, announcement and forum channels, threads, direct messages and group DMs
+- End-to-end encrypted direct messages and group DMs (web and desktop client; Android follows). Only DMs are encrypted, not server channels, and the web client comes from the server you use, so you trust that server's code.
 - Markdown, code blocks, spoilers, mentions, replies, reactions and pins
 - File and image uploads, link previews, message search
 - Custom emoji and stickers, a GIF picker with favourites
@@ -37,6 +38,7 @@ Cillhub is a chat platform you can host yourself: servers with text channels, vo
 - Roles with colours, hoisted member lists and per-channel permission overwrites
 - Kick, ban with message removal, timeouts, nicknames
 - AutoMod rules (keywords, regex, mention spam) and an audit log
+- Automatic spam slow mode: a member who floods a channel, or many members at once, get a slow mode for a few minutes; owners can turn it off
 - Server templates and an onboarding flow for new members
 - Accounts: scrypt password hashes, TOTP two-factor, passkeys (WebAuthn)
 - Server modules: JavaScript bots that run in a QuickJS WebAssembly sandbox with permissions an admin approves
@@ -48,7 +50,7 @@ Cillhub is a chat platform you can host yourself: servers with text channels, vo
 - Optional automatic updates at a chosen hour
 
 ### Apps
-- Web client, served by every Cillhub server
+- Web client, served by every Cillhub server; with private nodes it stays connected to the hub and to your private servers at the same time
 - Desktop (`desktop-rust`): Rust + Tauri 2 around the web client, packaged as Windows installer, AppImage and .deb; tray icon, `cillhub://` invite links, game activity, self-update checked against a pinned Ed25519 key
 - Android (Kotlin, Jetpack Compose): the Cillhub palette by default, wallpaper colours as an option; calls through Android's Telecom service with answer and decline from the lock screen; notification quick reply; Android Auto; in-app updates from a signed feed
 
