@@ -349,10 +349,13 @@ async function multiInstance(browser, errors) {
   assert.equal(await page.locator('.rail-entry.node-down').count(), 0)
   console.log('ok v7 7 - offline node: greyed servers and status line, reconnects when it is back')
 
-  // A hostile node: admitted payloads with wrong-typed fields. A render error cuts the nodes off and the hub view renders
-  // again; an event the store cannot apply cuts the node off. Both times its servers go and the hub keeps working.
+  // A hostile node: wrong-typed fields the boundary does not type-check get through. A render error cuts the nodes off and
+  // the hub view renders again; an event the store cannot apply cuts the node off. Both times its servers go and the hub
+  // keeps working. A wrong-typed name is refused at admission and changes nothing.
   const hubLink = rail.getByRole('link', { name: /^Nightfall Gaming/ })
   st.nodeSock.send(JSON.stringify({ op: 0, t: 'GUILD_UPDATE', d: { id: NG, name: { x: 1 } } }))
+  await page.waitForURL(`**/channels/7000~${NG}/7000~7101`)
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'CHANNEL_UPDATE', d: { id: '7101', guild_id: NG, topic: { x: 1 } } }))
   await page.getByText("Display error: Dana's Node was disconnected", { exact: false }).waitFor()
   await hubLink.waitFor()
   assert.equal(await rail.getByRole('link', { name: /Dana's Node/ }).count(), 0, 'node servers dropped after the render error')
@@ -363,7 +366,7 @@ async function multiInstance(browser, errors) {
   await hubLink.click()
   const warned = []
   page.on('console', (m) => m.type() === 'warning' && warned.push(m.text()))
-  st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_CREATE', d: { id: '7190', type: 0, channel_id: '7101', guild_id: NG, author: dana, content: 'poll', timestamp: new Date().toISOString(), mentions: [], attachments: [], embeds: [], poll: {} } }))
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_CREATE', d: { id: '7190', type: 0, channel_id: '7101', guild_id: NG, author: dana, content: 'poll', timestamp: new Date().toISOString(), mentions: [], attachments: [], embeds: [], poll: { question: { text: 'q' } } } }))
   st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_POLL_VOTE_ADD', d: { user_id: '7002', channel_id: '7101', guild_id: NG, message_id: '7190', answer_id: 1 } }))
   await rail.getByRole('link', { name: /Dana's Node/ }).waitFor({ state: 'detached' }) // cut off after the reducer throw
   assert.ok(warned.some((w) => w.includes('MESSAGE_POLL_VOTE_ADD could not be applied')), 'the store threw on the vote, not the render')

@@ -109,7 +109,16 @@ const NUMERIC_IDS = new Set(['answer_id', 'correct_answer_id', 'font_id', 'effec
 // cillvoice tracks are named `<user id>-<mid>`: opaque, scoped as they are (tracks[].id, track_id) and given back the same way.
 const TRACK = /^[\w-]{1,80}$/
 const PRESET = /^[a-z][a-z0-9_-]{0,39}$/ // built-in collectible names (server routes/customization.js)
-export const LIMITS = { depth: 32, list: 10_000, nodes: 500_000, budget: 200_000 }
+// Longest strings an honest server sends (server/src): canvas 50 000, embed description 4096, message 2000; template
+// emoji images are data URIs of up to 256 KiB (base64); emoji names are \w{2,32} or one unicode emoji.
+export const LIMITS = { depth: 32, list: 10_000, nodes: 500_000, budget: 200_000, text: 65_536, image: 360_000, emoji: 64, key: 200 }
+// Fields the UI renders, by type: a wrong-typed one refuses the payload instead of breaking the render.
+const strOrNull = (v: unknown) => v === null || typeof v === 'string'
+const SHAPES = new Map<string, (v: unknown) => boolean>([
+  ...['name', 'content', 'username', 'global_name'].map((k) => [k, strOrNull] as const),
+  ...['embeds', 'mentions', 'attachments', 'reactions', 'components', 'answers'].map((k) => [k, Array.isArray] as const),
+  ['poll', (v) => v === null || typeof (v as { question?: { text?: unknown } })?.question?.text === 'string'],
+])
 const isIdKey = (k: string) => (k === 'id' || k.endsWith('_id')) && !FREE_IDS.has(k)
 const isIdList = (k: string) => ID_LISTS.has(k) || k.endsWith('_ids')
 // Content tokens naming ids: <@1>, <@!1>, <@&1>, <#1>, <:name:1>, <a:name:1>; one that already carries a prefix is forged.
@@ -118,7 +127,12 @@ const FORGED = /<(@!?|@&|#|a?:\w{1,32}:)[\d~]*~[\d~]*>/g
 
 // Distinct ids each node brought in since its last READY: past the budget it is cut off (instances/nodes.ts).
 const seen = new Map<string, Set<string>>()
-export const overBudget = (inst: string) => (seen.get(inst)?.size ?? 0) > LIMITS.budget
+// READYs on the current connection: an honest server sends one (server/src/gateway.js closes a second IDENTIFY and a
+// resume ends in RESUMED), so another one counts as over budget instead of resetting it.
+const readies = new Map<string, number>()
+/** A new gateway connection to the node (instances/nodes.ts): it may send one READY. */
+export const newConnection = (inst: string) => void readies.delete(inst)
+export const overBudget = (inst: string) => (seen.get(inst)?.size ?? 0) > LIMITS.budget || (readies.get(inst) ?? 0) > 1
 
 /** A node payload in the client's terms, or null when it breaks the rules: bounded size (depth, list length, total
  *  values, distinct ids per node), every id a canonical numeric snowflake string, then ids scoped to the node (user
@@ -145,6 +159,7 @@ function inbound<T>(n: Live, data: T): T | null {
   const walk = (x: unknown, key: string, depth: number, free: boolean, userObj: boolean): unknown => {
     if (++count > LIMITS.nodes || depth > LIMITS.depth) throw bad
     if (typeof x === 'string') {
+      if (x.length > (key === 'image' ? LIMITS.image : LIMITS.text)) throw bad // a few huge strings would fill memory
       if (n.sessionId && x === n.sessionId) return hub.sessionId || x
       if (URL_KEYS.has(key) && x.startsWith('/') && !x.startsWith('//')) return n.url + x
       // A node's media proxy is its own: any other host would load (and see our IP) from wherever the node points.
@@ -170,13 +185,14 @@ function inbound<T>(n: Live, data: T): T | null {
       // free choices a node could use to grow what we keep (property names, emoji names, answer numbers) spend its
       // budget like ids do; an honest server uses a small fixed set of them
       if (!SNOW.test(k)) spend(`.${k}`)
+      if (k.length > LIMITS.key || SHAPES.get(k)?.(v) === false) throw bad
       if (isIdList(k) && v != null && !Array.isArray(v)) throw bad // an id list that is not a list
       // our presence and activities are the hub's: a node's entry for our node account is dropped
       if (k === 'presences' && Array.isArray(v)) {
         out[k] = walk(v.filter((p) => !(n.meId && (p as { user?: { id?: unknown } } | null)?.user?.id === n.meId)), k, depth + 1, inFree, false)
         continue
       }
-      if (key === 'emoji' && k === 'name' && typeof v === 'string') spend(`:${v}`)
+      if (key === 'emoji' && k === 'name' && typeof v === 'string') { if (v.length > LIMITS.emoji) throw bad; spend(`:${v}`) }
       // a profile effect is named after a built-in preset, not a snowflake
       if (key === 'profile_effect' && k === 'id' && typeof v === 'string') { if (!PRESET.test(v)) throw bad; out[k] = v; continue }
       const typed = (key === 'emoji' && k === 'id') || key === 'default_values'
@@ -268,7 +284,11 @@ function allowed(inst: string, t: string, d: any): boolean {
 
 /** A node gateway event (or READY) as the store may apply it, or null to drop it. READY starts the node's id budget anew. */
 export function admit<T>(inst: string, t: string, raw: T): T | null {
-  const n = live[inst]
+  if (t === 'READY' && readies.set(inst, (readies.get(inst) ?? 0) + 1).get(inst)! > 1) return null
+  // a READY is read with the node account and session it names; instances/nodes.ts keeps them only once it is admitted
+  const r = raw as { user?: { id?: unknown }; session_id?: unknown } | null
+  const meId = typeof r?.user?.id === 'string' && SNOW.test(r.user.id) ? r.user.id : null
+  const n = live[inst] && t === 'READY' ? { ...live[inst], meId, sessionId: typeof r?.session_id === 'string' ? r.session_id : null } : live[inst]
   // A READY is counted on a fresh budget, which replaces the old one only if it passes; instances/nodes.ts then drops
   // everything the node brought before (dropNodeState) before applying it. A refused READY changes nothing.
   const before = seen.get(inst)

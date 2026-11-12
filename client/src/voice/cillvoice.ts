@@ -439,6 +439,8 @@ class Session {
       } as DisplayMediaStreamOptions & { selfBrowserSurface?: string; surfaceSwitching?: string; systemAudio?: string; preferCurrentTab?: boolean })
     }
     if (this.closed) return stopTracks(m)
+    const oldVideo = this.local.screen_share
+    const oldAudio = this.local.screen_share_audio
     try {
       const video = m.getVideoTracks()[0]
       if (!video) return stopTracks(m)
@@ -446,7 +448,6 @@ class Session {
       video.addEventListener('ended', () => {
         if (this.local.screen_share === video) hooks.onScreenEnded()
       })
-      const oldVideo = this.local.screen_share
       this.local.screen_share = video
       if (this.pub.screen_share) {
         await this.pub.screen_share.sender.replaceTrack(video)
@@ -458,7 +459,6 @@ class Session {
       if (oldVideo) oldVideo.stop()
 
       const audio = m.getAudioTracks()[0]
-      const oldAudio = this.local.screen_share_audio
       if (audio) {
         this.local.screen_share_audio = audio
         const tr = this.pub.screen_share_audio
@@ -476,7 +476,11 @@ class Session {
       if (this.closed) return stopTracks(m) // closed meanwhile: close() stopped the tracks it knew, these are newer
       hooks.bump()
     } catch (e) {
-      stopTracks(m) // a failed switch keeps nothing it captured running
+      // a failed switch is half done: no capture, old or new, stays running, and the share ends as if the capture stopped
+      stopTracks(m)
+      oldVideo?.stop()
+      oldAudio?.stop()
+      hooks.onScreenEnded()
       throw e
     }
   }

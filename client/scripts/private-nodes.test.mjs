@@ -193,6 +193,7 @@ test('7: one id budget per node; past it the payload is refused and the node is 
   let refused = false
   for (let i = 0; i < 60 && !refused; i++) refused = reg.admitRest('9', big.map((x) => ({ id: String(Number(x.id) + i * 5000) }))) === null
   assert.ok(refused && reg.overBudget('9'))
+  reg.newConnection('9')
   reg.admit('9', 'READY', { user: { id: '990' }, guilds: [] })
   assert.equal(reg.overBudget('9'), false, 'a new READY starts again')
 })
@@ -339,7 +340,7 @@ test('r5-19: mentions go out in one pass: a node user whose id equals our hub id
 
 test('r5-20: call participants are users; poll answer numbers are not snowflakes', () => {
   const m = reg.admit('7', 'MESSAGE_CREATE', { channel_id: '101', guild_id: '100', id: '9', author: { id: '901' }, call: { participants: ['900', '901'] },
-    poll: { answers: [{ answer_id: 1, poll_media: { text: 'a' } }], results: { answer_counts: [{ id: 1, count: 2, me_voted: false }] } } })
+    poll: { question: { text: 'q' }, answers: [{ answer_id: 1, poll_media: { text: 'a' } }], results: { answer_counts: [{ id: 1, count: 2, me_voted: false }] } } })
   assert.deepEqual(m.call.participants, ['1', '7~901'])
   assert.deepEqual([m.poll.answers[0].answer_id, m.poll.results.answer_counts[0].id], [1, 1])
 })
@@ -390,10 +391,12 @@ test('r7-7: free choices spend the node budget; polls take votes only for their 
   let refused = false
   for (let i = 0; i < 100 && !refused; i++) refused = reg.admitRest('4', { [`k${i}`]: 1 }) === null
   assert.ok(refused, 'new property names count')
+  reg.newConnection('4')
   reg.admit('4', 'READY', { user: { id: '940' }, guilds: [] })
   refused = false
   for (let i = 0; i < 100 && !refused; i++) refused = reg.admitRest('4', { emoji: { id: null, name: `e${i}` } }) === null
   assert.ok(refused, 'new emoji names count')
+  reg.newConnection('4')
   reg.admit('4', 'READY', { user: { id: '940' }, guilds: [] })
   refused = false
   for (let i = 0; i < 100 && !refused; i++) refused = reg.admitRest('4', { answer_id: i }) === null
@@ -434,4 +437,45 @@ test('r7-17: our presence reaches a node without other servers\' custom emoji or
   const own = reg.presenceFor('7', { activities: [{ type: 4, emoji: { id: '7~55', name: 'x' } }] })
   assert.equal(own.activities[0].emoji.id, '7~55')
   assert.deepEqual(reg.presenceFor('7', { activities: [{ type: 4, emoji: { name: '🙂' } }] }).activities[0].emoji, { name: '🙂' })
+})
+
+test('r8-1: strings from a node are bounded; emoji names tighter; template emoji images fit', () => {
+  const msg = (content) => ({ id: '5', channel_id: '101', content })
+  assert.ok(reg.admitRest('7', msg('x'.repeat(50_000))), 'a full canvas or message fits')
+  assert.equal(reg.admitRest('7', msg('x'.repeat(4 * 1024 * 1024))), null)
+  assert.equal(reg.admitRest('7', { reactions: [{ emoji: { id: null, name: '🙂'.repeat(1000) }, count: 1 }] }), null)
+  assert.ok(reg.admitRest('7', { reactions: [{ emoji: { id: null, name: '👩‍👩‍👧‍👦' }, count: 1 }] }))
+  assert.ok(reg.admitRest('7', { serialized_source_guild: { emojis: [{ name: 'gg', image: 'data:image/png;base64,' + 'A'.repeat(349_526) }] } }))
+  assert.equal(reg.admitRest('7', { ['k'.repeat(1000)]: 1 }), null, 'property names too')
+})
+
+test('r8-2: one READY per connection; another one is over budget until a new connection', () => {
+  reg.testNode('3', 'https://n7.example', '930', '1')
+  reg.newConnection('3')
+  assert.ok(reg.admit('3', 'READY', { user: { id: '930' }, guilds: [] }))
+  assert.equal(reg.admit('3', 'READY', { user: { id: '930' }, guilds: [] }), null)
+  assert.equal(reg.overBudget('3'), true, 'cut off (instances/nodes.ts)')
+  reg.newConnection('3')
+  assert.ok(reg.admit('3', 'READY', { user: { id: '930' }, guilds: [] }))
+  assert.equal(reg.overBudget('3'), false)
+})
+
+test('r8-3: a READY is read with the account it names, but a refused one changes no stored identity', () => {
+  reg.testNode('2', 'https://n8.example', '920', '1')
+  reg.newConnection('2')
+  assert.equal(reg.admit('2', 'READY', { user: { id: '921' }, session_id: 's', guilds: [{ id: 'x' }] }), null)
+  assert.deepEqual([reg.instanceById('2').meId, reg.instanceById('2').sessionId], ['920', null])
+  reg.newConnection('2')
+  assert.equal(reg.admit('2', 'READY', { user: { id: '921' }, session_id: 's2', guilds: [] }).user.id, '1', 'aliased with the account it names')
+  assert.equal(reg.instanceById('2').meId, '920', 'stored by instances/nodes.ts after admission, not by admit')
+})
+
+test('r8-5: fields the UI renders must have their type, or the payload is refused', () => {
+  const ok = { id: '5', channel_id: '101', content: 'hi', embeds: [], mentions: [], attachments: [], reactions: [], components: [], author: { id: '2', username: 'sam', global_name: null } }
+  assert.ok(reg.admitRest('7', ok))
+  for (const bad of [{ content: { x: 1 } }, { name: 5 }, { author: { id: '2', username: [] } }, { embeds: {} }, { mentions: 'x' }, { reactions: null },
+    { poll: {} }, { poll: { question: { text: 1 } }, answers: [] }, { poll: { question: { text: 'q' }, answers: {} } }])
+    assert.equal(reg.admitRest('7', { ...ok, ...bad }), null, JSON.stringify(bad))
+  assert.ok(reg.admitRest('7', { ...ok, poll: { question: { text: 'q' }, answers: [] } }))
+  assert.ok(reg.admitRest('7', { ...ok, poll: null, name: null }))
 })

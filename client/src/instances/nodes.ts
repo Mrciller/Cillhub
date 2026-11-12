@@ -12,7 +12,7 @@ import { gatewayOk, inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revoca
 import { apply, byId, getState, setState, setToken, type State } from '../store'
 import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
-import { admit, NODE_MAPS, outbound, presenceFor, overBudget, pruneNode, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
+import { admit, newConnection, NODE_MAPS, outbound, presenceFor, overBudget, pruneNode, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
 
 /** The hub's node directory record (§2), from GET /federation/nodes. */
 export type NodeRecord = {
@@ -69,7 +69,7 @@ function open(i: InstanceInfo) {
     presence: (p) => outbound(i.id, presenceFor(i.id, p)), // IDENTIFY too
     token: () => tokenOf(i.id),
     ready: () => statusOf(i.id) === 'ready',
-    connecting: (failed) => setLive(i.id, { status: failed ? 'offline' : 'connecting' }),
+    connecting: (failed) => (newConnection(i.id), setLive(i.id, { status: failed ? 'offline' : 'connecting' })),
     // The node ends our sessions when the hub suspends, bans or unlinks it: ask the hub which it is. A saved private node
     // gets a new background sign-in (with backoff).
     rejected: () => (close(i.id), setLive(i.id, { status: 'signed-out' }), void refreshStatus(), savedNodes().some((n) => n.origin === i.url) && retry(i.url, t('Signed out'))),
@@ -106,11 +106,11 @@ function dispatch(id: string, t: string, raw: any) {
   try { handle(id, t, raw) } catch (e) { console.warn(`Node ${id}: ${t} could not be applied, cut off`, e); cutOff(id) }
 }
 function handle(id: string, t: string, raw: any) {
-  if (t === 'READY' && /^\d{1,20}$/.test(raw?.user?.id ?? '')) setLive(id, { meId: raw.user.id, sessionId: typeof raw.session_id === 'string' ? raw.session_id : null })
   // The one way in for node events: shape, ids, event type, target ownership and users are checked there.
   const d = admit(id, t, raw)
   if (!d) return void (overBudget(id) && cutOff(id))
-  if (t === 'READY') return ready(id, d)
+  // our node account and session, from the READY that admit checked against them
+  if (t === 'READY') return (setLive(id, { meId: raw.user.id, sessionId: typeof raw.session_id === 'string' ? raw.session_id : null }), ready(id, d))
   const s = getState()
   apply(t, d)
   keepHubSelf(s)
