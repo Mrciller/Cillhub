@@ -7,6 +7,7 @@ import { isBlocked, isChannelMuted, isGuildMuted, notifyLevel, privateName } fro
 import { displayName, getState, isPrivate, mentionsMe, type State } from '../store'
 import type { Message } from '../types'
 import { playMessage } from './sounds'
+import { decrypt } from '../e2ee/session'
 
 export const desktopEnabled = () => localStorage.getItem('notif-desktop') === '1' && 'Notification' in window && Notification.permission === 'granted'
 
@@ -44,7 +45,9 @@ function onMessage(m: Message) {
   playMessage(isPrivate(ch) ? 'dm' : mentionsMe(s, m) ? 'mention' : 'message')
   const author = (m.guild_id && s.members[m.guild_id]?.[m.author.id]?.nick) || displayName(m.author)
   const title = ch.type === 1 ? author : ch.type === 3 ? `${author} (${privateName(s, ch)})` : `${author} (#${ch.name}, ${s.guilds[m.guild_id!]?.name ?? ''})`
-  desktop(title, plain(s, m), ch.id, url)
+  // encrypted DM: decrypted here in the tab (web push only ever shows the server's placeholder)
+  if (m.e2ee_envelope) void decrypt(m).then((p) => desktop(title, p.state === 'ok' ? plain(s, { ...m, content: p.content, attachments: p.files.length ? m.attachments : [] }) : t('Encrypted message'), ch.id, url))
+  else desktop(title, plain(s, m), ch.id, url)
 }
 
 const rung = new Set<string>()

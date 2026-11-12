@@ -92,9 +92,16 @@ export type Report = {
   actions: { action: ReportAction | 'action_taken' | 'remove_message' | 'remove_server'; admin_id: string; at: string; note: string | null }[]
   reporter: User | null; author: User | null; guild: { id: string; name: string } | null; channel: { id: string; type?: number; name?: string | null }
   /** A copy taken when the report was made; `exists` is false once the original is deleted. */
-  message: { id: string; content: string; timestamp: string; attachments?: { filename: string }[]; exists: boolean } | null
+  message: {
+    id: string; content: string; timestamp: string; attachments?: RevealedFile[]; exists: boolean
+    /** encrypted DM: revealed = the reporter's message keys opened it (checked by the server), with up to 10 older messages */
+    encrypted?: boolean; revealed?: boolean
+    context?: { id: string; author_id: string; author_name: string | null; timestamp: string; content: string; attachments: RevealedFile[] }[]
+  } | null
   link: string | null
 }
+/** A file of a report snapshot; revealed encrypted files carry their key, the Reports page decrypts them in the browser. */
+export type RevealedFile = { filename: string; size?: number | null; content_type?: string; url?: string | null; key?: string; iv?: string }
 export type RegistrationCode = { code: string; created_by: string; created_at: string; expires_at: string | null; max_uses: number; uses: number; note: string | null }
 
 // 403 60003: this admin has no 2FA (the dashboard shows the explanation screen). 401 60003 is the per-action code prompt.
@@ -158,7 +165,7 @@ export const auditLog = (f: { action?: string; admin_id?: string; target_id?: st
 
 // Public / every user
 export const getInstance = () => api<PublicInstance>('/instance')
-export const reportMessage = (channelId: string, messageId: string, body: { reason: ReportReason; note?: string }) =>
+export const reportMessage = (channelId: string, messageId: string, body: { reason: ReportReason; note?: string; reveal?: { id: string; mk: string }[] }) =>
   api<{ id: string }>(`/channels/${channelId}/messages/${messageId}/report`, { method: 'POST', body })
 
 // ---------- v7 (CONTRACT-v7 §2, §5, §6): hub Nodes, link codes, release channel + directory moderation; node Federation + Updates ----------

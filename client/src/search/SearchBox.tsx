@@ -99,6 +99,7 @@ export function SearchBox({ guildId, channel }: { guildId?: string; channel: Cha
               </li>
             ))}
           </ul>
+          {(channel.e2ee_epoch ?? 0) > 0 && <p className="hint small">{t('Encrypted messages are not searchable.')}</p>}
         </div>
       )}
     </div>

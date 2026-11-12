@@ -86,6 +86,8 @@ export type Channel = {
   solved_message_id?: string | null
   // v13 media channel layout
   layout_type?: number
+  /** encrypted DMs: current key epoch, 0 = not encrypted (never goes back) */
+  e2ee_epoch?: number
 }
 export type ChannelCanvas = {
   channel_id: string
@@ -202,7 +204,8 @@ export type Message = {
   application_id?: string; components?: Component[]
   module_accessory?: { module_id: string; panel_id: string } // v8: a module panel shown under this message
   call?: { participants: string[]; ended_timestamp: string | null }
-  e2ee_envelope?: { ciphertext: string; iv: string; sender_key?: string; recipient_key?: string }
+  /** encrypted DM message: content is a placeholder, the text and files are in here (e2ee/crypto.ts) */
+  e2ee_envelope?: { v: 1; e: number; n: string; c: string; kc: string }
   interaction_metadata?: { id: string; type: number; user: User; name?: string; command_type?: number; target_user?: { id: string }; target_message_id?: string }
   interaction?: { id: string; type: number; name: string; user: User }
   // client-only optimistic-send state

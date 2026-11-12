@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
+import { isEncrypted } from '../e2ee/session'
 import { fetchSnippets, loadMembers, sendMessage, sendSticker, sendTyping, unblockUser } from '../actions'
 import { CommandForm, CommandPicker } from '../commands/CommandUi'
 import { flatten, useIndex, type Entry } from '../commands/commands'
@@ -135,8 +136,9 @@ export function Composer({ channel, label, perms, files, setFiles, addFiles }: P
   const leagueLobby = useStore((s) => s.leagueLobby)
   const canSend = has(perms, P.SEND_MESSAGES) && !block
   const canAttach = canSend && has(perms, P.ATTACH_FILES)
-  const canPoll = canSend && has(perms, P.SEND_POLLS)
-  const canVoice = canSend && has(perms, P.SEND_VOICE_MESSAGES)
+  const encrypted = isEncrypted(channel) // the server refuses polls, send later and voice messages there (v1)
+  const canPoll = canSend && has(perms, P.SEND_POLLS) && !encrypted
+  const canVoice = canSend && has(perms, P.SEND_VOICE_MESSAGES) && !encrypted
   const index = useIndex(channel, slash)
   const query = slash ? text.slice(1).toLowerCase() : ''
   const commands = slash && index && has(perms, P.USE_APPLICATION_COMMANDS) ? flatten(index, channel, perms).filter((e) => e.path.join(' ').startsWith(query) || (query.length > 1 && e.path.join(' ').includes(query))).slice(0, 12) : []
@@ -411,7 +413,7 @@ export function Composer({ channel, label, perms, files, setFiles, addFiles }: P
               <button className="icon-btn" aria-label={t('Select emoji')} title={t('Select emoji')} onClick={(e) => setPicker({ at: { rect: e.currentTarget.getBoundingClientRect(), side: 'above' }, tab: 'emoji' })}>
                 <Icon d={ICONS.smile} size={24} />
               </button>
-              {text.trim() && !files.length && text.trim().length <= 2000 && (
+              {text.trim() && !files.length && text.trim().length <= 2000 && !encrypted && (
                 <button className="icon-btn" aria-label={t('Send later')} title={t('Send later')} onClick={() => setLater(compose())}>
                   <Icon d={ICONS.clock} size={22} />
                 </button>

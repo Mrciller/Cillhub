@@ -67,7 +67,7 @@ export async function testNode(origin: string): Promise<{ name: string }> {
 
 /** Root-relative CDN paths (avatars, icons, attachments) resolved against the API origin, or the node's origin for node ids (v7). */
 export const cdn = (path: string) => {
-  if (/^https?:\/\//.test(path) || path.startsWith('data:')) return path
+  if (/^https?:\/\//.test(path) || path.startsWith('data:') || path.startsWith('blob:')) return path // blob: decrypted files (e2ee)
   if (!safePath(path)) return '' // an id that walks out of its segment never becomes a request
   const node = instanceById(route(path))
   return node ? node.url + outboundPath(node.id, path) : apiOrigin() + path

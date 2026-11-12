@@ -34,6 +34,8 @@ import { GameInviteCard, parseGameInvite } from './GameInvite'
 import { MessageLinkQuotes } from './MessageLinkQuotes'
 import { ServerInviteCard } from './ServerInvite'
 import { inviteCodes, onlyInvite } from './inviteLinks'
+import { isEncrypted, usePlain, type Plain } from '../e2ee/session'
+import { E2eeFiles } from '../e2ee/E2ee'
 
 export function stamp(iso: string) {
   const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 864e5)
@@ -65,8 +67,13 @@ export function useAuthor(m: Message) {
 const openProfile = (m: Message, el: Element) =>
   !m.webhook_id && setState({ popout: { userId: m.author.id, guildId: m.guild_id, at: { rect: el.getBoundingClientRect(), side: 'right' } } })
 
+/** What to show instead of an encrypted message that is not readable (never the envelope). */
+const lockedText = (p: Plain) => (p.state === 'pending' ? t('Decrypting…') : p.state === 'locked' ? t('Enter your recovery key to read this.') : t('Cannot decrypt this message.'))
+
 function ReplyPreview({ m, ctx }: { m: Message; ctx: MdContext }) {
-  const ref = m.referenced_message
+  const raw = m.referenced_message
+  const plain = usePlain(raw)
+  const ref = raw && plain ? { ...raw, content: plain.state === 'ok' ? plain.content : '', attachments: plain.state === 'ok' && plain.files.length ? raw.attachments : [] } : raw
   const author = useAuthor(ref ?? m)
   if (!ref) return <div className="reply-preview"><span className="reply-spine" aria-hidden="true" /><span className="hint">{t('Original message was deleted')}</span></div>
   return (
@@ -75,7 +82,7 @@ function ReplyPreview({ m, ctx }: { m: Message; ctx: MdContext }) {
       <Avatar user={author.user} size={16} />
       <span className="reply-author" style={{ color: author.color }}>@{author.name}</span>
       <button className="reply-text ellipsis" aria-label={t('Jump to replied message from {name}', { name: author.name })} onClick={() => void openMessage(ref.channel_id, ref.id)}>
-        {ref.content ? <Markdown content={ref.content.split('\n')[0]} ctx={ctx} /> : ref.embeds?.[0]?.title && !ref.attachments?.length ? <em>{ref.embeds[0].title}</em> : <em>{t('Click to see attachment')}</em>}
+        {plain && plain.state !== 'ok' ? <em>{lockedText(plain)}</em> : ref.content ? <Markdown content={ref.content.split('\n')[0]} ctx={ctx} /> : ref.embeds?.[0]?.title && !ref.attachments?.length ? <em>{ref.embeds[0].title}</em> : <em>{t('Click to see attachment')}</em>}
       </button>
     </div>
   )
@@ -255,7 +262,10 @@ export const MessageItem = memo(function MessageItem(props: ItemProps) {
   const blocked = useStore((s) => isBlocked(s, props.m.author.id) && !props.m.webhook_id)
   return blocked ? <BlockedMessage m={props.m}><Item {...props} /></BlockedMessage> : <Item {...props} />
 })
-function Item({ m, head, perms, ctx }: ItemProps) {
+function Item({ m: raw, head, perms, ctx }: ItemProps) {
+  // encrypted DM: the decrypted text replaces the placeholder everywhere below (copy, quote, edit, report)
+  const plain = usePlain(raw)
+  const m = plain ? { ...raw, content: plain.state === 'ok' ? plain.content : '' } : raw
   const me = useStore((s) => s.me)
   const dev = useStore((s) => !!s.settings.developer_mode)
   const showEmbeds = useStore((s) => s.settings.render_embeds !== false)
@@ -277,6 +287,7 @@ function Item({ m, head, perms, ctx }: ItemProps) {
   const isForumThread = (channel?.type === 11 || channel?.type === 12) && parentChannel?.type === 15
   const canManageSolution = isForumThread && (channel.owner_id === me?.id || has(perms, P.MANAGE_THREADS))
   const isSolution = isForumThread && channel.solved_message_id === m.id
+  const encrypted = !!raw.e2ee_envelope || isEncrypted(channel) // no server-side forward of these
   const editButton = useRef<HTMLButtonElement>(null)
   const wasEditing = useRef(false)
   useEffect(() => {
@@ -388,11 +399,8 @@ function Item({ m, head, perms, ctx }: ItemProps) {
           <time className="gutter-time" dateTime={m.timestamp}>{clock(m.timestamp)}</time>
         </>
       )}
-      {m.type === 100 || m.e2ee_envelope ? (
-        <div className="content e2ee-message" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ color: 'var(--online)', fontSize: '0.9rem' }} title={t('End-to-End Encrypted')}>🔒</span>
-          <span>{m.content || t('[End-to-End Encrypted Message]')}</span>
-        </div>
+      {plain && plain.state !== 'ok' ? (
+        <div className="content e2ee-line"><Icon d={ICONS.lock} size={14} /> <span>{lockedText(plain)}</span></div>
       ) : editing ? (
         <EditBox m={m} done={() => setEditing(false)} />
       ) : flags & LOADING ? (
@@ -425,7 +433,7 @@ function Item({ m, head, perms, ctx }: ItemProps) {
       {invites.map((code) => <ServerInviteCard key={code} code={code} mine={mine} />)}
       {forwarded && <Forwarded snap={forwarded} ctx={ctx} from={{ channelId: m.message_reference?.channel_id, messageId: m.message_reference!.message_id }} />}
       {m.poll && <PollView m={m} canVote={has(perms, P.READ_MESSAGE_HISTORY) && !!me && !m.pending} />}
-      {m.pending && m.files?.length ? <Uploading m={m} /> : <Attachments list={m.attachments} voice={!!(flags & IS_VOICE_MESSAGE)} />}
+      {m.pending && m.files?.length ? <Uploading m={m} /> : plain ? (plain.state === 'ok' && <E2eeFiles m={raw} files={plain.files} />) : <Attachments list={m.attachments} voice={!!(flags & IS_VOICE_MESSAGE)} />}
       <Stickers list={m.sticker_items} />
       {isBotCard(m) ? <BotCard m={m} ctx={ctx} /> : (
         <>
@@ -455,7 +463,7 @@ function Item({ m, head, perms, ctx }: ItemProps) {
           {sent && canReply && (
             <button aria-label={t('Reply')} title={t('Reply')} onClick={reply}><Icon d={ICONS.reply} size={18} /></button>
           )}
-          {sent && (
+          {sent && !encrypted && (
             <button aria-label={t('Forward')} title={t('Forward')} onClick={forward}><Icon d={ICONS.forward} size={18} /></button>
           )}
           {sent && (
@@ -471,7 +479,7 @@ function Item({ m, head, perms, ctx }: ItemProps) {
           {sent && threadable && !isThread(channel) && (
             <button aria-label={t('Create Thread')} title={t('Create Thread')} onClick={createThread}><Icon d={ICONS.thread} size={18} /></button>
           )}
-          {sent && mine && !m.poll && m.type !== 21 && (
+          {sent && mine && !m.poll && m.type !== 21 && (!plain || plain.state === 'ok') && (
             <button ref={editButton} aria-label={t('Edit message')} title={t('Edit')} onClick={() => setEditing(true)}><Icon d={ICONS.pencil} size={18} /></button>
           )}
           {sent && (
@@ -485,9 +493,9 @@ function Item({ m, head, perms, ctx }: ItemProps) {
       {menu.at && (
         <Popover at={menu.at} onClose={menu.close} role="menu" label={t('Message actions')}>
           {canReact && <MenuItem onSelect={() => setPicker(menu.at)}>{t('Add Reaction')}</MenuItem>}
-          {mine && !m.poll && m.type !== 21 && <MenuItem onSelect={() => setEditing(true)}>{t('Edit Message')}</MenuItem>}
+          {mine && !m.poll && m.type !== 21 && (!plain || plain.state === 'ok') && <MenuItem onSelect={() => setEditing(true)}>{t('Edit Message')}</MenuItem>}
           {canReply && <MenuItem onSelect={reply}>{t('Reply')}</MenuItem>}
-          <MenuItem onSelect={forward}>{t('Forward')}</MenuItem>
+          {!encrypted && <MenuItem onSelect={forward}>{t('Forward')}</MenuItem>}
           <MenuItem onSelect={() => void toggleBookmark(m).then(() => toast(t(bookmarked ? 'Bookmark removed.' : 'Message bookmarked.')), toastError)}>
             {bookmarked ? t('Remove Bookmark') : t('Bookmark Message')}
           </MenuItem>

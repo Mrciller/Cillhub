@@ -19,7 +19,7 @@ export function ForwardModal({ channelId, messageId, onClose }: { channelId: str
   const s = getState()
   const query = q.trim().toLowerCase()
   const targets: { c: Channel; label: string; sub: string; dm: boolean }[] = [
-    ...Object.values(s.channels).filter((c) => !c.guild_id && c.type === 1).map((c) => ({ c, label: displayName(c.recipients?.[0]), sub: t('Direct Message'), dm: true })),
+    ...Object.values(s.channels).filter((c) => !c.guild_id && c.type === 1 && !c.e2ee_epoch).map((c) => ({ c, label: displayName(c.recipients?.[0]), sub: t('Direct Message'), dm: true })),
     ...Object.values(s.guilds).flatMap((g) => sidebar(s, g.id).flatMap((grp) => grp.channels)
       .filter((c) => [0, 5, 2, 13].includes(c.type) && has(permsOf(s, c.guild_id, c), P.SEND_MESSAGES))
       .map((c) => ({ c, label: `#${c.name}`, sub: g.name, dm: false }))),

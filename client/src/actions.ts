@@ -2,9 +2,11 @@ import { api, ApiError, qs, upload } from './api'
 import { toastError } from './components/dialogs'
 import { sendOp } from './gateway'
 import { bypassesSlowmode } from './permissions'
+import { t } from './i18n'
 import { navigate } from './router'
 import { permsOf } from './selectors'
 import { apply, emojiKey, getState, mergeSettings, replaceToken, setMyVotes, setState } from './store'
+import * as E from './e2ee/session'
 import type {
   Activity, Application, AuditLog, AuthSession, AutoModRule, Channel, ChannelCanvas, CommandIndex, CustomStatus, Draft, Emoji, FavoriteGif, Gif, Guild, GuildAnalytics, GuildOnboarding, GuildPayload, Invite, Member,
   MemberVerification, Message, MessageEdit, OnboardingPrompt, Profile, Role, ScheduledEvent, Snippet, Sound, StageInstance, Status, Sticker, ThreadMember, User, UserGuildSettings, UserSettings,
@@ -132,14 +134,37 @@ export async function sendMessage(ch: Channel, content: string, drafts: Draft[] 
     ...(reply && { message_reference: { message_id: reply.messageId } }),
     ...(drafts.length && { attachments: drafts.map((d, i) => ({ id: String(i), filename: fileName(d), ...(d.description.trim() && { description: d.description.trim() }) })) }),
   }
+  const progress = (p: number) => apply('MESSAGE_UPDATE', { id, channel_id: ch.id, progress: p })
   try {
-    const real = await post(ch, payload, drafts.map((d) => ({ file: d.file, name: fileName(d) })), (p) => apply('MESSAGE_UPDATE', { id, channel_id: ch.id, progress: p }))
+    let real: Message
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const key = await E.sendKey(ch, attempt > 0) // encrypted DM: null when the conversation stays plain
+        if (!key) {
+          real = await post(ch, payload, drafts.map((d) => ({ file: d.file, name: fileName(d) })), progress)
+          break
+        }
+        // names, types and sizes go inside the payload; the server gets file.bin ciphertext only
+        const ups = await Promise.all(drafts.map((d, i) => E.encryptUpload(d.file, fileName(d), i)))
+        const files = ups.map((u) => u.ref)
+        const e2ee_envelope = await E.sealPayload(ch, key, content, files)
+        real = await post(ch, {
+          nonce: n, e2ee_envelope, ...(reply && { message_reference: { message_id: reply.messageId } }),
+          ...(ups.length && { attachments: ups.map((_, i) => ({ id: String(i), filename: 'file.bin' })) }),
+        }, ups.map((u) => ({ file: u.blob, name: 'file.bin' })), progress)
+        E.remember(real, content, files)
+        break
+      } catch (e) {
+        if (attempt === 0 && e instanceof ApiError && e.status === 409) continue // a newer key or a member left: load and try once more
+        throw e
+      }
+    }
     apply('MESSAGE_DELETE', { id, channel_id: ch.id }) // in case the server did not echo the nonce
     apply('MESSAGE_CREATE', real) // the server marks the channel read for the author
   } catch (e) {
     // Keep the text on screen so nothing typed is lost.
     apply('MESSAGE_UPDATE', { id, channel_id: ch.id, pending: false, failed: true })
-    if (e instanceof ApiError && e.status) toastError(e) // the server's reason: slowmode, AutoMod's custom response, timeout…
+    if (!(e instanceof ApiError) || e.status) toastError(e) // the server's reason (slowmode, AutoMod, timeout…) or why it could not be encrypted
   }
 }
 
@@ -179,8 +204,19 @@ export function resend(m: Message) {
   if (ch) void sendMessage(ch, m.content, m.files, m.message_reference ? { messageId: m.message_reference.message_id } : undefined)
 }
 
-export const editMessage = (m: Message, content: string) =>
-  api<Message>(`/channels/${m.channel_id}/messages/${m.id}`, { method: 'PATCH', body: { content } }).then((r) => apply('MESSAGE_UPDATE', r))
+export async function editMessage(m: Message, content: string) {
+  const ch = getState().channels[m.channel_id]
+  if (m.e2ee_envelope || E.isEncrypted(ch)) { // a new envelope with the same files; the server keeps no history
+    const key = await E.sendKey(ch)
+    if (!key) throw new Error(t('Cannot encrypt for this conversation right now. Try again.'))
+    const prev = E.plainOf(m)
+    const files = prev?.state === 'ok' ? prev.files : []
+    const r = await api<Message>(`/channels/${m.channel_id}/messages/${m.id}`, { method: 'PATCH', body: { e2ee_envelope: await E.sealPayload(ch, key, content, files) } })
+    E.remember(r, content, files)
+    return apply('MESSAGE_UPDATE', r)
+  }
+  return api<Message>(`/channels/${m.channel_id}/messages/${m.id}`, { method: 'PATCH', body: { content } }).then((r) => apply('MESSAGE_UPDATE', r))
+}
 
 export const SUPPRESS_EMBEDS = 1 << 2
 /** Removes all embeds from a message (author or MANAGE_MESSAGES). */
@@ -861,30 +897,6 @@ export const listPasskeys = () =>
   api<{ id: string; nickname: string; created_at: string; last_used_at: string | null }[]>('/users/@me/webauthn/credentials')
 export const deletePasskey = (id: string) =>
   api<{ ok: boolean }>(`/users/@me/webauthn/credentials/${encodeURIComponent(id)}`, { method: 'DELETE' })
-
-// E2EE Keys & Messages (Contract v9 §11)
-export const putE2eeKeys = (keys: { identity_key: string; signed_prekey?: string; signature?: string }) =>
-  api<{ ok: boolean; user_id: string }>('/users/@me/e2ee/keys', { method: 'PUT', body: keys })
-export const getE2eeKeys = (userId: string) =>
-  api<{ user_id: string; public_key: string; keys: any; updated_at: string }>(`/users/${userId}/e2ee/keys`)
-export async function sendE2eeMessage(ch: Channel, envelope: { ciphertext: string; iv: string; sender_key?: string; recipient_key?: string }, cleartextPlaceholder = '') {
-  const n = nonce()
-  const id = `pending-${n}`
-  const s = getState()
-  const temp: Message = {
-    id, nonce: n, type: 100, channel_id: ch.id, guild_id: ch.guild_id, author: s.me!, content: cleartextPlaceholder, timestamp: new Date().toISOString(),
-    edited_timestamp: null, mentions: [], attachments: [], embeds: [], pinned: false, pending: true, e2ee_envelope: envelope,
-  }
-  apply('MESSAGE_CREATE', temp)
-  try {
-    const real = await post(ch, { content: cleartextPlaceholder, nonce: n, e2ee_envelope: envelope }, [])
-    apply('MESSAGE_DELETE', { id, channel_id: ch.id })
-    apply('MESSAGE_CREATE', real)
-  } catch (e) {
-    apply('MESSAGE_UPDATE', { id, channel_id: ch.id, pending: false, failed: true })
-    if (e instanceof ApiError && e.status) toastError(e)
-  }
-}
 
 // Bulk delete (Task 6.1)
 export async function bulkDeleteMessages(channelId: string, ids: string[]) {

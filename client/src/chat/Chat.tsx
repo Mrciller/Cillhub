@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, type DragEvent, type ReactNode } from 'react'
+import { E2eeBar, E2eeLock } from '../e2ee/E2ee'
 import { bulkDeleteMessages, loadAround, updateThreadMemberFlags } from '../actions'
 import { CallPanel } from '../calls/CallPanel'
 import { startCall } from '../calls/calls'
@@ -260,6 +261,7 @@ export function Chat({ channel, guild }: { channel: Channel; guild?: Guild }) {
       <header className="chat-header" {...headerAccent(channel)}>
         <HeaderTitle channel={channel}>{channel.topic && <p className="topic ellipsis">{channel.topic}</p>}</HeaderTitle>
         <span className="spacer" />
+        {priv && <E2eeLock channel={channel} />}
         {priv && <PrivateButtons channel={channel} />}
         {(channel.type === 0 || channel.type === 5) && <ThreadsButton channel={channel} />}
         {channel.type === 5 && guild && (
@@ -284,6 +286,7 @@ export function Chat({ channel, guild }: { channel: Channel; guild?: Guild }) {
         <SearchBox guildId={guild?.id} channel={channel} />
         <InboxButton guildId={guild?.id} />
       </header>
+      {priv && <E2eeBar channel={channel} />}
       {priv && <CallPanel channel={channel} height={callHeight} />}
       {inCall && (
         <div

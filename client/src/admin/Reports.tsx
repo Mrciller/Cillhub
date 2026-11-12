@@ -1,6 +1,6 @@
 // Reports queue: in-app reports (the reported message is the only message content the dashboard shows), public notices
 // of illegal content (DSA Art. 16), removals by link (TCO, kept 6 months), appeals (Art. 20) and the yearly numbers.
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ask, askText, toast, toastError } from '../components/dialogs'
 import { cls, Field, FormError } from '../components/ui'
 import { t } from '../i18n'
@@ -10,6 +10,8 @@ import type { Report, ReportAction } from './api'
 import { reasonLabel } from './ReportDialog'
 import { askCode, askReasons, useLoad, when } from './util'
 import { ACTION_LABEL, categoryLabel, DecisionView, groundLabel, noticeLabel } from '../legal/LegalPages'
+import { cdn } from '../api'
+import { decryptDownload } from '../e2ee/session'
 
 const RESOLUTION: Record<string, string> = {
   dismiss: 'Dismissed', delete_message: 'Message deleted', timeout: 'Author timed out', kick: 'Author kicked', ban: 'Author banned', disable_account: 'Account disabled',
@@ -85,9 +87,17 @@ function ReportCard({ r, onDone }: { r: Report; onDone: () => void }) {
       {m && (
         <figure className="admin-quote">
           <figcaption>{author?.username ?? t('Unknown')} · {where} · <time dateTime={m.timestamp}>{when(m.timestamp)}</time>{!m.exists && ` · ${t('deleted since')}`}</figcaption>
+          {m.encrypted && <p className="hint small">{m.revealed ? t('Encrypted message, decrypted from the report') : t('Encrypted message, not revealed by the reporter')}</p>}
+          {m.context?.map((c) => (
+            <div key={c.id} className="admin-context">
+              <p className="hint small">{c.author_name ?? t('Unknown')} · <time dateTime={c.timestamp}>{when(c.timestamp)}</time> · {t('before the reported message')}</p>
+              <blockquote>{c.content || <em>{t('No text')}</em>}</blockquote>
+              <Files list={c.attachments} />
+            </div>
+          ))}
           {/* Plain text on purpose: reported content is untrusted. */}
           <blockquote>{m.content || <em>{t('No text')}</em>}</blockquote>
-          {!!m.attachments?.length && <p className="hint small">{t('Attachments')}: {m.attachments.map((a) => a.filename).join(', ')}</p>}
+          {m.revealed ? <Files list={m.attachments ?? []} /> : !!m.attachments?.length && <p className="hint small">{t('Attachments')}: {m.attachments.map((a) => a.filename).join(', ')}</p>}
         </figure>
       )}
       {m?.exists && r.link && <Link className="link" to={r.link}>{t('Open in context')}</Link>}
@@ -106,6 +116,38 @@ function ReportCard({ r, onDone }: { r: Report; onDone: () => void }) {
         </div>
       ) : <History r={r} />}
     </li>
+  )
+}
+
+/** Files of a revealed encrypted message: the key came with the report, so they are decrypted here, in the browser. */
+function Files({ list }: { list: A.RevealedFile[] }) {
+  const [open, setOpen] = useState<Record<number, { url: string; image: boolean } | 'error'>>({})
+  const urls = useRef<string[]>([])
+  useEffect(() => () => urls.current.forEach((u) => URL.revokeObjectURL(u)), [])
+  if (!list.length) return null
+  const decrypt = (i: number, f: A.RevealedFile) =>
+    void decryptDownload(cdn(f.url!), { k: f.key!, n: f.iv!, type: f.content_type ?? '' }).then(
+      (b) => {
+        const url = URL.createObjectURL(b)
+        urls.current.push(url)
+        setOpen((o) => ({ ...o, [i]: { url, image: b.type.startsWith('image/') } }))
+      },
+      () => setOpen((o) => ({ ...o, [i]: 'error' })),
+    )
+  return (
+    <ul className="admin-list hint small">
+      {list.map((f, i) => {
+        const o = open[i]
+        return (
+          <li key={i}>
+            {f.filename} ({f.content_type || t('unknown type')}){' '}
+            {!f.url || !f.key ? t('(file gone)') : o === 'error' ? t('Cannot decrypt this file.') : o ? (
+              o.image ? <img src={o.url} alt={f.filename} style={{ maxWidth: 240, display: 'block' }} /> : <a href={o.url} download={f.filename}>{t('Download')}</a>
+            ) : <button className="link" onClick={() => decrypt(i, f)}>{t('Decrypt and show')}</button>}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

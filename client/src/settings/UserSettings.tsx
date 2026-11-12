@@ -1,5 +1,6 @@
 // User Settings: My Account and Voice & Video.
 import { useEffect, useRef, useState } from 'react'
+import { EncryptionSettings } from '../e2ee/E2ee'
 import { api, dataUri } from '../api'
 import { avatarUrl, cls, FormError, initials } from '../components/ui'
 import { logout } from '../gateway'
@@ -51,6 +52,7 @@ export function UserSettings({ tab: initial, onClose }: { tab?: string; onClose:
       title={user}
       tabs={[
         { id: 'account', label: t('My Account'), section: user }, { id: 'profiles', label: t('Profiles'), section: user }, { id: 'connections', label: t('Connections'), section: user }, { id: 'devices', label: t('Devices'), section: user },
+        { id: 'encryption', label: t('Encrypted Messages'), section: user },
         { id: 'appearance', label: t('Appearance'), section: app }, { id: 'accessibility', label: t('Accessibility'), section: app }, { id: 'voice', label: t('Voice & Video'), section: app },
         { id: 'notifications', label: t('Notifications'), section: app }, { id: 'sounds', label: t('Sounds'), section: app }, { id: 'keybinds', label: t('Keybinds'), section: app },
         { id: 'language', label: t('Language'), section: app }, { id: 'nodes', label: t('Private Nodes'), section: app }, { id: 'advanced', label: t('Advanced'), section: app },
@@ -62,7 +64,7 @@ export function UserSettings({ tab: initial, onClose }: { tab?: string; onClose:
       footer={<button className="settings-tab danger" onClick={logout}>{t('Log Out')}</button>}
     >
       {{
-        account: <><Account /><AccountSecurity /></>, profiles: <ProfileSettings />, connections: <ConnectionsSettings />, devices: <Sessions />, appearance: <Appearance />, accessibility: <Accessibility />,
+        account: <><Account /><AccountSecurity /></>, profiles: <ProfileSettings />, connections: <ConnectionsSettings />, devices: <Sessions />, encryption: <EncryptionSettings />, appearance: <Appearance />, accessibility: <Accessibility />,
         voice: <VoiceVideo />, notifications: <NotificationPrefs />, sounds: <SoundSettings />, keybinds: <KeybindSettings />, language: <Language />, nodes: <PrivateNodes />, advanced: <Advanced />, 'whats-new': <WhatsNewPage />, about: <About />,
       }[tab] ?? <Account />}
     </SettingsLayout>
