@@ -107,7 +107,7 @@ const csp = () => [
 // captcha.html: the reCAPTCHA checkbox for the Android app's WebView, nothing else may load or frame it
 const CAPTCHA_CSP = [
   "default-src 'none'", `script-src 'self' ${RECAPTCHA_SCRIPTS}`, "frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/",
-  "style-src 'self' 'unsafe-inline'", "connect-src 'self' https://www.google.com/recaptcha/", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'",
+  "style-src 'self' 'unsafe-inline'", "font-src 'self'", "connect-src 'self' https://www.google.com/recaptcha/", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'",
 ].join('; ');
 const STATIC_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'SAMEORIGIN' };
 

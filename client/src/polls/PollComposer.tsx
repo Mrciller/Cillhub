@@ -65,7 +65,7 @@ export function PollComposer({ channel, onClose }: { channel: Channel; onClose: 
                 <button
                   type="button"
                   className={cls('icon-btn', correctAnswerIdx === i && 'active')}
-                  style={{ color: correctAnswerIdx === i ? '#23a55a' : undefined, flexShrink: 0 }}
+                  style={{ color: correctAnswerIdx === i ? 'var(--online)' : undefined, flexShrink: 0 }}
                   title={correctAnswerIdx === i ? t('Correct answer') : t('Mark as correct answer')}
                   onClick={() => setCorrectAnswerIdx(correctAnswerIdx === i ? null : i)}
                 >
@@ -101,7 +101,7 @@ export function PollComposer({ channel, onClose }: { channel: Channel; onClose: 
                     key={r.id}
                     type="button"
                     className={cls('chip-btn', active && 'active')}
-                    style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '12px', background: active ? 'var(--accent, #5865f2)' : 'var(--bg-secondary, #2b2d31)', color: '#fff', border: 'none', cursor: 'pointer' }}
+                    style={{ padding: '3px 8px', borderRadius: 'var(--radius-s)', fontSize: '12px', background: active ? 'var(--accent)' : 'var(--card)', color: active ? 'var(--on-accent)' : 'var(--text)', border: 'none', cursor: 'pointer' }}
                     onClick={() => toggleRole(r.id)}
                   >
                     @{r.name}

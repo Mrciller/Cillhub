@@ -5,7 +5,7 @@
 .forum-guidelines { padding: 10px 14px 14px; border-radius: var(--radius-m); border: 1px solid var(--border); background: var(--sidebar); }
 .forum-guidelines .list-heading { padding: 4px 0; }
 .tag-picker { display: flex; flex-wrap: wrap; gap: 6px; }
-.forum-tag { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--sidebar); border: 1px solid var(--border); color: var(--text); font-size: 13px; font-weight: 500; transition: background-color .12s, border-color .12s; }
+.forum-tag { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: var(--radius-s); background: var(--sidebar); border: 1px solid var(--border); color: var(--text); font-size: 13px; font-weight: 500; transition: background-color .12s, border-color .12s; }
 .forum-tag.toggle:hover:not(:disabled) { background: var(--hover); border-color: var(--btn-secondary-hover); }
 .forum-tag.toggle.on { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: var(--accent); color: var(--strong); }
 .forum-tag .emoji.custom { width: 16px; height: 16px; }

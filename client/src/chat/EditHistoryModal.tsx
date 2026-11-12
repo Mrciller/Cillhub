@@ -86,7 +86,7 @@ export function EditHistoryModal({
               const nextContent = idx + 1 < edits.length ? edits[idx + 1].content : currentContent
               const diff = computeWordDiff(edit.content, nextContent)
               return (
-                <div key={idx} className="edit-history-card" style={{ background: 'var(--bg-secondary, #2b2d31)', padding: '12px', borderRadius: '6px' }}>
+                <div key={idx} className="edit-history-card" style={{ background: 'var(--card)', padding: '12px', borderRadius: '6px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '12px', opacity: 0.7 }}>
                     <span>{t('Revision {n}', { n: idx + 1 })}</span>
                     <span>{new Date(edit.edited_at).toLocaleString()}</span>
@@ -105,7 +105,7 @@ export function EditHistoryModal({
                 </div>
               )
             })}
-            <div className="edit-history-card" style={{ background: 'var(--bg-secondary, #2b2d31)', padding: '12px', borderRadius: '6px', borderLeft: '3px solid var(--accent, #5865f2)' }}>
+            <div className="edit-history-card" style={{ background: 'var(--card)', padding: '12px', borderRadius: '6px', borderLeft: '3px solid var(--accent)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '12px', fontWeight: 600 }}>
                 <span>{t('Current Version')}</span>
               </div>

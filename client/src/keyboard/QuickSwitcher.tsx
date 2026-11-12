@@ -46,10 +46,10 @@ export function QuickSwitcher({ onClose }: { onClose: () => void }) {
     { key: 'a-deaf', kind: 'action', label: s.voice.selfDeaf ? t('Undeafen Audio') : t('Deafen Audio'), sub: '/deafen', go: () => (onClose(), setSelfDeaf(!s.voice.selfDeaf)), icon: <Icon d={ICONS.headset} size={18} />, recent: '0' },
     { key: 'a-leave', kind: 'action', label: t('Disconnect from Voice'), sub: '/disconnect', go: () => (onClose(), leaveVoice()), icon: <Icon d={ICONS.hangup} size={18} />, recent: '0' },
     { key: 'a-settings', kind: 'action', label: t('User Settings'), sub: '/settings', go: () => (onClose(), setState({ modal: { kind: 'user' } })), icon: <Icon d={ICONS.gear} size={18} />, recent: '0' },
-    { key: 'a-online', kind: 'action', label: t('Set Status: Online'), sub: '/status online', go: () => (onClose(), setStatus('online')), icon: <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#23a55a', display: 'inline-block' }} />, recent: '0' },
-    { key: 'a-idle', kind: 'action', label: t('Set Status: Idle'), sub: '/status idle', go: () => (onClose(), setStatus('idle')), icon: <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f0b232', display: 'inline-block' }} />, recent: '0' },
-    { key: 'a-dnd', kind: 'action', label: t('Set Status: Do Not Disturb'), sub: '/status dnd', go: () => (onClose(), setStatus('dnd')), icon: <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f23f43', display: 'inline-block' }} />, recent: '0' },
-    { key: 'a-invisible', kind: 'action', label: t('Set Status: Invisible'), sub: '/status invisible', go: () => (onClose(), setStatus('invisible')), icon: <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#80848e', display: 'inline-block' }} />, recent: '0' },
+    { key: 'a-online', kind: 'action', label: t('Set Status: Online'), sub: '/status online', go: () => (onClose(), setStatus('online')), icon: <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--online)', display: 'inline-block' }} />, recent: '0' },
+    { key: 'a-idle', kind: 'action', label: t('Set Status: Idle'), sub: '/status idle', go: () => (onClose(), setStatus('idle')), icon: <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--idle)', display: 'inline-block' }} />, recent: '0' },
+    { key: 'a-dnd', kind: 'action', label: t('Set Status: Do Not Disturb'), sub: '/status dnd', go: () => (onClose(), setStatus('dnd')), icon: <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--danger)', display: 'inline-block' }} />, recent: '0' },
+    { key: 'a-invisible', kind: 'action', label: t('Set Status: Invisible'), sub: '/status invisible', go: () => (onClose(), setStatus('invisible')), icon: <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--offline)', display: 'inline-block' }} />, recent: '0' },
   )
 
   const prefix = q[0]

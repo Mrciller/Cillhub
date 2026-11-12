@@ -64,11 +64,11 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--rail, rgba(0, 0, 0, 0.25));
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  background: var(--rail);
+  border: 1px solid var(--border);
   border-radius: var(--radius-m);
   padding: 4px 8px;
-  color: var(--text, #fff);
+  color: var(--text);
   text-decoration: none;
   font-size: 12px;
   max-width: 220px;
@@ -76,9 +76,9 @@
 }
 
 .conn-badge-link:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.1));
+  background: var(--hover);
   border-color: rgba(255, 255, 255, 0.25);
-  color: #fff;
+  color: var(--strong);
 }
 
 .conn-badge-icon {
@@ -104,7 +104,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--green, #23a55a);
+  background: var(--online-strong);
   color: #fff;
   flex-shrink: 0;
 }

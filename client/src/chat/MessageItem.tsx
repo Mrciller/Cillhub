@@ -390,7 +390,7 @@ function Item({ m, head, perms, ctx }: ItemProps) {
       )}
       {m.type === 100 || m.e2ee_envelope ? (
         <div className="content e2ee-message" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ color: 'var(--success, #23a55a)', fontSize: '0.9rem' }} title={t('End-to-End Encrypted')}>🔒</span>
+          <span style={{ color: 'var(--online)', fontSize: '0.9rem' }} title={t('End-to-End Encrypted')}>🔒</span>
           <span>{m.content || t('[End-to-End Encrypted Message]')}</span>
         </div>
       ) : editing ? (
@@ -401,7 +401,7 @@ function Item({ m, head, perms, ctx }: ItemProps) {
         m.content && !inviteOnly && (
           <div className="content">
             {isSolution && (
-              <div className="solution-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(45, 199, 112, 0.2)', color: '#2dc770', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+              <div className="solution-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'color-mix(in srgb, var(--online) 20%, transparent)', color: 'var(--online)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
                 ✓ {t('Accepted Solution')}
               </div>
             )}

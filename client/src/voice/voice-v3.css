@@ -9,7 +9,7 @@
 
 .vp-state-btn { display: inline-flex; align-items: center; gap: 6px; font: inherit; color: inherit; }
 .vp-state-btn:hover { text-decoration: underline; }
-.vp-hifi-badge { margin-left: 6px; padding: 1px 5px; font-size: 11px; font-weight: 600; border-radius: var(--radius-s); background: rgba(88, 101, 242, 0.25); color: #85b0ff; }
+.vp-hifi-badge { margin-left: 6px; padding: 1px 5px; font-size: 11px; font-weight: 600; border-radius: var(--radius-s); background: color-mix(in srgb, var(--focus) 20%, transparent); color: var(--focus); }
 .signal { fill: currentColor; flex: none; }
 .signal.good { color: var(--online); }
 .signal.ok { color: var(--idle); }
@@ -51,8 +51,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--bg-floating, #111214);
-  border: 1px solid var(--border, #35363c);
+  background: var(--menu);
+  border: 1px solid var(--border);
   padding: 8px 12px;
   border-radius: var(--radius-m);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
@@ -63,7 +63,7 @@
 }
 .in-stream-toast:hover {
   transform: translateY(-2px);
-  background: var(--bg-hover, #2b2d31);
+  background: var(--hover);
 }
 .in-stream-toast-body {
   overflow: hidden;
@@ -72,10 +72,10 @@
 }
 .in-stream-toast-author {
   font-weight: 600;
-  color: var(--header, #f2f3f5);
+  color: var(--header);
 }
 .in-stream-toast-content {
-  color: var(--text-normal, #dbdee1);
+  color: var(--text);
 }
 @keyframes slide-in-toast {
   from { opacity: 0; transform: translateY(12px); }

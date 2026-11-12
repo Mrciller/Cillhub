@@ -45,7 +45,7 @@ function PostCard({ post, forum, guild, gallery }: { post: Channel; forum: Chann
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             {tags.length > 0 && <span className="post-tags">{tags.map((th) => <TagChip key={th.id} tag={th} />)}</span>}
             {post.solved_message_id && (
-              <span className="post-solved-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(45, 199, 112, 0.2)', color: '#2dc770', fontSize: '11px', fontWeight: 600 }}>
+              <span className="post-solved-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', borderRadius: '4px', background: 'color-mix(in srgb, var(--online) 20%, transparent)', color: 'var(--online)', fontSize: '11px', fontWeight: 600 }}>
                 ✓ {t('Solved')}
               </span>
             )}
@@ -158,7 +158,7 @@ export function ForumView({ channel, guild }: { channel: Channel; guild: Guild }
           <button
             type="button"
             className={cls('chip-btn', solvedFilter === 'all' && 'active')}
-            style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'all' ? 'var(--accent, #5865f2)' : 'var(--bg-secondary, #2b2d31)', color: '#fff', border: 'none' }}
+            style={{ padding: '4px 10px', borderRadius: 'var(--radius-s)', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'all' ? 'var(--accent)' : 'var(--card)', color: solvedFilter === 'all' ? 'var(--on-accent)' : 'var(--text)', border: 'none' }}
             onClick={() => setSolvedFilter('all')}
           >
             {t('All')}
@@ -166,7 +166,7 @@ export function ForumView({ channel, guild }: { channel: Channel; guild: Guild }
           <button
             type="button"
             className={cls('chip-btn', solvedFilter === 'solved' && 'active')}
-            style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'solved' ? '#23a55a' : 'var(--bg-secondary, #2b2d31)', color: '#fff', border: 'none' }}
+            style={{ padding: '4px 10px', borderRadius: 'var(--radius-s)', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'solved' ? 'var(--online-strong)' : 'var(--card)', color: solvedFilter === 'solved' ? '#fff' : 'var(--text)', border: 'none' }}
             onClick={() => setSolvedFilter('solved')}
           >
             ✓ {t('Solved')}
@@ -174,7 +174,7 @@ export function ForumView({ channel, guild }: { channel: Channel; guild: Guild }
           <button
             type="button"
             className={cls('chip-btn', solvedFilter === 'unsolved' && 'active')}
-            style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'unsolved' ? 'var(--accent, #5865f2)' : 'var(--bg-secondary, #2b2d31)', color: '#fff', border: 'none' }}
+            style={{ padding: '4px 10px', borderRadius: 'var(--radius-s)', fontSize: '12px', fontWeight: 500, cursor: 'pointer', background: solvedFilter === 'unsolved' ? 'var(--accent)' : 'var(--card)', color: solvedFilter === 'unsolved' ? 'var(--on-accent)' : 'var(--text)', border: 'none' }}
             onClick={() => setSolvedFilter('unsolved')}
           >
             {t('Unsolved')}

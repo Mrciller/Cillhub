@@ -39,8 +39,8 @@ function VoicePopoutContent({
   )
 
   return (
-    <div className="voice-popout-window" style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: '8px', background: 'var(--bg-primary, #1e1f22)', color: 'var(--text-normal, #dbdee1)', boxSizing: 'border-box', overflow: 'hidden' }}>
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border, #35363c)' }}>
+    <div className="voice-popout-window" style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: '8px', background: 'var(--chat)', color: 'var(--text)', boxSizing: 'border-box', overflow: 'hidden' }}>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
           <Icon d={ICONS.speaker} size={16} />
           <span style={{ fontWeight: 600, fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -73,7 +73,7 @@ function VoicePopoutContent({
                   <MiniVideo track={tile.track} />
                   <div style={{ position: 'absolute', bottom: '4px', left: '4px', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span>{name}</span>
-                    {tile.source === 'screen' && <span style={{ background: '#f23f43', color: '#fff', fontSize: '9px', padding: '1px 3px', borderRadius: '2px', fontWeight: 'bold' }}>{t('LIVE')}</span>}
+                    {tile.source === 'screen' && <span style={{ background: 'var(--signal-strong)', color: '#fff', fontSize: '9px', padding: '1px 3px', borderRadius: '2px', fontWeight: 'bold' }}>{t('LIVE')}</span>}
                   </div>
                 </div>
               )
@@ -93,11 +93,11 @@ function VoicePopoutContent({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  background: 'var(--bg-secondary, #2b2d31)',
+                  background: 'var(--card)',
                   padding: '4px 8px',
                   borderRadius: '16px',
                   fontSize: '12px',
-                  border: speaking ? '2px solid #23a55a' : '2px solid transparent',
+                  border: speaking ? '2px solid var(--online)' : '2px solid transparent',
                   boxSizing: 'border-box',
                 }}
               >
@@ -111,7 +111,7 @@ function VoicePopoutContent({
         </div>
       </main>
 
-      <footer style={{ display: 'flex', justifyContent: 'center', gap: '12px', paddingTop: '6px', borderTop: '1px solid var(--border, #35363c)' }}>
+      <footer style={{ display: 'flex', justifyContent: 'center', gap: '12px', paddingTop: '6px', borderTop: '1px solid var(--border)' }}>
         <button
           className={cls('vp-btn', s.voice.selfMute && 'danger-on')}
           aria-pressed={s.voice.selfMute}
@@ -140,7 +140,7 @@ function VoicePopoutContent({
             leaveVoice()
             onClose()
           }}
-          style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#da373c', color: '#fff' }}
+          style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--danger-strong)', color: '#fff' }}
         >
           <Icon d={ICONS.hangup} size={18} />
         </button>

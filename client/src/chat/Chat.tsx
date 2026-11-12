@@ -170,7 +170,7 @@ function PurgeToolbar({ channelId }: { channelId: string }) {
   }
 
   return (
-    <div className="purge-toolbar" style={{ position: 'sticky', bottom: '12px', margin: '0 16px', padding: '10px 16px', background: 'var(--bg-floating, #111214)', border: '1px solid var(--border, #35363c)', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 50 }}>
+    <div className="purge-toolbar" style={{ position: 'sticky', bottom: '12px', margin: '0 16px', padding: '10px 16px', background: 'var(--menu)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 50 }}>
       <div style={{ fontWeight: 600, fontSize: '13px' }}>
         {t('{n} messages selected (max 100)', { n: selectedIds.length })}
       </div>
@@ -299,7 +299,7 @@ export function Chat({ channel, guild }: { channel: Channel; guild?: Guild }) {
         </div>
       )}
       {isForumThread && channel.solved_message_id && (
-        <div className="solved-banner" style={{ background: 'rgba(45, 199, 112, 0.15)', borderBottom: '1px solid rgba(45, 199, 112, 0.3)', padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '13px', color: '#2dc770' }}>
+        <div className="solved-banner" style={{ background: 'color-mix(in srgb, var(--online) 15%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--online) 30%, transparent)', padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '13px', color: 'var(--online)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
             <span>✓</span>
             <span>{t('This question has an accepted solution.')}</span>
@@ -307,7 +307,7 @@ export function Chat({ channel, guild }: { channel: Channel; guild?: Guild }) {
           <button
             type="button"
             className="secondary small-btn"
-            style={{ borderColor: '#2dc770', color: '#2dc770' }}
+            style={{ borderColor: 'var(--online)', color: 'var(--online)' }}
             onClick={() => {
               if (!jumpTo(channel.solved_message_id!)) {
                 void loadAround(channel.id, channel.solved_message_id!)

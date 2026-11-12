@@ -46,6 +46,19 @@
   /* HUD frame: notched corners for cards and dialogs (clip-path, so only on boxes that never carry a focus ring) */
   --notch: 12px;
   --notched: polygon(var(--notch) 0, 100% 0, 100% calc(100% - var(--notch)), calc(100% - var(--notch)) 100%, 0 100%, 0 var(--notch));
+  --round: 50%;
+  /* Arena spacing and durations (design system v1); existing paddings keep their literals */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+  --space-7: 40px;
+  --hit: 48px;
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   --font-display: "Barlow Condensed", "Arial Narrow", var(--font-ui);
@@ -174,7 +187,7 @@ a { color: var(--focus); text-underline-offset: 2px; }
   margin-bottom: 20px;
   background: color-mix(in srgb, var(--surface) 60%, transparent);
   border: 1px solid var(--border);
-  border-radius: var(--radius-m, 8px);
+  border-radius: var(--radius-m);
   padding: 10px;
 }
 .server-tabs {
@@ -190,7 +203,7 @@ a { color: var(--focus); text-underline-offset: 2px; }
   padding: 8px 12px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-s, 6px);
+  border-radius: var(--radius-s);
   color: var(--muted);
   font-size: 13px;
   font-weight: 600;
@@ -238,7 +251,7 @@ a { color: var(--focus); text-underline-offset: 2px; }
   padding: 7px 10px;
   font-size: 13px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-s, 6px);
+  border-radius: var(--radius-s);
   background: var(--bg);
   color: var(--text);
   outline: none;
@@ -254,12 +267,12 @@ a { color: var(--focus); text-underline-offset: 2px; }
 .server-node-error {
   margin-top: 6px;
   font-size: 12px;
-  color: var(--danger, #ff4c4c);
+  color: var(--danger);
 }
 .server-node-success {
   margin-top: 6px;
   font-size: 12px;
-  color: #3ba55d;
+  color: var(--online);
 }
 .invite { text-align: center; }
 .invite .sub { margin: 16px 0 4px; }
@@ -747,7 +760,7 @@ a.mention { text-decoration: none; }
   .active-now-shelf { display: none; }
 }
 .friends-list { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
-.friend { display: flex; align-items: center; gap: 20px; min-height: 76px; padding: 14px 22px; margin: 0; border: 1px solid var(--border); border-radius: var(--radius-m); background: var(--card, rgba(255, 255, 255, 0.02)); transition: background-color .15s ease, border-color .15s ease, transform .1s ease, box-shadow .15s ease; }
+.friend { display: flex; align-items: center; gap: 20px; min-height: 76px; padding: 14px 22px; margin: 0; border: 1px solid var(--border); border-radius: var(--radius-m); background: var(--card); transition: background-color .15s ease, border-color .15s ease, transform .1s ease, box-shadow .15s ease; }
 .friend:hover { background: var(--hover); border-color: var(--interactive); translate: 2px 0; }
 .friend-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
 .friend-who .name { color: var(--header); font-weight: 600; font-size: 16px; display: flex; align-items: baseline; gap: 8px; }
@@ -819,7 +832,7 @@ a.mention { text-decoration: none; }
   align-items: center;
   gap: 3px;
   padding: 3px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-s);
   background: rgb(7 9 14 / .82);
   backdrop-filter: blur(8px);
   border: 1px solid rgb(255 255 255 / .12);
@@ -1001,7 +1014,7 @@ a.mention { text-decoration: none; }
   transform: scale(1.05);
 }
 .fullscreen-stream-actions .exit-fs-btn:hover {
-  background: var(--danger, #f85149);
+  background: var(--danger);
 }
 .voice-join { margin: auto; display: grid; gap: 10px; justify-items: center; text-align: center; color: var(--text); }
 .voice-join h2 { color: var(--header); font-size: 36px; }

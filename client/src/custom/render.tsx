@@ -10,7 +10,7 @@ import { contrast, mix, onColor, readable, toHex } from './color'
 import { activeTheme } from './apply'
 
 /** Surfaces names are drawn on in the current theme (chat and sidebar), for the AA fallback. */
-const BUILTIN: Record<string, string[]> = { dark: ['#141a26', '#0f141e'], light: ['#fafbfd', '#eef2f7', '#dfe5ef'], ash: ['#222938', '#1b212e'], onyx: ['#080a10', '#05070c'] }
+const BUILTIN: Record<string, string[]> = { dark: ['#17191e', '#121418'], light: ['#fbfbfc', '#eef0f3', '#d8dce3'], ash: ['#24262d', '#1d1f25'], onyx: ['#0a0a0c', '#060607'] }
 export function surfaces(): string[] {
   const s = getState().settings
   const c = activeTheme(s)

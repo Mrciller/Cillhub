@@ -13,7 +13,7 @@ import { emojiMotion, stickerMotion } from './MotionImg'
 import { ChatSection, CustomCssSection, ThemeSection } from '../custom/AppearanceV6'
 
 const set = (p: UserSettings) => void patchSettings(p)
-const THEMES: [NonNullable<UserSettings['theme']>, string, string][] = [['light', 'Light', '#ffffff'], ['ash', 'Ash', '#38393f'], ['dark', 'Dark', '#313338'], ['onyx', 'Onyx', '#121214']]
+const THEMES: [NonNullable<UserSettings['theme']>, string, string][] = [['light', 'Light', '#fbfbfc'], ['ash', 'Ash', '#24262d'], ['dark', 'Dark', '#17191e'], ['onyx', 'Onyx', '#0a0a0c']]
 
 function Range({ id, label, value, min, max, step, unit, ticks, onChange, onDoubleClick, title }: { id: string; label: string; value: number; min: number; max: number; step: number; unit: string; ticks: number[]; onChange: (v: number) => void; onDoubleClick?: () => void; title?: string }) {
   return (

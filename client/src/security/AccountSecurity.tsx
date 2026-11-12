@@ -249,7 +249,7 @@ function PasskeyManager({ mfa }: { mfa: boolean }) {
       {keys.length > 0 && (
         <ul className="account-rows" style={{ marginBottom: '0.75rem', listStyle: 'none', padding: 0 }}>
           {keys.map((k) => (
-            <li key={k.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border-subtle, #333)' }}>
+            <li key={k.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
               <div>
                 <strong>🔑 {k.nickname || 'Passkey'}</strong>
                 <div className="hint small">{t('Added on {date}', { date: new Date(k.created_at).toLocaleDateString() })}</div>

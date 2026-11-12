@@ -14,18 +14,18 @@
 .gif-scroll { height: 360px; max-height: calc(100vh - 200px); overflow-y: auto; overflow-x: hidden; padding: 2px 2px 8px; }
 .gif-masonry { columns: 2 180px; column-gap: 8px; width: 100%; }
 .gif-btn { width: 100%; border-radius: var(--radius-m); overflow: hidden; background: var(--rail); border: 1px solid var(--border); cursor: pointer; padding: 0; position: relative; display: block; transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
-.gif-btn:hover, .gif-btn:focus-visible { transform: translateY(-2px); border-color: var(--focus, var(--accent)); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); z-index: 2; }
+.gif-btn:hover, .gif-btn:focus-visible { transform: translateY(-2px); border-color: var(--focus); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); z-index: 2; }
 .gif-btn img, .gif-btn video { width: 100%; height: auto; display: block; }
 .gif-tile { position: relative; break-inside: avoid; margin-bottom: 8px; }
 .gif-fav { position: relative; display: inline-block; max-width: 100%; vertical-align: top; }
 .gif-star { position: absolute; top: 6px; right: 6px; z-index: 3; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; cursor: pointer; opacity: 0; transition: opacity 0.15s ease, color 0.15s ease; }
 .gif-tile:hover .gif-star, .gif-tile:focus-within .gif-star, .gif-fav:hover .gif-star, .gif-fav:focus-within .gif-star { opacity: 1; }
 .gif-star:hover { color: #f0b232; }
-.gif-star:focus-visible { outline: 2px solid var(--focus, var(--accent)); outline-offset: 1px; }
+.gif-star:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .gif-star[aria-pressed='true'] { color: #f0b232; }
 @media (hover: none) { .gif-star { opacity: 1; } }
 .gif-categories { display: flex; gap: 8px; margin: 8px 0 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; white-space: nowrap; }
-.gif-category-chip { padding: 5px 12px; border-radius: var(--radius-l); background: var(--rail, #2b2d31); color: var(--muted, #949ba4); font-size: 13px; font-weight: 500; border: 1px solid transparent; cursor: pointer; flex: none; transition: all 0.15s ease; }
-.gif-category-chip:hover { background: var(--hover, rgba(255, 255, 255, 0.08)); color: var(--strong, #fff); border-color: var(--border); }
-.gif-category-chip.active { background: var(--accent, #5865f2); color: #fff; border-color: var(--accent); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2); }
+.gif-category-chip { padding: 5px 12px; border-radius: var(--radius-l); background: var(--rail); color: var(--muted); font-size: 13px; font-weight: 500; border: 1px solid transparent; cursor: pointer; flex: none; transition: all 0.15s ease; }
+.gif-category-chip:hover { background: var(--hover); color: var(--strong); border-color: var(--border); }
+.gif-category-chip.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2); }
 .empty-expr { padding: 24px 8px; text-align: center; }

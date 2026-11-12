@@ -125,7 +125,7 @@ function CatalogSection({ onStaged }: { onStaged: (pkg: A.ModulePackage) => void
       {catalog && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem', marginTop: '0.75rem' }}>
           {catalog.map((m) => (
-            <div key={m.id} style={{ border: '1px solid var(--border-subtle, #333)', borderRadius: 8, padding: '1rem', background: 'var(--bg-secondary, #222)' }}>
+            <div key={m.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '1rem', background: 'var(--card)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong>{m.name}</strong>
                 <span className="admin-badge ok" style={{ fontSize: '0.75rem' }}>{t('Verified')}</span>
