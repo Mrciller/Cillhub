@@ -190,7 +190,7 @@ object E2ee {
     /** The server's member list against the accepted one; stores it on first use (a 1:1 DM only with exactly one other member). */
     private fun memberCheck(ch: Channel) = E2eeMembers.check(ch.type, memoryOf(ch.id), members(ch).drop(1)).also { r -> r.next?.let { keepMemory(ch.id, it) } }
     /** Members the server lists in a group DM that this device has not accepted (nothing is wrapped for them until Accept). */
-    fun addedMembers(ch: Channel): List<String> = if (isEncrypted(ch) && ch.type == 3 && memoryOf(ch.id) != null) memberCheck(ch).added else emptyList()
+    fun addedMembers(ch: Channel): List<String> = if (isEncrypted(ch) && ch.type == 3 && memoryOf(ch.id) != null) memberCheck(ch).let { if (it.bad) emptyList() else it.added } else emptyList()
     /** Accepts a member added to a group DM; the next send makes a new key for everyone (theirs never opens older messages). */
     fun acceptAdded(ch: Channel, id: String) {
         memoryOf(ch.id)?.let { keepMemory(ch.id, E2eeMembers.accept(it, id, ch.e2eeEpoch)) }
@@ -294,6 +294,7 @@ object E2ee {
             val key = if (by != null && E2eeMembers.trusted(mem, owner, by, k.epoch == r.epoch)) runCatching { C.unwrap(me, k.wrapped, ch.id, k.epoch, owner, candidates(by)) }.getOrNull() else null
             if (key != null) keys[k.epoch] = key else if (k.epoch == r.epoch) unverified = true
         }
+        if (me != null) unverified = E2eeMembers.unverifiedKey(r.epoch, keys.containsKey(r.epoch), unverified, r.staleUsers, owner)
         val out = Keys(r.epoch, keys, r.wrappedUsers, unverified, r.staleUsers)
         channels[ch.id] = out
         if (keys.size > (have?.keys?.size ?: 0)) retryFailed()

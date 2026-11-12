@@ -367,7 +367,26 @@ async function main() {
       check(!(await msg(sam, `after the attack ${SFX}`).innerText()).includes('Cannot decrypt'), 'Sam reads the message sent with the renewed key')
     })
 
-    await step('12. The attacker sets the epoch back to 0: Alex\'s device remembers it was encrypted, warns and sends no plain text', async () => {
+    await step('12. The server leaves Alex\'s wrap of the current key out of its answer: Alex refuses to send and does not renew by himself; the key is renewed only by hand', async () => {
+      const epoch = sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e
+      write('DELETE FROM dm_keys WHERE channel_id = ? AND epoch = ? AND user_id = ?', ids.dm, epoch, ids.alex)
+      const count = sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n
+      await openDm(alex)
+      const warn = alex.locator('.e2ee-bar.warn').filter({ hasText: 'The key of this conversation could not be verified.' })
+      await warn.waitFor(LIVE)
+      await until('the message box to refuse', async () => await composer(alex).isDisabled())
+      await composer(alex).evaluate((el) => el.removeAttribute('disabled'))
+      await send(alex, `without my wrap ${SFX}`)
+      await alex.getByText('The key of this conversation could not be verified. Nothing was sent.').waitFor(LIVE)
+      await sleep(500)
+      check(sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n === count, 'no message stored')
+      check(sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e === epoch, 'no new epoch by itself')
+      await warn.getByRole('button', { name: 'Make a new key' }).click()
+      await until('a new key made by hand', async () => sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e === epoch + 1)
+      await until('the warning to go', async () => (await warn.count()) === 0)
+    })
+
+    await step('13. The attacker sets the epoch back to 0: Alex\'s device remembers it was encrypted, warns and sends no plain text', async () => {
       const before = sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n
       const epoch = sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e
       write('UPDATE channels SET e2ee_epoch = 0 WHERE id = ?', ids.dm)
@@ -387,7 +406,7 @@ async function main() {
       write('UPDATE channels SET e2ee_epoch = ? WHERE id = ?', epoch, ids.dm) // back as it was, for the next step
     })
 
-    await step('13. A database attacker adds Robin (with a key) as third recipient of the 1:1 DM: Alex refuses to send, Robin gets no wrap, no Accept is offered', async () => {
+    await step('14. A database attacker adds Robin (with a key) as third recipient of the 1:1 DM: Alex refuses to send, Robin gets no wrap, no Accept is offered', async () => {
       await robin.goto(BASE + '/channels/@me')
       await ready(robin)
       await turnOn(robin)
@@ -406,7 +425,7 @@ async function main() {
       check(sql('SELECT COUNT(*) AS n FROM dm_keys WHERE channel_id = ? AND user_id = ?', ids.dm, ids.robin)[0].n === 0, 'no wrap for Robin')
     })
 
-    await step('14. Group DM: Sam adds Robin; Alex sends nothing and wraps nothing for Robin until Accept; then a new key that Robin reads, the old one never wrapped for Robin', async () => {
+    await step('15. Group DM: Sam adds Robin; Alex sends nothing and wraps nothing for Robin until Accept; then a new key that Robin reads, the old one never wrapped for Robin', async () => {
       await ok(api(sam, 'POST', '/users/@me/relationships', { username: NAME.robin }))
       await ok(api(robin, 'PUT', `/users/@me/relationships/${ids.sam}`, {}))
       ids.group = (await ok(api(alex, 'POST', '/users/@me/channels', { recipients: [ids.alex, ids.sam] }))).id
@@ -441,7 +460,7 @@ async function main() {
       check(!(await msg(robin, `welcome Robin ${SFX}`).innerText()).includes('Cannot decrypt'), 'Robin reads the message with the new key')
     })
 
-    await step('15. no uncaught page errors and no native dialogs', async () => {
+    await step('16. no uncaught page errors and no native dialogs', async () => {
       if (errors.length) throw new Error(errors.join('; '))
     })
   } catch (e) {

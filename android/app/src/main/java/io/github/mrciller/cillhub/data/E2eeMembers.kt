@@ -8,8 +8,9 @@ import kotlinx.serialization.Serializable
  */
 object E2eeMembers {
     /** ids: accepted members (without this account); left: accepted once, gone since (their old wraps still open);
-     * renew: the epoch at the last Accept: that key and older ones are never wrapped for the newly accepted member. */
-    @Serializable data class Memory(val ids: List<String>, val left: List<String> = emptyList(), val renew: Int? = null)
+     * renew: the epoch at the last Accept: that key and older ones are never wrapped for the newly accepted member;
+     * dm: stored for a 1:1 DM (the server cannot turn it into a group with an Accept prompt). */
+    @Serializable data class Memory(val ids: List<String>, val left: List<String> = emptyList(), val renew: Int? = null, val dm: Boolean = false)
     /** bad: a 1:1 DM whose members are not the one other member (no Accept); added: listed by the server, not accepted here;
      * next: the memory to store, or null (unchanged). */
     data class Check(val accepted: List<String>, val added: List<String>, val bad: Boolean, val next: Memory?)
@@ -18,11 +19,12 @@ object E2eeMembers {
     fun check(type: Int, mem: Memory?, others: List<String>): Check {
         if (mem == null) {
             if (type == 1 && others.size != 1) return Check(emptyList(), emptyList(), true, null)
-            return Check(others, emptyList(), false, Memory(others))
+            return Check(others, emptyList(), false, Memory(others, dm = type == 1))
         }
         val accepted = mem.ids.filter { it in others }
         val added = others.filter { it !in mem.ids }
         val gone = mem.ids.filter { it !in others }
+        if (mem.dm && type != 1) return Check(accepted, added, true, null) // a 1:1 DM the server turned into a group
         if (type == 1) return Check(accepted, added, added.isNotEmpty() || gone.isNotEmpty(), null)
         return Check(accepted, added, false, if (gone.isNotEmpty()) mem.copy(ids = accepted, left = (mem.left + gone).distinct()) else null)
     }
@@ -33,6 +35,11 @@ object E2eeMembers {
     /** May a wrap made by [by] open here? Own and accepted members always; for older epochs also members who left since. */
     fun trusted(mem: Memory?, owner: String, by: String, current: Boolean) =
         by == owner || mem?.ids?.contains(by) == true || (!current && mem?.left?.contains(by) == true)
+
+    /** After loading my wraps: no usable current key counts as unverified (a missing wrap is the same as one that failed its
+     * check, since a server can leave mine out), unless my own current wrap is a tombstone after my reset (I am stale). */
+    fun unverifiedKey(epoch: Int, haveKey: Boolean, failed: Boolean, stale: List<String>, owner: String) =
+        failed || (epoch > 0 && !haveKey && owner !in stale)
 
     enum class Plan { USE, RENEW, REFUSE }
     /** Before a send: REFUSE when my wrap of the current key failed its check (never renewed silently), RENEW for no wrap for

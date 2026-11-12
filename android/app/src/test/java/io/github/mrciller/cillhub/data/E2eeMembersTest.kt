@@ -19,7 +19,7 @@ class E2eeMembersTest {
     }
 
     @Test fun firstUseStoresTheListAndA1to1DmNeedsExactlyOneOther() {
-        assertEquals(Memory(listOf("sam")), E2eeMembers.check(1, null, listOf("sam")).next)
+        assertEquals(Memory(listOf("sam"), dm = true), E2eeMembers.check(1, null, listOf("sam")).next)
         for (others in listOf(emptyList(), listOf("sam", "kim"))) {
             val r = E2eeMembers.check(1, null, others)
             assertTrue(r.bad); assertNull(r.next); assertTrue(r.accepted.isEmpty())
@@ -32,6 +32,15 @@ class E2eeMembersTest {
         assertTrue(ghost.bad); assertNull(ghost.next); assertEquals(listOf("sam"), ghost.accepted)
         assertTrue(E2eeMembers.check(1, mem, listOf("kim")).bad)
         assertFalse(E2eeMembers.check(1, mem, listOf("sam")).bad)
+    }
+
+    @Test fun aOneToOneDmTurnedIntoAGroupStaysRefused() {
+        val dm = E2eeMembers.check(1, null, listOf("sam")).next!!
+        val r = E2eeMembers.check(3, dm, listOf("sam", "kim"))
+        assertTrue(r.bad); assertNull(r.next)
+        assertTrue(E2eeMembers.check(3, dm, listOf("sam")).bad)
+        assertFalse("old memory without the flag", E2eeMembers.check(3, Memory(listOf("sam")), listOf("sam", "kim")).bad)
+        assertTrue("Accept keeps the flag", E2eeMembers.accept(dm, "kim", 2).dm)
     }
 
     @Test fun groupDmAddWaitsForAcceptAndGoneMembersKeepOnlyOldWraps() {
@@ -60,5 +69,17 @@ class E2eeMembersTest {
         assertEquals("a member left", Plan.RENEW, E2eeMembers.plan(4, false, true, w, emptyList(), listOf("alex"), null))
         assertEquals("the key of the Accept epoch", Plan.RENEW, E2eeMembers.plan(4, false, true, w, emptyList(), w + "kim", 4))
         assertEquals(Plan.USE, E2eeMembers.plan(5, false, true, w, emptyList(), w, 4))
+    }
+
+    @Test fun noWrapForMeIsUnverifiedUnlessItIsMyTombstone() {
+        assertTrue("the server left my wrap out", E2eeMembers.unverifiedKey(3, false, false, emptyList(), "alex"))
+        assertFalse("my reset: renews by itself", E2eeMembers.unverifiedKey(3, false, false, listOf("alex"), "alex"))
+        assertTrue(E2eeMembers.unverifiedKey(3, false, false, listOf("sam"), "alex"))
+        assertFalse(E2eeMembers.unverifiedKey(3, true, false, emptyList(), "alex"))
+        assertFalse("not encrypted yet", E2eeMembers.unverifiedKey(0, false, false, emptyList(), "alex"))
+        assertTrue(E2eeMembers.unverifiedKey(3, false, true, listOf("alex"), "alex"))
+        val w = listOf("alex", "sam")
+        assertEquals(Plan.REFUSE, E2eeMembers.plan(3, E2eeMembers.unverifiedKey(3, false, false, emptyList(), "alex"), false, listOf("sam"), emptyList(), w, null))
+        assertEquals(Plan.RENEW, E2eeMembers.plan(3, E2eeMembers.unverifiedKey(3, false, false, listOf("alex"), "alex"), false, w, listOf("alex"), w, null))
     }
 }

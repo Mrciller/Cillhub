@@ -7,7 +7,7 @@ import { t } from '../i18n'
 import { apply, getState } from '../store'
 import type { Channel, Message } from '../types'
 import * as C from './crypto'
-import { acceptMember, checkMembers, sendPlan, trustedMaker, type Memory } from './members'
+import { acceptMember, checkMembers, sendPlan, trustedMaker, unverifiedKey, type Memory } from './members'
 
 export type FileRef = { id: string; k: string; n: string; name: string; type: string; size: number | null; w?: number; h?: number }
 export type Plain = { state: 'ok'; content: string; files: FileRef[] } | { state: 'pending' | 'locked' | 'fail' }
@@ -201,7 +201,11 @@ function memberCheck(ch: Channel) {
   return r
 }
 /** Members the server lists in a group DM that this device has not accepted (nothing is wrapped for them until Accept). */
-export const addedMembers = (ch: Channel) => (isEncrypted(ch) && ch.type === 3 && !!memoryOf(ch.id) ? memberCheck(ch).added : [])
+export function addedMembers(ch: Channel) {
+  if (!isEncrypted(ch) || ch.type !== 3 || !memoryOf(ch.id)) return []
+  const r = memberCheck(ch)
+  return r.bad ? [] : r.added
+}
 /** Accepts a member added to a group DM; the next send makes a new key for everyone (theirs never opens older messages). */
 export function acceptAdded(ch: Channel, id: string) {
   const mem = memoryOf(ch.id)
@@ -289,6 +293,7 @@ async function channelKeys(ch: Channel, fresh = false): Promise<Keys> {
     if (key) keys.set(k.epoch, key)
     else if (k.epoch === r.epoch) unverified = true
   }
+  if (priv) unverified = unverifiedKey(r.epoch, keys.has(r.epoch), unverified, r.stale_users ?? [], owner)
   const out = { epoch: r.epoch, keys, wrapped: r.wrapped_users, stale: r.stale_users ?? [], unverified }
   channels.set(ch.id, out)
   if (keys.size > (have?.keys.size ?? 0)) retrySoft()
