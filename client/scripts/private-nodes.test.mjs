@@ -361,19 +361,45 @@ test('r6-21: cillvoice track ids are opaque: scoped in, the same id out', () => 
   view.voiceGuild = null
 })
 
-test('r6-20: a READY and a quiz poll from a real current server pass (numeric font, effect, answer ids)', async () => {
+test('r6-20/r7-20: every honest payload a real current server sends on the node path passes (fixture from a real server)', async () => {
+  // regenerate: node /root/cillhub-private/tools/node-fixture.mjs (from the worktree's server/)
   const { readFileSync } = await import('node:fs')
   const fx = JSON.parse(readFileSync(new URL('./fixtures/node-payloads.json', import.meta.url), 'utf8'))
   reg.testNode('5', 'https://n5.example', fx.ready.user.id, '1')
   const r = reg.admit('5', 'READY', fx.ready)
-  assert.ok(r, 'READY with display name styles')
+  assert.ok(r, 'READY with folders, custom theme, profile effect and name styles')
   assert.equal(r.user.id, '1')
+  assert.equal(r.user_settings, undefined, 'node-local settings are not taken in')
+  assert.ok(JSON.stringify(r).match(/"font_id":\d+/), 'the other member keeps its numeric display name style')
   const m = reg.admitRest('5', fx.message)
-  assert.ok(m, 'quiz poll message')
   assert.equal(m.poll.correct_answer_id, 1)
-  const styled = JSON.stringify(r).match(/"font_id":(\d+)/)
-  assert.ok(styled, 'the other member keeps its numeric display name style')
-  assert.ok(reg.admit('5', 'VOICE_CHANNEL_EFFECT_SEND', { channel_id: '1', guild_id: '2', user_id: '3', animation_id: 0, emoji: null }) !== undefined)
+  assert.ok(reg.admitRest('5', fx.reacted), 'message with a reaction and a mention')
+  assert.ok(reg.admitRest('5', fx.template), 'template with numbered roles and emoji roles')
+  assert.ok(reg.admitRest('5', fx.members), 'member list')
+  assert.equal(reg.admitRest('5', fx.profile).user_profile.profile_effect.id, 'sparkles')
+  const g = r.guilds[0]
+  view.channels[`5~${fx.voiceStatus.id}`] = { guild_id: g.id }
+  const st = reg.admit('5', 'VOICE_CHANNEL_STATUS_UPDATE', fx.voiceStatus)
+  assert.ok(st, 'voice channel status names its channel by id')
+  assert.equal(reg.admit('5', 'VOICE_CHANNEL_EFFECT_SEND', { channel_id: fx.voiceStatus.id, guild_id: fx.voiceStatus.guild_id, user_id: '3', animation_id: 0, emoji: null }) === null, false)
+})
+
+test('r7-7: free choices spend the node budget; polls take votes only for their answers; at most 20 reactions', () => {
+  reg.testNode('4', 'https://n4.example', '940', '1')
+  reg.LIMITS.budget = 50
+  let refused = false
+  for (let i = 0; i < 100 && !refused; i++) refused = reg.admitRest('4', { [`k${i}`]: 1 }) === null
+  assert.ok(refused, 'new property names count')
+  reg.admit('4', 'READY', { user: { id: '940' }, guilds: [] })
+  refused = false
+  for (let i = 0; i < 100 && !refused; i++) refused = reg.admitRest('4', { emoji: { id: null, name: `e${i}` } }) === null
+  assert.ok(refused, 'new emoji names count')
+  reg.admit('4', 'READY', { user: { id: '940' }, guilds: [] })
+  refused = false
+  for (let i = 0; i < 100 && !refused; i++) refused = reg.admitRest('4', { answer_id: i }) === null
+  assert.ok(refused, 'new answer numbers count')
+  reg.LIMITS.budget = 200_000
+  assert.equal(reg.admit('4', 'READY', { id: 'bad' }), null, 'a READY must name our node account')
 })
 
 test('r6-22: screen share start/switch see a leave or switch through the join generation', async () => {
@@ -398,4 +424,14 @@ test('r6-17: attachment descriptions and poll texts go through the reference che
   assert.equal(reg.bodyFits({ content: '', attachments: [{ id: '0', description: 'see <@2>' }] }, '7'), false)
   assert.equal(reg.bodyFits({ attachments: [{ id: '0', description: 'fine' }] }, '7'), true)
   assert.equal(reg.bodyFits({ poll: { question: { text: '<@7~901>?' }, answers: [] } }, undefined), false)
+})
+
+test('r7-17: our presence reaches a node without other servers\' custom emoji or references', () => {
+  const p = { status: 'online', activities: [{ type: 4, name: 'Custom Status', state: 'at <#11> with <@2> and <@7~901>', emoji: { id: '55', name: 'hub' } }] }
+  const to7 = reg.outbound('7', reg.presenceFor('7', p))
+  assert.equal(to7.activities[0].emoji, null)
+  assert.equal(to7.activities[0].state, 'at  with  and <@901>')
+  const own = reg.presenceFor('7', { activities: [{ type: 4, emoji: { id: '7~55', name: 'x' } }] })
+  assert.equal(own.activities[0].emoji.id, '7~55')
+  assert.deepEqual(reg.presenceFor('7', { activities: [{ type: 4, emoji: { name: '🙂' } }] }).activities[0].emoji, { name: '🙂' })
 })

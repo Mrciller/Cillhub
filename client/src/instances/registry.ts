@@ -108,6 +108,7 @@ const FREE_TREES = new Set(['activities', 'components', 'serialized_source_guild
 const NUMERIC_IDS = new Set(['answer_id', 'correct_answer_id', 'font_id', 'effect_id', 'animation_id'])
 // cillvoice tracks are named `<user id>-<mid>`: opaque, scoped as they are (tracks[].id, track_id) and given back the same way.
 const TRACK = /^[\w-]{1,80}$/
+const PRESET = /^[a-z][a-z0-9_-]{0,39}$/ // built-in collectible names (server routes/customization.js)
 export const LIMITS = { depth: 32, list: 10_000, nodes: 500_000, budget: 200_000 }
 const isIdKey = (k: string) => (k === 'id' || k.endsWith('_id')) && !FREE_IDS.has(k)
 const isIdList = (k: string) => ID_LISTS.has(k) || k.endsWith('_ids')
@@ -134,6 +135,10 @@ function inbound<T>(n: Live, data: T): T | null {
     if (ids.size > LIMITS.budget) throw bad
     return out
   }
+  const spend = (what: string) => {
+    ids.add(what)
+    if (ids.size > LIMITS.budget) throw bad
+  }
   const userRef = (v: unknown) => (n.meId && v === n.meId ? hub.meId || ref(v) : ref(v))
   const self = () => ({ ...(view.user(hub.meId) ?? { id: hub.meId }) })
   let count = 0
@@ -151,21 +156,31 @@ function inbound<T>(n: Live, data: T): T | null {
     if (Array.isArray(x)) {
       if (x.length > LIMITS.list) throw bad
       // an id list holds snowflake strings only (lists of objects under the same names, like guild roles, walk on)
-      if (isIdList(key) && x.some((v) => typeof v !== 'object' || v === null)) return x.map((v) => (USER_LISTS.has(key) ? userRef(v) : ref(v)))
+      if (isIdList(key) && x.some((v) => typeof v !== 'object' || v === null)) {
+        // inside a template, lists number its own roles: numbers or short strings, kept as they are
+        if (free) return x.map((v) => (typeof v === 'number' || (typeof v === 'string' && v.length <= 100) ? v : (() => { throw bad })()))
+        return x.map((v) => (USER_LISTS.has(key) ? userRef(v) : ref(v)))
+      }
       return x.map((v) => walk(v, key, depth + 1, free, userObj))
     }
     if (!x || typeof x !== 'object') return x
     const inFree = free || FREE_TREES.has(key)
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(x)) {
+      // free choices a node could use to grow what we keep (property names, emoji names, answer numbers) spend its
+      // budget like ids do; an honest server uses a small fixed set of them
+      if (!SNOW.test(k)) spend(`.${k}`)
       if (isIdList(k) && v != null && !Array.isArray(v)) throw bad // an id list that is not a list
       // our presence and activities are the hub's: a node's entry for our node account is dropped
       if (k === 'presences' && Array.isArray(v)) {
         out[k] = walk(v.filter((p) => !(n.meId && (p as { user?: { id?: unknown } } | null)?.user?.id === n.meId)), k, depth + 1, inFree, false)
         continue
       }
+      if (key === 'emoji' && k === 'name' && typeof v === 'string') spend(`:${v}`)
+      // a profile effect is named after a built-in preset, not a snowflake
+      if (key === 'profile_effect' && k === 'id' && typeof v === 'string') { if (!PRESET.test(v)) throw bad; out[k] = v; continue }
       const typed = (key === 'emoji' && k === 'id') || key === 'default_values'
-      if (typeof v === 'number' && (NUMERIC_IDS.has(k) || (k === 'id' && key === 'answer_counts'))) { out[k] = v; continue }
+      if (typeof v === 'number' && (NUMERIC_IDS.has(k) || (k === 'id' && key === 'answer_counts'))) { spend(`#${k}${v}`); out[k] = v; continue }
       if (typeof v === 'string' && (k === 'track_id' || (k === 'id' && key === 'tracks'))) {
         if (!TRACK.test(v)) throw bad
         out[k] = scoped(inst, v)
@@ -207,7 +222,7 @@ export const setView = (v: View) => void (view = v)
 // Node events and the target each must carry (a node-scoped id of this node); anything else (settings, friends, DMs,
 // calls, saved messages, instance notices, …) never comes from a node. A missing or null target is refused.
 const BY_ID = ['GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE']
-const CHANNEL_BY_ID = ['CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'THREAD_MEMBER_UPDATE', 'THREAD_MEMBERS_UPDATE']
+const CHANNEL_BY_ID = ['VOICE_CHANNEL_STATUS_UPDATE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'THREAD_MEMBER_UPDATE', 'THREAD_MEMBERS_UPDATE']
 const BY_GUILD = ['GUILD_ROLE_CREATE', 'GUILD_ROLE_UPDATE', 'GUILD_ROLE_DELETE', 'GUILD_MEMBER_ADD', 'GUILD_MEMBER_UPDATE', 'GUILD_MEMBER_REMOVE', 'GUILD_BAN_ADD',
   'GUILD_BAN_REMOVE', 'GUILD_EMOJIS_UPDATE', 'GUILD_STICKERS_UPDATE', 'GUILD_SCHEDULED_EVENT_CREATE', 'GUILD_SCHEDULED_EVENT_UPDATE',
   'GUILD_SCHEDULED_EVENT_DELETE', 'GUILD_SCHEDULED_EVENT_USER_ADD', 'GUILD_SCHEDULED_EVENT_USER_REMOVE', 'GUILD_SOUNDBOARD_SOUND_CREATE',
@@ -216,13 +231,14 @@ const BY_GUILD = ['GUILD_ROLE_CREATE', 'GUILD_ROLE_UPDATE', 'GUILD_ROLE_DELETE',
 const BY_CHANNEL = ['MESSAGE_CREATE', 'MESSAGE_UPDATE', 'MESSAGE_DELETE', 'MESSAGE_DELETE_BULK', 'MESSAGE_REACTION_ADD', 'MESSAGE_REACTION_REMOVE',
   'MESSAGE_REACTION_REMOVE_ALL', 'MESSAGE_REACTION_REMOVE_EMOJI', 'MESSAGE_POLL_VOTE_ADD', 'MESSAGE_POLL_VOTE_REMOVE', 'MESSAGE_ACK', 'TYPING_START',
   'CHANNEL_PINS_UPDATE', 'CHANNEL_CANVAS_UPDATE', 'STAGE_INSTANCE_CREATE', 'STAGE_INSTANCE_UPDATE', 'STAGE_INSTANCE_DELETE', 'WATCH_SESSION_UPDATE',
-  'WATCH_SESSION_DELETE', 'VOICE_CHANNEL_STATUS_UPDATE', 'VOICE_CHANNEL_EFFECT_SEND']
+  'WATCH_SESSION_DELETE', 'VOICE_CHANNEL_EFFECT_SEND']
 const VOICE = ['VOICE_SERVER_UPDATE', 'CILLVOICE_ANSWER', 'CILLVOICE_TRACKS', 'CILLVOICE_SPEAKING', 'CILLVOICE_ERROR']
 const INTERACTIONS = ['INTERACTION_CREATE', 'INTERACTION_SUCCESS', 'INTERACTION_FAILURE', 'INTERACTION_MODAL_CREATE', 'APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE']
 const TERMINAL = new Set(['INTERACTION_SUCCESS', 'INTERACTION_FAILURE', 'INTERACTION_MODAL_CREATE', 'APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE'])
 const mine = (inst: string, id: unknown) => typeof id === 'string' && nodeOf(id) === inst
 
 function allowed(inst: string, t: string, d: any): boolean {
+  if (t === 'READY' && d.user?.id !== hub.meId) return false // a READY must name our node account
   // a member sent next to user_id (voice states, typing, reactions) must be that user, else it is dropped
   if (d.member?.user && d.member.user.id !== d.user_id) delete d.member
   if (t === 'READY') return true
@@ -257,10 +273,32 @@ export function admit<T>(inst: string, t: string, raw: T): T | null {
   // everything the node brought before (dropNodeState) before applying it. A refused READY changes nothing.
   const before = seen.get(inst)
   if (n && t === 'READY') seen.delete(inst)
-  const d = n ? (inbound(n, raw) as any) : null
+  const d = n ? (inbound(n, t === 'READY' ? (readyPart(raw) as T) : raw) as any) : null
   const ok = !!d && typeof d === 'object' && allowed(inst, t, d)
   if (!ok && t === 'READY') before ? seen.set(inst, before) : seen.delete(inst)
   return ok ? (d as T) : null
+}
+
+/** The part of a node READY the client uses (instances/nodes.ts ready()): node-local DMs, friends, settings, notes and
+ *  instance info are not ours to keep and cannot refuse the connection. */
+const READY_FIELDS = ['session_id', 'guilds', 'users', 'presences', 'read_state', 'user_guild_settings'] as const
+export function readyPart(raw: unknown) {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const user = r.user as { id?: unknown } | undefined
+  return { user: { id: user?.id }, ...Object.fromEntries(READY_FIELDS.filter((k) => k in r).map((k) => [k, r[k]])) }
+}
+
+/** Our presence as one node may see it: a custom emoji or text reference of another server is left out. */
+export function presenceFor(inst: string, p: any) {
+  if (!p || typeof p !== 'object') return p
+  const fits = (id: unknown) => typeof id !== 'string' || nodeOf(id) === inst
+  const clean = (x: unknown) => (typeof x === 'string' ? x.replace(ANY_TOKEN, (m, _k, a: string, b?: string) => (b !== undefined && a === inst ? m : '')) : x)
+  return {
+    ...p,
+    activities: (Array.isArray(p.activities) ? p.activities : []).map((a: any) => ({
+      ...a, state: clean(a?.state), name: clean(a?.name), ...(a?.emoji && { emoji: a.emoji.id && !fits(a.emoji.id) ? null : a.emoji }),
+    })),
+  }
 }
 
 // Every store map a node can write into, keyed by node-scoped ids: dropNodeState prunes all of them (pruneNode), and

@@ -163,6 +163,7 @@ async function connectRoom(endpoint: string, token: string) {
     .on(RoomEvent.TrackUnmuted, bump)
     .on(RoomEvent.LocalTrackPublished, bump)
     .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
+      if (!live()) return // an old room's tracks say nothing about the current call
       // The browser's own "Stop sharing" button ends the screen share without going through us.
       const v = getState().voice
       if (pub.source === 'screen_share' && v.stream && !republishing) (setVoice({ stream: false }), sendState())
@@ -498,13 +499,18 @@ export async function switchScreenShare(q: StreamQuality = voiceSettings().strea
         newTracks = await r!.localParticipant.createScreenTracks(o.capture)
       }
       if (staleSince(g)) return newTracks.forEach((t) => t.stop())
-      const oldScreen = r!.localParticipant.getTrackPublication('screen_share' as Track.Source.ScreenShare)
-      if (oldScreen?.track) await r!.localParticipant.unpublishTrack(oldScreen.track)
-      const oldAudio = r!.localParticipant.getTrackPublication('screen_share_audio' as Track.Source.ScreenShareAudio)
-      if (oldAudio?.track) await r!.localParticipant.unpublishTrack(oldAudio.track)
-      for (const t of newTracks) {
-        if (staleSince(g)) return newTracks.forEach((x) => x.stop())
-        await r!.localParticipant.publishTrack(t, { ...o.publish, source: t.source })
+      try {
+        const oldScreen = r!.localParticipant.getTrackPublication('screen_share' as Track.Source.ScreenShare)
+        if (oldScreen?.track) await r!.localParticipant.unpublishTrack(oldScreen.track)
+        const oldAudio = r!.localParticipant.getTrackPublication('screen_share_audio' as Track.Source.ScreenShareAudio)
+        if (oldAudio?.track) await r!.localParticipant.unpublishTrack(oldAudio.track)
+        for (const t of newTracks) {
+          if (staleSince(g)) return newTracks.forEach((x) => x.stop())
+          await r!.localParticipant.publishTrack(t, { ...o.publish, source: t.source })
+        }
+      } catch (e) {
+        newTracks.forEach((t) => t.stop()) // never leave a capture running that nothing publishes
+        throw e
       }
     }
     if (staleSince(g)) return
@@ -520,14 +526,17 @@ export async function switchScreenShare(q: StreamQuality = voiceSettings().strea
 /** Explicitly stops an active screen share. */
 export async function stopScreenShare() {
   const r = room
+  const g = join.now()
   const v = getState().voice
   if ((!r && !cv.active()) || !v.stream) return
   try {
     if (cv.active()) await cv.stopScreen()
     else await r!.localParticipant.setScreenShareEnabled(false)
+    if (staleSince(g)) return // the call it was for is gone; the next one has its own state
     setVoice({ stream: false })
     sendState()
   } catch (e) {
+    if (staleSince(g)) return
     if (!(e instanceof Error && e.name === 'NotAllowedError')) {
       setVoice({ error: `Couldn't stop screen share${e instanceof Error ? `: ${e.message}` : '.'}` })
     }

@@ -20,10 +20,12 @@ type Options = {
   rejected: () => void
   /** A frame above this closes the connection (node gateways). */
   maxBytes?: number
+  /** Our presence as this connection may see it (node gateways: their own ids only). */
+  presence?: (p: unknown) => unknown
 }
 
 const send = (sock: WebSocket, op: number, d: unknown) => sock.readyState === WebSocket.OPEN && (sock.send(JSON.stringify({ op, d })), true)
-const identify = (sock: WebSocket, token: string | null) => {
+const identify = (sock: WebSocket, token: string | null, view: (p: unknown) => unknown = (p) => p) => {
   const st = getState().settings
   // The custom status rides along as a type 4 activity (expired ones are dropped).
   const cs = st.custom_status
@@ -33,10 +35,10 @@ const identify = (sock: WebSocket, token: string | null) => {
   send(sock, 2, {
     token,
     properties: { os: navigator.platform, browser: 'Cillhub Web', device: '' },
-    presence: {
+    presence: view({
       status: st.status ?? 'online', since: 0, afk: false,
       activities: [...(live ? [{ type: 4, name: 'Custom Status', state: cs.text, ...(emoji && { emoji }) }] : []), ...(game ? [{ type: 0, name: game.name, timestamps: { start: game.start } }] : [])],
-    },
+    }),
   })
 }
 
@@ -104,12 +106,12 @@ export function createGateway(o: Options): Gateway {
           acked = false
           send(sock, 1, seq)
         }, Math.max(1000, Number(d?.heartbeat_interval) || 41_250))
-        identify(sock, o.token())
+        identify(sock, o.token(), o.presence)
       } else if (op === 11) acked = true
       else if (op === 1) send(sock, 1, seq)
       // v1 cannot resume; the protocol asks for a fresh IDENTIFY after a random 1-5 s wait.
       // One pending re-identify at a time, however many op 9 arrive.
-      else if (op === 9 && !reidentify) reidentify = setTimeout(() => ((reidentify = 0), gen === generation && identify(sock, o.token())), 1000 + Math.random() * 4000)
+      else if (op === 9 && !reidentify) reidentify = setTimeout(() => ((reidentify = 0), gen === generation && identify(sock, o.token(), o.presence)), 1000 + Math.random() * 4000)
       else if (op === 0) {
         if (t === 'READY') attempt = 0
         o.dispatch(t, d)

@@ -375,12 +375,14 @@ function addMessage(s: State, m: Message): Partial<State> {
 /** Custom emoji are identified by id, Unicode emoji by name. */
 export const emojiKey = (e: { id?: string | null; name?: string | null }) => e.id || e.name || ''
 
+const MAX_REACTIONS = 20
 function react(s: State, d: { user_id: string; channel_id: string; message_id: string; emoji: { id?: string | null; name: string; animated?: boolean } }, add: boolean): Partial<State> {
   const me = d.user_id === s.me?.id
   return patchMessage(s, d.channel_id, d.message_id, (m) => {
     const list = m.reactions ?? []
     const r = list.find((x) => emojiKey(x.emoji) === emojiKey(d.emoji))
     if (me && (r?.me ?? false) === add) return m // our own optimistic change already applied
+    if (add && !r && list.length >= MAX_REACTIONS) return m // a server keeps at most 20 different reactions per message
     if (add) return { ...m, reactions: r ? list.map((x) => (x === r ? { ...x, count: x.count + 1, me: x.me || me } : x)) : [...list, { emoji: { id: d.emoji.id ?? null, name: d.emoji.name, ...(d.emoji.animated && { animated: true }) }, count: 1, me }] }
     if (!r) return m
     return { ...m, reactions: r.count <= 1 ? list.filter((x) => x !== r) : list.map((x) => (x === r ? { ...x, count: x.count - 1, me: me ? false : x.me } : x)) }
@@ -391,7 +393,7 @@ function react(s: State, d: { user_id: string; channel_id: string; message_id: s
 function vote(s: State, d: { user_id: string; channel_id: string; message_id: string; answer_id: number }, add: boolean): Partial<State> {
   const me = d.user_id === s.me?.id
   return patchMessage(s, d.channel_id, d.message_id, (m) => {
-    if (!m.poll) return m
+    if (!m.poll || !m.poll.answers.some((a) => a.answer_id === d.answer_id)) return m // only answers the poll has
     const counts = m.poll.results?.answer_counts ?? []
     const c = counts.find((x) => x.id === d.answer_id)
     if (me && (c?.me_voted ?? false) === add) return m

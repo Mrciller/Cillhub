@@ -12,7 +12,7 @@ import { gatewayOk, inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revoca
 import { apply, byId, getState, setState, setToken, type State } from '../store'
 import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
-import { admit, NODE_MAPS, outbound, overBudget, pruneNode, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
+import { admit, NODE_MAPS, outbound, presenceFor, overBudget, pruneNode, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
 
 /** The hub's node directory record (§2), from GET /federation/nodes. */
 export type NodeRecord = {
@@ -52,8 +52,10 @@ export function stopNodes() {
 /** Sends an op to one node (or to every ready node with `null`, for presence). */
 export function nodeSend(id: string | null, op: number, d: unknown) {
   // ops go out in the node's own ids (scoped ones bare, our hub id as our node id)
-  if (id === null) return [...conns].map(([n, g]) => g.send(op, outbound(n, d))).some(Boolean)
-  return conns.get(id)?.send(op, outbound(id, d)) ?? false
+  // our presence (op 3) goes to each node without other servers' custom emoji or references
+  const to = (n: string) => outbound(n, op === 3 ? presenceFor(n, d) : d)
+  if (id === null) return [...conns].map(([n, g]) => g.send(op, to(n))).some(Boolean)
+  return conns.get(id)?.send(op, to(id)) ?? false
 }
 
 function open(i: InstanceInfo) {
@@ -64,6 +66,7 @@ function open(i: InstanceInfo) {
       return r
     }),
     maxBytes: NODE_FRAME_BYTES,
+    presence: (p) => outbound(i.id, presenceFor(i.id, p)), // IDENTIFY too
     token: () => tokenOf(i.id),
     ready: () => statusOf(i.id) === 'ready',
     connecting: (failed) => setLive(i.id, { status: failed ? 'offline' : 'connecting' }),
