@@ -9,7 +9,7 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 pub const GAMES: &[(&str, &[&str])] = &[
     ("Counter-Strike 2", &["cs2.exe"]),
     ("VALORANT", &["VALORANT-Win64-Shipping.exe"]),
-    ("League of Legends", &["League of Legends.exe"]),
+    ("League of Legends", &["League of Legends.exe", "LeagueClientUx.exe", "LeagueClient.exe"]),
     ("Dota 2", &["dota2.exe"]),
     ("Rocket League", &["RocketLeague.exe"]),
     (
@@ -47,6 +47,7 @@ pub struct GameActivity {
     pub start: u64,
 }
 
+#[derive(Debug, Clone)]
 pub struct ProcessInfo {
     pub names: Vec<String>,
     pub cmdline: String,
@@ -127,13 +128,24 @@ pub fn scan_system_processes(sys: &mut System) -> Vec<ProcessInfo> {
 pub struct GameTracker {
     sys: System,
     current: Option<GameActivity>,
+    last_procs: Vec<ProcessInfo>,
+}
+
+impl Default for GameTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GameTracker {
     pub fn new() -> Self {
+        // sysinfo keeps every /proc/N[/task/N]/stat open between refreshes (thousands of fds);
+        // 0 makes it reopen them per scan instead.
+        sysinfo::set_open_files_limit(0);
         Self {
             sys: System::new(),
             current: None,
+            last_procs: Vec::new(),
         }
     }
 
@@ -141,10 +153,23 @@ impl GameTracker {
         self.current.as_ref()
     }
 
+    pub fn last_processes(&self) -> &[ProcessInfo] {
+        &self.last_procs
+    }
+
+    pub fn reset(&mut self) {
+        self.current = None;
+    }
+
+    pub fn poll(&mut self, custom: &[CustomGame]) -> Option<GameActivity> {
+        self.scan(custom)
+    }
+
     pub fn scan(&mut self, custom: &[CustomGame]) -> Option<GameActivity> {
         let procs = scan_system_processes(&mut self.sys);
         let cur_name = self.current.as_ref().map(|c| c.name.as_str());
         let detected = detect_game(&procs, custom, cur_name);
+        self.last_procs = procs;
 
         match (self.current.as_ref(), detected) {
             (Some(cur), Some(new_name)) if cur.name == new_name => self.current.clone(),
@@ -171,6 +196,25 @@ impl GameTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn scanning_keeps_no_proc_files_open() {
+        let proc_stat_fds = || {
+            std::fs::read_dir("/proc/self/fd")
+                .unwrap()
+                .filter_map(|e| std::fs::read_link(e.ok()?.path()).ok())
+                .filter(|p| p.starts_with("/proc") && p.ends_with("stat"))
+                .count()
+        };
+        let mut tracker = GameTracker::new();
+        for _ in 0..3 {
+            tracker.scan(&[]);
+        }
+        assert!(!tracker.last_processes().is_empty());
+        // other tests scan in parallel (CillhubApp::new): their files are open only for a moment
+        assert!((0..100).any(|_| proc_stat_fds() == 0 || { std::thread::sleep(std::time::Duration::from_millis(5)); false }));
+    }
 
     #[test]
     fn test_normalize_key() {

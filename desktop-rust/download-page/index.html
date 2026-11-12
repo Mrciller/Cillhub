@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="dark">
 <title>Download Cillhub</title>
 <style>
-  :root { --bg: #313338; --panel: #2b2d31; --deep: #1e1f22; --text: #dbdee1; --muted: #b5bac1; --head: #f2f3f5; --brand: #5865f2; --brand-hover: #4752c4; --link: #00a8fc; }
+  :root { --bg: #313338; --panel: #2b2d31; --deep: #1e1f22; --text: #dbdee1; --muted: #b5bac1; --head: #f2f3f5; --brand: #5865f2; --brand-hover: #4752c4; --link: #00a8fc; --rust: #ff6a1f; --rust-bg: rgba(255, 106, 31, 0.12); }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 "gg sans", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
   a { color: var(--link); }
@@ -26,6 +26,8 @@
   .btn:hover { border-color: var(--muted); }
   .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-size: 18px; min-height: 56px; }
   .btn.primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+  .btn.rust { border-color: var(--rust); color: #ff8c52; background: var(--rust-bg); }
+  .btn.rust:hover { background: rgba(255, 106, 31, 0.22); color: #fff; }
   .buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
   .meta { color: var(--muted); font-size: 14px; margin-top: 18px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; padding-bottom: 56px; }
@@ -60,20 +62,24 @@
     <p class="lead">Notifications, screen sharing and a tray icon, with the same chat as the website. The app updates itself.</p>
     <div class="buttons">
       <a class="btn" id="dl-win" data-os="windows" href="/download/desktop/{{WIN_FILE}}">Download for Windows</a>
+      <a class="btn rust" id="dl-rust-win-setup" href="/download/desktop/Cillhub-Rust-Setup-{{VERSION}}.exe" download="Cillhub-Rust-Setup-{{VERSION}}.exe">🦀 Early Full Rust Windows Installer (.exe)</a>
+      <a class="btn rust" id="dl-rust-win-zip" href="/download/desktop/Cillhub-Rust-{{VERSION}}-windows-x64.zip" download="Cillhub-Rust-{{VERSION}}-windows-x64.zip">🦀 Early Full Rust Windows Portable (.zip)</a>
       <a class="btn" id="dl-appimage" data-os="linux" href="/download/desktop/{{APPIMAGE_FILE}}">Linux AppImage</a>
       <a class="btn" id="dl-deb" href="/download/desktop/{{DEB_FILE}}">Linux .deb</a>
+      <a class="btn rust" id="dl-rust-deb" href="/download/desktop/cillhub-desktop-rust_{{VERSION}}_amd64.deb" download="cillhub-desktop-rust_{{VERSION}}_amd64.deb">🦀 Early Full Rust Linux (.deb)</a>
+      <a class="btn rust" id="dl-rust-tar" href="/download/desktop/Cillhub-Rust-{{VERSION}}-linux-x64.tar.gz" download="Cillhub-Rust-{{VERSION}}-linux-x64.tar.gz">🦀 Early Full Rust Linux (.tar.gz)</a>
       <a class="btn" id="dl-android" data-os="android" href="/download/android/Cillhub.apk">Android app (APK)</a>
     </div>
-    <p class="meta">Version {{VERSION}} · released {{RELEASE_DATE}} · Windows 10/11 64-bit, Linux x64</p>
+    <p class="meta">Version {{VERSION}} · released {{RELEASE_DATE}} · Windows 10/11 64-bit, Linux x64 (including Early Full Rust Native GUI Client)</p>
   </div>
   <div class="cards wrap">
     <section class="card" aria-labelledby="h-win">
       <h2 id="h-win">Windows</h2>
-      <p>Installer (.exe): click <b>More info</b>, then <b>Run anyway</b> if SmartScreen warns on first launch. For instant zero-install startup and ultra-low audio latency, grab the Native Rust Windows portable binary (<kbd>.exe</kbd> or <kbd>.zip</kbd>).</p>
+      <p>Installer (.exe): click <b>More info</b>, then <b>Run anyway</b> if SmartScreen warns on first launch. For a 100% pure-Rust native GUI (zero WebView/Tauri) with Game Activity, League of Legends Lobby Invites, and 48 kHz RNNoise DSP, install <a href="/download/desktop/Cillhub-Rust-Setup-{{VERSION}}.exe"><b>Cillhub-Rust-Setup-{{VERSION}}.exe</b></a> or grab the portable <a href="/download/desktop/Cillhub-Rust-{{VERSION}}-windows-x64.zip"><kbd>.zip</kbd></a> / <a href="/download/desktop/Cillhub-Rust-{{VERSION}}-windows-x64.exe"><kbd>.exe</kbd></a>.</p>
     </section>
     <section class="card" aria-labelledby="h-linux">
       <h2 id="h-linux">Linux</h2>
-      <p>AppImage: make it executable (<kbd>chmod +x Cillhub-*.AppImage</kbd>) and run it. Debian/Ubuntu: install the .deb with <kbd>sudo apt install ./cillhub_*.deb</kbd>. For ultra-low audio latency and instant startup, try the Native Rust client (<kbd>.deb</kbd> or portable <kbd>.tar.gz</kbd>).</p>
+      <p>AppImage: make it executable (<kbd>chmod +x Cillhub-*.AppImage</kbd>) and run it. Debian/Ubuntu: install the .deb with <kbd>sudo apt install ./cillhub_*.deb</kbd>. For the 100% pure-Rust native GUI client, install <a href="/download/desktop/cillhub-desktop-rust_{{VERSION}}_amd64.deb"><kbd>cillhub-desktop-rust_{{VERSION}}_amd64.deb</kbd></a> or portable <a href="/download/desktop/Cillhub-Rust-{{VERSION}}-linux-x64.tar.gz"><kbd>.tar.gz</kbd></a>.</p>
     </section>
     <section class="card" aria-labelledby="h-phone">
       <h2 id="h-phone">On your phone</h2>
