@@ -62,6 +62,7 @@ object Session {
         app = ctx.applicationContext
         Config.APP_URL = Prefs(app).serverUrl ?: Config.DEFAULT_URL
         _loggedIn.value = TokenStore.get(app) != null
+        Reducer.open = E2ee::view
         conn = GatewayConnection(
             token = { TokenStore.get(app) },
             onDispatch = ::dispatch,
@@ -188,6 +189,7 @@ object Session {
             runCatching { android.webkit.WebStorage.getInstance().deleteAllData(); android.webkit.CookieManager.getInstance().removeAllCookies(null) }
         }
         store.reset()
+        E2ee.forget()
         _loggedIn.value = false
         Delivery.apply(app)
     }
@@ -211,28 +213,79 @@ object Session {
             messageReference = replyTo?.let { MessageReference(it.id, ch.id) }, referencedMessage = replyTo,
         )
         store.update { Reducer.addMessage(it, temp) }
-        val payload = buildJsonObject {
-            put("content", content); put("nonce", n)
-            replyTo?.let { putJsonObject("message_reference") { put("message_id", it.id) } }
-            if (files.isNotEmpty()) putJsonArray("attachments") { files.forEachIndexed { i, f -> add(buildJsonObject { put("id", i.toString()); put("filename", f.name) }) } }
-        }
         try {
-            val text = if (files.isEmpty()) rest.request("POST", "/channels/${ch.id}/messages", payload, retry = false)
-            else rest.multipart("/channels/${ch.id}/messages", payload, files, progress)
-            val real = json.decodeFromString<Message>(text)
+            val real = post(ch, content, n, replyTo?.id, files, progress)
             store.update { s -> Reducer.addMessage(Reducer.patchList(s, ch.id) { l -> l.filter { it.id != temp.id } }, real) }
-        } catch (e: ApiError) {
+        } catch (e: Exception) {
             // keep the text on screen so nothing typed is lost
             store.update { Reducer.patchMessage(it, ch.id, temp.id) { m -> m.copy(pending = false, failed = true) } }
             throw e
         }
     }
 
+    /** A reply from a notification or the car: no optimistic copy, the channel may not be loaded. */
+    suspend fun reply(channelId: String, content: String) {
+        val real = post(E2ee.channel(channelId), content, nonce())
+        store.update { Reducer.addMessage(it, real) }
+    }
+
+    /** An encrypted DM's 409 (newer key 50300, member left 50302, key race 50304): load the keys and try once more. */
+    private suspend fun <T> e2eeRetry(f: suspend (fresh: Boolean) -> T): T = try { f(false) } catch (e: ApiError) {
+        if (e.status == 409 && e.code in setOf(50300, 50302, 50304)) f(true) else throw e
+    }
+
+    /** POST of a message; in an encrypted DM text and files are sealed first (names and types go inside the payload). */
+    private suspend fun post(ch: Channel, content: String, n: String, replyTo: String? = null, files: List<Upload> = emptyList(), progress: (Float) -> Unit = {}): Message {
+        var sealedFiles: List<Pair<E2ee.FileRef, Upload>>? = null
+        return e2eeRetry { fresh ->
+            val key = E2ee.sendKey(ch, fresh)
+            if (key != null && sealedFiles == null) sealedFiles = kotlinx.coroutines.withContext(Dispatchers.IO) { files.mapIndexed { i, f -> E2ee.encryptUpload(f, i) } }
+            val refs = sealedFiles?.map { it.first }.orEmpty()
+            val ups = if (key != null) sealedFiles!!.map { it.second } else files
+            val payload = buildJsonObject {
+                if (key != null) put("e2ee_envelope", json.encodeToJsonElement(Envelope.serializer(), E2ee.seal(ch.id, key, content, refs))) else put("content", content)
+                put("nonce", n)
+                replyTo?.let { putJsonObject("message_reference") { put("message_id", it) } }
+                if (ups.isNotEmpty()) putJsonArray("attachments") { ups.forEachIndexed { i, f -> add(buildJsonObject { put("id", i.toString()); put("filename", f.name) }) } }
+            }
+            val text = if (ups.isEmpty()) rest.request("POST", "/channels/${ch.id}/messages", payload, retry = false)
+            else rest.multipart("/channels/${ch.id}/messages", payload, ups, progress)
+            json.decodeFromString<Message>(text).also { if (key != null) E2ee.remember(it, content, refs) }
+        }
+    }
+
     fun discard(m: Message) = store.update { s -> Reducer.patchList(s, m.channelId) { l -> l.filter { it.id != m.id } } }
 
     suspend fun edit(m: Message, content: String) {
+        val ch = store.value.channels[m.channelId]
+        if (m.e2eeEnvelope != null || E2ee.isEncrypted(ch)) { // a new envelope with the same files; the server keeps no history
+            // the new envelope keeps the files: an edit of a message not opened here would drop them
+            if (m.e2eeEnvelope != null && E2ee.plainOf(m) == null) throw Exception(app.getString(io.github.mrciller.cillhub.R.string.e2ee_cannot_decrypt))
+            val files = E2ee.plainOf(m)?.files.orEmpty()
+            val r = e2eeRetry { fresh ->
+                val key = E2ee.sendKey(ch ?: E2ee.channel(m.channelId), fresh) ?: throw Exception(app.getString(io.github.mrciller.cillhub.R.string.e2ee_cannot_encrypt))
+                val env = json.encodeToJsonElement(Envelope.serializer(), E2ee.seal(m.channelId, key, content, files))
+                rest.request("PATCH", "/channels/${m.channelId}/messages/${m.id}", buildJsonObject { put("e2ee_envelope", env) })
+            }
+            E2ee.remember(json.decodeFromString<Message>(r), content, files)
+            store.dispatch("MESSAGE_UPDATE", json.parseToJsonElement(r).jsonObject)
+            return
+        }
+        E2ee.refusePlain(ch)
         val r = rest.request("PATCH", "/channels/${m.channelId}/messages/${m.id}", buildJsonObject { put("content", content) })
         store.dispatch("MESSAGE_UPDATE", json.parseToJsonElement(r).jsonObject)
+    }
+
+    /** Reports a message to the instance admins; an encrypted one hands over its message key (and those of [context]). */
+    suspend fun report(m: Message, reason: String, note: String?, context: List<Message> = emptyList()) {
+        val reveal = if (m.e2eeEnvelope != null) E2ee.revealKeys(listOf(m) + context).also { r ->
+            if (r.none { it.first == m.id }) throw Exception(app.getString(io.github.mrciller.cillhub.R.string.report_cannot_decrypt))
+        } else null
+        rest.request("POST", "/channels/${m.channelId}/messages/${m.id}/report", buildJsonObject {
+            put("reason", reason)
+            if (!note.isNullOrBlank()) put("note", note.trim())
+            if (reveal != null) putJsonArray("reveal") { reveal.forEach { (id, mk) -> add(buildJsonObject { put("id", id); put("mk", mk) }) } }
+        })
     }
 
     suspend fun delete(m: Message) {
@@ -433,6 +486,7 @@ object Session {
                 if (correctAnswerIndex != null) put("correct_answer_id", correctAnswerIndex + 1)
             }
         }
+        E2ee.refusePlain(store.value.channels[channelId])
         val text = rest.request("POST", "/channels/$channelId/messages", payload)
         val msg = json.decodeFromString<Message>(text)
         store.update { Reducer.addMessage(it, msg) }

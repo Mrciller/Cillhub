@@ -281,6 +281,7 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
     var sheetFor by remember { mutableStateOf<Message?>(null) }
     var picker by remember { mutableStateOf<Message?>(null) }
     var confirmDelete by remember { mutableStateOf<Message?>(null) }
+    var reportFor by remember { mutableStateOf<Message?>(null) }
     var purgeMode by rememberSaveable { mutableStateOf(false) }
     val selectedPurgeIds = remember { mutableStateListOf<String>() }
     var confirmBulkDelete by remember { mutableStateOf(false) }
@@ -376,6 +377,7 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
+            E2eeBar(state, ch)
             if (ch.solvedMessageId != null) {
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer,
@@ -500,8 +502,9 @@ fun ChatScreen(channelId: String, showBack: Boolean) {
     }
 
     sheetFor?.let { m ->
-        MessageActions(state, m, ch, perms, vm, onClose = { sheetFor = null }, onPickReaction = { picker = m }, onDelete = { confirmDelete = m })
+        MessageActions(state, m, ch, perms, vm, onClose = { sheetFor = null }, onPickReaction = { picker = m }, onDelete = { confirmDelete = m }, onReport = { reportFor = m })
     }
+    reportFor?.let { m -> ReportDialog(m) { reportFor = null } }
     picker?.let { m -> ReactionPicker({ picker = null }) { e -> vm.react(m, e); picker = null } }
     confirmDelete?.let { m ->
         AlertDialog(
@@ -615,10 +618,12 @@ private fun ChatTopBar(
             }
         },
         actions = {
+            E2eeLock(state, ch)
             if (isPrivate(ch)) IconButton({ nav.openVoice(ch.id, start = !state.calls.containsKey(ch.id)) }) { Ic(R.drawable.ms_call, s(if (state.calls.containsKey(ch.id)) R.string.voice_join_call else R.string.start_call)) }
             if (isThread) IconButton(onOpenThreadNotif) { Ic(R.drawable.ms_notifications, s(R.string.thread_notifications)) }
             IconButton({ nav.openSearch(ch.id) }) { Ic(R.drawable.ms_search, s(R.string.search_messages)) }
-            IconButton(onOpenMediaGallery) { Ic(R.drawable.ms_perm_media, s(R.string.media_files_links)) }
+            // an encrypted DM's files are ciphertext on the server: the gallery could only list file.bin
+            if (!io.github.mrciller.cillhub.data.E2ee.isEncrypted(ch)) IconButton(onOpenMediaGallery) { Ic(R.drawable.ms_perm_media, s(R.string.media_files_links)) }
             if (canPurge) IconButton(onTogglePurge) { Ic(R.drawable.ms_delete, s(R.string.purge_messages)) }
             if (ch.guildId != null && showBack) IconButton({ nav.openMembers(ch.guildId) }) { Ic(R.drawable.ms_group, s(R.string.members)) }
         },
@@ -749,7 +754,8 @@ private fun Composer(
                         DropdownMenuItem({ Text(s(R.string.attach_media)) }, { menu = false; media.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
                             leadingIcon = { Ic(R.drawable.ms_add_photo_alternate, null) })
                         DropdownMenuItem({ Text(s(R.string.attach_file)) }, { menu = false; docs.launch(arrayOf("*/*")) }, leadingIcon = { Ic(R.drawable.ms_attach_file, null) })
-                        DropdownMenuItem({ Text(s(R.string.create_poll)) }, { menu = false; onOpenPoll() }, leadingIcon = { Ic(R.drawable.ms_poll, null) })
+                        // the server refuses polls in encrypted DMs
+                        if (!io.github.mrciller.cillhub.data.E2ee.isEncrypted(ch) && io.github.mrciller.cillhub.data.E2ee.seenEpoch(ch.id) == 0) DropdownMenuItem({ Text(s(R.string.create_poll)) }, { menu = false; onOpenPoll() }, leadingIcon = { Ic(R.drawable.ms_poll, null) })
                     }
                 } else Spacer(Modifier.width(12.dp))
                 TextField(

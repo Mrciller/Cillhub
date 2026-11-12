@@ -131,7 +131,10 @@ object Hub {
         val msg = Msg(
             id = m.optString("id"), authorId = author.optString("id"), authorName = Conversations.author(m),
             avatar = if (author.isNull("avatar")) null else author.optString("avatar"),
-            text = Conversations.text(m), time = timeOf(m),
+            // an encrypted DM: decrypted here (the server only has the placeholder), else "Encrypted message"
+            text = if (m.has("e2ee_envelope")) kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeoutOrNull(15_000) { io.github.mrciller.cillhub.data.E2ee.notificationText(m) } }
+                ?: app.getString(R.string.e2ee_encrypted_message) else Conversations.text(m),
+            time = timeOf(m),
         )
         Notifications.addMessage(app, ch.optString("id"), guildId, Conversations.title(ch, meId, guildId?.let { guildNames[it] }), ch.optInt("type") != 1, msg)
     }

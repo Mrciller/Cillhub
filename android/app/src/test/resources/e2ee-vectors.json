@@ -1,0 +1,77 @@
+{
+  "about": "Encrypted DM test vectors. All binary values are base64url without padding. Strings marked json are exact bytes (utf8).",
+  "alex": {
+    "user_id": "1300000000000000001",
+    "d": "3seOQEYxCzdcn3f0hM1nFAvYGvgijgPp358rGkpyVoo",
+    "pkcs8": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg3seOQEYxCzdcn3f0hM1nFAvYGvgijgPp358rGkpyVoqhRANCAASng2rdJK0gPbchayNijLyoAWWsWPHipSVvRzKOA-jgoPl_98iAegqCyA_AQMTtukPmqZyoue1JAORoXhBi3eL6",
+    "public_key": "BKeDat0krSA9tyFrI2KMvKgBZaxY8eKlJW9HMo4D6OCg-X_3yIB6CoLID8BAxO26Q-apnKi57UkA5GheEGLd4vo"
+  },
+  "sam": {
+    "user_id": "1300000000000000002",
+    "d": "O6m9M0GzLPjJ_KuHby1bYpLCffNP57nX6DUpLHSPxwY",
+    "pkcs8": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgO6m9M0GzLPjJ_KuHby1bYpLCffNP57nX6DUpLHSPxwahRANCAARXyuZMZHs51IppmQsA4y3z1u7uEx41oBT4Ge9hI9kjgzeO9XGUaN4G5I8CerDVgSq_byxyTnrBArM1sNF4FBB5",
+    "public_key": "BFfK5kxkeznUimmZCwDjLfPW7u4THjWgFPgZ72Ej2SODN471cZRo3gbkjwJ6sNWBKr9vLHJOesECszWw0XgUEHk"
+  },
+  "recovery": {
+    "user_id": "1300000000000000001",
+    "key": "LJuHlx7fOCziJ1BYGHV4cM1Lgf8",
+    "display": "FSNY-PFY6-344C-ZYRH-KBMB-Q5LY-ODGU-XAP7",
+    "bk": "TZwm4CYLcIzUz5kQSDLw3fiZgy2OXgsPbzVfcS3DONY",
+    "nonce": "FSh683YUPrQfrGH3",
+    "backup_json": "{\"v\":1,\"n\":\"FSh683YUPrQfrGH3\",\"c\":\"v6uOInBWS2fVasFE6fH4DzU14V42wonKj4OCN7dIBXGkh3NXVd7sJS464CyAZhG_pkXcDA_kBkO8CcfmGRyxPf78g0J7GZJL-Kq0Hn1mz4QzZydEJWvZayP11f8EhmlPBEX-CjdJV9dANhv7CihssVFiZzYAu3kZ185romnkYPwrqXm_4tNKEGt2a3jL3X0xxGPMR2M6z_9MeA\"}"
+  },
+  "channel": {
+    "id": "1300000000000000100",
+    "epoch": 1,
+    "key": "PnRkG_KLVH8EFexa88bK5UwLg_eTsEZmkWQgzzVNqT4"
+  },
+  "wrap": {
+    "user_id": "1300000000000000002",
+    "wrapper": {
+      "user_id": "1300000000000000001",
+      "d": "3seOQEYxCzdcn3f0hM1nFAvYGvgijgPp358rGkpyVoo",
+      "pkcs8": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg3seOQEYxCzdcn3f0hM1nFAvYGvgijgPp358rGkpyVoqhRANCAASng2rdJK0gPbchayNijLyoAWWsWPHipSVvRzKOA-jgoPl_98iAegqCyA_AQMTtukPmqZyoue1JAORoXhBi3eL6",
+      "public_key": "BKeDat0krSA9tyFrI2KMvKgBZaxY8eKlJW9HMo4D6OCg-X_3yIB6CoLID8BAxO26Q-apnKi57UkA5GheEGLd4vo"
+    },
+    "ephemeral": {
+      "d": "MTAY-MRjn9TNTk6a-6PnbC3yvXy-fOLgxosLzusQJ8A",
+      "pkcs8": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgMTAY-MRjn9TNTk6a-6PnbC3yvXy-fOLgxosLzusQJ8ChRANCAAQvP4f7UE-wtlyJRA5Ia5Ypkd-IsQ8Zz9kt0colHNadoMp3D93u16SMMbAueU0AUatUHpvHisqKBEDOV00YiONP",
+      "public_key": "BC8_h_tQT7C2XIlEDkhrlimR34ixDxnP2S3RyiUc1p2gyncP3e7XpIwxsC55TQBRq1Qem8eKyooEQM5XTRiI408"
+    },
+    "nonce": "MueQgTxOf7Ys38C5",
+    "shared_eph": "cBQoB6912N-yNs6UDqdF-YSD3OhC7HloGeAXC_SegGQ",
+    "shared_by": "PpFqEnrE6kVX9Lu-n4x8vPLFc8E3RgzrWGeKekt4wkc",
+    "ikm": "cBQoB6912N-yNs6UDqdF-YSD3OhC7HloGeAXC_SegGQ-kWoSesTqRVf0u76fjHy88sVzwTdGDOtYZ4p6S3jCRw",
+    "info": "cillhub-e2ee-wrap-v2|1|1300000000000000002|1300000000000000001",
+    "wk": "EuXEsxcjI89wnMR9UhcAaalt3t6ESpSxwkZNQGjZPSY",
+    "wrapped_json": "{\"by\":\"1300000000000000001\",\"eph\":\"BC8_h_tQT7C2XIlEDkhrlimR34ixDxnP2S3RyiUc1p2gyncP3e7XpIwxsC55TQBRq1Qem8eKyooEQM5XTRiI408\",\"n\":\"MueQgTxOf7Ys38C5\",\"c\":\"-rC1C_WZ5GmmP0u-E9R8jBa6HvblSieK-y0wx9tN8H0XxwmEMMY78hQkZu_qUCEg\"}"
+  },
+  "message": {
+    "author_id": "1300000000000000001",
+    "nonce24": "zAGwtZz6XtiZHg4FM1S8S-YP4LJxKV8e",
+    "aad": "1300000000000000100|1300000000000000001",
+    "plaintext_json": "{\"content\":\"Hello Sam, this is encrypted.\",\"files\":[{\"id\":\"0\",\"k\":\"pZ2jfMHhUPU8Cw2d_jQFudfl3gjrKP-Y4gyZJVHl4zo\",\"n\":\"qH3fIqJG5zLajDcf\",\"name\":\"note.txt\",\"type\":\"text/plain\",\"size\":11}]}",
+    "mk": "LcNutttR8gulwXqcuorJAGLQ46OQfETy3PNll05CUxk",
+    "kc": "NZvGT5_rxlJiCV8Bs19TRHESmF_uvs924yCWFf6D71M",
+    "envelope": {
+      "v": 1,
+      "e": 1,
+      "n": "zAGwtZz6XtiZHg4FM1S8S-YP4LJxKV8e",
+      "c": "4GkyEy6PolTGIlkzawc3l6-1fMm99zTk7z7fC7WOpxXpzoP934QKlGDP7gozZY_ics9d8nkB44NWrSwu1c_oF20lwdYamhsdIu3tbDclg-JHoIS8hbT5zN6grt9D1vocHYRk2sBvjjKfvieKI30y_RPUQT6LlC1OO399eaiE_KPTibJnWkQlqkD-jCWutzvKuPKYFz81MM9JRW4NUFD3OKf1ZCICPA5VGYjwNGmXnZzlYtFBcoXnY7qBCA-i6vdSNGUJTkWBSIwQ",
+      "kc": "NZvGT5_rxlJiCV8Bs19TRHESmF_uvs924yCWFf6D71M"
+    }
+  },
+  "attachment": {
+    "key": "pZ2jfMHhUPU8Cw2d_jQFudfl3gjrKP-Y4gyZJVHl4zo",
+    "iv": "qH3fIqJG5zLajDcf",
+    "plaintext": "SGVsbG8gYWdhaW4",
+    "ciphertext": "DOdjaU6vDiay4SJnN4QBjjg5wcGiNZipHGgw"
+  },
+  "security_code": {
+    "between": [
+      "1300000000000000001",
+      "1300000000000000002"
+    ],
+    "code": "12789 49212 35691 60430 96538 36133 26774 67650 14589 08491 04931 97713"
+  }
+}

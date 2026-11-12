@@ -126,7 +126,10 @@ class ConversationsScreen(ctx: CarContext) : Screen(ctx) {
         override fun onTextReply(text: String) {
             val ch = Hub.store.value.channels[channelId] ?: return
             Hub.scope.launch {
-                runCatching { Hub.send(ch, text.take(2000)) }.onFailure { CarToast.makeText(carContext, R.string.car_reply_failed, CarToast.LENGTH_LONG).show() }
+                runCatching { Hub.send(ch, text.take(2000)) }.onFailure {
+                    if (it is io.github.mrciller.cillhub.data.E2ee.Refused) CarToast.makeText(carContext, it.message + " " + carContext.getString(R.string.e2ee_open_app), CarToast.LENGTH_LONG).show()
+                    else CarToast.makeText(carContext, R.string.car_reply_failed, CarToast.LENGTH_LONG).show()
+                }
             }
         }
     }

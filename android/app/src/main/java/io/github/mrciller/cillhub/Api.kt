@@ -43,9 +43,6 @@ class Api(private val token: String) {
     fun member(guildId: String, userId: String): JSONObject = JSONObject(call("GET", "/guilds/$guildId/members/$userId"))
     fun guild(id: String): JSONObject = JSONObject(call("GET", "/guilds/$id"))
 
-    fun send(channelId: String, content: String): JSONObject = JSONObject(
-        call("POST", "/channels/$channelId/messages", JSONObject().put("content", content).put("nonce", System.currentTimeMillis().toString()))
-    )
     fun ack(channelId: String, messageId: String) { call("POST", "/channels/$channelId/messages/$messageId/ack", JSONObject()) }
     fun stopRinging(channelId: String) { call("POST", "/channels/$channelId/call/stop-ringing", JSONObject()) }
 

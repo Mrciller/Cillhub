@@ -114,6 +114,8 @@ data class Channel(
     val totalMessageSent: Int = 0,
     val member: ThreadMember? = null,
     val defaultAutoArchiveDuration: Int = 4320,
+    /** Encrypted DMs: the current key epoch, 0 = not encrypted. */
+    val e2eeEpoch: Int = 0,
 )
 
 val Channel.isThread: Boolean get() = type in 10..12 || threadMetadata != null
@@ -199,6 +201,9 @@ data class Attachment(
     val description: String? = null,
     @kotlinx.serialization.SerialName("duration_secs") val durationSecs: Float? = null,
     val waveform: String? = null,
+    // local only: the file key and iv of a decrypted file in an encrypted DM (the server holds ciphertext)
+    @Transient val key: String? = null,
+    @Transient val iv: String? = null,
 ) {
     val isImage get() = (contentType?.startsWith("image/") == true || filename.substringAfterLast('.').lowercase() in IMAGE_EXT) && !filename.startsWith("SPOILER_")
     val spoiler get() = filename.startsWith("SPOILER_")
@@ -316,7 +321,16 @@ data class Message(
     // local only: an optimistic copy that is still sending, or failed to send
     @Transient val pending: Boolean = false,
     @Transient val failed: Boolean = false,
+    val e2eeEnvelope: Envelope? = null,
+    /** local only: null for plain messages; otherwise whether the envelope is opened (content and files are then plaintext). */
+    @Transient val seal: Seal? = null,
 )
+
+/** An encrypted message as the server stores it: {v, e, n, c, kc}, all binary values base64url. */
+@Serializable
+data class Envelope(val v: Int, val e: Int, val n: String, val c: String, val kc: String)
+
+enum class Seal { OPEN, PENDING, LOCKED, FAIL }
 
 @Serializable
 data class ReadState(val id: String, val lastMessageId: String? = null, val mentionCount: Int = 0)

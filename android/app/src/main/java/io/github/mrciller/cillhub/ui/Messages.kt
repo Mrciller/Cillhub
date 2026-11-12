@@ -216,7 +216,8 @@ fun DmRow(state: State, c: Channel, selected: Boolean, onClick: () -> Unit) {
         draft != null -> "✎ $draft"
         last != null -> {
             val who = if (last.author.id == state.me?.id) ctx.getString(R.string.you_prefix) else if (c.type == 3) "${last.author.displayName}: " else ""
-            val body = last.content.ifBlank { if (last.attachments.isNotEmpty()) ctx.getString(R.string.attachment) else if (last.poll != null) "📊" else "" }
+            val body = if (last.seal != null && last.seal != io.github.mrciller.cillhub.data.Seal.OPEN) ctx.getString(R.string.e2ee_encrypted_message)
+                else last.content.ifBlank { if (last.attachments.isNotEmpty()) ctx.getString(R.string.attachment) else if (last.poll != null) "📊" else "" }
             (who + body).replace('\n', ' ').takeIf { body.isNotBlank() }
         }
         c.type == 3 -> ctx.resources.getQuantityString(R.plurals.members_count, c.recipients.size + 1, c.recipients.size + 1)

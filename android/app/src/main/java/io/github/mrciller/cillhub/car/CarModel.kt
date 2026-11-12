@@ -2,6 +2,7 @@ package io.github.mrciller.cillhub.car
 
 import io.github.mrciller.cillhub.data.Channel
 import io.github.mrciller.cillhub.data.Perm
+import io.github.mrciller.cillhub.data.Seal
 import io.github.mrciller.cillhub.data.Sel
 import io.github.mrciller.cillhub.data.State
 import io.github.mrciller.cillhub.data.cmpId
@@ -20,7 +21,7 @@ object CarModel {
         val guild = Sel.unreadChannels(s).filter { !isPrivate(it) && it.type in Sel.TEXT_TYPES }
         return (dms + guild).distinctBy { it.id }.sortedWith { a, b -> cmpId(b.lastMessageId ?: b.id, a.lastMessageId ?: a.id) }.take(limit).map { c ->
             val read = s.readStates[c.id]?.lastMessageId
-            val list = s.messages[c.id].orEmpty().filter { !it.pending && !it.failed && (it.content.isNotBlank() || it.attachments.isNotEmpty()) }.takeLast(perConversation)
+            val list = s.messages[c.id].orEmpty().filter { !it.pending && !it.failed && (it.seal == null || it.seal == Seal.OPEN) && (it.content.isNotBlank() || it.attachments.isNotEmpty()) }.takeLast(perConversation)
             Conversation(
                 c, title(s, c), c.type != 1,
                 list.map { m ->

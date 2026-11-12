@@ -233,7 +233,9 @@ fun MessageItem(
                 }
                 // a bare GIF or image link shows only its embed
                 val bareMedia = m.embeds.singleOrNull()?.let { it.url == m.content.trim() && it.type in setOf("gifv", "image") } == true
-                if (m.content.isNotEmpty() && !bareMedia) MarkdownText(m.content, state, guildId)
+                val sealed = m.seal != null && m.seal != io.github.mrciller.cillhub.data.Seal.OPEN
+                if (sealed) SealLine(m.seal!!) // an encrypted message not opened here: never its placeholder or envelope
+                else if (m.content.isNotEmpty() && !bareMedia) MarkdownText(m.content, state, guildId)
                 if (m.editedTimestamp != null) {
                     Text(
                         "(${s(R.string.edited)})",
@@ -242,7 +244,7 @@ fun MessageItem(
                         modifier = Modifier.clickable(onClickLabel = s(R.string.edit_history)) { showEdits = true }.padding(vertical = 2.dp),
                     )
                 }
-                for (a in m.attachments) AttachmentView(a)
+                if (!sealed) for (a in m.attachments) AttachmentView(a)
                 for (e in m.embeds) EmbedView(e, state, guildId)
                 for (st in m.stickerItems) AsyncImage(Config.cdn("/stickers/${st.id}.png"), st.name, Modifier.padding(top = 4.dp).size(160.dp))
                 if (m.poll != null) PollCard(m.channelId, m, m.poll)
@@ -303,7 +305,9 @@ private fun ReplyPreview(state: State, ref: Message?, guildId: String?, onClick:
             Text("@" + Sel.memberName(state, guildId, ref.author.id), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1,
                 color = Sel.roleColor(state, guildId, ref.author.id)?.let { Color(0xFF000000 or it.toLong()) } ?: MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.width(6.dp))
-            Text(io.github.mrciller.cillhub.data.Md.plain(ref.content) { n -> if (n is io.github.mrciller.cillhub.data.Md.UserMention) "@" + Sel.memberName(state, guildId, n.id) else "" }.ifBlank { s(R.string.attachment) }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val refSeal = ref.seal?.takeIf { it != io.github.mrciller.cillhub.data.Seal.OPEN }
+            if (refSeal != null) Text(s(if (refSeal == io.github.mrciller.cillhub.data.Seal.PENDING) R.string.e2ee_decrypting else R.string.e2ee_encrypted_message), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            else Text(io.github.mrciller.cillhub.data.Md.plain(ref.content) { n -> if (n is io.github.mrciller.cillhub.data.Md.UserMention) "@" + Sel.memberName(state, guildId, n.id) else "" }.ifBlank { s(R.string.attachment) }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -312,10 +316,16 @@ private fun ReplyPreview(state: State, ref: Message?, guildId: String?, onClick:
 private fun AttachmentView(a: Attachment) {
     val nav = LocalNav.current
     val ctx = LocalContext.current
-    val url = Config.cdn(a.url)
+    // a file of an encrypted DM: downloaded and decrypted into app-private cache first, shown from there
+    val local = if (a.key == null) null else androidx.compose.runtime.produceState<Result<java.io.File>?>(null, a.id, a.key) {
+        value = runCatching { io.github.mrciller.cillhub.data.E2ee.decryptFile(a) }
+    }.value
+    if (a.key != null && local == null) { Text(s(R.string.e2ee_decrypting), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); return }
+    if (local?.isFailure == true) { Text(s(R.string.e2ee_file_failed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error); return }
+    val url = local?.getOrNull()?.let { android.net.Uri.fromFile(it).toString() } ?: Config.cdn(a.url)
     val isAudio = a.contentType?.startsWith("audio/") == true || a.filename.substringAfterLast('.').lowercase() in listOf("mp3", "wav", "ogg", "m4a", "flac", "opus", "aac")
     if (isAudio) {
-        AudioPlayerView(url = url, durationSecs = a.durationSecs, filename = a.filename)
+        AudioPlayerView(url = local?.getOrNull()?.path ?: url, durationSecs = a.durationSecs, filename = a.filename)
         return
     }
     var reveal by rememberSaveable(a.id) { mutableStateOf(!a.spoiler) }
@@ -351,6 +361,7 @@ private fun Modifier.matchParentSize() = this.then(Modifier.fillMaxWidth().fillM
 
 /** Files from the server go to Downloads through the system download manager; anything else opens in the browser. */
 fun download(ctx: android.content.Context, url: String, name: String) {
+    if (url.startsWith("file:")) { shareLocal(ctx, java.io.File(Uri.parse(url).path!!), name); return }
     if (Origins.of(url) != Config.ORIGIN) { openUrl(ctx, url); return }
     try {
         val req = DownloadManager.Request(Uri.parse(url)).setTitle(name)
@@ -361,6 +372,14 @@ fun download(ctx: android.content.Context, url: String, name: String) {
     } catch (e: Exception) {
         openUrl(ctx, url)
     }
+}
+
+/** A decrypted file of an encrypted DM: handed to another app (save, open, send) through the FileProvider. */
+fun shareLocal(ctx: android.content.Context, f: java.io.File, name: String) {
+    val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+    val send = Intent(Intent.ACTION_SEND).setType(ctx.contentResolver.getType(uri) ?: "application/octet-stream").putExtra(Intent.EXTRA_STREAM, uri)
+        .putExtra(Intent.EXTRA_TITLE, name).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    ctx.startActivity(Intent.createChooser(send, name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
 /** Embed media only through the server's proxy (or its own root-relative URL), never from the third-party host directly. */
@@ -441,6 +460,7 @@ fun MessageActions(
     onPickReaction: () -> Unit,
     onDelete: () -> Unit,
     onShowEdits: (() -> Unit)? = null,
+    onReport: () -> Unit = {},
 ) {
     val mine = m.author.id == state.me?.id
     val clipboard = LocalClipboard.current
@@ -480,13 +500,15 @@ fun MessageActions(
                 }
             }
             if (Perm.has(perms, Perm.SEND_MESSAGES)) action(R.drawable.ms_reply, R.string.reply) { vm.replyTo = m; vm.editing = null }
-            if (mine && m.type in setOf(0, 19)) action(R.drawable.ms_edit, R.string.edit) { vm.startEdit(m) }
+            val open = m.seal == null || m.seal == io.github.mrciller.cillhub.data.Seal.OPEN
+            if (mine && m.type in setOf(0, 19) && open) action(R.drawable.ms_edit, R.string.edit) { vm.startEdit(m) }
             if (m.editedTimestamp != null && onShowEdits != null) action(R.drawable.ms_history, R.string.edit_history) { onShowEdits() }
             gifOf(m)?.let { gif ->
                 val fav = state.favoriteGifs.any { it.url == gif.url }
                 action(if (fav) R.drawable.ms_star_fill else R.drawable.ms_star, if (fav) R.string.gif_unfavorite else R.string.gif_favorite) { vm.favorite(gif) }
             }
             if (m.content.isNotEmpty()) action(R.drawable.ms_content_copy, R.string.copy_text) { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("message", m.content))) } }
+            if (!mine && m.webhookId == null && open) action(R.drawable.ms_error, R.string.report) { onReport() }
             if (mine || Perm.has(perms, Perm.MANAGE_MESSAGES)) action(R.drawable.ms_delete, R.string.delete, MaterialTheme.colorScheme.error) { onDelete() }
         }
     }

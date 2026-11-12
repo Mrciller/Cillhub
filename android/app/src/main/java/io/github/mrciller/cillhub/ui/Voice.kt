@@ -194,7 +194,7 @@ fun VoiceScreen(channelId: String, start: Boolean = false) {
         if (latest != null && latest.author.id != state.me?.id) {
             lastToastMessage = latest
             showToast = true
-            if (ttsEnabled && ttsInstance != null) {
+            if (ttsEnabled && ttsInstance != null && (latest.seal == null || latest.seal == io.github.mrciller.cillhub.data.Seal.OPEN)) {
                 val authorName = Sel.memberName(state, ch?.guildId, latest.author.id)
                 val text = "$authorName says: ${latest.content}"
                 ttsInstance?.speak(text, TextToSpeech.QUEUE_ADD, null, latest.id)

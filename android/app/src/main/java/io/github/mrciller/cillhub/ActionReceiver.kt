@@ -33,10 +33,16 @@ class ActionReceiver : BroadcastReceiver() {
                 if (channel == null || text.isNullOrEmpty()) return
                 background {
                     try {
-                        Api.of(ctx)?.send(channel, text.take(2000)) ?: return@background
+                        if (TokenStore.get(ctx) == null) return@background
+                        // the app's own send: an encrypted DM gets an envelope, never plain text
+                        kotlinx.coroutines.runBlocking { io.github.mrciller.cillhub.data.Session.reply(channel, text.take(2000)) }
                         Notifications.read(ctx, channel, null) // sending marks the channel read on the server too
                     } catch (e: Exception) {
-                        Log.w(TAG, "reply failed: ${e.message}")
+                        Log.w(TAG, "reply failed: ${e.javaClass.simpleName}")
+                        // an encrypted DM that needs the user (changed key, recovery key): say so instead of failing silently
+                        if (e is io.github.mrciller.cillhub.data.E2ee.Refused) android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            android.widget.Toast.makeText(ctx, e.message + " " + ctx.getString(R.string.e2ee_open_app), android.widget.Toast.LENGTH_LONG).show()
+                        }
                         Notifications.repost(ctx, channel)
                     }
                 }

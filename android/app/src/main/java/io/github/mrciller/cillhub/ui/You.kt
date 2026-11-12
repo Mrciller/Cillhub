@@ -120,6 +120,7 @@ fun YouScreen() {
             Spacer(Modifier.padding(8.dp))
             SettingRow(R.drawable.ms_account_circle, R.string.settings_account) { nav.openSettings("account") }
             SettingRow(R.drawable.ms_notifications, R.string.settings_notifications) { nav.openSettings("notifications") }
+            SettingRow(R.drawable.ms_lock, R.string.settings_encryption) { nav.openSettings("encryption") }
             SettingRow(R.drawable.ms_settings_voice, R.string.settings_voice) { nav.openSettings("voice") }
             SettingRow(R.drawable.ms_palette, R.string.settings_appearance) { nav.openSettings("appearance") }
             SettingRow(R.drawable.ms_language, R.string.settings_language) { nav.openSettings("language") }
@@ -170,7 +171,7 @@ private fun SettingRow(icon: Int, @StringRes label: Int, color: Color = Material
 @Composable
 fun SettingsScreen(page: String) {
     val nav = LocalNav.current
-    val title = when (page) { "account" -> R.string.settings_account; "notifications" -> R.string.settings_notifications; "voice" -> R.string.settings_voice; "appearance" -> R.string.settings_appearance; "language" -> R.string.settings_language; else -> R.string.settings_about }
+    val title = when (page) { "account" -> R.string.settings_account; "notifications" -> R.string.settings_notifications; "voice" -> R.string.settings_voice; "appearance" -> R.string.settings_appearance; "language" -> R.string.settings_language; "encryption" -> R.string.settings_encryption; else -> R.string.settings_about }
     Scaffold(topBar = { TopAppBar(title = { Text(s(title).uppercase()) }, navigationIcon = { IconButton(nav::back) { Ic(R.drawable.ms_arrow_back, s(R.string.back)) } }) }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState())) {
             when (page) {
@@ -179,6 +180,7 @@ fun SettingsScreen(page: String) {
                 "voice" -> VoiceSettings()
                 "appearance" -> AppearanceSettings()
                 "language" -> LanguageSettings()
+                "encryption" -> EncryptionSettings()
                 else -> AboutSettings()
             }
         }

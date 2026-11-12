@@ -76,6 +76,14 @@ class Store {
 object Reducer {
     const val TYPING_MS = 10_000L
     private const val EPHEMERAL = 1 shl 6
+    /** Encrypted DMs: shows a message with an envelope as plaintext, or as pending/locked (E2ee sets it; plain in tests). */
+    @Volatile var open: (Message) -> Message = { it }
+
+    /** Opens again what is not open yet in these channels (null = all): a key arrived or a decrypt finished. */
+    fun reopen(s: State, channels: Set<String>?): State = s.copy(messages = s.messages.mapValues { (cid, l) ->
+        if (channels != null && cid !in channels) l
+        else l.map { m -> if (m.seal.let { it != null && it != Seal.OPEN } || m.referencedMessage?.seal.let { it != null && it != Seal.OPEN }) open(m) else m }
+    })
 
     private inline fun <reified T> JsonObject.decode(): T = json.decodeFromJsonElement(this)
     private fun JsonObject.str(k: String) = this[k]?.let { if (it is JsonObject) null else it.jsonPrimitive.contentOrNull }
@@ -291,7 +299,8 @@ object Reducer {
             (gs?.suppressRoles != true && m.mentionRoles.any { it in roles })
     }
 
-    fun addMessage(s: State, m: Message): State {
+    fun addMessage(s: State, raw: Message): State {
+        val m = open(raw)
         val ch = s.channels[m.channelId]
         val mine = m.author.id == s.me?.id
         val list = s.messages[m.channelId]
@@ -326,14 +335,16 @@ object Reducer {
     private fun patchUpdated(old: Message, d: JsonObject): Message {
         if (d.containsKey("author")) {
             val incoming = d.decode<Message>()
-            return incoming.copy(referencedMessage = incoming.referencedMessage ?: old.referencedMessage)
+            return open(incoming.copy(referencedMessage = incoming.referencedMessage ?: old.referencedMessage))
         }
+        // an encrypted message keeps its decrypted text and files; only a full update (a new envelope) changes them
+        val sealed = old.e2eeEnvelope != null
         // partial update (e.g. embeds unfurled, pinned)
         return old.copy(
-            content = d.str("content") ?: old.content,
+            content = d.str("content")?.takeIf { !sealed } ?: old.content,
             editedTimestamp = d.str("edited_timestamp") ?: old.editedTimestamp,
-            embeds = d["embeds"]?.let { json.decodeFromJsonElement<List<Embed>>(it) } ?: old.embeds,
-            attachments = d["attachments"]?.let { json.decodeFromJsonElement<List<Attachment>>(it) } ?: old.attachments,
+            embeds = d["embeds"]?.takeIf { !sealed }?.let { json.decodeFromJsonElement<List<Embed>>(it) } ?: old.embeds,
+            attachments = d["attachments"]?.takeIf { !sealed }?.let { json.decodeFromJsonElement<List<Attachment>>(it) } ?: old.attachments,
             pinned = d["pinned"]?.jsonPrimitive?.booleanOrNull ?: old.pinned,
             flags = d["flags"]?.jsonPrimitive?.intOrNull ?: old.flags,
             poll = d["poll"]?.let { json.decodeFromJsonElement<Poll>(it) } ?: old.poll,
@@ -424,7 +435,7 @@ object Reducer {
 
     /** A page of history (newest first, as the API returns it) merged under what is loaded. */
     fun page(s: State, cid: String, page: List<Message>, before: String?, limit: Int): State {
-        val sorted = page.sortedWith { a, b -> cmpId(a.id, b.id) }
+        val sorted = page.map(open).sortedWith { a, b -> cmpId(a.id, b.id) }
         val old = if (before == null) s.messages[cid].orEmpty().filter { it.pending || it.failed } else s.messages[cid].orEmpty()
         val ids = sorted.map { it.id }.toSet()
         val merged = if (before == null) sorted + old else sorted + old.filter { it.id !in ids }
