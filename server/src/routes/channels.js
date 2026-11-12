@@ -1,7 +1,7 @@
 import { snowflake } from '../snowflake.js';
 import { get, all, run, tx, isMember, isFriend, memberIds, userById, channelObj, dmsOf, channelUserIds } from '../db.js';
 import { HttpError, str, int, bool, list, invalid, snowflakeField, notFound, missingAccess, missingPermissions } from '../errors.js';
-import { P, need, has, parseBits, guildPerms, channelPerms, viewersOf, requireAbove, requireRoleBelow, isThread } from '../permissions.js';
+import { P, need, has, parseBits, guildPerms, channelPerms, viewersOf, visibleChannels, requireAbove, requireRoleBelow, isThread } from '../permissions.js';
 import { sendToUsers, channelEvent } from '../gateway.js';
 import { disconnectChannel, recheck } from '../voice.js';
 import { removeChannelFiles } from '../files.js';
@@ -195,10 +195,13 @@ function cloneChannel(ctx) {
 
 function reorder({ params, body, user }) {
   const g = loadGuild(params.id, user, P.MANAGE_CHANNELS);
+  const seen = new Set(visibleChannels(g.id, user.id).map(c => c.id)); // a hidden channel or category is unknown here
   const changes = list(body).map(item => {
     const ch = get('SELECT * FROM channels WHERE id = ? AND guild_id = ? AND type NOT IN (10, 11, 12)', snowflakeField(item, 'id'), g.id);
-    if (!ch) throw invalid('id', 'CHANNEL_INVALID', 'Unknown channel in this guild.');
-    return { ch, position: int(item, 'position', 0, 10000), parentId: item.parent_id === undefined ? ch.parent_id : parentField(item, g.id, ch.type) };
+    if (!ch || !seen.has(ch.id)) throw invalid('id', 'CHANNEL_INVALID', 'Unknown channel in this guild.');
+    const parentId = item.parent_id === undefined ? ch.parent_id : parentField(item, g.id, ch.type);
+    if (parentId && parentId !== ch.parent_id && !seen.has(parentId)) throw invalid('parent_id', 'CHANNEL_PARENT_INVALID', 'Parent must be a category of this guild.');
+    return { ch, position: int(item, 'position', 0, 10000), parentId };
   });
   const changed = changes.filter(c => c.position !== c.ch.position || c.parentId !== c.ch.parent_id);
   tx(() => changed.forEach(c => run('UPDATE channels SET position = ?, parent_id = ? WHERE id = ?', c.position, c.parentId, c.ch.id)));
