@@ -4,6 +4,25 @@
    "title": "Web app and server",
    "releases": [
     {
+     "version": "7.11.0",
+     "date": "2026-11-12",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Private nodes: add other Cillhub servers under Settings › Private Nodes and use them next to this one, all at the same time.",
+        "Automatic spam slow mode: a member who floods a channel gets a 10-second slow mode for 10 minutes, and a channel where many members flood at once gets one for 5 minutes. Server owners can turn it off under Safety Setup."
+       ]
+      },
+      {
+       "title": "Changed",
+       "items": [
+        "The web app has the new Arena design."
+       ]
+      }
+     ]
+    },
+    {
      "version": "7.8.0",
      "date": "2026-11-09",
      "groups": [
@@ -494,6 +513,12 @@
        "items": [
         "Align window controls, titlebar, settings page, and screen-share picker with the Argon obsidian design system."
        ]
+      },
+      {
+       "title": "Added",
+       "items": [
+        "A native desktop app without a built-in browser: it connects to the hub and your private nodes at the same time and installs only signed updates."
+       ]
       }
      ]
     },
@@ -605,7 +630,8 @@
        "title": "Changed",
        "items": [
         "The app is now fully native: servers, channels, chat, direct messages, friends, inbox and settings are built for Android, with a tablet layout, light and dark themes, and English and German.",
-        "Smaller downloads: the app comes in one version per processor type (about 10 MB instead of 29 MB), and updates pick the right one by themselves."
+        "Smaller downloads: the app comes in one version per processor type (about 10 MB instead of 29 MB), and updates pick the right one by themselves.",
+        "The app has the same Arena design as the web app."
        ]
       },
       {
@@ -664,6 +690,25 @@
   {
    "title": "Web-App und Server",
    "releases": [
+    {
+     "version": "7.11.0",
+     "date": "2026-11-12",
+     "groups": [
+      {
+       "title": "Neu",
+       "items": [
+        "Private Nodes: Füge unter Einstellungen › Private Nodes andere Cillhub-Server hinzu und nutze sie gleichzeitig mit diesem.",
+        "Automatischer Spam-Slowmode: Wer einen Kanal flutet, bekommt 10 Minuten lang 10 Sekunden Slowmode; fluten viele Mitglieder gleichzeitig, bekommt der ganze Kanal 5 Minuten Slowmode. Serverbesitzer schalten das unter Sicherheitseinrichtung ab."
+       ]
+      },
+      {
+       "title": "Geändert",
+       "items": [
+        "Die Web-App hat das neue Arena-Design."
+       ]
+      }
+     ]
+    },
     {
      "version": "7.8.0",
      "date": "2026-11-09",
@@ -1155,6 +1200,12 @@
        "items": [
         "Fenstersteuerung, Titelleiste, Einstellungsseite und Bildschirmauswahl an das Argon-Obsidian-Designsystem angepasst."
        ]
+      },
+      {
+       "title": "Neu",
+       "items": [
+        "Eine native Desktop-App ohne eingebauten Browser: Sie verbindet sich gleichzeitig mit dem Hub und deinen Private Nodes und installiert nur signierte Updates."
+       ]
       }
      ]
     },
@@ -1266,7 +1317,8 @@
        "title": "Geändert",
        "items": [
         "Die App ist jetzt komplett nativ: Server, Kanäle, Chat, Direktnachrichten, Freunde, Posteingang und Einstellungen sind für Android gebaut, mit Tablet-Layout, hellem und dunklem Design sowie Englisch und Deutsch.",
-        "Kleinere Downloads: Die App gibt es in einer Fassung pro Prozessortyp (etwa 10 MB statt 29 MB), und Updates wählen die passende von selbst."
+        "Kleinere Downloads: Die App gibt es in einer Fassung pro Prozessortyp (etwa 10 MB statt 29 MB), und Updates wählen die passende von selbst.",
+        "Die App hat dasselbe Arena-Design wie die Web-App."
        ]
       },
       {
