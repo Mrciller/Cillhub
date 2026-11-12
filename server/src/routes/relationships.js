@@ -2,6 +2,7 @@ import { get, all, run, tx, userById, userObj } from '../db.js';
 import { HttpError, str, notFound } from '../errors.js';
 import { sendToUsers, statusOf, presenceObj } from '../gateway.js';
 import { pushTo } from '../push.js';
+import { limit } from '../ratelimit.js';
 
 export const relationshipsOf = userId => all(
   'SELECT u.*, r.type AS rel FROM relationships r JOIN users u ON u.id = r.other_id WHERE r.user_id = ?', userId,
@@ -24,7 +25,8 @@ function set(a, b, typeForA, typeForB) {
 }
 
 // sends a request, or accepts the other side's pending one
-function befriend(me, other) {
+function befriend(me, other, headers) {
+  if (!other || typeOf(me.id, other.id) !== 3) limit('FRIEND', 'request', {}, me.id, headers); // accepting is free
   if (!other || other.deleted) throw new HttpError(400, 80004, 'No users with that username exist');
   if (other.id === me.id) throw new HttpError(400, 80003, 'Cannot send friend request to self');
   if (other.bot) throw new HttpError(400, 80000, 'Incoming friend requests disabled.');
@@ -69,17 +71,17 @@ function remove({ params, user }) {
 }
 
 // PUT {type?}: 2 blocks, anything else (default) sends or accepts a friend request
-function put({ params, body, user }) {
+function put({ params, body, user, headers }) {
   const other = userById(params.user_id);
   if (!other || other.deleted) throw notFound(10013, 'User');
   if (body?.type === 2) return block(user, other);
-  befriend(user, other);
+  befriend(user, other, headers);
 }
 
 const user = { userOnly: true };
 export default [
   ['GET', '/users/@me/relationships', ({ user: me }) => relationshipsOf(me.id), user],
-  ['POST', '/users/@me/relationships', ({ body, user: me }) => befriend(me, get('SELECT * FROM users WHERE username = ?', str(body, 'username', 1, 32))), user],
+  ['POST', '/users/@me/relationships', ({ body, user: me, headers }) => befriend(me, get('SELECT * FROM users WHERE username = ?', str(body, 'username', 1, 32)), headers), user],
   ['PUT', '/users/@me/relationships/:user_id', put, user],
   ['DELETE', '/users/@me/relationships/:user_id', remove, user],
 ];

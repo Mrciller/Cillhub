@@ -9,6 +9,7 @@ import { configuredUrl, localLoginOpen } from '../federation.js';
 // in-memory challenge caches with 5-minute TTL
 const registerChallenges = new Map();
 const authChallenges = new Map();
+const MAX_AUTH_CHALLENGES = 10_000; // past this the oldest pending login challenge goes (Map keeps insertion order)
 
 function cleanChallenges() {
   const now = Date.now();
@@ -166,6 +167,7 @@ function authenticateOptions(ctx) {
   cleanChallenges();
   const challenge = randomBytes(32).toString('base64url');
   const site = ceremonySite(ctx);
+  if (authChallenges.size >= MAX_AUTH_CHALLENGES) authChallenges.delete(authChallenges.keys().next().value);
   authChallenges.set(challenge, { expires: Date.now() + 5 * 60 * 1000, site });
   return { challenge, timeout: 60000, rpId: site.rpId, allowCredentials: [], userVerification: 'required' };
 }
@@ -227,7 +229,7 @@ const user = { userOnly: true };
 export default [
   ['POST', '/auth/webauthn/register/options', registerOptions, user],
   ['POST', '/auth/webauthn/register/verify', registerVerify, user],
-  ['POST', '/auth/webauthn/authenticate/options', authenticateOptions, { open: true }],
+  ['POST', '/auth/webauthn/authenticate/options', authenticateOptions, { open: true, rateLimit: { max: 10, windowMs: 60_000 } }], // per IP
   ['POST', '/auth/webauthn/authenticate/verify', authenticateVerify, { open: true }],
   ['GET', '/users/@me/webauthn/credentials', listCredentials, user],
   ['DELETE', '/users/@me/webauthn/credentials/:id', deleteCredential, user],
