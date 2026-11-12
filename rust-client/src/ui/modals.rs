@@ -55,12 +55,15 @@ impl CillhubApp {
 
     /// A name lookup's answer, only for the add-link dialog that asked (another link may have replaced it).
     pub fn add_dialog_answer(&mut self, origin: &str, dialog: u64, name: Option<String>) {
-        if self.add_dialog_gen != dialog {
-            return;
-        }
-        if let Some(q) = self.pending_add_node.as_mut().filter(|q| q.origin == origin) {
+        if let Some(q) = self.add_dialog(origin, dialog) {
             q.check = Some(name.map_or(crate::nodes::NodeCheck::Down, crate::nodes::NodeCheck::Up));
         }
+    }
+
+    /// The add-link dialog, only if it is still the one (`dialog`) that asked about `origin`.
+    pub fn add_dialog(&mut self, origin: &str, dialog: u64) -> Option<&mut crate::nodes::PendingNode> {
+        let current = self.add_dialog_gen == dialog;
+        self.pending_add_node.as_mut().filter(|q| current && q.origin == origin)
     }
 
     /// `cillhub://add-node#<address>`: the node's name and full address, that it is a separate server; only Add saves it.
@@ -269,7 +272,7 @@ impl CillhubApp {
                 }
             });
         });
-        if let (true, Some(w), Some(cid)) = (send, when, &self.selected_channel_id) {
+        if let (true, Some(w), Some(cid)) = (send && self.dialog_in_place(), when, &self.selected_channel_id) {
             let body = json!({ "content": self.composer_text.trim(), "send_at": w.with_timezone(&chrono::Utc).to_rfc3339() });
             let path = format!("/channels/{cid}/scheduled-messages");
             self.api_bg(true, move |api| api.post(&path, body), |app, r| {
@@ -361,7 +364,7 @@ impl CillhubApp {
             });
         });
         let name = self.new_channel_name_input.trim().to_string();
-        if create && !name.is_empty() {
+        if create && !name.is_empty() && self.dialog_in_place() {
             let mut body = json!({ "name": name, "type": self.create_channel_kind });
             if let Some(p) = &self.create_channel_parent {
                 body["parent_id"] = json!(p);
@@ -776,8 +779,8 @@ impl CillhubApp {
         }));
     }
 
-    fn post_poll(&mut self) {
-        let Some(cid) = self.selected_channel_id.clone() else {
+    pub(super) fn post_poll(&mut self) {
+        let Some(cid) = self.selected_channel_id.clone().filter(|_| self.dialog_in_place()) else {
             return;
         };
         let answers: Vec<_> = self

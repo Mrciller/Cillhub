@@ -261,6 +261,38 @@ impl AppSettings {
         })
     }
 
+    /// node_token, telling "none stored" from "could not be read" (Err: a locked or failing keyring).
+    pub fn node_token_checked(&self, key: &str) -> Result<Option<String>, keyring::Error> {
+        if let Some(t) = self.node_tokens.get(key) {
+            return Ok(Some(t.clone()));
+        }
+        if self.node_tombstones.contains(key) {
+            return Ok(None);
+        }
+        match keyring_entry(&format!("node-token:{key}")).map(|k| k.get_password()) {
+            None | Some(Err(keyring::Error::NoEntry)) => Ok(None), // no keyring here, or nothing in it
+            Some(Ok(t)) => Ok(Some(t)),
+            Some(Err(e)) => Err(e),
+        }
+    }
+
+    /// Last resort when the journal cannot be saved: the token goes into one fixed keyring entry that the next
+    /// start reads (`take_revoke_stash`). False when the keyring cannot take it either.
+    pub fn stash_revoke(origin: &str, token: &str) -> bool {
+        let Some(k) = keyring_entry(STASH) else { return false };
+        let mut list: Vec<(String, String)> = k.get_password().ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        list.push((origin.to_string(), token.to_string()));
+        serde_json::to_string(&list).is_ok_and(|s| k.set_password(&s).is_ok())
+    }
+
+    /// The stashed sign-outs, moved into the journal; what cannot be journaled stays stashed.
+    pub fn take_revoke_stash(&mut self) {
+        let Some(k) = keyring_entry(STASH) else { return };
+        let Some(list) = k.get_password().ok().and_then(|s| serde_json::from_str::<Vec<(String, String)>>(&s).ok()) else { return };
+        let left: Vec<(String, String)> = list.into_iter().filter(|(o, t)| self.add_pending_revoke(o, t).is_err()).collect();
+        let _ = if left.is_empty() { k.delete_credential() } else { serde_json::to_string(&left).map_or(Ok(()), |s| k.set_password(&s)) };
+    }
+
     pub fn set_node_token(&mut self, key: &str, token: Option<&str>) -> std::io::Result<()> {
         let entry = keyring_entry(&format!("node-token:{key}"));
         self.node_tokens.remove(key);
@@ -338,6 +370,7 @@ pub fn node_key(hub_origin: &str, hub_user: &str, node_origin: &str) -> String {
 }
 
 const SESSION: &str = "session-token";
+const STASH: &str = "node-revoke-stash";
 
 #[cfg(test)]
 thread_local! {

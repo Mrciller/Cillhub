@@ -105,6 +105,9 @@ pub fn parse_add_deep_link(raw: &str) -> Option<String> {
     node_origin(&percent_encoding::percent_decode_str(address).decode_utf8().ok()?)
 }
 
+/// The largest instance info answer read.
+pub const INSTANCE_MAX: u64 = 64 * 1024;
+
 /// The node's name from its open instance info (no token, no redirects, 5 s); None when it does not answer as Cillhub.
 /// Blocking: call it on a background worker.
 #[cfg(feature = "native-net")]
@@ -113,7 +116,7 @@ pub fn fetch_name(origin: &str) -> Option<String> {
     if !res.status().is_success() {
         return None;
     }
-    let v: serde_json::Value = res.json().ok()?;
+    let v = crate::api::read_json_max(res, INSTANCE_MAX).ok()?; // a node is untrusted: never more than this
     v.is_object().then(|| clean_name(v.get("name").and_then(|n| n.as_str()).unwrap_or("")))
 }
 

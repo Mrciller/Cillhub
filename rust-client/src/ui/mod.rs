@@ -171,6 +171,8 @@ pub struct CillhubApp {
     unsaved_revokes: Vec<(String, String, String)>,
     /// Nodes whose removal waits until its sign-out can be recorded (the connection and token stay meanwhile).
     removing: std::collections::HashSet<String>,
+    /// Where the open dialog posts to (connection, its generation, server, channel), taken when it opened.
+    modal_dest: Option<(connections::Conn, u64, Option<String>, Option<String>)>,
     /// Bumped whenever the add-link dialog shows another node: older name lookups are dropped.
     add_dialog_gen: u64,
     unsaved_seq: u64,
@@ -393,6 +395,7 @@ impl CillhubApp {
             unsaved_revokes: Vec::new(),
             removing: Default::default(),
             add_dialog_gen: 0,
+            modal_dest: None,
             unsaved_seq: 0,
             last_revoke_retry: Instant::now(),
             signin_tx,
@@ -1213,6 +1216,7 @@ impl CillhubApp {
                     if is_ready {
                         // requests started before READY belong to the replaced state
                         self.new_scope("history");
+                        self.close_message_dialogs();
                         self.loading_history.clear();
                         self.poll_pending.clear(); // choices come from the reloaded history now
                         let ids: Vec<String> = self.state.guilds.keys().cloned().collect();
@@ -2108,6 +2112,23 @@ impl CillhubApp {
         if self.shown.is_some() && self.selected_guild_id.is_none() {
             self.show(&None);
         }
+        // a dialog that posts into a server or channel belongs to the place it was opened for: if that place goes
+        // away or the window shows another connection, it closes and its draft goes (it has nowhere to go)
+        let bound = matches!(self.active_modal, Some(ModalKind::CreatePoll | ModalKind::SendLater | ModalKind::CreateChannel | ModalKind::ServerSettings | ModalKind::Events));
+        let dest = (self.front.clone(), self.front_gen(), self.selected_guild_id.clone(), self.selected_channel_id.clone());
+        match &self.modal_dest {
+            _ if !bound => self.modal_dest = None,
+            None => self.modal_dest = Some(dest),
+            Some(d) if *d != dest => {
+                self.active_modal = None;
+                self.modal_dest = None;
+                self.poll_question_input.clear();
+                self.poll_answers = vec![String::new(), String::new()];
+                self.poll_multi = false;
+                self.new_channel_name_input.clear();
+            }
+            Some(_) => {}
+        }
     }
 
     pub fn headless_tick(&mut self, ctx: &Context) {
@@ -2350,6 +2371,11 @@ impl CillhubApp {
     /// An image result is used only for the session and the very node connection it was asked for.
     pub fn image_wanted(&self, session: u64, conn: &connections::Conn, gen: u64) -> bool {
         session == self.session_gen && self.conn_alive(conn, gen)
+    }
+
+    /// Whether the open dialog still posts to the place it was opened for (keep_view_consistent took it).
+    pub fn dialog_in_place(&self) -> bool {
+        self.modal_dest.as_ref().is_some_and(|d| *d == (self.front.clone(), self.front_gen(), self.selected_guild_id.clone(), self.selected_channel_id.clone()))
     }
 
     /// Navigation asked for while a message was drawn happens here, after the whole frame.

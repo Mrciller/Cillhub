@@ -227,6 +227,12 @@ impl CillhubApp {
         self.front.as_ref().and_then(|o| self.conns.get(o)).map_or(0, |c| c.gen)
     }
 
+    /// Dialogs about one message or channel of the connection in front (menu, emoji picker, delete, rename) close
+    /// when its data is replaced or its credentials change: what they would act on may be gone.
+    pub fn close_message_dialogs(&mut self) {
+        (self.msg_menu, self.emoji_picker, self.confirm_delete, self.edit_channel, self.toolbar_msg) = (None, None, None, None, None);
+    }
+
     /// DMs and friends are the hub's: from a node's view (a node user's id means nothing on the hub) they are refused.
     pub fn refuse_on_node(&mut self) -> bool {
         if self.front.is_some() {
@@ -354,8 +360,12 @@ impl CillhubApp {
         c.set_gen(gen);
         (c.rx, c.cmd, c.link) = (Some(ev_rx), Some(cmd_tx), NodeLink::Connecting);
         c.api = Some(crate::api::ApiClient::new(url, Some(token)));
-        // answers of the earlier credentials are dropped: their member loads will not come back
-        self.with_conn(&Some(origin.to_string()), |app| app.loading_members.clear());
+        // answers of the earlier credentials are dropped: their member loads will not come back, and dialogs about
+        // their messages close
+        self.with_conn(&Some(origin.to_string()), |app| {
+            app.loading_members.clear();
+            app.close_message_dialogs();
+        });
     }
 
     /// Tries again later, 5 s doubling up to 5 minutes; nothing waits for it.
@@ -376,6 +386,10 @@ impl CillhubApp {
                 true
             }
             Err(e) => {
+                // a fresh token has no other record: into the keyring's fixed stash first (read at the next start)
+                if !crate::settings::AppSettings::stash_revoke(origin, &token) {
+                    eprintln!("cillhub: could not keep a sign-out for {origin} anywhere durable");
+                }
                 self.status_banner = Some(e.to_string());
                 self.unsaved_seq += 1;
                 let id = format!("unsaved-{}", self.unsaved_seq);
@@ -400,6 +414,7 @@ impl CillhubApp {
 
     /// Sign-outs that a node has not confirmed yet (from this run or an earlier one) are tried again.
     pub fn retry_revokes(&mut self) {
+        self.settings.take_revoke_stash();
         self.settings.prune_pending_revokes();
         for (key, origin, token) in self.settings.pending_revoke_list() {
             self.revoke_async(key, origin, token);
@@ -521,6 +536,7 @@ impl CillhubApp {
                 }
                 let key = self.node_key(origin);
                 super::report(&mut self.status_banner, self.settings.set_node_token(&key, None));
+                self.with_conn(&Some(origin.to_string()), |app| app.close_message_dialogs());
                 self.retry(origin, tr("Signed out").to_string());
             }
             GatewayEvent::Connected => {}
@@ -548,6 +564,7 @@ impl CillhubApp {
         if name == "READY" {
             // requests and choices from before this READY belong to the replaced data
             self.new_scope("history");
+            self.close_message_dialogs();
             self.loading_history.clear();
             self.poll_pending.clear();
             let ids: Vec<String> = self.state.guilds.keys().cloned().collect();
@@ -617,7 +634,12 @@ impl CillhubApp {
     pub fn drop_node(&mut self, origin: &str, sign_out: bool) {
         let key = self.node_key(origin);
         let live = self.conns.get(origin).and_then(|c| c.api.as_ref()).and_then(|a| a.token.clone());
-        let stored = self.settings.node_token(&key);
+        let Ok(stored) = self.settings.node_token_checked(&key) else {
+            // the keyring cannot be read now: whether a credential is stored is unknown, so nothing is deleted or
+            // tombstoned; the removal is tried again
+            self.removal_pending(origin, tr("Sign-out pending").to_string());
+            return;
+        };
         if sign_out {
             let tokens: HashSet<String> = live.into_iter().chain(stored).collect();
             let mut failed = None;
@@ -630,14 +652,7 @@ impl CillhubApp {
             if let Some(e) = failed {
                 // nothing durable records the sign-out yet: the connection (with its token) and the stored
                 // credential stay, the removal is tried again (tick_nodes); the node is no longer used meanwhile
-                self.status_banner = Some(e.to_string());
-                self.removing.insert(origin.to_string());
-                if let Some(c) = self.conns.get_mut(origin) {
-                    c.close();
-                    c.link = NodeLink::Down(tr("Sign-out pending").to_string());
-                }
-                self.drop_node_data(origin);
-                return;
+                return self.removal_pending(origin, e.to_string());
             }
         }
         self.removing.remove(origin);
@@ -645,6 +660,18 @@ impl CillhubApp {
         self.drop_node_data(origin);
         // also when the keyring could not be read: the entry is tombstoned before it is deleted
         super::report(&mut self.status_banner, self.settings.set_node_token(&key, None));
+    }
+
+    /// Leaves a removal unfinished: the node is no longer used, its connection and credentials stay, and the
+    /// removal is tried again every minute (tick_nodes).
+    fn removal_pending(&mut self, origin: &str, why: String) {
+        self.status_banner = Some(why);
+        self.removing.insert(origin.to_string());
+        if let Some(c) = self.conns.get_mut(origin) {
+            c.close();
+            c.link = NodeLink::Down(tr("Sign-out pending").to_string());
+        }
+        self.drop_node_data(origin);
     }
 
     /// Hub logout: node sessions and the private node list belong to this hub account.
@@ -1346,6 +1373,52 @@ mod tests {
         app.start_sign_in(a);
         assert!(app.conns[a].busy && app.bg.node_pending == 1, "started on the node workers");
         app.bg.pending = 1;
+    }
+
+    /// Round 6, finding 6: a dialog that posts belongs to the place it was opened for; when a node's READY takes
+    /// that place away, it closes with its draft, and nothing can be posted on the hub.
+    #[test]
+    fn a_poll_dialog_never_posts_elsewhere() {
+        let mut app = CillhubApp::new(None, true); // hub view: c_general open
+        app.api = Some(crate::api::ApiClient::new(url::Url::parse("http://localhost:9/").unwrap(), None));
+        let a = "https://a.example";
+        let tx = fake_node(&mut app, a, None);
+        send(&tx, "READY", json!({ "session_id": "s", "user": { "id": "n1", "username": "alex" },
+            "guilds": [{ "id": "g", "name": "n", "channels": [{ "id": "c", "type": 0, "guild_id": "g" }] }] }));
+        app.tick_nodes();
+        app.show(&Some(a.into()));
+        (app.selected_guild_id, app.selected_channel_id) = (Some("g".into()), Some("c".into()));
+        app.active_modal = Some(super::super::ModalKind::CreatePoll);
+        app.poll_question_input = "Node question".into();
+        app.keep_view_consistent(); // the dialog is drawn: its destination is taken
+        send(&tx, "READY", json!({ "session_id": "s2", "user": { "id": "n1", "username": "alex" }, "guilds": [] }));
+        app.tick_nodes();
+        app.keep_view_consistent();
+        assert_eq!((app.shown.as_deref(), app.active_modal), (None, None), "back on the hub, the dialog is gone");
+        assert!(app.poll_question_input.is_empty(), "its draft has nowhere to go");
+        let before = app.bg.pending;
+        app.post_poll();
+        assert_eq!(app.bg.pending, before, "nothing sent to the hub");
+    }
+
+    /// Round 6, finding 7: a node's instance info is read with a small limit.
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn instance_info_is_bounded() {
+        let big = format!("{{\"name\":\"Kim\",\"x\":\"{}\"}}", "x".repeat(crate::nodes::INSTANCE_MAX as usize));
+        let (node, seen) = crate::api::testing::serve(1, move |_| (200, big.clone()));
+        assert_eq!(crate::nodes::fetch_name(&node), None);
+        seen.join().unwrap();
+    }
+
+    /// Round 6, finding 8: the Add answer reaches only the dialog that asked.
+    #[test]
+    fn a_late_add_answer_never_marks_another_dialog() {
+        let mut app = CillhubApp::new(None, true);
+        app.add_dialog_gen = 3;
+        app.pending_add_node = Some(crate::nodes::PendingNode { origin: "https://b.example".into(), check: None, added: false, error: None });
+        assert!(app.add_dialog("https://a.example", 3).is_none() && app.add_dialog("https://b.example", 2).is_none());
+        assert!(app.add_dialog("https://b.example", 3).is_some());
     }
 
     #[test]

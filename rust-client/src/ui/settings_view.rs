@@ -631,22 +631,24 @@ impl CillhubApp {
     /// `from_tab`: errors go to the tab's field, else to the add-link dialog.
     pub fn add_node(&mut self, address: String, from_tab: bool) {
         let hub = self.api.as_ref().map_or_else(|| crate::config::HUB_URL.to_string(), |a| a.origin.origin().ascii_serialization());
-        let fail = move |app: &mut CillhubApp, e: String| {
+        // the add-link dialog that asked: another link may have replaced it meanwhile
+        let dialog = self.add_dialog_gen;
+        let fail = move |app: &mut CillhubApp, origin: &str, e: String| {
             if from_tab {
                 app.node_error = Some(e);
-            } else if let Some(p) = &mut app.pending_add_node {
+            } else if let Some(p) = app.add_dialog(origin, dialog) {
                 p.error = Some(e);
             }
         };
         let origin = match crate::nodes::add_node(&self.settings.private_nodes, &address, "", &hub) {
             Ok(n) => n.origin,
-            Err(r) => return fail(self, trf(r.message(), &[("n", &crate::nodes::MAX_NODES.to_string())])),
+            Err(r) => return fail(self, &address, trf(r.message(), &[("n", &crate::nodes::MAX_NODES.to_string())])),
         };
         self.node_busy = true;
         let o = origin.clone();
         self.spawn_bg(false, move || crate::nodes::fetch_name(&o), move |app, name| {
             app.node_busy = false;
-            let Some(name) = name else { return fail(app, tr("Could not connect to node at this address.").to_string()) };
+            let Some(name) = name else { return fail(app, &origin, tr("Could not connect to node at this address.").to_string()) };
             let name = if name.is_empty() { origin.split("://").nth(1).unwrap_or(&origin).to_string() } else { name };
             match crate::nodes::add_node(&app.settings.private_nodes, &origin, &name, &hub) {
                 Ok(n) => {
@@ -656,11 +658,11 @@ impl CillhubApp {
                         if let Some(m) = &mut app.node_status {
                             m.insert(origin, crate::nodes::NodeCheck::Up(name));
                         }
-                    } else if let Some(p) = &mut app.pending_add_node {
+                    } else if let Some(p) = app.add_dialog(&origin, dialog) {
                         p.added = true;
                     }
                 }
-                Err(r) => fail(app, trf(r.message(), &[("n", &crate::nodes::MAX_NODES.to_string())])),
+                Err(r) => fail(app, &origin, trf(r.message(), &[("n", &crate::nodes::MAX_NODES.to_string())])),
             }
         });
     }
