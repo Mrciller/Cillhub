@@ -153,6 +153,10 @@ fun EncryptionSettings() {
                 }
                 OutlinedButton({ confirmReset = true }, enabled = !busy, shape = MaterialTheme.shapes.small) { Text(s(R.string.e2ee_reset).uppercase(), color = MaterialTheme.colorScheme.error) }
             }
+            E2ee.Status.LOST -> {
+                Text(s(R.string.e2ee_lost))
+                OutlinedButton({ confirmReset = true }, enabled = !busy, shape = MaterialTheme.shapes.small) { Text(s(R.string.e2ee_reset).uppercase(), color = MaterialTheme.colorScheme.error) }
+            }
             E2ee.Status.LOCKED -> {
                 Text(s(R.string.e2ee_locked_text))
                 Button({ prompt = true }, shape = MaterialTheme.shapes.small) { Text(s(R.string.e2ee_enter_key).uppercase()) }
@@ -187,9 +191,14 @@ fun E2eeBar(state: State, ch: Channel) {
     val enc = E2ee.isEncrypted(ch)
     val bot = others.any { it.bot || it.system }
     val missing = others.filter { E2ee.publicKey(it.id) == "" }
+    val added = if (bot) emptyList() else E2ee.addedMembers(ch)
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
     val line = when {
         bot -> s(R.string.e2ee_bar_bot)
-        E2ee.unverified(ch) -> s(R.string.e2ee_unverified)
+        added.isNotEmpty() -> null // a key made by an added member shows as the Accept line
+        E2ee.unverified(ch) -> s(R.string.e2ee_unverified) + if (E2ee.renewable(ch)) " " + s(R.string.e2ee_renew_hint) else ""
+        status == E2ee.Status.LOST -> s(R.string.e2ee_lost)
         enc && status == E2ee.Status.LOCKED -> s(R.string.e2ee_bar_locked)
         !enc && status == E2ee.Status.OFF -> s(R.string.e2ee_bar_off)
         !enc && missing.isNotEmpty() -> s(R.string.e2ee_bar_missing, missing.joinToString { it.displayName })
@@ -200,6 +209,15 @@ fun E2eeBar(state: State, ch: Channel) {
             Ic(if (enc) R.drawable.ms_lock else R.drawable.ms_lock_open, null, Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
             Text(line, Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.bodySmall)
             if (enc && status == E2ee.Status.LOCKED) TextButton({ prompt = true }, shape = MaterialTheme.shapes.small) { Text(s(R.string.e2ee_enter_key).uppercase()) }
+            if (!bot && added.isEmpty() && E2ee.renewable(ch)) TextButton({
+                scope.launch { runCatching { E2ee.renewKey(ch) }.onFailure { Toast.makeText(ctx, errorText(ctx, it), Toast.LENGTH_LONG).show() } }
+            }, shape = MaterialTheme.shapes.small) { Text(s(R.string.e2ee_renew).uppercase()) }
+        }
+    }
+    for (id in added) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp)) {
+            Text(s(R.string.e2ee_member_added, E2ee.nameOf(ch, id)), color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            TextButton({ E2ee.acceptAdded(ch, id) }, Modifier.align(Alignment.End), shape = MaterialTheme.shapes.small) { Text(s(R.string.e2ee_dismiss).uppercase()) }
         }
     }
     if (!bot) for (u in others.filter { E2ee.keyChanged(it.id) }) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {

@@ -775,4 +775,9 @@
     <string name="report_other">Etwas anderes</string>
     <string name="e2ee_key_changed_send">Der Sicherheitsschlüssel von %1$s hat sich geändert. Prüfe ihn und akzeptiere ihn, bevor du sendest.</string>
     <string name="e2ee_open_app">Öffne Cillhub, um das zu prüfen.</string>
+    <string name="e2ee_member_added">%1$s wurde zu dieser Unterhaltung hinzugefügt. Akzeptiere, damit %1$s liest, was du ab jetzt sendest.</string>
+    <string name="e2ee_renew_hint">Vergleiche die Sicherheitscodes und erstelle danach einen neuen Schlüssel.</string>
+    <string name="e2ee_renew">Neuen Schlüssel erstellen</string>
+    <string name="e2ee_not_encrypted">Nicht verschlüsselt</string>
+    <string name="e2ee_lost">Der Server hat die Daten deines Schlüssels verloren. Dein Schlüssel ist weiter auf diesem Gerät und wurde nicht gelöscht.</string>
 </resources>

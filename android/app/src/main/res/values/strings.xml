@@ -781,4 +781,9 @@
     <string name="report_other">Something else</string>
     <string name="e2ee_key_changed_send">%1$s\'s security key changed. Check it and accept it before you send.</string>
     <string name="e2ee_open_app">Open Cillhub to check it.</string>
+    <string name="e2ee_member_added">%1$s was added to this conversation. Accept to let them read what you send from now on.</string>
+    <string name="e2ee_renew_hint">Compare security codes, then make a new key.</string>
+    <string name="e2ee_renew">Make a new key</string>
+    <string name="e2ee_not_encrypted">Not encrypted</string>
+    <string name="e2ee_lost">The server lost your encryption key data. Your key is still on this device and was not deleted.</string>
 </resources>

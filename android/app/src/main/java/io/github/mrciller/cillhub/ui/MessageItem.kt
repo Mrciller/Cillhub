@@ -247,6 +247,10 @@ fun MessageItem(
                 if (!sealed) for (a in m.attachments) AttachmentView(a)
                 for (e in m.embeds) EmbedView(e, state, guildId)
                 for (st in m.stickerItems) AsyncImage(Config.cdn("/stickers/${st.id}.png"), st.name, Modifier.padding(top = 4.dp).size(160.dp))
+                if (io.github.mrciller.cillhub.data.E2ee.plainInEncrypted(state.channels[m.channelId], m)) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Ic(R.drawable.ms_lock_open, null, Modifier.size(12.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(s(R.string.e2ee_not_encrypted), Modifier.padding(start = 4.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (m.poll != null) PollCard(m.channelId, m, m.poll)
                 if (m.failed) Text(s(R.string.not_sent), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 if (m.reactions.isNotEmpty()) {
