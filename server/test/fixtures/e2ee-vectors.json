@@ -27,16 +27,24 @@
   },
   "wrap": {
     "user_id": "1300000000000000002",
+    "wrapper": {
+      "user_id": "1300000000000000001",
+      "d": "3seOQEYxCzdcn3f0hM1nFAvYGvgijgPp358rGkpyVoo",
+      "pkcs8": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg3seOQEYxCzdcn3f0hM1nFAvYGvgijgPp358rGkpyVoqhRANCAASng2rdJK0gPbchayNijLyoAWWsWPHipSVvRzKOA-jgoPl_98iAegqCyA_AQMTtukPmqZyoue1JAORoXhBi3eL6",
+      "public_key": "BKeDat0krSA9tyFrI2KMvKgBZaxY8eKlJW9HMo4D6OCg-X_3yIB6CoLID8BAxO26Q-apnKi57UkA5GheEGLd4vo"
+    },
     "ephemeral": {
       "d": "MTAY-MRjn9TNTk6a-6PnbC3yvXy-fOLgxosLzusQJ8A",
       "pkcs8": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgMTAY-MRjn9TNTk6a-6PnbC3yvXy-fOLgxosLzusQJ8ChRANCAAQvP4f7UE-wtlyJRA5Ia5Ypkd-IsQ8Zz9kt0colHNadoMp3D93u16SMMbAueU0AUatUHpvHisqKBEDOV00YiONP",
       "public_key": "BC8_h_tQT7C2XIlEDkhrlimR34ixDxnP2S3RyiUc1p2gyncP3e7XpIwxsC55TQBRq1Qem8eKyooEQM5XTRiI408"
     },
     "nonce": "MueQgTxOf7Ys38C5",
-    "shared": "cBQoB6912N-yNs6UDqdF-YSD3OhC7HloGeAXC_SegGQ",
-    "info": "cillhub-e2ee-wrap-v1|1|1300000000000000002",
-    "wk": "pYj54iWvMGp4QdQK3e1Z7FegV5IQ4IcmusQPO6QqneU",
-    "wrapped_json": "{\"eph\":\"BC8_h_tQT7C2XIlEDkhrlimR34ixDxnP2S3RyiUc1p2gyncP3e7XpIwxsC55TQBRq1Qem8eKyooEQM5XTRiI408\",\"n\":\"MueQgTxOf7Ys38C5\",\"c\":\"gp7guz8Phq6vhxmGC88aJuC7uMquMvNZ1bSBd77_oglyWVACUp7um7BmsqAdBU79\"}"
+    "shared_eph": "cBQoB6912N-yNs6UDqdF-YSD3OhC7HloGeAXC_SegGQ",
+    "shared_by": "PpFqEnrE6kVX9Lu-n4x8vPLFc8E3RgzrWGeKekt4wkc",
+    "ikm": "cBQoB6912N-yNs6UDqdF-YSD3OhC7HloGeAXC_SegGQ-kWoSesTqRVf0u76fjHy88sVzwTdGDOtYZ4p6S3jCRw",
+    "info": "cillhub-e2ee-wrap-v2|1|1300000000000000002|1300000000000000001",
+    "wk": "EuXEsxcjI89wnMR9UhcAaalt3t6ESpSxwkZNQGjZPSY",
+    "wrapped_json": "{\"by\":\"1300000000000000001\",\"eph\":\"BC8_h_tQT7C2XIlEDkhrlimR34ixDxnP2S3RyiUc1p2gyncP3e7XpIwxsC55TQBRq1Qem8eKyooEQM5XTRiI408\",\"n\":\"MueQgTxOf7Ys38C5\",\"c\":\"-rC1C_WZ5GmmP0u-E9R8jBa6HvblSieK-y0wx9tN8H0XxwmEMMY78hQkZu_qUCEg\"}"
   },
   "message": {
     "author_id": "1300000000000000001",

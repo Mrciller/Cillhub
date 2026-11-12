@@ -49,12 +49,12 @@ const epochField = body => {
   if (!Number.isSafeInteger(e) || e < 1) throw invalid('epoch', 'NUMBER_TYPE_COERCE', 'Must be a positive integer.');
   return e;
 };
-const wrapsField = (body, ids) => {
+const wrapsField = (body, ids, by) => {
   const w = body?.wraps;
   if (!w || typeof w !== 'object' || Array.isArray(w)) throw invalid('wraps', 'MODEL_TYPE_CONVERT', 'Must be an object of user id to wrapped key.');
   const keys = Object.keys(w);
   if (keys.length > ids.length || keys.some(k => !ids.includes(k))) throw invalid('wraps', 'E2EE_WRAPS_MEMBERS', 'Wraps are only for members of this conversation.');
-  return keys.map(id => [id, wrapField(w[id], `wraps.${id}`)]);
+  return keys.map(id => [id, wrapField(w[id], `wraps.${id}`, by)]);
 };
 const keyOwner = id => {
   const u = userById(id);
@@ -75,7 +75,7 @@ function putEpoch(ctx) {
   if (epoch !== ch.e2ee_epoch + 1) throw stale();
   const ids = channelUserIds(ch);
   ids.forEach(keyOwner);
-  const wraps = wrapsField(ctx.body, ids);
+  const wraps = wrapsField(ctx.body, ids, ctx.user.id);
   if (wraps.length !== ids.length) throw invalid('wraps', 'E2EE_WRAPS_MEMBERS', 'Every member needs a wrapped key.');
   tx(() => {
     if (!run('UPDATE channels SET e2ee_epoch = ? WHERE id = ? AND e2ee_epoch = ?', epoch, ch.id, epoch - 1).changes) throw stale();
@@ -91,7 +91,7 @@ function putWraps(ctx) {
   const epoch = epochField(ctx.body);
   if (epoch !== ch.e2ee_epoch) throw new HttpError(409, 50304, 'The conversation has a newer key. Load it and try again.');
   const ids = channelUserIds(ch);
-  const wraps = wrapsField(ctx.body, ids);
+  const wraps = wrapsField(ctx.body, ids, ctx.user.id);
   wraps.forEach(([id]) => keyOwner(id));
   tx(() => {
     for (const [id, w] of wraps) run('INSERT OR IGNORE INTO dm_keys (channel_id, epoch, user_id, wrapped) VALUES (?, ?, ?, ?)', ch.id, epoch, id, w);

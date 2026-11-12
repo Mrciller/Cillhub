@@ -18,13 +18,31 @@ test('recovery key text and backup', async () => {
   await assert.rejects(C.openBackup(C.random(20), v.recovery.user_id, v.recovery.backup_json))
 })
 
-test('channel key wrap with the fixed ephemeral key, and unwrap with Sam\'s key', async () => {
+test('channel key wrap v2 by Alex with the fixed ephemeral key, and unwrap with Sam\'s key', async () => {
   const eph = { priv: await C.importPrivate(u(v.wrap.ephemeral.pkcs8)), pub: v.wrap.ephemeral.public_key }
-  const w = await C.wrap(u(v.channel.key), v.sam.public_key, v.channel.id, v.channel.epoch, v.wrap.user_id, eph, u(v.wrap.nonce))
+  const by = { id: v.wrap.wrapper.user_id, priv: await C.importPrivate(u(v.wrap.wrapper.pkcs8)) }
+  const w = await C.wrap(u(v.channel.key), v.sam.public_key, v.channel.id, v.channel.epoch, v.wrap.user_id, by, eph, u(v.wrap.nonce))
   assert.equal(w, v.wrap.wrapped_json)
+  assert.equal(C.wrapper(w), v.wrap.wrapper.user_id)
   const sam = await C.importPrivate(u(v.sam.pkcs8))
-  assert.deepEqual(await C.unwrap(sam, w, v.channel.id, v.channel.epoch, v.wrap.user_id), u(v.channel.key))
-  await assert.rejects(C.unwrap(sam, w, v.channel.id, v.channel.epoch + 1, v.wrap.user_id), 'epoch is bound in')
+  assert.deepEqual(await C.unwrap(sam, w, v.channel.id, v.channel.epoch, v.wrap.user_id, v.wrap.wrapper.public_key), u(v.channel.key))
+  await assert.rejects(C.unwrap(sam, w, v.channel.id, v.channel.epoch + 1, v.wrap.user_id, v.wrap.wrapper.public_key), 'epoch is bound in')
+  await assert.rejects(C.unwrap(sam, w, v.channel.id, v.channel.epoch, v.wrap.user_id, v.sam.public_key), 'only the wrapper\'s key opens it')
+  const v1 = JSON.stringify((({ by, ...rest }) => rest)(JSON.parse(w)))
+  await assert.rejects(C.unwrap(sam, v1, v.channel.id, v.channel.epoch, v.wrap.user_id, v.wrap.wrapper.public_key), 'a v1 wrap is refused')
+})
+
+test('a wrap made without the account key of its `by` (only public keys known) does not open', async () => {
+  // the attacker writes into the database: a channel key of their own, wrapped to Sam, claiming to be Alex
+  const attacker = await C.newAccountKey()
+  const sam = await C.importPrivate(u(v.sam.pkcs8))
+  const forged = await C.wrap(C.random(32), v.sam.public_key, v.channel.id, 2, v.sam.user_id, { id: v.alex.user_id, priv: attacker.priv })
+  assert.equal(C.wrapper(forged), v.alex.user_id)
+  await assert.rejects(C.unwrap(sam, forged, v.channel.id, 2, v.sam.user_id, v.alex.public_key))
+  // swapping in another ephemeral key does not help either
+  const eph = await C.newAccountKey()
+  const tampered = JSON.stringify({ ...JSON.parse(forged), eph: eph.pub })
+  await assert.rejects(C.unwrap(sam, tampered, v.channel.id, 2, v.sam.user_id, v.alex.public_key))
 })
 
 test('message envelope, key and commitment; the AAD binds channel and author', async () => {

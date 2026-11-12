@@ -39,11 +39,15 @@ export function backupField(v) {
   return JSON.stringify({ v: 1, n: o.n, c: o.c });
 }
 
-// one member's wrapped channel key: {"eph":P-256 public key,"n":iv12,"c":AES-GCM(32-byte key)}
-export function wrapField(v, field) {
-  const o = parsed(v, 512);
-  if (!exactKeys(o, ['eph', 'n', 'c']) || !publicKey(o.eph) || !bytes(o.n, 12) || !bytes(o.c, 48)) throw invalid(field, 'E2EE_WRAP_INVALID', 'Not a valid wrapped key.');
-  return JSON.stringify({ eph: o.eph, n: o.n, c: o.c });
+// one member's wrapped channel key (v2): {"by":wrapper's user id,"eph":P-256 public key,"n":iv12,"c":AES-GCM(32-byte key)}.
+// The wrap key mixes in ECDH(by's account key, member), so only `by` can make a wrap that opens; `by` must be the caller.
+export function wrapField(v, field, by) {
+  const o = parsed(v, 600);
+  if (!exactKeys(o, ['by', 'eph', 'n', 'c']) || typeof o.by !== 'string' || !/^\d{1,20}$/.test(o.by) || !publicKey(o.eph) || !bytes(o.n, 12) || !bytes(o.c, 48)) {
+    throw invalid(field, 'E2EE_WRAP_INVALID', 'Not a valid wrapped key.');
+  }
+  if (o.by !== by) throw invalid(field, 'E2EE_WRAP_BY', 'A wrap must be made by the caller.');
+  return JSON.stringify({ by: o.by, eph: o.eph, n: o.n, c: o.c });
 }
 
 // {"v":1,"e":epoch,"n":nonce24,"c":ciphertext,"kc":commitment}; e must be the channel's current epoch

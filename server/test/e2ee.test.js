@@ -39,11 +39,13 @@ function backup(recovery, userId, pkcs8, n = randomBytes(12)) {
   const bk = hkdf(recovery, Buffer.from(userId), 'cillhub-e2ee-backup-v1');
   return { bk, backup: JSON.stringify({ v: 1, n: b64(n), c: b64(gcm(bk, n, pkcs8)) }) };
 }
-function wrap(channelKey, memberPub, channelId, epoch, userId, eph = keyPair(), n = randomBytes(12)) {
-  const shared = eph.ecdh.computeSecret(memberPub);
-  const info = `cillhub-e2ee-wrap-v1|${epoch}|${userId}`;
-  const wk = hkdf(shared, Buffer.from(channelId), info);
-  return { shared, info, wk, wrapped: JSON.stringify({ eph: b64(eph.pub), n: b64(n), c: b64(gcm(wk, n, channelKey)) }) };
+// wrap v2: ikm = ECDH(eph, member) || ECDH(wrapper's account key, member); `by` is the wrapper's user id
+function wrap(channelKey, memberPub, channelId, epoch, userId, by, byKey, eph = keyPair(), n = randomBytes(12)) {
+  const sharedEph = eph.ecdh.computeSecret(memberPub), sharedBy = byKey.ecdh.computeSecret(memberPub);
+  const ikm = Buffer.concat([sharedEph, sharedBy]);
+  const info = `cillhub-e2ee-wrap-v2|${epoch}|${userId}|${by}`;
+  const wk = hkdf(ikm, Buffer.from(channelId), info);
+  return { sharedEph, sharedBy, ikm, info, wk, wrapped: JSON.stringify({ by, eph: b64(eph.pub), n: b64(n), c: b64(gcm(wk, n, channelKey)) }) };
 }
 function seal(channelKey, channelId, authorId, epoch, payload, nonce = randomBytes(24)) {
   const plaintext = typeof payload === 'string' ? payload : JSON.stringify(payload);
@@ -68,7 +70,7 @@ function vectors() {
   const recovery = seed('recovery key', 20), bn = seed('backup nonce', 12);
   const bu = backup(recovery, ids.alex, alex.pkcs8, bn);
   const channelKey = seed('channel key'), wn = seed('wrap nonce', 12);
-  const w = wrap(channelKey, sam.pub, ids.channel, 1, ids.sam, eph, wn);
+  const w = wrap(channelKey, sam.pub, ids.channel, 1, ids.sam, ids.alex, alex, eph, wn);
   const fileKey = seed('attachment key'), fileIv = seed('attachment iv', 12);
   const file = Buffer.from('Hello again', 'utf8');
   const plaintext = JSON.stringify({ content: 'Hello Sam, this is encrypted.', files: [{ id: '0', k: b64(fileKey), n: b64(fileIv), name: 'note.txt', type: 'text/plain', size: file.length }] });
@@ -78,7 +80,10 @@ function vectors() {
     alex: party(ids.alex, alex), sam: party(ids.sam, sam),
     recovery: { user_id: ids.alex, key: b64(recovery), display: base32(recovery), bk: b64(bu.bk), nonce: b64(bn), backup_json: bu.backup },
     channel: { id: ids.channel, epoch: 1, key: b64(channelKey) },
-    wrap: { user_id: ids.sam, ephemeral: { d: b64(eph.d), pkcs8: b64(eph.pkcs8), public_key: b64(eph.pub) }, nonce: b64(wn), shared: b64(w.shared), info: w.info, wk: b64(w.wk), wrapped_json: w.wrapped },
+    wrap: {
+      user_id: ids.sam, wrapper: party(ids.alex, alex), ephemeral: { d: b64(eph.d), pkcs8: b64(eph.pkcs8), public_key: b64(eph.pub) }, nonce: b64(wn),
+      shared_eph: b64(w.sharedEph), shared_by: b64(w.sharedBy), ikm: b64(w.ikm), info: w.info, wk: b64(w.wk), wrapped_json: w.wrapped,
+    },
     message: { author_id: ids.alex, nonce24: b64(seed('message nonce', 24)), aad: msg.aad, plaintext_json: plaintext, mk: b64(msg.mk), kc: b64(msg.kc), envelope: msg.envelope },
     attachment: { key: b64(fileKey), iv: b64(fileIv), plaintext: b64(file), ciphertext: b64(gcm(fileKey, fileIv, file)) },
     security_code: { between: [ids.alex, ids.sam], code: securityCode(alex.pub, sam.pub) },
@@ -94,7 +99,9 @@ test('test vectors: fixed keys and nonces give the committed file byte for byte'
   const ub = x => Buffer.from(x, 'base64url');
   const priv = await s.importKey('pkcs8', ub(v.wrap.ephemeral.pkcs8), { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
   const pub = await s.importKey('raw', ub(v.sam.public_key), { name: 'ECDH', namedCurve: 'P-256' }, true, []);
-  assert.equal(b64(await s.deriveBits({ name: 'ECDH', public: pub }, priv, 256)), v.wrap.shared);
+  assert.equal(b64(await s.deriveBits({ name: 'ECDH', public: pub }, priv, 256)), v.wrap.shared_eph);
+  const byPriv = await s.importKey('pkcs8', ub(v.wrap.wrapper.pkcs8), { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+  assert.equal(b64(await s.deriveBits({ name: 'ECDH', public: pub }, byPriv, 256)), v.wrap.shared_by);
   const ck = await s.importKey('raw', ub(v.channel.key), 'HKDF', false, ['deriveBits']);
   const mk = await s.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: ub(v.message.nonce24), info: Buffer.from('cillhub-e2ee-msg-v1') }, ck, 256);
   assert.equal(b64(mk), v.message.mk);
@@ -117,7 +124,8 @@ const friends = async (a, b) => {
   assert.equal((await api('PUT', `/users/@me/relationships/${a.id}`, b.token, {})).status, 204);
 };
 const openDm = async (a, b) => (await api('POST', '/users/@me/channels', a.token, { recipient_id: b.id })).body;
-const wrapsFor = (ch, epoch, members, channelKey) => Object.fromEntries(members.map(u => [u.id, wrap(channelKey, keys[u.name].pub, ch, epoch, u.id).wrapped]));
+const wrapsFor = (ch, epoch, members, channelKey, by = alex) =>
+  Object.fromEntries(members.map(u => [u.id, wrap(channelKey, keys[u.name].pub, ch, epoch, u.id, by.id, keys[by.name]).wrapped]));
 
 before(async () => {
   srv = await startServer();
@@ -150,7 +158,7 @@ test('epoch: every member needs a key, exactly the members are wrapped, a race g
   const dm = await openDm(alex, sam);
   const ck = randomBytes(32);
   const epoch = (e, wraps) => api('PUT', `/channels/${dm.id}/e2ee/epoch`, alex.token, { epoch: e, wraps });
-  assert.equal((await epoch(1, { [alex.id]: wrap(ck, keys.alex.pub, dm.id, 1, alex.id).wrapped })).body.code, 50303, 'Sam has no key');
+  assert.equal((await epoch(1, { [alex.id]: wrap(ck, keys.alex.pub, dm.id, 1, alex.id, alex.id, keys.alex).wrapped })).body.code, 50303, 'Sam has no key');
   await setupKeys(sam);
   await setupKeys(robin);
   assert.equal((await epoch(1, wrapsFor(dm.id, 1, [alex], ck))).status, 400, 'Sam not wrapped');
@@ -168,12 +176,34 @@ test('epoch: every member needs a key, exactly the members are wrapped, a race g
   assert.ok((await api('PUT', `/channels/${dm.id}/e2ee/wraps`, robin.token, { epoch: 1, wraps: {} })).status >= 403);
 });
 
+test('wraps: `by` must be the caller; a v1 wrap (no `by`) and a malformed `by` are refused; stored in key order', async () => {
+  const dm = await openDm(sam, robin);
+  const cur = (await api('GET', `/channels/${dm.id}/e2ee/keys`, sam.token)).body.epoch;
+  const e = cur + 1, ck = randomBytes(32);
+  const put = (wraps, u = sam) => api('PUT', `/channels/${dm.id}/e2ee/epoch`, u.token, { epoch: e, wraps });
+  const foreign = wrapsFor(dm.id, e, [sam, robin], ck, robin); // Robin's wraps, sent by Sam
+  assert.equal((await put(foreign)).body.code, 50035, 'foreign by');
+  const v1 = Object.fromEntries(Object.entries(wrapsFor(dm.id, e, [sam, robin], ck, sam)).map(([id, w]) => { const { by, ...rest } = JSON.parse(w); return [id, JSON.stringify(rest)]; }));
+  assert.equal((await put(v1)).status, 400, 'v1 shape');
+  const good = wrapsFor(dm.id, e, [sam, robin], ck, sam);
+  const bad = by => ({ ...good, [robin.id]: JSON.stringify({ ...JSON.parse(good[robin.id]), by }) });
+  assert.equal((await put(bad(`${sam.id}x`))).status, 400, 'not digits');
+  assert.equal((await put(bad(Number(sam.id)))).status, 400, 'a number, not a string');
+  assert.equal((await put(good)).status, 200);
+  assert.equal(JSON.parse(sql('SELECT wrapped FROM dm_keys WHERE channel_id = ? AND user_id = ?', dm.id, robin.id)[0].wrapped).by, sam.id);
+  assert.deepEqual(Object.keys(JSON.parse(sql('SELECT wrapped FROM dm_keys WHERE channel_id = ? AND user_id = ?', dm.id, robin.id)[0].wrapped)), ['by', 'eph', 'n', 'c']);
+  sql('DELETE FROM dm_keys WHERE channel_id = ? AND user_id = ?', dm.id, robin.id);
+  const add = (wraps, u) => api('PUT', `/channels/${dm.id}/e2ee/wraps`, u.token, { epoch: e, wraps });
+  assert.equal((await add(wrapsFor(dm.id, e, [robin], ck, sam), robin)).status, 400, 'PUT wraps: foreign by');
+  assert.equal((await add(wrapsFor(dm.id, e, [robin], ck, robin), robin)).status, 200);
+});
+
 // an encrypted 1:1 DM between Alex and Sam with a known channel key
 async function encryptedDm(a = alex, b = sam) {
   const dm = await openDm(a, b);
   const cur = (await api('GET', `/channels/${dm.id}/e2ee/keys`, a.token)).body.epoch;
   const ck = randomBytes(32);
-  assert.equal((await api('PUT', `/channels/${dm.id}/e2ee/epoch`, a.token, { epoch: cur + 1, wraps: wrapsFor(dm.id, cur + 1, [a, b], ck) })).status, 200);
+  assert.equal((await api('PUT', `/channels/${dm.id}/e2ee/epoch`, a.token, { epoch: cur + 1, wraps: wrapsFor(dm.id, cur + 1, [a, b], ck, a) })).status, 200);
   return { dm, ck, epoch: cur + 1 };
 }
 
@@ -293,14 +323,14 @@ test('groups: a removed member forces a new epoch; wraps are added, never overwr
   const ck = randomBytes(32);
   assert.equal((await api('PUT', `/channels/${g.id}/e2ee/epoch`, alex.token, { epoch: 1, wraps: wrapsFor(g.id, 1, [alex, sam, robin], ck) })).status, 200);
   const robinWrap = sql('SELECT wrapped FROM dm_keys WHERE channel_id = ? AND user_id = ?', g.id, robin.id)[0].wrapped;
-  const add = await api('PUT', `/channels/${g.id}/e2ee/wraps`, sam.token, { epoch: 1, wraps: wrapsFor(g.id, 1, [robin], randomBytes(32)) });
+  const add = await api('PUT', `/channels/${g.id}/e2ee/wraps`, sam.token, { epoch: 1, wraps: wrapsFor(g.id, 1, [robin], randomBytes(32), sam) });
   assert.equal(add.status, 200);
   assert.equal(sql('SELECT wrapped FROM dm_keys WHERE channel_id = ? AND user_id = ?', g.id, robin.id)[0].wrapped, robinWrap, 'never overwritten');
   assert.equal((await api('DELETE', `/channels/${g.id}/recipients/${robin.id}`, alex.token)).status, 204);
   const env = seal(ck, g.id, alex.id, 1, { content: 'robin is gone' }).envelope;
   assert.equal((await api('POST', `/channels/${g.id}/messages`, alex.token, { e2ee_envelope: env })).body.code, 50302);
   const ck2 = randomBytes(32);
-  assert.equal((await api('PUT', `/channels/${g.id}/e2ee/epoch`, sam.token, { epoch: 2, wraps: wrapsFor(g.id, 2, [alex, sam], ck2) })).status, 200);
+  assert.equal((await api('PUT', `/channels/${g.id}/e2ee/epoch`, sam.token, { epoch: 2, wraps: wrapsFor(g.id, 2, [alex, sam], ck2, sam) })).status, 200);
   assert.equal((await api('POST', `/channels/${g.id}/messages`, alex.token, { e2ee_envelope: seal(ck2, g.id, alex.id, 2, { content: 'new key' }).envelope })).status, 201);
   // Sam resets: the epoch 2 wrap for Sam goes (it opens only with the old key), the old epoch's stays
   await setupKeys(sam);
@@ -317,7 +347,7 @@ test('a DM with a bot is never encrypted: the bot has no key and cannot set one'
   const k = keyPair();
   assert.equal((await api('PUT', '/users/@me/e2ee/keys', botAuth, { public_key: b64(k.pub), backup: backup(randomBytes(20), app.id, k.pkcs8).backup })).status, 403);
   const dm = (await api('POST', '/users/@me/channels', botAuth, { recipient_id: alex.id })).body;
-  const r = await api('PUT', `/channels/${dm.id}/e2ee/epoch`, alex.token, { epoch: 1, wraps: { [alex.id]: wrap(randomBytes(32), keys.alex.pub, dm.id, 1, alex.id).wrapped } });
+  const r = await api('PUT', `/channels/${dm.id}/e2ee/epoch`, alex.token, { epoch: 1, wraps: { [alex.id]: wrap(randomBytes(32), keys.alex.pub, dm.id, 1, alex.id, alex.id, keys.alex).wrapped } });
   assert.equal(r.body.code, 50303);
   assert.equal(dm.e2ee_epoch, 0);
   assert.equal((await api('POST', `/channels/${dm.id}/messages`, botAuth, { content: 'plain from the bot' })).status, 201);

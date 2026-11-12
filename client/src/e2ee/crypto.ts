@@ -92,21 +92,36 @@ export async function openBackup(recovery: Bytes, userId: string, backup: string
   return gcmDecrypt(await backupKey(recovery, userId), unb64(o.n, 12), unb64(o.c))
 }
 
-// --- channel key, wrapped per member -------------------------------------------------------------------------------------------
-const wrapKey = async (priv: CryptoKey, pub: string, channelId: string, epoch: number, userId: string) =>
-  hkdf(new Uint8Array(await subtle.deriveBits({ name: 'ECDH', public: await importPublic(pub) }, priv, 256)), utf8(channelId), `cillhub-e2ee-wrap-v1|${epoch}|${userId}`)
-/** The channel key wrapped for one member (an ephemeral key per wrap unless a fixed one is given, for test vectors). */
-export async function wrap(channelKey: Bytes, memberPub: string, channelId: string, epoch: number, userId: string, eph?: { priv: CryptoKey; pub: string }, n = random(12)) {
+// --- channel key, wrapped per member (v2) ------------------------------------------------------------------------------------
+// ikm = ECDH(eph, member) || ECDH(wrapper's account key, member): only someone holding `by`'s account key makes a wrap that opens
+// with `by`'s public key, so a wrap inserted into the database by anyone else does not open.
+const ecdh = async (priv: CryptoKey, pub: string) => new Uint8Array(await subtle.deriveBits({ name: 'ECDH', public: await importPublic(pub) }, priv, 256))
+const wrapKey = (ikm: Bytes, channelId: string, epoch: number, userId: string, by: string) =>
+  hkdf(ikm, utf8(channelId), `cillhub-e2ee-wrap-v2|${epoch}|${userId}|${by}`)
+/** The channel key wrapped for one member by `by` (an ephemeral key per wrap unless a fixed one is given, for test vectors). */
+export async function wrap(channelKey: Bytes, memberPub: string, channelId: string, epoch: number, userId: string, by: { id: string; priv: CryptoKey }, eph?: { priv: CryptoKey; pub: string }, n = random(12)) {
   if (!eph) {
     const pair = await subtle.generateKey(EC, false, ['deriveBits'])
     eph = { priv: pair.privateKey, pub: b64(await subtle.exportKey('raw', pair.publicKey)) }
   }
-  const wk = await wrapKey(eph.priv, memberPub, channelId, epoch, userId)
-  return JSON.stringify({ eph: eph.pub, n: b64(n), c: b64(await gcmEncrypt(wk, n, channelKey)) })
+  const ikm = concat(await ecdh(eph.priv, memberPub), await ecdh(by.priv, memberPub))
+  const wk = await wrapKey(ikm, channelId, epoch, userId, by.id)
+  return JSON.stringify({ by: by.id, eph: eph.pub, n: b64(n), c: b64(await gcmEncrypt(wk, n, channelKey)) })
 }
-export async function unwrap(priv: CryptoKey, wrapped: string, channelId: string, epoch: number, userId: string): Promise<Bytes> {
+/** Who made a wrap (its `by`), or null for anything that is not a v2 wrap. */
+export function wrapper(wrapped: string): string | null {
+  try {
+    const by = JSON.parse(wrapped)?.by
+    return typeof by === 'string' && /^\d{1,20}$/.test(by) ? by : null
+  } catch { return null }
+}
+/** Opens a wrap with this member's key and a candidate public key of its `by`; throws when that is not the key that made it. */
+export async function unwrap(priv: CryptoKey, wrapped: string, channelId: string, epoch: number, userId: string, byPub: string): Promise<Bytes> {
   const o = JSON.parse(wrapped)
-  const key = await gcmDecrypt(await wrapKey(priv, o.eph, channelId, epoch, userId), unb64(o.n, 12), unb64(o.c))
+  const by = wrapper(wrapped)
+  if (!by) throw new Error('not a v2 wrap')
+  const ikm = concat(await ecdh(priv, o.eph), await ecdh(priv, byPub))
+  const key = await gcmDecrypt(await wrapKey(ikm, channelId, epoch, userId, by), unb64(o.n, 12), unb64(o.c))
   if (key.length !== 32) throw new Error('bad channel key')
   return key
 }
