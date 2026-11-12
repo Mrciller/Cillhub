@@ -77,7 +77,7 @@ class VoiceFlowTest {
         fun rest(method: String, path: String, token: String?, body: JSONObject? = null) = http(method, "$server/api/v9$path", token, body)
         fun peer(path: String, body: JSONObject? = null) = JSONObject(http(if (body == null) "GET" else "POST", "$peer$path", body = body))
         private fun register(name: String): Pair<String, String> {
-            val token = JSONObject(rest("POST", "/auth/register", null, JSONObject().put("email", "$name@example.com").put("username", name).put("password", "hunter2hunter2"))).getString("token")
+            val token = JSONObject(rest("POST", "/auth/register", null, JSONObject().put("email", "$name@example.com").put("username", name).put("password", "hunter2hunter2").put("age_confirmed", true))).getString("token")
             return token to JSONObject(rest("GET", "/users/@me", token)).getString("id")
         }
 

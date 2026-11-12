@@ -17,6 +17,7 @@ import android.os.Bundle
 import android.provider.MediaStore
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
@@ -97,7 +98,7 @@ class AppFlowTest {
     }
 
     private fun register(name: String): Pair<String, String> {
-        val token = JSONObject(rest("POST", "/auth/register", null, JSONObject().put("email", "$name@example.com").put("username", name).put("password", PASSWORD))).getString("token")
+        val token = JSONObject(rest("POST", "/auth/register", null, JSONObject().put("email", "$name@example.com").put("username", name).put("password", PASSWORD).put("age_confirmed", true))).getString("token")
         return token to JSONObject(rest("GET", "/users/@me", token)).getString("id")
     }
 
@@ -119,7 +120,8 @@ class AppFlowTest {
     }
 
     private fun text(t: String) = node(hasText(t, substring = true))
-    private fun button(t: String) = node(hasText(t) and hasClickAction())
+    // Arena shows button and dialog labels in caps
+    private fun button(t: String) = node(hasText(t, ignoreCase = true) and hasClickAction())
     private fun desc(d: String) = node(hasContentDescription(d, substring = true))
     private fun field(label: String) = node(hasText(label) and hasSetTextAction())
 
@@ -161,6 +163,9 @@ class AppFlowTest {
         field("Email").performTextInput("alice$run@example.com")
         field("Username").performTextInput("alice$run")
         field("New password (at least 8 characters)").performTextInput(PASSWORD)
+        // 7.10.3 servers: no account without the age confirmation
+        button("Create account").assertIsNotEnabled()
+        node(hasText("years old", substring = true) and hasClickAction()).performClick()
         button("Create account").performClick()
         val token = waitFor("token after registering", 30_000) { TokenStore.get(ctx) }
         val id = JSONObject(rest("GET", "/users/@me", token)).getString("id")
@@ -170,7 +175,7 @@ class AppFlowTest {
         node(hasText("You") and hasClickAction()).performClick()
         text("alice$run")
         button("Log out").performClick()
-        node(hasText("Log out") and hasClickAction()).performClick() // the dialog's confirm
+        button("Log out").performClick() // the dialog's confirm
         text("Ready up")
         assertEquals(null, TokenStore.get(ctx))
         field("Email or username").performTextInput("alice$run")
