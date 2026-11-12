@@ -243,6 +243,8 @@
     <string name="theme_system">Wie das System</string>
     <string name="theme_dark">Dunkel</string>
     <string name="theme_light">Hell</string>
+    <string name="theme_ash">Ash</string>
+    <string name="theme_onyx">Onyx</string>
     <string name="dynamic_color">Farben vom Hintergrundbild</string>
     <string name="dynamic_color_text">Statt der Cillhub-Palette die Farben deines Hintergrundbilds verwenden (ab Android 12).</string>
     <string name="motion_hint">Animationen folgen der Systemeinstellung „Animationen entfernen“.</string>

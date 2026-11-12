@@ -162,7 +162,7 @@ object Calls {
         val open = if (c.native) MainActivity.voiceIntent(ctx, c.channelId) else WebCallActivity.intent(ctx, "/channels/${c.guildId ?: "@me"}/${c.channelId}")
         val b = NotificationCompat.Builder(ctx, Notifications.CH_CALLS)
             .setSmallIcon(R.drawable.ic_call)
-            .setColor(0xFF22E1FF.toInt())
+            .setColor(ctx.getColor(R.color.accent))
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MAX)

@@ -103,7 +103,7 @@ fun ChannelInfoScreen(channelId: String) {
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(52.dp).clip(Hud).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(52.dp).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
                     Ic(channelIcon(ch), null, Modifier.size(28.dp), MaterialTheme.colorScheme.primary)
                 }
                 Spacer(Modifier.width(14.dp))
@@ -146,7 +146,7 @@ internal fun ChannelNotifySheet(state: State, gid: String, ch: Channel, close: (
             close()
         } catch (e: Exception) { error = errorText(ctx, e) }
     }
-    ModalBottomSheet(close) {
+    ModalBottomSheet(close, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text(s(R.string.channel_notifications), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp).semantics { heading() })
             Text("#" + (ch.name ?: ""), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
@@ -324,16 +324,16 @@ private fun TargetPicker(state: State, gid: String, roles: List<io.github.mrcill
         .sortedBy { Sel.memberName(state, gid, it).lowercase() }.take(50)
     AlertDialog(
         onDismissRequest = close,
-        title = { Text(s(R.string.add_role_or_member)) },
+        title = { Text(s(R.string.add_role_or_member).uppercase()) },
         text = {
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                item { Text(s(R.string.roles), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(vertical = 4.dp)) }
+                item { Text(s(R.string.roles).uppercase(), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(vertical = 4.dp)) }
                 items(roles, key = { "r" + it.id }) { r ->
                     ListItem(headlineContent = { Text(if (r.id == gid) "@everyone" else r.name) }, leadingContent = { RoleDot(r.color) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent), modifier = Modifier.clickable { pick(r.id, 0) })
                 }
                 item {
-                    Text(s(R.string.members), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                    Text(s(R.string.members).uppercase(), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                     OutlinedTextField(q, { q = it }, placeholder = { Text(s(R.string.search_members)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
                 items(shown, key = { "m$it" }) { id ->
@@ -342,7 +342,7 @@ private fun TargetPicker(state: State, gid: String, roles: List<io.github.mrcill
                 }
             }
         },
-        confirmButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+        confirmButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
 }
 
@@ -360,7 +360,7 @@ private fun OverwriteEditor(ch: Channel, o: Overwrite, name: String, grantable: 
     val others = ch.permissionOverwrites.filter { it.id != o.id }
     // refused before the request: the server would let the actor lock themselves out of the channel
     fun save(next: List<Overwrite>, f: suspend () -> Unit) { if (keepsAccess(next)) run(f) else error = ctx.getString(R.string.self_lockout) }
-    ModalBottomSheet(close) {
+    ModalBottomSheet(close, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp))
@@ -371,9 +371,9 @@ private fun OverwriteEditor(ch: Channel, o: Overwrite, name: String, grantable: 
                                 put("type", o.type); put("allow", allow.toString()); put("deny", deny.toString())
                             })
                         }
-                    }, shape = MaterialTheme.shapes.small) { Text(s(R.string.save)) }
-                    if (existing) TextButton({ save(others) { Session.rest.request("DELETE", "/channels/${ch.id}/permissions/${o.id}") } }) {
-                        Text(s(R.string.remove_overwrite), color = MaterialTheme.colorScheme.error)
+                    }, shape = MaterialTheme.shapes.small) { Text(s(R.string.save).uppercase()) }
+                    if (existing) TextButton({ save(others) { Session.rest.request("DELETE", "/channels/${ch.id}/permissions/${o.id}") } }, shape = MaterialTheme.shapes.small) {
+                        Text(s(R.string.remove_overwrite).uppercase(), color = MaterialTheme.colorScheme.error)
                     }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
@@ -396,7 +396,7 @@ private fun OverwriteEditor(ch: Channel, o: Overwrite, name: String, grantable: 
                                         allow = if (v == 1) allow or bit else allow and bit.inv()
                                         deny = if (v == -1) deny or bit else deny and bit.inv()
                                     },
-                                    shape = SegmentedButtonDefaults.itemShape(i, 3),
+                                    shape = SegmentedButtonDefaults.itemShape(i, 3, MaterialTheme.shapes.small),
                                     icon = {},
                                     modifier = Modifier.semantics { contentDescription = d },
                                 ) { Text(when (v) { -1 -> "✕"; 0 -> "/"; else -> "✓" }) }

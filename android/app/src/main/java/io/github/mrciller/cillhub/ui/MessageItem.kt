@@ -181,10 +181,10 @@ fun MessageItem(
             }
         },
     ) {
-        val bar = LocalExtra.current.idle
+        val bar = LocalExtra.current.mention
         Column(
             Modifier.fillMaxWidth()
-                .background(if (mentionsMe) LocalExtra.current.mentionBg else MaterialTheme.colorScheme.surfaceContainer)
+                .background(if (mentionsMe) LocalExtra.current.mentionBg else MaterialTheme.colorScheme.surface)
                 // a mention of us: tinted row with a bar on the leading edge
                 .drawBehind { if (mentionsMe) drawRect(bar, size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) }
                 .combinedClickable(onClick = { if (m.failed) onLongPress() }, onLongClick = onLongPress, onLongClickLabel = a11yMore)
@@ -381,12 +381,12 @@ private fun EmbedView(e: Embed, state: State, guildId: String?) {
         Box(Modifier.width(4.dp).fillMaxHeight().background(bar))
         Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             e.provider?.name?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            e.author?.name?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.labelLarge) }
+            e.author?.name?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
             e.title?.let { t -> Text(t, fontWeight = FontWeight.SemiBold, color = if (e.url != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 modifier = if (e.url != null) Modifier.clickable(onClickLabel = s(R.string.open_link)) { io.github.mrciller.cillhub.data.Md.safeUrl(e.url)?.let { openUrl(ctx, it) } } else Modifier) }
             e.description?.takeIf { it.isNotBlank() }?.let { MarkdownText(it, state, guildId, style = MaterialTheme.typography.bodyMedium) }
             for (f in e.fields) Column {
-                Text(f.name, style = MaterialTheme.typography.labelLarge)
+                Text(f.name, style = MaterialTheme.typography.titleSmall)
                 MarkdownText(f.value, state, guildId, style = MaterialTheme.typography.bodyMedium)
             }
             val img = e.image ?: e.thumbnail?.takeIf { e.type == "video" || e.type == "article" && e.image == null }
@@ -449,13 +449,13 @@ fun MessageActions(
     val isThread = ch.isThread || ch.type == 11 || ch.parentId != null
     val canSolve = isThread && (ch.ownerId == state.me?.id || Perm.has(perms, Perm.MANAGE_THREADS))
 
-    ModalBottomSheet(onDismissRequest = onClose) {
+    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.padding(bottom = 16.dp)) {
             if (!m.pending && !m.failed && canReact) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                for (e in QUICK_REACTIONS) Surface(onClick = { vm.react(m, EmojiRef(name = e)); onClose() }, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.size(48.dp)) {
+                for (e in QUICK_REACTIONS) Surface(onClick = { vm.react(m, EmojiRef(name = e)); onClose() }, shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.size(48.dp)) {
                     Box(contentAlignment = Alignment.Center) { Text(e, fontSize = 22.sp, modifier = Modifier.semantics { contentDescription = e }) }
                 }
-                Surface(onClick = { onClose(); onPickReaction() }, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.size(48.dp)) {
+                Surface(onClick = { onClose(); onPickReaction() }, shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.size(48.dp)) {
                     Box(contentAlignment = Alignment.Center) { Ic(R.drawable.ms_add_reaction, s(R.string.add_reaction)) }
                 }
             }
@@ -498,17 +498,17 @@ fun ReactionPicker(close: () -> Unit, pick: (EmojiRef) -> Unit) {
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = close,
-        title = { Text(s(R.string.add_reaction)) },
+        title = { Text(s(R.string.add_reaction).uppercase()) },
         text = {
             Column {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    for (e in QUICK_REACTIONS) TextButton({ pick(EmojiRef(name = e)) }, Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) { Text(e, fontSize = 22.sp) }
+                    for (e in QUICK_REACTIONS) TextButton({ pick(EmojiRef(name = e)) }, Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp), shape = MaterialTheme.shapes.small) { Text(e, fontSize = 22.sp) }
                 }
                 OutlinedTextField(text, { text = it.trim() }, label = { Text(s(R.string.emoji_from_keyboard)) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
             }
         },
-        confirmButton = { TextButton({ pick(EmojiRef(name = text)) }, enabled = text.isNotEmpty() && text.length <= 16) { Text(s(R.string.react)) } },
-        dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+        confirmButton = { TextButton({ pick(EmojiRef(name = text)) }, enabled = text.isNotEmpty() && text.length <= 16, shape = MaterialTheme.shapes.small) { Text(s(R.string.react).uppercase()) } },
+        dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
 }
 
@@ -723,7 +723,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                     val isCorrect = ans.answerId == poll.correctAnswerId
 
                     val borderColor = when {
-                        showQuizCorrect && isCorrect -> Color(0xFF2E7D32)
+                        showQuizCorrect && isCorrect -> LocalExtra.current.online
                         voted -> MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.outlineVariant
                     }
@@ -755,7 +755,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                                     Modifier
                                         .fillMaxWidth(pct)
                                         .matchParentSize()
-                                        .background(if (showQuizCorrect && isCorrect) Color(0x334CAF50) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                        .background(if (showQuizCorrect && isCorrect) LocalExtra.current.online.copy(alpha = 0.2f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                                 )
                             }
                             Row(
@@ -773,7 +773,7 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                                     modifier = Modifier.weight(1f),
                                 )
                                 if (showQuizCorrect && isCorrect) {
-                                    Text("✓ " + s(R.string.poll_correct_answer), color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(end = 6.dp))
+                                    Text("✓ " + s(R.string.poll_correct_answer), color = LocalExtra.current.online, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(end = 6.dp))
                                 }
                                 if (voted) {
                                     Text("✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 6.dp))
@@ -823,8 +823,9 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                             }
                             ctx.startActivity(Intent.createChooser(intent, ctx.getString(R.string.share_poll_results)))
                         },
+                        shape = MaterialTheme.shapes.small,
                     ) {
-                        Text(s(R.string.poll_export_csv), style = MaterialTheme.typography.labelSmall)
+                        Text(s(R.string.poll_export_csv).uppercase(), style = MaterialTheme.typography.labelSmall)
                     }
 
                     // End Poll (if author and not finalized)
@@ -842,9 +843,9 @@ fun PollCard(channelId: String, message: Message, poll: Poll) {
                                     }
                                 }
                             },
-                            enabled = !busy,
+                            enabled = !busy, shape = MaterialTheme.shapes.small,
                         ) {
-                            Text(s(R.string.poll_end), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                            Text(s(R.string.poll_end).uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -877,7 +878,7 @@ fun EditHistorySheet(channelId: String, messageId: String, onClose: () -> Unit) 
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onClose) {
+    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().padding(bottom = 24.dp)) {
             Text(s(R.string.edit_history), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
 
@@ -932,10 +933,10 @@ private fun DiffTextView(diff: List<DiffWord>) {
         for (w in diff) {
             when (w.type) {
                 DiffType.UNCHANGED -> append(w.text)
-                DiffType.ADDED -> withStyle(SpanStyle(color = Color(0xFF2E7D32), background = Color(0x334CAF50), fontWeight = FontWeight.Medium)) {
+                DiffType.ADDED -> withStyle(SpanStyle(color = LocalExtra.current.online, background = LocalExtra.current.online.copy(alpha = 0.2f), fontWeight = FontWeight.Medium)) {
                     append(w.text)
                 }
-                DiffType.REMOVED -> withStyle(SpanStyle(color = Color(0xFFC62828), background = Color(0x33F44336), textDecoration = TextDecoration.LineThrough)) {
+                DiffType.REMOVED -> withStyle(SpanStyle(color = MaterialTheme.colorScheme.error, background = MaterialTheme.colorScheme.error.copy(alpha = 0.2f), textDecoration = TextDecoration.LineThrough)) {
                     append(w.text)
                 }
             }

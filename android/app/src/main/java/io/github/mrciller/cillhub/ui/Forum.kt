@@ -46,7 +46,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -150,7 +149,6 @@ fun ForumScreen(channelId: String, showBack: Boolean = true) {
             if (canPost) {
                 FloatingActionButton(
                     onClick = { newPostOpen = true },
-                    shape = Hud,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 ) {
@@ -257,7 +255,7 @@ private fun ForumPostCard(post: Channel, forum: Channel, state: io.github.mrcill
         onClick = onClick,
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.medium,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSolved) Color(0xFF2DC770).copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSolved) LocalExtra.current.online.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -282,14 +280,14 @@ private fun ForumPostCard(post: Channel, forum: Channel, state: io.github.mrcill
                     }
                     if (isSolved) {
                         Surface(
-                            color = Color(0xFF2DC770).copy(alpha = 0.18f),
+                            color = LocalExtra.current.online.copy(alpha = 0.18f),
                             shape = MaterialTheme.shapes.extraSmall,
                         ) {
                             Text(
                                 "✓ " + s(R.string.forum_solved),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2DC770),
+                                color = LocalExtra.current.online,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
@@ -372,7 +370,7 @@ private fun NewPostDialog(forum: Channel, onDismiss: () -> Unit, onCreated: (Cha
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(s(R.string.forum_new_post), fontWeight = FontWeight.Bold) },
+        title = { Text(s(R.string.forum_new_post).uppercase(), fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
@@ -425,12 +423,12 @@ private fun NewPostDialog(forum: Channel, onDismiss: () -> Unit, onCreated: (Cha
                     }
                 },
                 enabled = canSubmit,
-             shape = Hud) {
-                Text(s(R.string.forum_post))
+             shape = MaterialTheme.shapes.small) {
+                Text(s(R.string.forum_post).uppercase())
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) { Text(s(R.string.cancel)) }
+            TextButton(onClick = onDismiss, enabled = !busy, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) }
         },
     )
 }

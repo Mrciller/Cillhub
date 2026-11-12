@@ -155,7 +155,7 @@ object Notifications {
 
         return NotificationCompat.Builder(ctx, CH_MESSAGES)
             .setSmallIcon(R.drawable.ic_stat_cillcord)
-            .setColor(0xFFFF6A1F.toInt())
+            .setColor(ctx.getColor(R.color.accent))
             .setStyle(style)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -176,7 +176,7 @@ object Notifications {
     /** Plain notification for pushes that are not messages (friend requests, reminders). */
     fun notice(ctx: Context, title: String, body: String, path: String) {
         val content = PendingIntent.getActivity(ctx, path.hashCode(), openIntent(ctx, path), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val n = NotificationCompat.Builder(ctx, CH_MESSAGES).setSmallIcon(R.drawable.ic_stat_cillcord).setColor(0xFFFF6A1F.toInt())
+        val n = NotificationCompat.Builder(ctx, CH_MESSAGES).setSmallIcon(R.drawable.ic_stat_cillcord).setColor(ctx.getColor(R.color.accent))
             .setContentTitle(title).setContentText(body).setContentIntent(content).setAutoCancel(true).build()
         try { NotificationManagerCompat.from(ctx).notify("notice:$path", ID_NOTICE, n) } catch (e: SecurityException) { Log.w(TAG, "notifications not allowed") }
     }

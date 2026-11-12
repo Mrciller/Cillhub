@@ -31,7 +31,7 @@ class CaptchaActivity : ComponentActivity() {
             allowContentAccess = false
             setSupportMultipleWindows(false)
         }
-        web.setBackgroundColor(0xFF070A14.toInt())
+        web.setBackgroundColor(getColor(R.color.background))
         WebViewCompat.addWebMessageListener(web, "CillhubCaptcha", setOf(Config.ORIGIN)) { _, message, sourceOrigin, isMainFrame, _ ->
             val token = message.data
             if (!Origins.bridgeAccepts(sourceOrigin.toString(), isMainFrame, Config.ORIGIN) || token.isNullOrEmpty() || token.length > 4000) return@addWebMessageListener

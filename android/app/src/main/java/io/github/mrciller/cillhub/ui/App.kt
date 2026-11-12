@@ -22,8 +22,10 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +41,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -244,10 +250,12 @@ private fun MainShell() {
         val onVoice = dest?.route?.startsWith(VoiceRoute::class.qualifiedName!!) == true
         val bar: @Composable () -> Unit = { if (!onVoice) VoiceBar { shell.openVoice(it) } }
         if (twoPane) Row(Modifier.fillMaxSize()) {
-            NavigationRail(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+            NavigationRail(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
                 TABS.forEach { t ->
                     val selected = dest?.hierarchy?.any { it.route == t.route::class.qualifiedName } == true
-                    NavigationRailItem(selected, { nav.tab(t.route) }, icon = { TabIcon(t, selected, badges[t.route] ?: 0) }, label = { Text(s(t.label)) })
+                    NavigationRailItem(selected, { nav.tab(t.route) }, icon = { TabIcon(t, selected, badges[t.route] ?: 0) }, label = { Text(s(t.label)) },
+                        colors = NavigationRailItemDefaults.colors(indicatorColor = Color.Transparent, selectedTextColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                        modifier = Modifier.activeLine(selected, top = false))
                 }
             }
             androidx.compose.foundation.layout.Column(Modifier.weight(1f)) { host(Modifier.weight(1f)); bar() }
@@ -257,10 +265,12 @@ private fun MainShell() {
                 androidx.compose.foundation.layout.Column {
                 bar()
                 if (topLevel) {
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
                         TABS.forEach { t ->
                             val selected = dest?.hierarchy?.any { it.route == t.route::class.qualifiedName } == true
-                            NavigationBarItem(selected, { nav.tab(t.route) }, icon = { TabIcon(t, selected, badges[t.route] ?: 0) }, label = { Text(s(t.label)) })
+                            NavigationBarItem(selected, { nav.tab(t.route) }, icon = { TabIcon(t, selected, badges[t.route] ?: 0) }, label = { Text(s(t.label)) },
+                                colors = NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent, selectedTextColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                                modifier = Modifier.activeLine(selected, top = true))
                         }
                     }
                 }
@@ -273,10 +283,10 @@ private fun MainShell() {
         link?.let { url ->
             AlertDialog(
                 onDismissRequest = { link = null },
-                title = { Text(s(R.string.leaving_title)) },
+                title = { Text(s(R.string.leaving_title).uppercase()) },
                 text = { Text(s(R.string.leaving_text, url)) },
-                confirmButton = { TextButton({ openUrl(ctx, url); link = null }) { Text(s(R.string.leaving_visit)) } },
-                dismissButton = { TextButton({ link = null }) { Text(s(R.string.cancel)) } },
+                confirmButton = { TextButton({ openUrl(ctx, url); link = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.leaving_visit).uppercase()) } },
+                dismissButton = { TextButton({ link = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
             )
         }
         // the server asks to accept its terms first; this app has no accept screen, the website does
@@ -284,10 +294,10 @@ private fun MainShell() {
         gate?.takeIf { it.isNotEmpty() }?.let { msg ->
             AlertDialog(
                 onDismissRequest = { ApiError.termsGate.value = "" },
-                title = { Text(s(R.string.terms_gate_title)) },
+                title = { Text(s(R.string.terms_gate_title).uppercase()) },
                 text = { Text(msg) },
-                confirmButton = { TextButton({ openUrl(ctx, io.github.mrciller.cillhub.Config.APP_URL); ApiError.termsGate.value = "" }) { Text(s(R.string.terms_gate_open)) } },
-                dismissButton = { TextButton({ ApiError.termsGate.value = "" }) { Text(s(R.string.cancel)) } },
+                confirmButton = { TextButton({ openUrl(ctx, io.github.mrciller.cillhub.Config.APP_URL); ApiError.termsGate.value = "" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.terms_gate_open).uppercase()) } },
+                dismissButton = { TextButton({ ApiError.termsGate.value = "" }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
             )
         }
     }
@@ -297,10 +307,17 @@ private fun MainShell() {
 private fun CompositionLocalProviderNav(nav: Nav, content: @Composable () -> Unit) =
     androidx.compose.runtime.CompositionLocalProvider(LocalNav provides nav, content = content)
 
+/** The active tab: a 2dp accent line on the top edge (bottom bar) or the leading edge (rail), no pill. */
+@Composable
+private fun Modifier.activeLine(selected: Boolean, top: Boolean): Modifier {
+    val accent = MaterialTheme.colorScheme.primary
+    return drawBehind { if (selected) drawRect(accent, size = if (top) Size(size.width, 2.dp.toPx()) else Size(2.dp.toPx(), size.height)) }
+}
+
 @Composable
 private fun TabIcon(t: Tab, selected: Boolean, badge: Int) {
     val label = s(t.label)
-    BadgedBox(badge = { if (badge > 0) Badge { Text(if (badge > 99) "99+" else badge.toString()) } },
+    BadgedBox(badge = { if (badge > 0) Badge(containerColor = LocalExtra.current.badge, contentColor = Color.White) { Text(if (badge > 99) "99+" else badge.toString()) } },
         modifier = Modifier.semantics { if (badge > 0) contentDescription = "$label, $badge" }) {
         Ic(if (selected) t.selectedIcon else t.icon, null)
     }

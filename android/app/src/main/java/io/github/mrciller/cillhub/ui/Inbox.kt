@@ -68,7 +68,7 @@ fun InboxScreen() {
     Scaffold(topBar = {
         Column {
             TopAppBar(title = { Text(s(R.string.tab_inbox).uppercase()) }, actions = {
-                if (tab == 1 && unread.isNotEmpty()) TextButton({ scope.launch { runCatching { Session.ackBulk(unread) }.onFailure { error = errorText(ctx, it) } } }) { Text(s(R.string.mark_all_read)) }
+                if (tab == 1 && unread.isNotEmpty()) TextButton({ scope.launch { runCatching { Session.ackBulk(unread) }.onFailure { error = errorText(ctx, it) } } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.mark_all_read).uppercase()) }
             })
             PrimaryTabRow(tab) {
                 Tab(tab == 0, { tab = 0 }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, text = { Text(s(R.string.mentions_tab)) })
@@ -140,7 +140,7 @@ fun InboxScreen() {
                             headlineContent = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (t.solvedMessageId != null) {
-                                        Text("✓ ", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
+                                        Text("✓ ", color = LocalExtra.current.online, fontWeight = FontWeight.Bold)
                                     }
                                     Text(t.name ?: "", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
@@ -151,7 +151,7 @@ fun InboxScreen() {
                                     Modifier.size(40.dp).clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceContainerHigh),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Ic(if (t.solvedMessageId != null) R.drawable.ms_check else R.drawable.ms_forum, null, tint = if (t.solvedMessageId != null) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary)
+                                    Ic(if (t.solvedMessageId != null) R.drawable.ms_check else R.drawable.ms_forum, null, tint = if (t.solvedMessageId != null) LocalExtra.current.online else MaterialTheme.colorScheme.primary)
                                 }
                             },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),

@@ -117,7 +117,7 @@ fun MessagesScreen(detail: String?) {
                             shape = Hud,
                             color = MaterialTheme.colorScheme.surfaceContainer,
                             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(MaterialTheme.shapes.large).clickable(onClick = nav::openFriends),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(Hud).clickable(onClick = nav::openFriends),
                         ) {
                             ListItem(
                                 headlineContent = { Text(s(R.string.friends), fontWeight = FontWeight.SemiBold) },
@@ -128,7 +128,7 @@ fun MessagesScreen(detail: String?) {
                                         color = if (pending > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 },
-                                leadingContent = { Box(Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Ic(R.drawable.ms_group, null, tint = MaterialTheme.colorScheme.onPrimaryContainer) } },
+                                leadingContent = { Box(Modifier.size(44.dp).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Ic(R.drawable.ms_group, null, tint = MaterialTheme.colorScheme.onPrimaryContainer) } },
                                 trailingContent = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         CountBadge(pending)
@@ -145,7 +145,7 @@ fun MessagesScreen(detail: String?) {
                     if (allDms.isEmpty()) item {
                         Column(Modifier.fillMaxWidth().heightIn(min = 320.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             EmptyState(R.drawable.ms_chat, s(R.string.no_dms_title), s(R.string.no_dms_text), Modifier.heightIn(min = 240.dp, max = 300.dp))
-                            Button(nav::openFriends, shape = Hud) { Ic(R.drawable.ms_group, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.friends)) }
+                            Button(nav::openFriends, shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_group, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(s(R.string.friends).uppercase()) }
                         }
                     }
                     itemsIndexed(dms, key = { _, it -> it.id }) { i, c -> Box(Modifier.animateItem().reveal(i, clock)) { DmRow(state, c, c.id == detail) { nav.openChannel(c.id) } } }
@@ -153,7 +153,6 @@ fun MessagesScreen(detail: String?) {
             }
             FloatingActionButton(
                 onClick = { if (friends.isEmpty()) adding = true else grouping = true },
-                shape = Hud,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
@@ -251,7 +250,7 @@ fun DmRow(state: State, c: Channel, selected: Boolean, onClick: () -> Unit) {
         },
         trailingContent = if (preview == null && (mentions > 0 || unread)) { { if (mentions > 0) CountBadge(mentions) else Box(Modifier.size(10.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)) } } else null,
         colors = ListItemDefaults.colors(containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent),
-        modifier = Modifier.padding(horizontal = 8.dp).clip(Hud).clickable(onClick = onClick).semantics(mergeDescendants = true) {
+        modifier = Modifier.padding(horizontal = 8.dp).clip(MaterialTheme.shapes.extraSmall).clickable(onClick = onClick).semantics(mergeDescendants = true) {
             this.selected = selected
             stateDescription = listOfNotNull(
                 status?.let { ctx.getString(presenceLabel(it)) },

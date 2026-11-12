@@ -89,7 +89,7 @@ class WebCallActivity : ComponentActivity() {
             setSupportMultipleWindows(false)
             userAgentString = "$userAgentString CillhubAndroid/${BuildConfig.VERSION_NAME}"
         }
-        web.setBackgroundColor(0xFF070A14.toInt())
+        web.setBackgroundColor(getColor(R.color.background))
         // the page signs in with the app's token (same origin only, before any page script runs)
         val token = TokenStore.get(this)
         if (token != null && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {

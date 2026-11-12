@@ -185,7 +185,7 @@ fun ServerSettingsScreen(guildId: String) {
                             ListItem(
                                 headlineContent = { Text(s(p.label), style = MaterialTheme.typography.titleMedium) },
                                 leadingContent = {
-                                    Box(Modifier.size(40.dp).clip(Hud).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Ic(p.icon, null, Modifier.size(22.dp), MaterialTheme.colorScheme.primary) }
+                                    Box(Modifier.size(40.dp).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Ic(p.icon, null, Modifier.size(22.dp), MaterialTheme.colorScheme.primary) }
                                 },
                                 trailingContent = { Ic(R.drawable.ms_chevron_right, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
@@ -220,15 +220,15 @@ private fun Overview(g: Guild, act: (suspend () -> Unit) -> Unit) {
     }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Picture(guildIconUrl(g), g.name, g.id, 72.dp, Hud)
-            FilledTonalButton({ pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, shape = MaterialTheme.shapes.small) { Text(s(R.string.change_icon)) }
-            if (g.icon != null) TextButton({ act { Session.rest.request("PATCH", "/guilds/${g.id}", buildJsonObject { put("icon", JsonNull) }) } }) { Text(s(R.string.remove)) }
+            Picture(guildIconUrl(g), g.name, g.id, 72.dp, MaterialTheme.shapes.large)
+            FilledTonalButton({ pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, shape = MaterialTheme.shapes.small) { Text(s(R.string.change_icon).uppercase()) }
+            if (g.icon != null) TextButton({ act { Session.rest.request("PATCH", "/guilds/${g.id}", buildJsonObject { put("icon", JsonNull) }) } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.remove).uppercase()) }
         }
         OutlinedTextField(name, { name = it.take(100) }, label = { Text(s(R.string.server_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(description, { description = it.take(300) }, label = { Text(s(R.string.server_description)) }, minLines = 2, modifier = Modifier.fillMaxWidth())
         Button({
             act { Session.rest.request("PATCH", "/guilds/${g.id}", buildJsonObject { put("name", name.trim()); if (description.isBlank()) put("description", JsonNull) else put("description", description.trim()) }) }
-        }, enabled = name.isNotBlank() && (name != g.name || description != (g.description ?: "")), shape = Hud) { Text(s(R.string.save)) }
+        }, enabled = name.isNotBlank() && (name != g.name || description != (g.description ?: "")), shape = MaterialTheme.shapes.small) { Text(s(R.string.save).uppercase()) }
     }
 }
 
@@ -286,7 +286,7 @@ private fun Roles(state: State, g: Guild, act: (suspend () -> Unit) -> Unit, edi
                     val r = json.parseToJsonElement(Session.rest.request("POST", "/guilds/${g.id}/roles", buildJsonObject { put("name", "new role") })).jsonObject
                     (r["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.let(edit)
                 }
-            }, Modifier.padding(16.dp), shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.create_role), Modifier.padding(start = 8.dp)) }
+            }, Modifier.padding(16.dp), shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.create_role).uppercase(), Modifier.padding(start = 8.dp)) }
         }
         items(drag.items, key = { it.id }) { r -> row(r, drag.rowModifier(r.id), drag.handle(r.id) { drop() }) }
         roles.firstOrNull { it.id == g.id }?.let { e -> item(key = e.id) { row(e, Modifier, null) } }
@@ -313,7 +313,7 @@ private fun RoleEditor(state: State, g: Guild, r: Role, act: (suspend () -> Unit
         item {
             if (!everyone) OutlinedTextField(name, { name = it.take(100) }, label = { Text(s(R.string.role_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             if (!everyone) {
-                Text(s(R.string.role_color), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                Text(s(R.string.role_color).uppercase(), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (c in ROLE_COLORS) {
                         val label = if (c == 0) ctx.getString(R.string.role_color_none) else "#%06X".format(c)
@@ -337,8 +337,8 @@ private fun RoleEditor(state: State, g: Guild, r: Role, act: (suspend () -> Unit
                         })
                         done()
                     }
-                }, enabled = everyone || name.isNotBlank(), shape = Hud) { Text(s(R.string.save)) }
-                if (!everyone) OutlinedButton({ confirmDelete = true }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete_role), color = MaterialTheme.colorScheme.error) }
+                }, enabled = everyone || name.isNotBlank(), shape = MaterialTheme.shapes.small) { Text(s(R.string.save).uppercase()) }
+                if (!everyone) OutlinedButton({ confirmDelete = true }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete_role).uppercase(), color = MaterialTheme.colorScheme.error) }
             }
         }
         for ((group, bits) in PERM_GROUPS) {
@@ -351,7 +351,7 @@ private fun RoleEditor(state: State, g: Guild, r: Role, act: (suspend () -> Unit
     }
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
-        title = { Text(s(R.string.delete_role)) },
+        title = { Text(s(R.string.delete_role).uppercase()) },
         text = { Text(s(R.string.delete_role_confirm, r.name)) },
         confirmButton = {
             TextButton({
@@ -360,8 +360,8 @@ private fun RoleEditor(state: State, g: Guild, r: Role, act: (suspend () -> Unit
                     check(Perm.keepsAdmin(g, meId, my, afterMe = my?.copy(roles = my.roles - r.id))) { ctx.getString(R.string.self_lockout) }
                     Session.rest.request("DELETE", "/guilds/${g.id}/roles/${r.id}"); done()
                 }
-            }) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton({ confirmDelete = false }) { Text(s(R.string.cancel)) } },
+            }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete).uppercase(), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ confirmDelete = false }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
 }
 
@@ -426,7 +426,7 @@ private fun Channels(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) 
     }
     val siblings = groups.flatMap { grp -> listOfNotNull(grp.category).map { it.id to categories } + grp.channels.map { it.id to grp.channels } }.toMap()
     LazyColumn(state = lazy, contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { FilledTonalButton({ creating = true }, Modifier.padding(16.dp), shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.create_channel), Modifier.padding(start = 8.dp)) } }
+        item { FilledTonalButton({ creating = true }, Modifier.padding(16.dp), shape = MaterialTheme.shapes.small) { Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.create_channel).uppercase(), Modifier.padding(start = 8.dp)) } }
         items(drag.items, key = { it.id }) { c ->
             val sib = siblings[c.id].orEmpty()
             val i = sib.indexOf(c)
@@ -482,7 +482,7 @@ fun ChannelEditDialog(c: Channel, close: () -> Unit) {
     val hasSlow = c.type in setOf(0, 2, 5, 13, 15)
     AlertDialog(
         onDismissRequest = close,
-        title = { Text(s(if (c.type == 4) R.string.edit_category else R.string.edit_channel)) },
+        title = { Text(s(if (c.type == 4) R.string.edit_category else R.string.edit_channel).uppercase()) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it.take(100) }, label = { Text(s(R.string.channel_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -495,8 +495,8 @@ fun ChannelEditDialog(c: Channel, close: () -> Unit) {
                     }
                 }
                 if (c.type != 4) SwitchLine(s(R.string.age_restricted), nsfw) { nsfw = it }
-                if (Perm.has(Sel.perms(state, c.guildId, c), Perm.MANAGE_ROLES)) TextButton({ close(); nav.openChannelAccess(c.id) }) { Text(s(R.string.manage_channel_access)) }
-                TextButton({ confirmDelete = true }) { Text(s(if (c.type == 4) R.string.delete_category else R.string.delete_channel), color = MaterialTheme.colorScheme.error) }
+                if (Perm.has(Sel.perms(state, c.guildId, c), Perm.MANAGE_ROLES)) TextButton({ close(); nav.openChannelAccess(c.id) }, shape = MaterialTheme.shapes.small) { Text(s(R.string.manage_channel_access).uppercase()) }
+                TextButton({ confirmDelete = true }, shape = MaterialTheme.shapes.small) { Text(s(if (c.type == 4) R.string.delete_category else R.string.delete_channel).uppercase(), color = MaterialTheme.colorScheme.error) }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -510,16 +510,16 @@ fun ChannelEditDialog(c: Channel, close: () -> Unit) {
                         if (c.type != 4) put("nsfw", nsfw)
                     })
                 }
-            }, enabled = name.isNotBlank()) { Text(s(R.string.save)) }
+            }, enabled = name.isNotBlank(), shape = MaterialTheme.shapes.small) { Text(s(R.string.save).uppercase()) }
         },
-        dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+        dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
-        title = { Text(s(if (c.type == 4) R.string.delete_category else R.string.delete_channel)) },
+        title = { Text(s(if (c.type == 4) R.string.delete_category else R.string.delete_channel).uppercase()) },
         text = { Text(s(R.string.delete_channel_confirm, c.name ?: "")) },
-        confirmButton = { TextButton({ confirmDelete = false; run { Session.rest.request("DELETE", "/channels/${c.id}") } }) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton({ confirmDelete = false }) { Text(s(R.string.cancel)) } },
+        confirmButton = { TextButton({ confirmDelete = false; run { Session.rest.request("DELETE", "/channels/${c.id}") } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete).uppercase(), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ confirmDelete = false }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
 }
 
@@ -531,7 +531,7 @@ private fun CreateChannelDialog(g: Guild, categories: List<Channel>, act: (suspe
     var parent by rememberSaveable { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = close,
-        title = { Text(s(R.string.create_channel)) },
+        title = { Text(s(R.string.create_channel).uppercase()) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -540,7 +540,7 @@ private fun CreateChannelDialog(g: Guild, categories: List<Channel>, act: (suspe
                 }
                 OutlinedTextField(name, { name = it.take(100) }, label = { Text(s(R.string.channel_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (type != 4 && categories.isNotEmpty()) {
-                    Text(s(R.string.category), style = MaterialTheme.typography.labelLarge)
+                    Text(s(R.string.category).uppercase(), style = MaterialTheme.typography.labelMedium)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         FilterChip(parent == null, { parent = null }, label = { Text(s(R.string.no_category)) })
                         for (cat in categories) FilterChip(parent == cat.id, { parent = cat.id }, label = { Text(cat.name ?: "") })
@@ -556,9 +556,9 @@ private fun CreateChannelDialog(g: Guild, categories: List<Channel>, act: (suspe
                         put("name", name.trim()); put("type", type); if (type != 4 && parent != null) put("parent_id", parent)
                     })
                 }
-            }, enabled = name.isNotBlank()) { Text(s(R.string.create)) }
+            }, enabled = name.isNotBlank(), shape = MaterialTheme.shapes.small) { Text(s(R.string.create).uppercase()) }
         },
-        dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+        dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
     )
 }
 
@@ -602,7 +602,7 @@ private fun Emojis(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) {
     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             FilledTonalButton({ pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, Modifier.padding(16.dp), shape = MaterialTheme.shapes.small) {
-                Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.upload_emoji), Modifier.padding(start = 8.dp))
+                Ic(R.drawable.ms_add, null, Modifier.size(18.dp)); Text(s(R.string.upload_emoji).uppercase(), Modifier.padding(start = 8.dp))
             }
             Text(s(R.string.emoji_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
         }
@@ -629,7 +629,7 @@ private fun Emojis(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) {
         val close = { naming = null; picked = null }
         AlertDialog(
             onDismissRequest = close,
-            title = { Text(s(if (id == null) R.string.upload_emoji else R.string.rename_emoji)) },
+            title = { Text(s(if (id == null) R.string.upload_emoji else R.string.rename_emoji).uppercase()) },
             text = {
                 OutlinedTextField(name, { name = it.take(32) }, label = { Text(s(R.string.emoji_name)) }, singleLine = true, isError = !EMOJI_NAME.matches(name),
                     supportingText = { Text(s(R.string.emoji_name_rule)) }, modifier = Modifier.fillMaxWidth())
@@ -645,18 +645,18 @@ private fun Emojis(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) {
                         else if (id != null) Session.rest.request("PATCH", "/guilds/${g.id}/emojis/$id", buildJsonObject { put("name", name) })
                         reload++
                     }
-                }, enabled = EMOJI_NAME.matches(name)) { Text(s(if (id == null) R.string.upload else R.string.save)) }
+                }, enabled = EMOJI_NAME.matches(name), shape = MaterialTheme.shapes.small) { Text(s(if (id == null) R.string.upload else R.string.save).uppercase()) }
             },
-            dismissButton = { TextButton(close) { Text(s(R.string.cancel)) } },
+            dismissButton = { TextButton(close, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
         )
     }
     deleting?.let { e ->
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text(s(R.string.delete_emoji)) },
+            title = { Text(s(R.string.delete_emoji).uppercase()) },
             text = { Text(s(R.string.delete_emoji_confirm, e.name)) },
-            confirmButton = { TextButton({ deleting = null; act { Session.rest.request("DELETE", "/guilds/${g.id}/emojis/${e.id}"); reload++ } }) { Text(s(R.string.delete), color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton({ deleting = null }) { Text(s(R.string.cancel)) } },
+            confirmButton = { TextButton({ deleting = null; act { Session.rest.request("DELETE", "/guilds/${g.id}/emojis/${e.id}"); reload++ } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.delete).uppercase(), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton({ deleting = null }, shape = MaterialTheme.shapes.small) { Text(s(R.string.cancel).uppercase()) } },
         )
     }
 }
@@ -672,7 +672,7 @@ private fun Invites(state: State, g: Guild, act: (suspend () -> Unit) -> Unit) {
     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             FilledTonalButton({ target?.let { c -> act { Session.rest.request("POST", "/channels/${c.id}/invites", buildJsonObject { put("max_age", 86400) }); reload++ } } },
-                Modifier.padding(16.dp), enabled = target != null, shape = MaterialTheme.shapes.small) { Text(s(R.string.create_invite)) }
+                Modifier.padding(16.dp), enabled = target != null, shape = MaterialTheme.shapes.small) { Text(s(R.string.create_invite).uppercase()) }
         }
         if (list == null) item { Loading() }
         else if (list.isEmpty()) item { Text(s(R.string.no_invites), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
@@ -711,7 +711,7 @@ private fun Bans(g: Guild, act: (suspend () -> Unit) -> Unit) {
                     headlineContent = { Text(b.user.displayName) },
                     supportingContent = b.reason?.takeIf { it.isNotBlank() }?.let { { Text(it) } },
                     leadingContent = { Avatar(b.user, 40.dp) },
-                    trailingContent = { TextButton({ act { Session.rest.request("DELETE", "/guilds/${g.id}/bans/${b.user.id}"); reload++ } }) { Text(s(R.string.unban)) } },
+                    trailingContent = { TextButton({ act { Session.rest.request("DELETE", "/guilds/${g.id}/bans/${b.user.id}"); reload++ } }, shape = MaterialTheme.shapes.small) { Text(s(R.string.unban).uppercase()) } },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
             }
@@ -783,7 +783,7 @@ private fun Audit(state: State, g: Guild) {
                 if (more) item(key = "more") {
                     Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                         if (busy) androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp))
-                        else TextButton({ load(list.last().id) }) { Text(s(R.string.load_more)) }
+                        else TextButton({ load(list.last().id) }, shape = MaterialTheme.shapes.small) { Text(s(R.string.load_more).uppercase()) }
                     }
                 }
             }
