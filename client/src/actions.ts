@@ -12,12 +12,18 @@ import type {
 } from './types'
 
 const PAGE = 50
+/** A list answer whose entries are objects with an id (or `ok`); a node answer of another shape counts as refused, like one
+ *  its boundary refused (instances/registry.ts checks ids and fields, not the shape of a whole answer). */
+function rows<T>(x: T[], ok = (v: any) => typeof v?.id === 'string'): T[] {
+  if (Array.isArray(x) && x.every(ok)) return x
+  throw new ApiError(0, null)
+}
 const sortById = (list: Message[]) => [...list].sort((a, b) => (a.id.length - b.id.length) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
 export async function loadMessages(channelId: string, before?: string) {
   // Mark as loaded first so live MESSAGE_CREATEs during the fetch are kept and merged.
   if (!before && !getState().messages[channelId]) setState((s) => ({ messages: { ...s.messages, [channelId]: [] } }))
-  const page = await api<Message[]>(`/channels/${channelId}/messages?limit=${PAGE}${before ? `&before=${before}` : ''}`)
+  const page = rows(await api<Message[]>(`/channels/${channelId}/messages?limit=${PAGE}${before ? `&before=${before}` : ''}`))
   setState((s) => {
     const list = s.messages[channelId] ?? []
     const ids = new Set(list.map((m) => m.id))
@@ -30,7 +36,7 @@ export async function loadMessages(channelId: string, before?: string) {
 
 /** Replaces the loaded window with the messages around `messageId` (search results, replies not loaded yet), then scrolls to it. */
 export async function loadAround(channelId: string, messageId: string) {
-  const page = sortById(await api<Message[]>(`/channels/${channelId}/messages?limit=${PAGE}&around=${messageId}`))
+  const page = sortById(rows(await api<Message[]>(`/channels/${channelId}/messages?limit=${PAGE}&around=${messageId}`)))
   const last = getState().channels[channelId]?.last_message_id
   setState((s) => ({
     messages: { ...s.messages, [channelId]: page },
@@ -45,7 +51,7 @@ export async function loadNewer(channelId: string) {
   const list = getState().messages[channelId]
   const after = list?.filter((m) => !m.pending && !m.failed).at(-1)?.id
   if (!after) return
-  const page = sortById(await api<Message[]>(`/channels/${channelId}/messages?limit=${PAGE}&after=${after}`))
+  const page = sortById(rows(await api<Message[]>(`/channels/${channelId}/messages?limit=${PAGE}&after=${after}`)))
   setState((s) => {
     const cur = s.messages[channelId] ?? []
     const ids = new Set(cur.map((m) => m.id))
@@ -239,7 +245,7 @@ export function ackMessage(channelId: string, messageId: string) {
 }
 
 export async function loadMembers(guildId: string) {
-  const list = await api<Member[]>(`/guilds/${guildId}/members?limit=1000`)
+  const list = rows(await api<Member[]>(`/guilds/${guildId}/members?limit=1000`), (m) => typeof m?.user?.id === 'string')
   setState((s) => ({
     members: { ...s.members, [guildId]: Object.fromEntries(list.map((m) => [m.user.id, m])) },
     membersLoaded: { ...s.membersLoaded, [guildId]: true },
@@ -252,7 +258,7 @@ export function enterGuild(g: GuildPayload, channelId?: string, joined = false) 
   apply('GUILD_CREATE', g)
   navigate(`/channels/${g.id}${channelId ? `/${channelId}` : ''}`)
   const me = getState().me
-  const pending = !!g.members?.find((m) => m.user.id === me?.id)?.pending
+  const pending = !!g.members?.find((m) => m?.user?.id === me?.id)?.pending
   if (joined && g.features?.includes('WELCOME_SCREEN_ENABLED')) setState({ modal: { kind: 'welcome', guildId: g.id } })
   else if (joined && pending) setState({ modal: { kind: 'rules', guildId: g.id } })
 }
@@ -331,7 +337,7 @@ export const updateRole = (guildId: string, roleId: string, body: Partial<Role>)
 export const deleteRole = (guildId: string, roleId: string) =>
   api(`/guilds/${guildId}/roles/${roleId}`, { method: 'DELETE' }).then(() => apply('GUILD_ROLE_DELETE', { guild_id: guildId, role_id: roleId }))
 export const reorderRoles = (guildId: string, list: { id: string; position: number }[]) =>
-  api<Role[]>(`/guilds/${guildId}/roles`, { method: 'PATCH', body: list }).then((roles) => roles?.forEach((role) => apply('GUILD_ROLE_UPDATE', { guild_id: guildId, role })))
+  api<Role[]>(`/guilds/${guildId}/roles`, { method: 'PATCH', body: list }).then((roles) => roles && rows(roles).forEach((role) => apply('GUILD_ROLE_UPDATE', { guild_id: guildId, role })))
 
 export function setStatus(status: Status) {
   const me = getState().me
@@ -398,7 +404,7 @@ export const listThreadMembers = (threadId: string) => api<(ThreadMember & { mem
 /** Archived threads of a channel (public, or private ones you can see). Fills the store so they open like any thread. */
 export async function archivedThreads(channelId: string, kind: 'public' | 'private', before?: string) {
   const r = await api<{ threads: Channel[]; members: ThreadMember[]; has_more: boolean }>(`/channels/${channelId}/threads/archived/${kind}${qs({ before, limit: 50 })}`)
-  apply('THREAD_LIST_SYNC', { guild_id: getState().channels[channelId]?.guild_id, threads: r.threads, members: r.members })
+  apply('THREAD_LIST_SYNC', { guild_id: getState().channels[channelId]?.guild_id, threads: rows(r.threads), members: r.members })
   return r
 }
 
@@ -429,7 +435,7 @@ export const setStageSpeaker = (guildId: string, channelId: string, userId: stri
 export type EventBody = Partial<Pick<ScheduledEvent, 'name' | 'description' | 'scheduled_start_time' | 'scheduled_end_time' | 'entity_type' | 'channel_id' | 'entity_metadata' | 'status' | 'privacy_level'>> & { image?: string | null }
 export const loadEvents = (guildId: string) =>
   api<ScheduledEvent[]>(`/guilds/${guildId}/scheduled-events?with_user_count=true`).then((list) => setState((s) => ({
-    events: { ...Object.fromEntries(Object.entries(s.events).filter(([, e]) => e.guild_id !== guildId)), ...Object.fromEntries(list.map((e) => [e.id, e])) },
+    events: { ...Object.fromEntries(Object.entries(s.events).filter(([, e]) => e.guild_id !== guildId)), ...Object.fromEntries(rows(list).map((e) => [e.id, e])) },
   })))
 export const loadMyEventSubs = (guildId: string) =>
   api<{ guild_scheduled_event_id: string; response?: number }[]>(`/users/@me/scheduled-events${qs({ guild_ids: guildId })}`).then((list) =>
@@ -574,7 +580,7 @@ export const saveVanity = (guildId: string, code: string | null) => api<{ code: 
 
 /** A forum post's starter message: its id equals the thread id (docs), fetched with `around` so no single-message route is needed. */
 export const starterMessage = (threadId: string) =>
-  api<Message[]>(`/channels/${threadId}/messages?limit=1&around=${threadId}`).then((l) => l.find((m) => m.id === threadId) ?? l.at(-1) ?? null)
+  api<Message[]>(`/channels/${threadId}/messages?limit=1&around=${threadId}`).then((l) => rows(l).find((m) => m.id === threadId) ?? l.at(-1) ?? null)
 
 // ---------- v4: settings ----------
 /** Settings are applied locally at once (theme, language) and saved to the server; USER_SETTINGS_UPDATE syncs other sessions. */

@@ -147,7 +147,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   const data = to.node ? await nodeJson(res) : await res.json().catch(() => null)
   // A 200 that is not JSON means something other than the API answered (e.g. an SPA fallback).
   if (!res.ok || data === null) throw new ApiError(res.ok ? 0 : res.status, data)
-  return (to.node ? admitted(to.node, data) : data) as T
+  return (to.node ? admitted(to.node, data, /^\/modules\/[^/?]+\/ui$/.test(path)) : data) as T
 }
 
 // A node answer: at most 8 MB, then the node boundary (shape, ids, users); a refused one is an error, never applied.
@@ -172,8 +172,8 @@ async function nodeJson(res: Response) {
     return null
   }
 }
-function admitted(node: string, data: unknown) {
-  const d = admitRest(node, data)
+function admitted(node: string, data: unknown, moduleData = false) {
+  const d = admitRest(node, data, moduleData)
   if (d === null) throw new ApiError(0, { message: t('{name} sent an invalid answer.', { name: instanceById(node)?.name ?? '' }) })
   return d
 }

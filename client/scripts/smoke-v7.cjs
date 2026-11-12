@@ -349,17 +349,33 @@ async function multiInstance(browser, errors) {
   assert.equal(await page.locator('.rail-entry.node-down').count(), 0)
   console.log('ok v7 7 - offline node: greyed servers and status line, reconnects when it is back')
 
-  // A hostile node: wrong-typed fields the boundary does not type-check get through. A render error cuts the nodes off and
-  // the hub view renders again; an event the store cannot apply cuts the node off. Both times its servers go and the hub
-  // keeps working. A wrong-typed name is refused at admission and changes nothing.
+  // A hostile node: wrong-typed fields the boundary does not type-check get through. A render error cuts the node off (the
+  // one whose data went in last) and the hub view renders again; an event the store cannot apply cuts the node off. Both
+  // times its servers go and the hub keeps working; it stays cut off after a reload until Reconnect. A wrong-typed name or
+  // topic is refused at admission and changes nothing.
   const hubLink = rail.getByRole('link', { name: /^Nightfall Gaming/ })
+  const reconnect = async () => {
+    await rail.getByRole('button', { name: 'Add a server' }).click()
+    const dlg = page.getByRole('dialog', { name: 'Add a server' })
+    await dlg.getByText('Cut off: sent too much or broken data').waitFor()
+    await dlg.getByRole('button', { name: "Reconnect Dana's Node" }).click()
+    await page.keyboard.press('Escape')
+    await nodeIcon.waitFor({ timeout: 15000 })
+  }
   st.nodeSock.send(JSON.stringify({ op: 0, t: 'GUILD_UPDATE', d: { id: NG, name: { x: 1 } } }))
   await page.waitForURL(`**/channels/7000~${NG}/7000~7101`)
   st.nodeSock.send(JSON.stringify({ op: 0, t: 'CHANNEL_UPDATE', d: { id: '7101', guild_id: NG, topic: { x: 1 } } }))
+  await page.waitForTimeout(300)
+  assert.equal(await nodeIcon.count(), 1, 'a wrong-typed topic is refused, nothing cut off')
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'GUILD_MEMBER_UPDATE', d: { guild_id: NG, user: dana, nick: { x: 1 }, roles: [] } }))
   await page.getByText("Display error: Dana's Node was disconnected", { exact: false }).waitFor()
   await hubLink.waitFor()
   assert.equal(await rail.getByRole('link', { name: /Dana's Node/ }).count(), 0, 'node servers dropped after the render error')
-  await page.reload() // cut off until the next start
+  await page.reload() // stays cut off on the next start
+  await hubLink.waitFor()
+  await page.waitForTimeout(1000)
+  assert.equal(await rail.getByRole('link', { name: /Dana's Node/ }).count(), 0, 'still cut off after a reload')
+  await reconnect()
   await nodeIcon.click() // its channel's messages are loaded, then the hub view is shown
   await page.waitForURL(`**/channels/7000~${NG}/7000~7101`)
   await page.locator('.msg').first().waitFor()
@@ -370,16 +386,13 @@ async function multiInstance(browser, errors) {
   st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_POLL_VOTE_ADD', d: { user_id: '7002', channel_id: '7101', guild_id: NG, message_id: '7190', answer_id: 1 } }))
   await rail.getByRole('link', { name: /Dana's Node/ }).waitFor({ state: 'detached' }) // cut off after the reducer throw
   assert.ok(warned.some((w) => w.includes('MESSAGE_POLL_VOTE_ADD could not be applied')), 'the store threw on the vote, not the render')
-  await rail.getByRole('button', { name: 'Add a server' }).click()
-  await page.getByRole('dialog', { name: 'Add a server' }).getByText('Cut off: sent too much or broken data').waitFor()
-  await page.keyboard.press('Escape')
   // a render error with no node state left: the plain reload screen (a broken hub payload stands in for any other bug)
   st.hubSock.send(JSON.stringify({ op: 0, t: 'GUILD_UPDATE', d: { id: hubGuild.id, name: { x: 1 } } }))
   await page.getByRole('heading', { name: 'Something went wrong' }).waitFor()
   await page.getByRole('button', { name: 'Reload' }).click()
   await hubLink.waitFor()
-  await nodeIcon.waitFor({ timeout: 15000 }) // the next start connects the node again
-  console.log('ok v7 7b - hostile node: render error and reducer throw cut the node off, the hub view stays usable; reload screen without node state')
+  await reconnect() // cut off by the reducer throw, so still off after the reload
+  console.log('ok v7 7b - hostile node: render error and reducer throw cut the node off and it stays off until Reconnect, the hub view stays usable; reload screen without node state')
 
   // Suspended by the hub (seen on the next hub READY): the node connection closes and its servers disappear; the node
   // stays under "Your other instances" with its status, where it can be disconnected for good.

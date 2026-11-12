@@ -7,7 +7,7 @@ import { FormError } from '../components/ui'
 import { t } from '../i18n'
 import { navigate } from '../router'
 import { addLink, addNode, MAX_NODES, normalizeServerUrl, parseAddLink, type SavedNode } from '../privateNodes'
-import { addPrivateNode, hubSession, removePrivateNode, signInWindow } from '../instances/nodes'
+import { addPrivateNode, hubSession, reconnectNode, removePrivateNode, signInWindow } from '../instances/nodes'
 import { STATUS_TEXT } from '../instances/InstanceUI'
 import { useInstances, useNodeIssues } from '../instances/registry'
 import { useStore } from '../store'
@@ -93,6 +93,7 @@ export function PrivateNodes() {
           )}
         </div>
         {issue?.why === 'sign-in' && issue.node && <button className="link" onClick={() => void signInWindow(issue.node!).catch(toastError)}>{t('Sign in')}</button>}
+        {inst?.status === 'cut-off' && <button className="link" onClick={() => reconnectNode(inst.id)}>{t('Reconnect')}</button>}
         {saved && <button className="link" onClick={() => copy(saved)}>{t('Copy add link')}</button>}
         {saved && <button className="link danger-link" onClick={() => remove(saved)}>{t('Remove')}</button>}
       </li>

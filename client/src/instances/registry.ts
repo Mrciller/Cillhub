@@ -11,7 +11,8 @@ import { useSyncExternalStore } from 'react'
 
 export type InstanceInfo = { id: string; name: string; url: string; icon?: string | null }
 /** connecting → ready; offline = the node does not answer (retrying); suspended = suspended, banned or unlinked by the hub; signed-out = the node refused our token. */
-/** …; cut-off = it sent more than its budget (registry.ts), disconnected until the next start. */
+/** …; cut-off = it sent more than its budget (registry.ts) or broken data, disconnected until the user reconnects it (kept
+ *  across starts). */
 export type InstanceStatus = 'connecting' | 'ready' | 'offline' | 'suspended' | 'signed-out' | 'cut-off'
 export type Live = InstanceInfo & { status: InstanceStatus; meId: string | null; sessionId: string | null }
 
@@ -24,11 +25,12 @@ const load = (): InstanceInfo[] => {
   } catch { return [] }
 }
 
-let live: Record<string, Live> = Object.fromEntries(load().map((i) => [i.id, { ...i, status: 'connecting', meId: null, sessionId: null }]))
+let live: Record<string, Live> = Object.fromEntries(load().map(({ cut, ...i }: InstanceInfo & { cut?: boolean }) => [i.id, { ...i, status: cut ? 'cut-off' : 'connecting', meId: null, sessionId: null }]))
 const hub = { meId: '', sessionId: '' }
 const listeners = new Set<() => void>()
 const emit = () => listeners.forEach((l) => l())
-const persist = () => localStorage.setItem(KEY, JSON.stringify(Object.values(live).map(({ id, name, url, icon }) => ({ id, name, url, icon }))))
+// a cut-off node stays off on the next start (else one hostile node would cut off the others again on every start)
+const persist = () => localStorage.setItem(KEY, JSON.stringify(Object.values(live).map(({ id, name, url, icon, status }) => ({ id, name, url, icon, ...(status === 'cut-off' && { cut: true }) }))))
 
 export const subscribeInstances = (l: () => void) => (listeners.add(l), () => void listeners.delete(l))
 /** All saved instances with their live status (a new object on every change). */
@@ -53,6 +55,7 @@ export function removeInstance(id: string) {
 export function setLive(id: string, patch: Partial<Live>) {
   if (!live[id]) return
   live = { ...live, [id]: { ...live[id], ...patch } }
+  if (patch.status) persist()
   emit()
 }
 // Saved private nodes that are not connected, by origin (Settings › Private Nodes): 'own-login' = the node does not take
@@ -114,9 +117,11 @@ const PRESET = /^[a-z][a-z0-9_-]{0,39}$/ // built-in collectible names (server r
 export const LIMITS = { depth: 32, list: 10_000, nodes: 500_000, budget: 200_000, text: 65_536, image: 360_000, emoji: 64, key: 200 }
 // Fields the UI renders, by type: a wrong-typed one refuses the payload instead of breaking the render.
 const strOrNull = (v: unknown) => v === null || typeof v === 'string'
+// Only keys every honest payload sends with that type (`value` is a number in choices, `roles` is checked as an id list;
+// under `resolved`, `members` and `channels` are maps, and module data is free-form).
 const SHAPES = new Map<string, (v: unknown) => boolean>([
-  ...['name', 'content', 'username', 'global_name'].map((k) => [k, strOrNull] as const),
-  ...['embeds', 'mentions', 'attachments', 'reactions', 'components', 'answers'].map((k) => [k, Array.isArray] as const),
+  ...['name', 'content', 'username', 'global_name', 'topic', 'description', 'title', 'label', 'text'].map((k) => [k, strOrNull] as const),
+  ...['embeds', 'mentions', 'attachments', 'reactions', 'components', 'answers', 'choices', 'fields', 'channels', 'members', 'emojis'].map((k) => [k, Array.isArray] as const),
   ['poll', (v) => v === null || typeof (v as { question?: { text?: unknown } })?.question?.text === 'string'],
 ])
 const isIdKey = (k: string) => (k === 'id' || k.endsWith('_id')) && !FREE_IDS.has(k)
@@ -133,12 +138,17 @@ const readies = new Map<string, number>()
 /** A new gateway connection to the node (instances/nodes.ts): it may send one READY. */
 export const newConnection = (inst: string) => void readies.delete(inst)
 export const overBudget = (inst: string) => (seen.get(inst)?.size ?? 0) > LIMITS.budget || (readies.get(inst) ?? 0) > 1
+// The node whose data went into the store last: a render error right after it is blamed on that node (main.tsx).
+let last: string | undefined
+export const lastNode = () => last
+/** A node gateway session id as we keep it (an honest one is 32 hex characters). */
+export const sessionOf = (v: unknown) => (typeof v === 'string' && v.length <= 100 ? v : null)
 
 /** A node payload in the client's terms, or null when it breaks the rules: bounded size (depth, list length, total
  *  values, distinct ids per node), every id a canonical numeric snowflake string, then ids scoped to the node (user
  *  references to our node account → our hub id, and such user objects → our hub record), root-relative URLs made
  *  absolute, foreign media dropped, forged prefixed text tokens neutralised. */
-function inbound<T>(n: Live, data: T): T | null {
+function inbound<T>(n: Live, data: T, moduleData = false): T | null {
   const inst = n.id
   const ids = seen.get(inst) ?? seen.set(inst, new Set()).get(inst)!
   const bad = Symbol()
@@ -156,11 +166,12 @@ function inbound<T>(n: Live, data: T): T | null {
   const userRef = (v: unknown) => (n.meId && v === n.meId ? hub.meId || ref(v) : ref(v))
   const self = () => ({ ...(view.user(hub.meId) ?? { id: hub.meId }) })
   let count = 0
-  const walk = (x: unknown, key: string, depth: number, free: boolean, userObj: boolean): unknown => {
+  // loose: inside module data (free-form, third-party), SHAPES do not apply; sizes and id rules do
+  const walk = (x: unknown, key: string, depth: number, free: boolean, userObj: boolean, loose = false): unknown => {
     if (++count > LIMITS.nodes || depth > LIMITS.depth) throw bad
     if (typeof x === 'string') {
       if (x.length > (key === 'image' ? LIMITS.image : LIMITS.text)) throw bad // a few huge strings would fill memory
-      if (n.sessionId && x === n.sessionId) return hub.sessionId || x
+      if (key === 'session_id' && n.sessionId && x === n.sessionId) return hub.sessionId || x
       if (URL_KEYS.has(key) && x.startsWith('/') && !x.startsWith('//')) return n.url + x
       // A node's media proxy is its own: any other host would load (and see our IP) from wherever the node points.
       if ((key.startsWith('proxy_') || MEDIA_KEYS.has(key)) && !x.startsWith(n.url + '/')) return undefined
@@ -176,7 +187,7 @@ function inbound<T>(n: Live, data: T): T | null {
         if (free) return x.map((v) => (typeof v === 'number' || (typeof v === 'string' && v.length <= 100) ? v : (() => { throw bad })()))
         return x.map((v) => (USER_LISTS.has(key) ? userRef(v) : ref(v)))
       }
-      return x.map((v) => walk(v, key, depth + 1, free, userObj))
+      return x.map((v) => walk(v, key, depth + 1, free, userObj, loose))
     }
     if (!x || typeof x !== 'object') return x
     const inFree = free || FREE_TREES.has(key)
@@ -185,11 +196,11 @@ function inbound<T>(n: Live, data: T): T | null {
       // free choices a node could use to grow what we keep (property names, emoji names, answer numbers) spend its
       // budget like ids do; an honest server uses a small fixed set of them
       if (!SNOW.test(k)) spend(`.${k}`)
-      if (k.length > LIMITS.key || SHAPES.get(k)?.(v) === false) throw bad
+      if (k.length > LIMITS.key || (!loose && key !== 'resolved' && SHAPES.get(k)?.(v) === false)) throw bad
       if (isIdList(k) && v != null && !Array.isArray(v)) throw bad // an id list that is not a list
       // our presence and activities are the hub's: a node's entry for our node account is dropped
       if (k === 'presences' && Array.isArray(v)) {
-        out[k] = walk(v.filter((p) => !(n.meId && (p as { user?: { id?: unknown } } | null)?.user?.id === n.meId)), k, depth + 1, inFree, false)
+        out[k] = walk(v.filter((p) => !(n.meId && (p as { user?: { id?: unknown } } | null)?.user?.id === n.meId)), k, depth + 1, inFree, false, loose)
         continue
       }
       if (key === 'emoji' && k === 'name' && typeof v === 'string') { if (v.length > LIMITS.emoji) throw bad; spend(`:${v}`) }
@@ -210,11 +221,11 @@ function inbound<T>(n: Live, data: T): T | null {
       if (key === 'resolved' && v && typeof v === 'object' && !Array.isArray(v)) {
         const m: Record<string, unknown> = {}
         const users = k === 'users' || k === 'members'
-        for (const [rk, rv] of Object.entries(v)) m[users ? userRef(rk) : ref(rk)] = walk(rv, k, depth + 2, inFree, users)
+        for (const [rk, rv] of Object.entries(v)) m[users ? userRef(rk) : ref(rk)] = walk(rv, k, depth + 2, inFree, users, loose)
         out[k] = m
         continue
       }
-      out[k] = walk(k === 'attachments' && Array.isArray(v) ? v.filter((a) => onNode(n, a)) : v, k, depth + 1, inFree, USER_OBJECTS.has(k))
+      out[k] = walk(k === 'attachments' && Array.isArray(v) ? v.filter((a) => onNode(n, a)) : v, k, depth + 1, inFree, USER_OBJECTS.has(k), loose || (moduleData && depth === 0 && k === 'data'))
     }
     // a user object naming our own account is our hub record, whole
     return userObj && out.id === hub.meId && hub.meId ? self() : out
@@ -288,14 +299,15 @@ export function admit<T>(inst: string, t: string, raw: T): T | null {
   // a READY is read with the node account and session it names; instances/nodes.ts keeps them only once it is admitted
   const r = raw as { user?: { id?: unknown }; session_id?: unknown } | null
   const meId = typeof r?.user?.id === 'string' && SNOW.test(r.user.id) ? r.user.id : null
-  const n = live[inst] && t === 'READY' ? { ...live[inst], meId, sessionId: typeof r?.session_id === 'string' ? r.session_id : null } : live[inst]
+  const n = live[inst] && t === 'READY' ? { ...live[inst], meId, sessionId: sessionOf(r?.session_id) } : live[inst]
   // A READY is counted on a fresh budget, which replaces the old one only if it passes; instances/nodes.ts then drops
   // everything the node brought before (dropNodeState) before applying it. A refused READY changes nothing.
   const before = seen.get(inst)
   if (n && t === 'READY') seen.delete(inst)
-  const d = n ? (inbound(n, t === 'READY' ? (readyPart(raw) as T) : raw) as any) : null
+  const d = n ? (inbound(n, t === 'READY' ? (readyPart(raw) as T) : raw, t === 'MODULE_UI_EVENT') as any) : null
   const ok = !!d && typeof d === 'object' && allowed(inst, t, d)
   if (!ok && t === 'READY') before ? seen.set(inst, before) : seen.delete(inst)
+  if (ok) last = inst
   return ok ? (d as T) : null
 }
 
@@ -330,10 +342,12 @@ export const NODE_MAPS = ['guilds', 'channels', 'users', 'members', 'membersLoad
 export const HUB_STATE = ['token', 'status', 'sessionId', 'me', 'relationships', 'bansVersion', 'editingId', 'replying', 'voice', 'modal', 'popout',
   'showNav', 'jump', 'panel', 'updateReady', 'settings', 'calls', 'interactions', 'autocomplete', 'showMembers', 'game', 'leagueLobby', 'reminders',
   'bookmarks', 'modulePage', 'guideGuildId', 'dmRecipientReads', 'purgeMode'] as const
-/** A node REST answer, same rules. */
-export function admitRest<T>(inst: string, raw: T): T | null {
+/** A node REST answer, same rules (`moduleData`: a module UI answer, whose `data` is free-form). */
+export function admitRest<T>(inst: string, raw: T, moduleData = false): T | null {
   const n = live[inst]
-  return n ? inbound(n, raw) : null
+  const d = n ? inbound(n, raw, moduleData) : null
+  if (d !== null) last = inst
+  return d
 }
 
 /** The reverse for a request body or a gateway op going to the node: its ids lose the prefix (values and map keys), our

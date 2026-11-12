@@ -22,6 +22,8 @@ type Options = {
   maxBytes?: number
   /** Our presence as this connection may see it (node gateways: their own ids only). */
   presence?: (p: unknown) => unknown
+  /** The backoff starts over only once a connection stayed up this long after READY (node gateways); else at READY. */
+  steady?: number
 }
 
 const send = (sock: WebSocket, op: number, d: unknown) => sock.readyState === WebSocket.OPEN && (sock.send(JSON.stringify({ op, d })), true)
@@ -50,6 +52,7 @@ export function createGateway(o: Options): Gateway {
   let heartbeat = 0
   let retry = 0
   let reidentify = 0
+  let steady = 0
 
   function connect() {
     disconnect()
@@ -66,6 +69,7 @@ export function createGateway(o: Options): Gateway {
     clearInterval(heartbeat)
     clearTimeout(retry)
     clearTimeout(reidentify)
+    clearTimeout(steady)
     reidentify = 0
     const sock = ws
     ws = null
@@ -113,7 +117,8 @@ export function createGateway(o: Options): Gateway {
       // One pending re-identify at a time, however many op 9 arrive.
       else if (op === 9 && !reidentify) reidentify = setTimeout(() => ((reidentify = 0), gen === generation && identify(sock, o.token(), o.presence)), 1000 + Math.random() * 4000)
       else if (op === 0) {
-        if (t === 'READY') attempt = 0
+        if (t === 'READY' && !o.steady) attempt = 0
+        else if (t === 'READY') (clearTimeout(steady), (steady = setTimeout(() => gen === generation && (attempt = 0), o.steady)))
         o.dispatch(t, d)
       }
     }
@@ -121,6 +126,7 @@ export function createGateway(o: Options): Gateway {
       if (sock !== ws) return
       clearInterval(heartbeat)
       clearTimeout(reidentify)
+      clearTimeout(steady)
       reidentify = 0
       if (e.code === 4004) return o.rejected() // token rejected
       reconnect(gen)

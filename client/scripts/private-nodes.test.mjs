@@ -479,3 +479,49 @@ test('r8-5: fields the UI renders must have their type, or the payload is refuse
   assert.ok(reg.admitRest('7', { ...ok, poll: { question: { text: 'q' }, answers: [] } }))
   assert.ok(reg.admitRest('7', { ...ok, poll: null, name: null }))
 })
+
+test('r9-6: the node whose data went in last is blamed; a cut-off node stays cut off on the next start', async () => {
+  reg.testNode('11', 'https://n11.example', '911', '1')
+  reg.testNode('12', 'https://n12.example', '912', '1')
+  assert.ok(reg.admitRest('11', { id: '5' }))
+  assert.equal(reg.lastNode(), '11')
+  assert.ok(reg.admit('12', 'GUILD_UPDATE', { id: '100', name: 'x' }))
+  assert.equal(reg.lastNode(), '12')
+  assert.equal(reg.admitRest('11', { name: 5 }), null)
+  assert.equal(reg.lastNode(), '12', 'a refused answer is not blamed')
+  reg.setLive('12', { status: 'cut-off' })
+  reg.setLive('11', { status: 'ready' })
+  const again = await import('../src/instances/registry.ts?restart')
+  assert.equal(again.instanceById('12').status, 'cut-off', 'kept across starts')
+  assert.equal(again.instanceById('11').status, 'connecting')
+  reg.setLive('12', { status: 'connecting' }) // Reconnect
+  assert.equal((await import('../src/instances/registry.ts?restart2')).instanceById('12').status, 'connecting')
+})
+
+test('r9-6/10: more rendered fields typed; maps under resolved and honest values stay', () => {
+  for (const bad of [{ topic: { x: 1 } }, { description: 1 }, { title: [] }, { label: {} }, { text: 2 }, { choices: 5 }, { fields: {} }, { channels: {} }, { members: 'x' }, { emojis: {} }])
+    assert.equal(reg.admitRest('7', { id: '5', ...bad }), null, JSON.stringify(bad))
+  assert.ok(reg.admitRest('7', { id: '5', topic: null, description: 'd', choices: [{ name: 'a', value: 1 }], fields: [], channels: [], members: [], emojis: [] }))
+  assert.ok(reg.admitRest('7', { data: { resolved: { members: { 2: { nick: null } }, channels: { 3: { name: 'c' } } } } }), 'resolved maps')
+})
+
+test('r9-11: module data is free-form (sizes and ids still checked)', () => {
+  const data = { name: 5, answers: {}, poll: {}, components: 'x' }
+  assert.ok(reg.admit('7', 'MODULE_UI_EVENT', { module_id: 'm', guild_id: '100', data }))
+  assert.equal(reg.admitRest('7', { data }), null, 'not a module answer')
+  assert.ok(reg.admitRest('7', { data }, true))
+  assert.equal(reg.admitRest('7', { data: { id: 'x' } }, true), null, 'id rules stay')
+  assert.equal(reg.admitRest('7', { data: { name: 'x'.repeat(70_000) } }, true), null, 'size caps stay')
+  assert.equal(reg.admitRest('7', { data: { name: 5 }, name: 5 }, true), null, 'only inside data')
+})
+
+test('r9-8: node session id capped; replaced only at session_id', () => {
+  assert.equal(reg.sessionOf('a'.repeat(32)), 'a'.repeat(32))
+  assert.equal(reg.sessionOf('a'.repeat(101)), null)
+  assert.equal(reg.sessionOf(5), null)
+  reg.testNode('13', 'https://n13.example', '913', '1')
+  reg.setLive('13', { sessionId: 'nodesess' })
+  reg.setHubIdentity('1', 'hubsess')
+  const d = reg.admitRest('13', { session_id: 'nodesess', content: 'nodesess', url: 'nodesess' })
+  assert.deepEqual([d.session_id, d.content, d.url], ['hubsess', 'nodesess', 'nodesess'])
+})

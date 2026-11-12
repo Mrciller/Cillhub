@@ -12,7 +12,7 @@ import { gatewayOk, inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revoca
 import { apply, byId, getState, setState, setToken, type State } from '../store'
 import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
-import { admit, newConnection, NODE_MAPS, outbound, presenceFor, overBudget, pruneNode, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
+import { admit, newConnection, NODE_MAPS, outbound, presenceFor, overBudget, pruneNode, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, sessionOf, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
 
 /** The hub's node directory record (§2), from GET /federation/nodes. */
 export type NodeRecord = {
@@ -66,6 +66,7 @@ function open(i: InstanceInfo) {
       return r
     }),
     maxBytes: NODE_FRAME_BYTES,
+    steady: 30_000, // a node that closes right after READY backs off instead of reconnecting every second
     presence: (p) => outbound(i.id, presenceFor(i.id, p)), // IDENTIFY too
     token: () => tokenOf(i.id),
     ready: () => statusOf(i.id) === 'ready',
@@ -79,21 +80,39 @@ function open(i: InstanceInfo) {
   g.connect()
 }
 /** Over its budget (registry.ts) or its data broke the client: disconnected, its servers and all it brought dropped, the
- *  state shown, until the next start. */
+ *  state shown, until the user reconnects it (reconnectNode; kept across starts by registry.ts). */
 function cutOff(id: string) {
   close(id)
   if (nodeOf(getState().voice.guildId) === id) leaveVoice()
   for (const g of Object.keys(getState().guilds)) if (nodeOf(g) === id) apply('GUILD_DELETE', { id: g })
   dropNodeState(id)
+  // what the node opened outside its maps: its interaction modal, pending interactions, autocomplete choices
+  setState((s) => {
+    const m = s.modal as { guildId?: string; channelId?: string; data?: { channel_id?: string } } | null
+    return {
+      interactions: Object.fromEntries(Object.entries(s.interactions).filter(([, p]) => nodeOf(p.channelId) !== id)),
+      autocomplete: null, // shortcut: also a hub autocomplete list open at that moment; it comes back on the next keystroke
+      ...([m?.guildId, m?.channelId, m?.data?.channel_id].some((x) => nodeOf(x) === id) && { modal: null }),
+    }
+  })
   setLive(id, { status: 'cut-off' })
 }
-/** After a render error (main.tsx): every node with state in the store is cut off. Which one's data broke the render is not
- *  known, so all of them. One name per node cut off, none when no node had state. */
-export function cutOffNodes() {
+/** After a render error (main.tsx): `only` (the node whose data went in last) is cut off if it has state, else every node
+ *  with state in the store. One name per node cut off, none when no node had state. */
+export function cutOffNodes(only?: string) {
   const s = getState()
-  const ids = new Set(NODE_MAPS.flatMap((k) => Object.keys(s[k]).map(nodeOf)).filter((x): x is string => !!x))
+  let ids = new Set(NODE_MAPS.flatMap((k) => Object.keys(s[k]).map(nodeOf)).filter((x): x is string => !!x))
+  if (only && ids.has(only)) ids = new Set([only])
   for (const id of ids) cutOff(id)
   return [...ids].map((id) => instanceById(id)?.name ?? '') // '': leftovers of a node removed meanwhile
+}
+/** "Reconnect" on a cut-off node (Settings › Private Nodes, Add a server › Your other instances). */
+export function reconnectNode(id: string) {
+  const i = instanceById(id)
+  if (!i) return
+  close(id)
+  setLive(id, { status: 'connecting' })
+  if (getState().status === 'ready') open(i)
 }
 function close(id: string) {
   conns.get(id)?.disconnect()
@@ -110,7 +129,7 @@ function handle(id: string, t: string, raw: any) {
   const d = admit(id, t, raw)
   if (!d) return void (overBudget(id) && cutOff(id))
   // our node account and session, from the READY that admit checked against them
-  if (t === 'READY') return (setLive(id, { meId: raw.user.id, sessionId: typeof raw.session_id === 'string' ? raw.session_id : null }), ready(id, d))
+  if (t === 'READY') return (setLive(id, { meId: raw.user.id, sessionId: sessionOf(raw.session_id) }), ready(id, d))
   const s = getState()
   apply(t, d)
   keepHubSelf(s)
@@ -174,6 +193,7 @@ export async function refreshStatus() {
   const records = await listNodes().catch(() => null)
   if (!records) return
   for (const i of instances()) {
+    if (i.status === 'cut-off') continue // stays off until the user reconnects it
     const r = records.find((x) => x.node_id === i.id)
     if (!r || r.status !== 'active') {
       close(i.id)
