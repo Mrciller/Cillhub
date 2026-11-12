@@ -48,8 +48,8 @@ function settings(raw, type, current = {}, guildId = current.guild_id) {
   const has_ = k => body[k] !== undefined;
   if (has_('nsfw') && type !== 4) out.nsfw = Number(bool(body, 'nsfw'));
   if (has_('rate_limit_per_user') && [0, 2, 5, 13, 15, 16].includes(type)) out.rate_limit_per_user = body.rate_limit_per_user === null ? 0 : int(body, 'rate_limit_per_user', 0, 21600);
-  // a slow mode set by hand ends an automatic one (spam guard): nothing is restored later
-  if (out.rate_limit_per_user !== undefined && out.rate_limit_per_user !== current.rate_limit_per_user) out.auto_slowmode_until = out.auto_slowmode_prev = null;
+  // a slow mode set by hand ends an automatic one (spam guard): nothing is restored later, even for the same value
+  if (out.rate_limit_per_user !== undefined && current.auto_slowmode_until != null) out.auto_slowmode_until = out.auto_slowmode_prev = null;
   if (has_('topic') && TEXT_NAMES.includes(type)) out.topic = body.topic === null ? null : str(body, 'topic', 0, (type === 15 || type === 16) ? 4096 : 1024) || null;
   if (has_('user_limit') && (type === 2 || type === 13)) out.user_limit = int(body, 'user_limit', 0, type === 13 ? 10000 : 99);
   if (has_('default_auto_archive_duration') && TEXT_NAMES.includes(type)) {

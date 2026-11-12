@@ -10,6 +10,7 @@ import { sendToUsers, presences, guildFull, visibility, syncVisibility } from '.
 import { disconnect } from '../voice.js';
 import { saveImage, removeImage, removeChannelFiles, removeAsset } from '../files.js';
 import { requireMfa } from '../mfa.js';
+import { endAutoSlowmode } from '../compose.js';
 import { createFromSnapshot } from './templates.js';
 import { unequipDecorations, announceUser } from './customization.js';
 import { recordGuildMetric } from '../analytics.js';
@@ -140,6 +141,7 @@ async function patchGuild(ctx) {
   }
   const seen = next.owner_id && visibility(g.id, [g.owner_id, next.owner_id]);
   for (const [k, v] of Object.entries(next)) run(`UPDATE guilds SET ${k} = ? WHERE id = ?`, v, g.id); // keys are fixed above
+  if (next.spam_slowmode === 0) endAutoSlowmode(g.id); // the running automatic channel slow modes of this server end now
   if ('icon' in next && next.icon !== g.icon) removeImage('icons', g.id, g.icon);
   if ('banner' in next && next.banner !== g.banner) removeImage('banners', g.id, g.banner);
   if ('splash' in next && next.splash !== g.splash) removeImage('splashes', g.id, g.splash);

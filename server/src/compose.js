@@ -63,6 +63,7 @@ export function markSent(ch, userId, perms) {
   if (!ch.rate_limit_per_user && !personalOn(key)) return;
   const now = Date.now();
   for (const [k, t] of lastSent) if (now - t > 21600 * 1000) lastSent.delete(k);
+  for (const [k, t] of personal) if (t <= now) personal.delete(k);
   lastSent.set(key, now);
 }
 
@@ -92,16 +93,22 @@ function watchSpam(ch, userId) {
 }
 
 // the automatic channel slow mode ends: the value from before comes back (read from the database, so a restart keeps it)
+function restoreSlowmode(id) {
+  run('UPDATE channels SET rate_limit_per_user = auto_slowmode_prev, auto_slowmode_prev = NULL, auto_slowmode_until = NULL WHERE id = ?', id);
+  channelEvent(getChannel(id), 'CHANNEL_UPDATE');
+}
 addJob({
   name: 'spam slow mode end',
   next: () => get('SELECT MIN(auto_slowmode_until) AS t FROM channels WHERE auto_slowmode_until IS NOT NULL')?.t ?? null,
   run(now) {
-    for (const { id } of all('SELECT id FROM channels WHERE auto_slowmode_until <= ?', now)) {
-      run('UPDATE channels SET rate_limit_per_user = auto_slowmode_prev, auto_slowmode_prev = NULL, auto_slowmode_until = NULL WHERE id = ?', id);
-      channelEvent(getChannel(id), 'CHANNEL_UPDATE');
-    }
+    for (const { id } of all('SELECT id FROM channels WHERE auto_slowmode_until <= ?', now)) restoreSlowmode(id);
   },
 });
+
+// the server switch goes off: its automatic channel slow modes end now (personal ones run out on their own)
+export function endAutoSlowmode(guildId) {
+  for (const { id } of all('SELECT id FROM channels WHERE guild_id = ? AND auto_slowmode_until IS NOT NULL', guildId)) restoreSlowmode(id);
+}
 
 // guild verification level: LOW = account older than 5 minutes, MEDIUM = also a member for 5 minutes; members with a role skip it
 export function checkVerification(guildId, userId) {

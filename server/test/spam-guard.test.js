@@ -19,6 +19,7 @@ after(() => srv?.stop());
 const channel = async (rate = 0) => (await api('POST', `/guilds/${g.guild.id}/channels`, alex.token, { name: 'spam', rate_limit_per_user: rate })).body;
 const say = (ch, who, content = 'hi') => api('POST', `/channels/${ch.id}/messages`, who.token, { content });
 const rate = async ch => (await api('GET', `/channels/${ch.id}`, alex.token)).body.rate_limit_per_user;
+const soon = ms => new Date(Date.now() + ms).toISOString();
 // 16 messages from 4 members in 4 rounds (each member 4, nobody 5) with this pause between rounds;
 // the 15th switches the slow mode on, so the last one may already be refused
 async function crowd(ch, pause = 0) {
@@ -49,6 +50,17 @@ test('one member: 5 messages in 5 s -> personal slow mode, refused like channel 
   assert.equal((await say(ch, sam)).status, 201, 'personal slow mode is over');
 });
 
+test('a scheduled message is refused while its author is in personal slow mode', async () => {
+  const ch = await channel();
+  const gw = await srv.gateway(sam.token);
+  for (let i = 0; i < 5; i++) assert.equal((await say(ch, sam)).status, 201);
+  const s = await api('POST', `/channels/${ch.id}/scheduled-messages`, sam.token, { content: 'too soon', send_at: soon(300) });
+  assert.equal(s.status, 201, 'scheduling itself is not slowed');
+  const done = await gw.event('SCHEDULED_MESSAGE_DELETE', d => d.id === s.body.id);
+  assert.deepEqual([done.failed, done.code], [true, 20016]);
+  assert.ok(await gw.none(f => f.t === 'MESSAGE_CREATE' && f.d.content === 'too soon'), 'not delivered');
+});
+
 test('many members: channel gets 10 s slow mode with CHANNEL_UPDATE, the old value comes back', async () => {
   const ch = await channel(1);
   const gw = await srv.gateway(sam.token);
@@ -77,6 +89,15 @@ test('a slow mode set by hand during the automatic period wins', async () => {
   assert.equal(await rate(ch), 30);
 });
 
+test('the same value by hand also cancels the restore', async () => {
+  const ch = await channel();
+  await crowd(ch);
+  await until(async () => (await rate(ch)) === 10);
+  assert.equal((await api('PATCH', `/channels/${ch.id}`, alex.token, { rate_limit_per_user: 10 })).status, 200);
+  await sleep(1800);
+  assert.equal(await rate(ch), 10);
+});
+
 test('switch off: nothing happens', async () => {
   const off = await api('PATCH', `/guilds/${g.guild.id}`, alex.token, { auto_spam_slowmode_enabled: false });
   assert.equal(off.status, 200);
@@ -85,6 +106,17 @@ test('switch off: nothing happens', async () => {
   for (let i = 0; i < 7; i++) assert.equal((await say(ch, sam)).status, 201);
   await crowd(ch);
   assert.equal(await rate(ch), 0);
+  assert.equal((await api('PATCH', `/guilds/${g.guild.id}`, alex.token, { auto_spam_slowmode_enabled: true })).body.auto_spam_slowmode_enabled, true);
+});
+
+test('switch off: a running automatic slow mode ends at once', async () => {
+  const ch = await channel(1);
+  const gw = await srv.gateway(sam.token);
+  await crowd(ch, 1050);
+  await until(async () => (await rate(ch)) === 10);
+  assert.equal((await api('PATCH', `/guilds/${g.guild.id}`, alex.token, { auto_spam_slowmode_enabled: false })).status, 200);
+  assert.equal((await gw.event('CHANNEL_UPDATE', d => d.id === ch.id && d.rate_limit_per_user === 1)).rate_limit_per_user, 1);
+  assert.equal(await rate(ch), 1);
   assert.equal((await api('PATCH', `/guilds/${g.guild.id}`, alex.token, { auto_spam_slowmode_enabled: true })).body.auto_spam_slowmode_enabled, true);
 });
 
