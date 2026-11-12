@@ -7,10 +7,12 @@ import { t } from '../i18n'
 import { apply, getState } from '../store'
 import type { Channel, Message } from '../types'
 import * as C from './crypto'
+import { acceptMember, checkMembers, sendPlan, trustedMaker, type Memory } from './members'
 
 export type FileRef = { id: string; k: string; n: string; name: string; type: string; size: number | null; w?: number; h?: number }
 export type Plain = { state: 'ok'; content: string; files: FileRef[] } | { state: 'pending' | 'locked' | 'fail' }
-type Status = 'unknown' | 'off' | 'locked' | 'ready'
+// lost: the server has no key for this account, but this device still holds one (kept, never deleted on the server's word)
+type Status = 'unknown' | 'off' | 'locked' | 'ready' | 'lost'
 // unverified: this device holds a wrap of the current key that no current member provably made (or that does not open)
 // stale: members whose current-epoch wrap is a tombstone (they reset their key): the epoch is renewed before sending
 type Keys = { epoch: number; keys: Map<number, Uint8Array<ArrayBuffer>>; wrapped: string[]; stale: string[]; unverified: boolean }
@@ -68,10 +70,8 @@ export function ready(): Promise<void> {
       const next = await loadLocal(`${owner}:next`).catch(() => undefined)
       if (next?.pub === server.public_key) await saveLocal(owner, (local = next))
     }
-    if (!server) {
-      status = 'off'
-      if (local) await dropLocal(owner).catch(() => {})
-    } else if (local && local.pub === server.public_key) (status = 'ready'), (priv = local.priv), (myPub = local.pub)
+    if (!server) status = local ? 'lost' : 'off'
+    else if (local && local.pub === server.public_key) (status = 'ready'), (priv = local.priv), (myPub = local.pub)
     else status = 'locked'
     changed()
   })().catch((e) => {
@@ -187,27 +187,70 @@ const members = (ch: Channel) => [owner, ...(ch.recipients ?? []).map((u) => u.i
 export const isDm = (ch?: Channel) => !!ch && !ch.guild_id && (ch.type === 1 || ch.type === 3)
 export const isEncrypted = (ch?: Channel) => isDm(ch) && (ch!.e2ee_epoch ?? 0) > 0
 
+// --- local memory: the members this device accepted per DM. The server's list alone never decides who gets the key
+const MEMBERS = () => `e2ee-members:${owner}`
+const memoryOf = (id: string): Memory | undefined => {
+  const m = store<Record<string, Memory>>(MEMBERS(), {})[id]
+  return Array.isArray(m?.ids) ? m : undefined
+}
+const keepMemory = (id: string, m: Memory) => keep(MEMBERS(), { ...store(MEMBERS(), {}), [id]: m })
+/** The server's member list against the accepted one; stores it on first use (a 1:1 DM only with exactly one other member). */
+function memberCheck(ch: Channel) {
+  const r = checkMembers(ch.type, memoryOf(ch.id), members(ch).slice(1))
+  if (r.next) keepMemory(ch.id, r.next)
+  return r
+}
+/** Members the server lists in a group DM that this device has not accepted (nothing is wrapped for them until Accept). */
+export const addedMembers = (ch: Channel) => (isEncrypted(ch) && ch.type === 3 && !!memoryOf(ch.id) ? memberCheck(ch).added : [])
+/** Accepts a member added to a group DM; the next send makes a new key for everyone (theirs never opens older messages). */
+export function acceptAdded(ch: Channel, id: string) {
+  const mem = memoryOf(ch.id)
+  if (mem) keepMemory(ch.id, acceptMember(mem, id, ch.e2ee_epoch ?? 0))
+  channels.clear() // wraps they made open now
+  retrySoft()
+  changed()
+}
+/** Throws while the member list cannot be used to send: a 1:1 DM with other members than accepted, or unaccepted additions. */
+function refuseMembers(ch: Channel) {
+  const r = memberCheck(ch)
+  if (r.bad) throw new Error(t('The key of this conversation could not be verified. Nothing was sent.'))
+  if (r.added.length) throw new Error(t('{name} was added to this conversation. Accept to let them read what you send from now on.', { name: nameOf(ch, r.added[0]) }))
+}
+
 // --- local memory: the highest epoch this device saw per DM. A DM once seen encrypted never sends plain text from here again
 const EPOCHS = () => `e2ee-epochs:${owner}`
 const seenEpoch = (id: string) => store<Record<string, number>>(EPOCHS(), {})[id] ?? 0
 const see = (id: string, epoch: number) => epoch > seenEpoch(id) && keep(EPOCHS(), { ...store(EPOCHS(), {}), [id]: epoch })
+/** A user message without encryption in a DM this device saw encrypted (sent before, or put there by the server). */
+export const plainInEncrypted = (ch: Channel | undefined, m: Message) =>
+  isDm(ch) && !m.e2ee_envelope && (m.type === 0 || m.type === 19) && !m.author.system && !!owner && seenEpoch(ch!.id) > 0
 /** The server reports a lower epoch (or none) for a DM this device saw encrypted: someone turned it back. */
 const rolledBack = (ch: Channel) => !!owner && owner === meId() && seenEpoch(ch.id) > (ch.e2ee_epoch ?? 0)
-/** The key of this DM cannot be trusted right now (turned back, or a current key no member provably made). */
-export const keyProblem = (ch: Channel) => isDm(ch) && (rolledBack(ch) || !!channels.get(ch.id)?.unverified)
+/** The key of this DM cannot be trusted right now: turned back, a 1:1 DM whose members changed, or a current key no accepted
+ * member provably made ('unverified': the user may renew it after comparing security codes). */
+export function keyProblem(ch: Channel): 'rollback' | 'members' | 'unverified' | null {
+  if (!isDm(ch)) return null
+  if (rolledBack(ch)) return 'rollback'
+  if (isEncrypted(ch) && status === 'ready' && memberCheck(ch).bad) return 'members'
+  return channels.get(ch.id)?.unverified ? 'unverified' : null
+}
+const notSent = () => t('The key of this conversation could not be verified. Nothing was sent.')
+const statusText = () => status === 'locked' ? t('Enter your recovery key to send messages here.') : status === 'lost' ? LOST_TEXT() : t('Set up encrypted messages to send messages here.')
+export const LOST_TEXT = () => t('The server lost your encryption key data. Your key is still on this device and was not deleted.')
 /** Why this device cannot send in a DM right now (shown in place of the message box), or null. */
 export function sendHint(ch: Channel) {
   if (!isDm(ch)) return null
-  if (rolledBack(ch)) return t('The key of this conversation could not be verified.')
+  const verify = t('The key of this conversation could not be verified.')
+  if (rolledBack(ch)) return verify
   if (!isEncrypted(ch) || status === 'unknown') return null
-  if (status === 'ready') {
-    try { refuseChanged(ch) } catch (e) { return (e as Error).message }
-    return null
-  }
-  return status === 'locked' ? t('Enter your recovery key to send messages here.') : t('Set up encrypted messages to send messages here.')
+  if (status !== 'ready') return statusText()
+  try { refuseChanged(ch) } catch (e) { return (e as Error).message }
+  if (keyProblem(ch) === 'members') return verify
+  try { refuseMembers(ch) } catch (e) { return (e as Error).message }
+  return keyProblem(ch) ? verify : null
 }
 const guard = (ch: Channel) => {
-  if (isDm(ch) && rolledBack(ch)) throw new Error(t('The key of this conversation could not be verified. Nothing was sent.'))
+  if (isDm(ch) && rolledBack(ch)) throw new Error(notSent())
 }
 /** Throws when plain text must not go to this channel from here (it was encrypted before). Every plain send calls it. */
 export async function refusePlain(ch?: Channel) {
@@ -236,12 +279,13 @@ async function channelKeys(ch: Channel, fresh = false): Promise<Keys> {
   const r = await api<{ epoch: number; keys: { epoch: number; wrapped: string }[]; wrapped_users: string[]; stale_users?: string[] }>(`/channels/${ch.id}/e2ee/keys`)
   const keys = new Map(have?.keys)
   let unverified = false
+  const mem = (memberCheck(ch), memoryOf(ch.id))
   for (const k of r.keys) {
     if (keys.has(k.epoch) || !priv || !k.wrapped) continue // '' = tombstone after this account's reset: no key for that epoch
-    // the current key counts only when a current member (or this account) made its wrap; older ones from anyone known here.
-    // A wrap made for an older account key (after a reset) does not open: those messages stay unreadable here.
+    // a wrap counts only when this account or a member accepted on this device made it (older epochs: also one who left
+    // since). A wrap made for an older account key (after a reset) does not open: those messages stay unreadable here.
     const by = C.wrapper(k.wrapped)
-    const key = by && (k.epoch !== r.epoch || members(ch).includes(by)) ? await openWrap(k.wrapped, ch.id, k.epoch, by) : null
+    const key = by && trustedMaker(mem, owner, by, k.epoch === r.epoch) ? await openWrap(k.wrapped, ch.id, k.epoch, by) : null
     if (key) keys.set(k.epoch, key)
     else if (k.epoch === r.epoch) unverified = true
   }
@@ -266,6 +310,7 @@ async function openWrap(wrapped: string, channelId: string, epoch: number, by: s
 }
 
 async function newEpoch(ch: Channel, epoch: number, retried = false): Promise<unknown> {
+  refuseMembers(ch) // stores the list on the first key of a DM
   const ids = members(ch)
   const key = C.random(32)
   const wraps: Record<string, string> = {}
@@ -308,11 +353,14 @@ export async function sendKey(chIn: Channel, fresh = false): Promise<{ key: Uint
     ch = getState().channels[ch.id] ?? ch
     if (!(ch.e2ee_epoch ?? 0)) return (refuseChanged(ch), null)
   }
-  if (status !== 'ready') throw new Error(status === 'locked' ? t('Enter your recovery key to send messages here.') : t('Set up encrypted messages to send messages here.'))
+  if (status !== 'ready') throw new Error(statusText())
   refuseChanged(ch)
+  refuseMembers(ch)
   let c = await channelKeys(ch, fresh)
   const ids = members(ch)
-  if (c.wrapped.some((id) => !ids.includes(id)) || c.stale.length || !c.keys.has(c.epoch)) {
+  const plan = sendPlan({ ...c, haveKey: c.keys.has(c.epoch) }, ids, memoryOf(ch.id)?.renew)
+  if (plan === 'refuse') throw new Error(notSent())
+  if (plan === 'renew') {
     await newEpoch(ch, c.epoch + 1)
     c = await channelKeys(getState().channels[ch.id] ?? ch)
   } else {
@@ -333,6 +381,18 @@ export async function sendKey(chIn: Channel, fresh = false): Promise<{ key: Uint
   const key = c.keys.get(c.epoch)
   if (!key) throw new Error(t('Cannot encrypt for this conversation right now. Try again.'))
   return { key, epoch: c.epoch }
+}
+
+/** The user compared security codes and renews the key of a DM whose current key could not be verified. */
+export async function renewKey(ch: Channel) {
+  await ready()
+  if (status !== 'ready') throw new Error(statusText())
+  ch = getState().channels[ch.id] ?? ch
+  guard(ch)
+  refuseChanged(ch)
+  refuseMembers(ch)
+  await newEpoch(ch, (await channelKeys(ch, true)).epoch + 1)
+  changed()
 }
 
 /** Seals a payload for a channel with a send key. */
@@ -367,6 +427,7 @@ export function decrypt(m: Message): Promise<Plain> {
   const noKey = { state: 'fail', soft: true } as const // shown as failed, tried again when keys change
   p = (async (): Promise<Plain & { soft?: true }> => {
     await ready()
+    if (status === 'lost') return noKey
     if (status !== 'ready') return { state: 'locked' }
     const ch = getState().channels[m.channel_id]
     const env = m.e2ee_envelope!

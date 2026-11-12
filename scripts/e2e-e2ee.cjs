@@ -331,7 +331,7 @@ async function main() {
       write('UPDATE user_e2ee_keys SET public_key = ? WHERE user_id = ?', real, ids.sam) // the forged epoch stays: the next step renews over it
     })
 
-    await step('11. A database attacker inserts a new epoch wrapped with a key of their own: Alex sees the warning, renews on send, the attacker\'s key is never used', async () => {
+    await step('11. A database attacker inserts a new epoch wrapped with a key of their own: Alex sees the warning, sends nothing until he makes a new key by hand; the attacker\'s key is never used', async () => {
       const epoch = sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e + 1
       const evil = randomBytes(32)
       const pub = (id) => sql('SELECT public_key FROM user_e2ee_keys WHERE user_id = ?', id)[0].public_key
@@ -343,6 +343,17 @@ async function main() {
       const warn = alex.locator('.e2ee-bar.warn').filter({ hasText: 'The key of this conversation could not be verified.' })
       await warn.waitFor(LIVE)
       const count = sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n
+      // no silent renewal: the box stays shut, and a forced send is refused
+      await until('the message box to refuse', async () => await composer(alex).isDisabled())
+      await composer(alex).evaluate((el) => el.removeAttribute('disabled'))
+      await send(alex, `before the renewal ${SFX}`)
+      await alex.getByText('The key of this conversation could not be verified. Nothing was sent.').waitFor(LIVE)
+      await sleep(500)
+      check(sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n === count, 'nothing stored before the renewal')
+      check(sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e === epoch, 'not renewed by itself')
+      await warn.getByRole('button', { name: 'Make a new key' }).click()
+      await until('the warning to go once the key is renewed', async () => (await warn.count()) === 0)
+      await until('the message box to open', async () => !(await composer(alex).isDisabled()))
       await send(alex, `after the attack ${SFX}`)
       await until('the message to be stored', async () => sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n > count).catch(async (e) => {
         throw new Error(`${e.message}; on screen: ${(await alex.locator('.toast, [role=alert]').allInnerTexts()).join(' | ')}`)
@@ -351,7 +362,6 @@ async function main() {
       check(last.e === epoch + 1, `sent with a renewed key (epoch ${epoch + 1}), got epoch ${last.e}`)
       const bys = sql('SELECT wrapped FROM dm_keys WHERE channel_id = ? AND epoch = ?', ids.dm, epoch + 1).map((r) => JSON.parse(r.wrapped).by)
       check(bys.length === 2 && bys.every((b) => b === ids.alex), `the new key is wrapped by Alex: ${bys}`)
-      await until('the warning to go once the key is renewed', async () => (await warn.count()) === 0)
       await openDm(sam)
       await msg(sam, `after the attack ${SFX}`).locator('.content').waitFor(LIVE)
       check(!(await msg(sam, `after the attack ${SFX}`).innerText()).includes('Cannot decrypt'), 'Sam reads the message sent with the renewed key')
@@ -359,6 +369,7 @@ async function main() {
 
     await step('12. The attacker sets the epoch back to 0: Alex\'s device remembers it was encrypted, warns and sends no plain text', async () => {
       const before = sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n
+      const epoch = sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e
       write('UPDATE channels SET e2ee_epoch = 0 WHERE id = ?', ids.dm)
       await openDm(alex)
       await alex.locator('.e2ee-bar.warn').filter({ hasText: 'The key of this conversation could not be verified.' }).waitFor(LIVE)
@@ -373,9 +384,64 @@ async function main() {
       await sleep(500)
       check(sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n === before, 'no message stored')
       check(sql("SELECT COUNT(*) AS n FROM messages WHERE content LIKE ?", `%${plain}%`)[0].n === 0, 'the text is nowhere in the database')
+      write('UPDATE channels SET e2ee_epoch = ? WHERE id = ?', epoch, ids.dm) // back as it was, for the next step
     })
 
-    await step('13. no uncaught page errors and no native dialogs', async () => {
+    await step('13. A database attacker adds Robin (with a key) as third recipient of the 1:1 DM: Alex refuses to send, Robin gets no wrap, no Accept is offered', async () => {
+      await robin.goto(BASE + '/channels/@me')
+      await ready(robin)
+      await turnOn(robin)
+      const before = sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n
+      write('INSERT INTO dm_recipients (channel_id, user_id) VALUES (?, ?)', ids.dm, ids.robin)
+      await openDm(alex)
+      const warn = alex.locator('.e2ee-bar.warn').filter({ hasText: 'The key of this conversation could not be verified.' })
+      await warn.waitFor(LIVE)
+      check(await warn.getByRole('button').count() === 0, 'neither Accept nor a new key on offer')
+      await until('the message box to refuse', async () => await composer(alex).isDisabled())
+      await composer(alex).evaluate((el) => el.removeAttribute('disabled'))
+      await send(alex, `to the ghost ${SFX}`)
+      await alex.getByText('The key of this conversation could not be verified. Nothing was sent.').waitFor(LIVE)
+      await sleep(500)
+      check(sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n === before, 'no message stored')
+      check(sql('SELECT COUNT(*) AS n FROM dm_keys WHERE channel_id = ? AND user_id = ?', ids.dm, ids.robin)[0].n === 0, 'no wrap for Robin')
+    })
+
+    await step('14. Group DM: Sam adds Robin; Alex sends nothing and wraps nothing for Robin until Accept; then a new key that Robin reads, the old one never wrapped for Robin', async () => {
+      await ok(api(sam, 'POST', '/users/@me/relationships', { username: NAME.robin }))
+      await ok(api(robin, 'PUT', `/users/@me/relationships/${ids.sam}`, {}))
+      ids.group = (await ok(api(alex, 'POST', '/users/@me/channels', { recipients: [ids.alex, ids.sam] }))).id
+      const open = async (page) => (await page.goto(`${BASE}/channels/@me/${ids.group}`), await ready(page))
+      const epochOf = () => sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.group)[0].e
+      await open(alex)
+      await until('the group to be encrypted', async () => epochOf() === 1)
+      await send(alex, `group hello ${SFX}`)
+      await open(sam)
+      await msg(sam, `group hello ${SFX}`).locator('.content').waitFor(LIVE)
+      await ok(api(sam, 'PUT', `/channels/${ids.group}/recipients/${ids.robin}`))
+      await open(alex)
+      const line = alex.locator('.e2ee-bar.warn').filter({ hasText: 'was added to this conversation' })
+      await line.waitFor(LIVE)
+      await until('the message box to refuse', async () => await composer(alex).isDisabled())
+      const before = sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.group)[0].n
+      await composer(alex).evaluate((el) => el.removeAttribute('disabled'))
+      await send(alex, `before accept ${SFX}`)
+      await alex.getByText(/was added to this conversation\. Accept to let them read/).last().waitFor(LIVE)
+      await sleep(500)
+      check(sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.group)[0].n === before, 'nothing sent before Accept')
+      check(sql('SELECT COUNT(*) AS n FROM dm_keys WHERE channel_id = ? AND user_id = ?', ids.group, ids.robin)[0].n === 0, 'no wrap for Robin before Accept')
+      await line.getByRole('button', { name: 'Accept' }).click()
+      await until('the line to go after Accept', async () => (await line.count()) === 0)
+      await until('the message box to open', async () => !(await composer(alex).isDisabled()))
+      await send(alex, `welcome Robin ${SFX}`)
+      await until('a new key for the group', async () => epochOf() === 2)
+      const robinWraps = sql('SELECT epoch FROM dm_keys WHERE channel_id = ? AND user_id = ? AND wrapped != \'\'', ids.group, ids.robin).map((r) => r.epoch)
+      check(robinWraps.length === 1 && robinWraps[0] === 2, `Robin has a wrap only for the new key: ${robinWraps}`)
+      await open(robin)
+      await msg(robin, `welcome Robin ${SFX}`).locator('.content').waitFor(LIVE)
+      check(!(await msg(robin, `welcome Robin ${SFX}`).innerText()).includes('Cannot decrypt'), 'Robin reads the message with the new key')
+    })
+
+    await step('15. no uncaught page errors and no native dialogs', async () => {
       if (errors.length) throw new Error(errors.join('; '))
     })
   } catch (e) {

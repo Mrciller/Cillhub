@@ -1354,6 +1354,7 @@ a.update-reload { color: inherit; text-decoration: none; }
 .e2ee-bar.warn { color: var(--danger); }
 .e2ee-open { opacity: 0.5; }
 .e2ee-lock.on { color: var(--online); }
+.e2ee-plain { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; }
 .e2ee-line { display: flex; align-items: center; gap: 6px; color: var(--muted); font-style: italic; }
 .e2ee-recovery code, .e2ee-code code { display: block; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-s); font-size: 16px; letter-spacing: 0.05em; word-spacing: 0.3em; user-select: all; overflow-wrap: anywhere; }
 .admin-context { opacity: 0.8; margin-bottom: 6px; }

@@ -120,6 +120,7 @@ export type State = {
 export type MessageDraft = { content: string; replyToId?: string; updatedAt: number }
 
 const DRAFTS_KEY = 'cillcord:drafts'
+const isDmChannel = (c?: Channel) => !!c && !c.guild_id && (c.type === 1 || c.type === 3)
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
 export function loadDrafts(): Record<string, MessageDraft> {
@@ -239,7 +240,13 @@ export const useStore = <T,>(sel: (s: State) => T) => useSyncExternalStore(subsc
 export function setToken(token: string | null) {
   if (token) localStorage.setItem('token', token)
   else localStorage.removeItem('token')
-  setState({ ...empty, token, updateReady: state.updateReady, settings: token ? state.settings : {}, showMembers: state.showMembers, game: state.game })
+  // logout: drafts of DMs are plain text (also of encrypted ones) and do not outlive the session on this device
+  const drafts = token ? loadDrafts() : Object.fromEntries(Object.entries(state.drafts).filter(([id]) => !isDmChannel(state.channels[id])))
+  if (!token) {
+    if (draftSaveTimeout) clearTimeout(draftSaveTimeout)
+    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts)) } catch { /* private mode: nothing kept */ }
+  }
+  setState({ ...empty, token, updateReady: state.updateReady, settings: token ? state.settings : {}, showMembers: state.showMembers, game: state.game, drafts })
   if (!token) localStorage.removeItem('user-settings')
 }
 /** A new token for the same session (password change, 2FA on/off): keeps everything else. */

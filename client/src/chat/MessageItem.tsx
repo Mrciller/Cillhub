@@ -34,7 +34,7 @@ import { GameInviteCard, parseGameInvite } from './GameInvite'
 import { MessageLinkQuotes } from './MessageLinkQuotes'
 import { ServerInviteCard } from './ServerInvite'
 import { inviteCodes, onlyInvite } from './inviteLinks'
-import { isEncrypted, usePlain, type Plain } from '../e2ee/session'
+import { isEncrypted, plainInEncrypted, usePlain, type Plain } from '../e2ee/session'
 import { E2eeFiles } from '../e2ee/E2ee'
 
 export function stamp(iso: string) {
@@ -435,6 +435,7 @@ function Item({ m: raw, head, perms, ctx }: ItemProps) {
       {m.poll && <PollView m={m} canVote={has(perms, P.READ_MESSAGE_HISTORY) && !!me && !m.pending} />}
       {m.pending && m.files?.length ? <Uploading m={m} /> : plain ? (plain.state === 'ok' && <E2eeFiles m={raw} files={plain.files} />) : <Attachments list={m.attachments} voice={!!(flags & IS_VOICE_MESSAGE)} />}
       <Stickers list={m.sticker_items} />
+      {!m.pending && plainInEncrypted(channel, raw) && <div className="e2ee-plain"><Icon d={ICONS.lock} size={12} className="e2ee-open" /> {t('Not encrypted')}</div>}
       {isBotCard(m) ? <BotCard m={m} ctx={ctx} /> : (
         <>
           <Embeds list={embeds} ctx={ctx} onRemove={canSuppress && sent ? removeEmbeds : undefined} />

@@ -75,4 +75,11 @@ export const e2ee: Record<string, string> = {
   'You need this key to read your encrypted messages on a new device. It is shown only now. Keep it somewhere safe, away from this account.':
     'Mit diesem Schlüssel liest du deine verschlüsselten Nachrichten auf einem neuen Gerät. Er wird nur jetzt angezeigt. Bewahre ihn sicher auf, getrennt von diesem Konto.',
   'Your recovery key': 'Dein Wiederherstellungsschlüssel',
+  '{name} was added to this conversation. Accept to let them read what you send from now on.':
+    '{name} wurde zu dieser Unterhaltung hinzugefügt. Nimm an, damit {name} liest, was du ab jetzt sendest.',
+  'Compare security codes, then make a new key.': 'Vergleiche die Sicherheitscodes und erstelle danach einen neuen Schlüssel.',
+  'Make a new key': 'Neuen Schlüssel erstellen',
+  'Not encrypted': 'Nicht verschlüsselt',
+  'The server lost your encryption key data. Your key is still on this device and was not deleted.':
+    'Der Server hat die Daten deines Schlüssels verloren. Dein Schlüssel ist weiter auf diesem Gerät und wurde nicht gelöscht.',
 }

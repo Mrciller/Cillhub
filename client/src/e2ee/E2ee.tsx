@@ -9,7 +9,7 @@ import { getState, useStore } from '../store'
 import type { Attachment, Channel, Message } from '../types'
 import { Attachments } from '../chat/Attachments'
 import * as C from './crypto'
-import { acceptKey, decryptDownload, enable, isDm, isEncrypted, keyChanged, keyProblem, myPublicKey, openChannel, publicKey, recover, safeType, useE2ee, useStatus, type FileRef } from './session'
+import { acceptAdded, acceptKey, addedMembers, decryptDownload, enable, isDm, isEncrypted, keyChanged, keyProblem, LOST_TEXT, myPublicKey, openChannel, publicKey, recover, renewKey, safeType, useE2ee, useStatus, type FileRef } from './session'
 
 /** Shows a new recovery key once; Done needs the "saved it" tick. */
 function RecoveryKeyDialog({ text, onClose }: { text: string; onClose: () => void }) {
@@ -64,6 +64,12 @@ export function EncryptionSettings() {
           <button className="danger-btn" disabled={busy} onClick={reset}>{t('Reset encryption')}</button>
         </>
       )}
+      {status === 'lost' && (
+        <>
+          <p>{LOST_TEXT()}</p>
+          <button className="danger-btn" disabled={busy} onClick={reset}>{t('Reset encryption')}</button>
+        </>
+      )}
       {status === 'locked' && (
         <>
           <p>{t('Encrypted messages are on for your account, but this device does not have your key yet.')}</p>
@@ -97,9 +103,11 @@ export function E2eeBar({ channel }: { channel: Channel }) {
   const enc = isEncrypted(channel)
   const missing = others.filter((u) => publicKey(u.id) === null)
   const changed = others.filter((u) => keyChanged(u.id))
-  const problem = !bot && keyProblem(channel)
+  const added = bot ? [] : addedMembers(channel)
+  const problem = !bot && !added.length && keyProblem(channel) // a key made by an added member shows as the Accept line
   let line: ReactNode = null
   if (problem) line = null // the warning below says it
+  else if (status === 'lost') line = <>{LOST_TEXT()}</>
   else if (bot) line = <>{t('Not encrypted: conversations with apps are never end-to-end encrypted.')}</>
   else if (enc && status === 'locked') line = <>{t('Enter your recovery key to read this conversation.')} <button className="link" onClick={askRecovery}>{t('Enter recovery key')}</button></>
   else if (!enc && status === 'off') line = <>{t('Not encrypted yet: turn on encrypted messages in Settings.')}</>
@@ -107,7 +115,21 @@ export function E2eeBar({ channel }: { channel: Channel }) {
   return (
     <>
       {line && <p className="e2ee-bar" role="status"><Icon d={ICONS.lock} size={14} className={cls(!enc && 'e2ee-open')} /> {line}</p>}
-      {problem && <p className="e2ee-bar warn" role="alert">{t('The key of this conversation could not be verified.')}</p>}
+      {problem && (
+        <p className="e2ee-bar warn" role="alert">
+          {t('The key of this conversation could not be verified.')}
+          {problem === 'unverified' && <>
+            {' '}{t('Compare security codes, then make a new key.')}{' '}
+            <button className="link" onClick={() => void renewKey(channel).catch(toastError)}>{t('Make a new key')}</button>
+          </>}
+        </p>
+      )}
+      {added.map((id) => (
+        <p key={id} className="e2ee-bar warn" role="alert">
+          {t('{name} was added to this conversation. Accept to let them read what you send from now on.', { name: name(channel, id) })}{' '}
+          <button className="link" onClick={() => (acceptAdded(channel, id), void openChannel(channel).catch(() => {}))}>{t('Accept')}</button>
+        </p>
+      ))}
       {!bot && changed.map((u) => (
         <p key={u.id} className="e2ee-bar warn" role="alert">
           {t("{name}'s security key changed.", { name: name(channel, u.id) })}{' '}
