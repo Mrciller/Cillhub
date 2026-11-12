@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
-import { isEncrypted } from '../e2ee/session'
+import { isEncrypted, sendHint, useStatus } from '../e2ee/session'
 import { fetchSnippets, loadMembers, sendMessage, sendSticker, sendTyping, unblockUser } from '../actions'
 import { CommandForm, CommandPicker } from '../commands/CommandUi'
 import { flatten, useIndex, type Entry } from '../commands/commands'
@@ -134,7 +134,9 @@ export function Composer({ channel, label, perms, files, setFiles, addFiles }: P
   const cooling = cooldownUntil > Date.now()
   useTick(cooling)
   const leagueLobby = useStore((s) => s.leagueLobby)
-  const canSend = has(perms, P.SEND_MESSAGES) && !block
+  useStatus()
+  const e2eeHint = sendHint(channel) // encrypted DM without a key on this device, or a key that cannot be verified
+  const canSend = has(perms, P.SEND_MESSAGES) && !block && !e2eeHint
   const canAttach = canSend && has(perms, P.ATTACH_FILES)
   const encrypted = isEncrypted(channel) // the server refuses polls, send later and voice messages there (v1)
   const canPoll = canSend && has(perms, P.SEND_POLLS) && !encrypted
@@ -386,7 +388,7 @@ export function Composer({ channel, label, perms, files, setFiles, addFiles }: P
             aria-autocomplete="list"
             aria-controls={(ac && items.length) || commands.length ? listId : undefined}
             aria-activedescendant={commands.length ? `${listId}-${Math.min(sel, commands.length - 1)}` : ac && active ? `${listId}-${items.indexOf(active)}` : undefined}
-            placeholder={!canSend ? (channel.thread_metadata?.locked ? t('This thread is locked.') : t('You do not have permission to send messages in this channel.')) : archived ? t('Message {label} (sending unarchives it)', { label }) : t('Message {label}', { label })}
+            placeholder={e2eeHint ?? (!canSend ? (channel.thread_metadata?.locked ? t('This thread is locked.') : t('You do not have permission to send messages in this channel.')) : archived ? t('Message {label} (sending unarchives it)', { label }) : t('Message {label}', { label }))}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             // Caret moves re-check the autocomplete (onSelect would also fire on the Escape that closed it).

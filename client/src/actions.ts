@@ -100,6 +100,7 @@ export type SendExtra = { flags?: number; sticker_ids?: string[]; poll?: unknown
 
 /** Posts a message: JSON, or multipart with payload_json and files[n] plus per-file `attachments` metadata (alt text, spoiler names, voice data). */
 async function post(ch: Channel, payload: Record<string, unknown>, files: { file: Blob; name: string }[], onProgress?: (p: number) => void) {
+  if (!payload.e2ee_envelope) await E.refusePlain(ch) // a DM this device saw encrypted never gets plain text again
   try {
     let real: Message
     if (files.length) {
@@ -206,6 +207,7 @@ export function resend(m: Message) {
 
 export async function editMessage(m: Message, content: string) {
   const ch = getState().channels[m.channel_id]
+  await E.refusePlain(ch)
   if (m.e2ee_envelope || E.isEncrypted(ch)) { // a new envelope with the same files; the server keeps no history
     const key = await E.sendKey(ch)
     if (!key) throw new Error(t('Cannot encrypt for this conversation right now. Try again.'))
@@ -823,8 +825,10 @@ export const setVoiceStatus = (channelId: string, status: string | null) =>
 
 // Scheduled messages ("Send later", CONTRACT-v5 section 5): created on the channel like a message, listed/edited/cancelled under /users/@me.
 export const scheduledMessages = () => api<ScheduledMessage[]>('/users/@me/scheduled-messages')
-export const scheduleMessage = (channelId: string, content: string, sendAt: Date) =>
-  api<ScheduledMessage>(`/channels/${channelId}/scheduled-messages`, { method: 'POST', body: { content, send_at: sendAt.toISOString() } })
+export async function scheduleMessage(channelId: string, content: string, sendAt: Date) {
+  await E.refusePlain(getState().channels[channelId])
+  return api<ScheduledMessage>(`/channels/${channelId}/scheduled-messages`, { method: 'POST', body: { content, send_at: sendAt.toISOString() } })
+}
 export const editScheduled = (id: string, patch: { content?: string; send_at?: string }) =>
   api<ScheduledMessage>(`/users/@me/scheduled-messages/${id}`, { method: 'PATCH', body: patch })
 export const cancelScheduled = (id: string) => api(`/users/@me/scheduled-messages/${id}`, { method: 'DELETE' })

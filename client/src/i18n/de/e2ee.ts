@@ -53,6 +53,8 @@ export const e2ee: Record<string, string> = {
   'Security code with {name}': 'Sicherheitscode mit {name}',
   'Set up encrypted messages to send messages here.': 'Richte verschlüsselte Nachrichten ein, um hier zu schreiben.',
   'That is not a recovery key. It has 32 letters and digits.': 'Das ist kein Wiederherstellungsschlüssel. Er hat 32 Buchstaben und Ziffern.',
+  'The key of this conversation could not be verified.': 'Der Schlüssel dieser Unterhaltung ließ sich nicht überprüfen.',
+  'The key of this conversation could not be verified. Nothing was sent.': 'Der Schlüssel dieser Unterhaltung ließ sich nicht überprüfen. Es wurde nichts gesendet.',
   'This conversation is not encrypted. It becomes encrypted once every member has turned on encrypted messages.':
     'Diese Unterhaltung ist nicht verschlüsselt. Sie wird verschlüsselt, sobald alle Mitglieder verschlüsselte Nachrichten eingeschaltet haben.',
   'This message cannot be decrypted here, so it cannot be reported with its text.': 'Diese Nachricht lässt sich hier nicht entschlüsseln und kann deshalb nicht mit ihrem Text gemeldet werden.',

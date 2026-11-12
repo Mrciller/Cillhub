@@ -1,5 +1,6 @@
 // Encrypted DMs in this browser: the account key (non-extractable, in IndexedDB), channel keys in memory, decrypted
-// messages in memory, pinned contact keys in localStorage. DMs live on the hub only, so every call here goes to the hub.
+// messages in memory, pinned contact keys and the highest key epoch seen per DM in localStorage. DMs live on the hub
+// only, so every call here goes to the hub.
 import { useEffect, useSyncExternalStore } from 'react'
 import { api, ApiError } from '../api'
 import { t } from '../i18n'
@@ -10,7 +11,8 @@ import * as C from './crypto'
 export type FileRef = { id: string; k: string; n: string; name: string; type: string; size: number | null; w?: number; h?: number }
 export type Plain = { state: 'ok'; content: string; files: FileRef[] } | { state: 'pending' | 'locked' | 'fail' }
 type Status = 'unknown' | 'off' | 'locked' | 'ready'
-type Keys = { epoch: number; keys: Map<number, Uint8Array<ArrayBuffer>>; wrapped: string[] }
+// unverified: this device holds a wrap of the current key that no current member provably made (or that does not open)
+type Keys = { epoch: number; keys: Map<number, Uint8Array<ArrayBuffer>>; wrapped: string[]; unverified: boolean }
 
 let owner = '' // the account everything below belongs to
 let status: Status = 'unknown'
@@ -106,7 +108,7 @@ export async function recover(text: string) {
   try {
     key = await C.importPrivate(await C.openBackup(rk, owner, server.backup))
     const probe = C.random(32)
-    const back = await C.unwrap(key, await C.wrap(probe, server.public_key, 'probe', 1, owner), 'probe', 1, owner)
+    const back = await C.unwrap(key, await C.wrap(probe, server.public_key, 'probe', 1, owner, { id: owner, priv: key }), 'probe', 1, owner, server.public_key)
     if (C.b64(back) !== C.b64(probe)) throw new Error('mismatch')
   } catch {
     throw new Error(t('This recovery key does not match your account.'))
@@ -119,22 +121,31 @@ export const myPublicKey = () => myPub
 
 // --- contacts: public keys and pins -----------------------------------------------------------------------------------------
 const PINS = () => `e2ee-pins:${owner}`
-function pins(): Record<string, string> {
-  try { return JSON.parse(localStorage.getItem(PINS()) ?? '{}') ?? {} } catch { return {} }
+const store = <T,>(key: string, fallback: T): T => {
+  try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback } catch { return fallback }
 }
-const pin = (id: string, pub: string) => {
-  try { localStorage.setItem(PINS(), JSON.stringify({ ...pins(), [id]: pub })) } catch { /* private mode: no pins */ }
+const keep = (key: string, v: unknown) => {
+  try { localStorage.setItem(key, JSON.stringify(v)) } catch { /* private mode: nothing kept */ }
 }
+/** Every key pinned or accepted for a contact on this device, newest last (an old single-string pin reads as a list of one). */
+function pinsOf(id: string): string[] {
+  const v = store<Record<string, string | string[]>>(PINS(), {})[id]
+  return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : typeof v === 'string' ? [v] : []
+}
+const pin = (id: string, pub: string) => keep(PINS(), { ...store(PINS(), {}), [id]: [...pinsOf(id).filter((x) => x !== pub), pub] })
 /** Someone's public key, fresh from the server (pinned on first sight). */
 async function publicKeyOf(id: string): Promise<string | null> {
   if (id === owner && myPub) return (pubs.set(id, myPub), myPub)
   const pub = await api<{ public_key: string }>(`/users/${id}/e2ee/keys`).then((r) => r.public_key, (e) => (notFound(e) ? null : Promise.reject(e)))
   pubs.set(id, pub)
-  if (pub && !pins()[id]) pin(id, pub)
+  if (pub && !pinsOf(id).length) pin(id, pub)
   return pub
 }
-/** Members whose key differs from the one first seen here. */
-export const keyChanged = (id: string) => !!pubs.get(id) && !!pins()[id] && pins()[id] !== pubs.get(id)
+/** Members whose key differs from the newest one pinned or accepted here. */
+export const keyChanged = (id: string) => {
+  const p = pinsOf(id)
+  return !!pubs.get(id) && !!p.length && p[p.length - 1] !== pubs.get(id)
+}
 export const acceptKey = (id: string) => (pubs.get(id) && pin(id, pubs.get(id)!), changed())
 export const publicKey = (id: string) => pubs.get(id)
 
@@ -142,13 +153,41 @@ const members = (ch: Channel) => [owner, ...(ch.recipients ?? []).map((u) => u.i
 export const isDm = (ch?: Channel) => !!ch && !ch.guild_id && (ch.type === 1 || ch.type === 3)
 export const isEncrypted = (ch?: Channel) => isDm(ch) && (ch!.e2ee_epoch ?? 0) > 0
 
+// --- local memory: the highest epoch this device saw per DM. A DM once seen encrypted never sends plain text from here again
+const EPOCHS = () => `e2ee-epochs:${owner}`
+const seenEpoch = (id: string) => store<Record<string, number>>(EPOCHS(), {})[id] ?? 0
+const see = (id: string, epoch: number) => epoch > seenEpoch(id) && keep(EPOCHS(), { ...store(EPOCHS(), {}), [id]: epoch })
+/** The server reports a lower epoch (or none) for a DM this device saw encrypted: someone turned it back. */
+const rolledBack = (ch: Channel) => !!owner && owner === meId() && seenEpoch(ch.id) > (ch.e2ee_epoch ?? 0)
+/** The key of this DM cannot be trusted right now (turned back, or a current key no member provably made). */
+export const keyProblem = (ch: Channel) => isDm(ch) && (rolledBack(ch) || !!channels.get(ch.id)?.unverified)
+/** Why this device cannot send in a DM right now (shown in place of the message box), or null. */
+export function sendHint(ch: Channel) {
+  if (!isDm(ch)) return null
+  if (rolledBack(ch)) return t('The key of this conversation could not be verified.')
+  if (!isEncrypted(ch) || status === 'unknown' || status === 'ready') return null
+  return status === 'locked' ? t('Enter your recovery key to send messages here.') : t('Set up encrypted messages to send messages here.')
+}
+const guard = (ch: Channel) => {
+  if (isDm(ch) && rolledBack(ch)) throw new Error(t('The key of this conversation could not be verified. Nothing was sent.'))
+}
+/** Throws when plain text must not go to this channel from here (it was encrypted before). Every plain send calls it. */
+export async function refusePlain(ch?: Channel) {
+  if (!ch || !isDm(ch)) return
+  await ready().catch(() => {}) // sets the account the memory belongs to
+  guard(getState().channels[ch.id] ?? ch)
+}
+
 /** Opening a DM: fresh member keys; a DM whose members all have keys is encrypted right away. */
 export async function openChannel(ch: Channel) {
   await ready()
   if (!isDm(ch)) return
+  if (rolledBack(ch)) return changed() // never set up again over an epoch this device saw: the warning shows instead
+  see(ch.id, ch.e2ee_epoch ?? 0)
   await Promise.all(members(ch).map(publicKeyOf))
   const all = members(ch).every((id) => pubs.get(id)) && !(ch.recipients ?? []).some((u) => u.bot || u.system)
   if (status === 'ready' && all && !(ch.e2ee_epoch ?? 0)) await newEpoch(ch, 1).catch((e) => console.warn('encrypted DM: could not set up the key', e))
+  else if (status === 'ready' && (ch.e2ee_epoch ?? 0)) await channelKeys(ch).catch(() => {}) // so a key that cannot be verified shows
   changed()
 }
 
@@ -158,15 +197,31 @@ async function channelKeys(ch: Channel, fresh = false): Promise<Keys> {
   if (have && !fresh && have.epoch === (ch.e2ee_epoch ?? 0)) return have
   const r = await api<{ epoch: number; keys: { epoch: number; wrapped: string }[]; wrapped_users: string[] }>(`/channels/${ch.id}/e2ee/keys`)
   const keys = new Map(have?.keys)
+  let unverified = false
   for (const k of r.keys) {
     if (keys.has(k.epoch) || !priv) continue
-    // a wrap made for an older account key (after a reset) does not open: those messages stay unreadable here
-    await C.unwrap(priv, k.wrapped, ch.id, k.epoch, owner).then((key) => keys.set(k.epoch, key), () => {})
+    // the current key counts only when a current member (or this account) made its wrap; older ones from anyone known here.
+    // A wrap made for an older account key (after a reset) does not open: those messages stay unreadable here.
+    const by = C.wrapper(k.wrapped)
+    const key = by && (k.epoch !== r.epoch || members(ch).includes(by)) ? await openWrap(k.wrapped, ch.id, k.epoch, by) : null
+    if (key) keys.set(k.epoch, key)
+    else if (k.epoch === r.epoch) unverified = true
   }
-  const out = { epoch: r.epoch, keys, wrapped: r.wrapped_users }
+  const out = { epoch: r.epoch, keys, wrapped: r.wrapped_users, unverified }
   channels.set(ch.id, out)
+  see(ch.id, r.epoch)
   if (r.epoch !== (ch.e2ee_epoch ?? 0)) apply('CHANNEL_UPDATE', { id: ch.id, e2ee_epoch: r.epoch })
   return out
+}
+
+/** A wrap opened with this account's key and a key of its maker: own key, then every key pinned for them (newest first), then the server's. */
+async function openWrap(wrapped: string, channelId: string, epoch: number, by: string) {
+  const candidates = by === owner ? [myPub] : [...pinsOf(by).reverse(), pubs.has(by) ? pubs.get(by) : await publicKeyOf(by).catch(() => null)]
+  for (const pub of new Set(candidates)) {
+    if (!pub) continue
+    try { return await C.unwrap(priv!, wrapped, channelId, epoch, owner, pub) } catch { /* not this key */ }
+  }
+  return null
 }
 
 async function newEpoch(ch: Channel, epoch: number) {
@@ -176,7 +231,7 @@ async function newEpoch(ch: Channel, epoch: number) {
   for (const id of ids) {
     const pub = pubs.get(id) ?? (await publicKeyOf(id))
     if (!pub) throw new Error(t('{name} has not set up encrypted messages.', { name: nameOf(ch, id) }))
-    wraps[id] = await C.wrap(key, pub, ch.id, epoch, id)
+    wraps[id] = await C.wrap(key, pub, ch.id, epoch, id, { id: owner, priv: priv! })
   }
   try {
     await api(`/channels/${ch.id}/e2ee/epoch`, { method: 'PUT', body: { epoch, wraps } })
@@ -185,7 +240,8 @@ async function newEpoch(ch: Channel, epoch: number) {
     throw e
   }
   const prev = channels.get(ch.id)
-  channels.set(ch.id, { epoch, keys: new Map(prev?.keys).set(epoch, key), wrapped: ids })
+  channels.set(ch.id, { epoch, keys: new Map(prev?.keys).set(epoch, key), wrapped: ids, unverified: false })
+  see(ch.id, epoch)
   apply('CHANNEL_UPDATE', { id: ch.id, e2ee_epoch: epoch })
 }
 const nameOf = (ch: Channel, id: string) => {
@@ -198,6 +254,8 @@ export async function sendKey(chIn: Channel, fresh = false): Promise<{ key: Uint
   if (!isDm(chIn)) return null
   await ready()
   let ch = getState().channels[chIn.id] ?? chIn
+  guard(ch) // epoch 0 or lower than seen here: neither plain text nor that key
+  see(ch.id, ch.e2ee_epoch ?? 0)
   if (!(ch.e2ee_epoch ?? 0)) {
     if (status !== 'ready') return null
     await openChannel(ch)
@@ -217,7 +275,7 @@ export async function sendKey(chIn: Channel, fresh = false): Promise<{ key: Uint
       const wraps: Record<string, string> = {}
       for (const id of lacking) {
         const pub = await publicKeyOf(id).catch(() => null)
-        if (pub) wraps[id] = await C.wrap(key, pub, ch.id, c.epoch, id)
+        if (pub) wraps[id] = await C.wrap(key, pub, ch.id, c.epoch, id, { id: owner, priv: priv! })
       }
       if (Object.keys(wraps).length) {
         const r = await api<{ wrapped_users: string[] }>(`/channels/${ch.id}/e2ee/wraps`, { method: 'PUT', body: { epoch: c.epoch, wraps } }).catch(() => null)

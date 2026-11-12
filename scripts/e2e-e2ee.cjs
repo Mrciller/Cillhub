@@ -1,10 +1,10 @@
-// End-to-end check of encrypted DMs with Alex and Sam (and Robin, instance admin) in real browsers against a real server.
+// End-to-end check of encrypted DMs with Alex and Sam (and Robin, instance admin and later a database attacker) in real browsers against a real server.
 // Starts its own throwaway instance from server/ on E2E_PORT (3391) serving client/dist with a temp DATA_DIR, then reads
 // that instance's SQLite file and attachment folder directly to prove the server holds no plain text.
 // Run: NODE_PATH=<dir with playwright> node scripts/e2e-e2ee.cjs (E2E_FAIL_SHOTS=<dir> saves every page when a step fails)
 const { chromium } = require('playwright')
 const { spawn, execFileSync } = require('node:child_process')
-const { createHmac, randomBytes } = require('node:crypto')
+const { createCipheriv, createECDH, createHmac, hkdfSync, randomBytes } = require('node:crypto')
 const { DatabaseSync } = require('node:sqlite')
 const path = require('node:path')
 const fs = require('node:fs')
@@ -53,6 +53,19 @@ async function until(what, fn, ms = 10000) {
   }
 }
 const check = (ok, what) => { if (!ok) throw new Error(what) }
+
+// What someone with only database access can do: a wrap v2 of a channel key of their own, claiming to be `by`, with a key
+// pair of their own in place of by's account key (they know only public keys).
+function forgeWrap(channelKey, memberPub, channelId, epoch, userId, by) {
+  const eph = createECDH('prime256v1'), mine = createECDH('prime256v1')
+  eph.generateKeys(); mine.generateKeys()
+  const pub = Buffer.from(memberPub, 'base64url')
+  const ikm = Buffer.concat([eph.computeSecret(pub), mine.computeSecret(pub)])
+  const wk = Buffer.from(hkdfSync('sha256', ikm, Buffer.from(channelId), `cillhub-e2ee-wrap-v2|${epoch}|${userId}|${by}`, 32))
+  const n = randomBytes(12), c = createCipheriv('aes-256-gcm', wk, n)
+  const ct = Buffer.concat([c.update(channelKey), c.final(), c.getAuthTag()])
+  return JSON.stringify({ by, eph: eph.getPublicKey().toString('base64url'), n: n.toString('base64url'), c: ct.toString('base64url') })
+}
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s) from a base32 secret, as an authenticator app computes it.
 function totp(secret, at = Date.now()) {
@@ -149,6 +162,8 @@ async function main() {
   children.push(spawn(process.execPath, ['src/index.js'], { cwd: SERVER_DIR, env: { ...env, PORT: String(PORT), DATA_DIR: dataDir, STATIC_DIR: DIST }, stdio: ['ignore', out, out] }))
   const grant = (name) => execFileSync(process.execPath, ['src/admin-cli.js', 'grant', name], { cwd: SERVER_DIR, env: { ...env, DATA_DIR: dataDir }, encoding: 'utf8' })
   const sql = (q, ...a) => { const db = new DatabaseSync(path.join(dataDir, 'cillcord.sqlite'), { readOnly: true }); try { return db.prepare(q).all(...a) } finally { db.close() } }
+  // the "attacker": writes straight into the database, as a node admin could
+  const write = (q, ...a) => { const db = new DatabaseSync(path.join(dataDir, 'cillcord.sqlite')); try { db.exec('PRAGMA busy_timeout = 5000'); return db.prepare(q).run(...a) } finally { db.close() } }
   const browser = await chromium.launch()
   let recovery
   try {
@@ -159,7 +174,7 @@ async function main() {
 
     await step(`1. Alex, Sam and Robin register (suffix ${SFX}); Alex and Sam become friends; Robin is made admin by the CLI and turns on 2FA`, async () => {
       for (const [p, n] of [[alex, NAME.alex], [sam, NAME.sam], [robin, NAME.robin]]) await register(p, n)
-      for (const [k, p] of Object.entries({ alex, sam })) ids[k] = (await api(p, 'GET', '/users/@me')).body.id
+      for (const [k, p] of Object.entries({ alex, sam, robin })) ids[k] = (await api(p, 'GET', '/users/@me')).body.id
       await ok(api(alex, 'POST', '/users/@me/relationships', { username: NAME.sam }))
       await ok(api(sam, 'PUT', `/users/@me/relationships/${ids.alex}`, {}))
       ids.dm = (await ok(api(alex, 'POST', '/users/@me/channels', { recipient_id: ids.sam }))).id
@@ -286,7 +301,51 @@ async function main() {
       check(!(await msg(sam, `after the reset ${SFX}`).innerText()).includes('Cannot decrypt'), 'readable with the new key')
     })
 
-    await step('10. no uncaught page errors and no native dialogs', async () => {
+    await step('10. A database attacker inserts a new epoch wrapped with a key of their own: Alex sees the warning, renews on send, the attacker\'s key is never used', async () => {
+      const epoch = sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e + 1
+      const evil = randomBytes(32)
+      const pub = (id) => sql('SELECT public_key FROM user_e2ee_keys WHERE user_id = ?', id)[0].public_key
+      for (const id of [ids.alex, ids.sam]) {
+        write('INSERT INTO dm_keys (channel_id, epoch, user_id, wrapped) VALUES (?, ?, ?, ?)', ids.dm, epoch, id, forgeWrap(evil, pub(id), ids.dm, epoch, id, ids.robin))
+      }
+      write('UPDATE channels SET e2ee_epoch = ? WHERE id = ?', epoch, ids.dm)
+      await openDm(alex)
+      const warn = alex.locator('.e2ee-bar.warn').filter({ hasText: 'The key of this conversation could not be verified.' })
+      await warn.waitFor(LIVE)
+      const count = sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n
+      await send(alex, `after the attack ${SFX}`)
+      await until('the message to be stored', async () => sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n > count).catch(async (e) => {
+        throw new Error(`${e.message}; on screen: ${(await alex.locator('.toast, [role=alert]').allInnerTexts()).join(' | ')}`)
+      })
+      const last = JSON.parse(sql('SELECT e2ee_envelope FROM messages WHERE channel_id = ? ORDER BY id DESC LIMIT 1', ids.dm)[0].e2ee_envelope)
+      check(last.e === epoch + 1, `sent with a renewed key (epoch ${epoch + 1}), got epoch ${last.e}`)
+      const bys = sql('SELECT wrapped FROM dm_keys WHERE channel_id = ? AND epoch = ?', ids.dm, epoch + 1).map((r) => JSON.parse(r.wrapped).by)
+      check(bys.length === 2 && bys.every((b) => b === ids.alex), `the new key is wrapped by Alex: ${bys}`)
+      await until('the warning to go once the key is renewed', async () => (await warn.count()) === 0)
+      await openDm(sam)
+      await msg(sam, `after the attack ${SFX}`).locator('.content').waitFor(LIVE)
+      check(!(await msg(sam, `after the attack ${SFX}`).innerText()).includes('Cannot decrypt'), 'Sam reads the message sent with the renewed key')
+    })
+
+    await step('11. The attacker sets the epoch back to 0: Alex\'s device remembers it was encrypted, warns and sends no plain text', async () => {
+      const before = sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n
+      write('UPDATE channels SET e2ee_epoch = 0 WHERE id = ?', ids.dm)
+      await openDm(alex)
+      await alex.locator('.e2ee-bar.warn').filter({ hasText: 'The key of this conversation could not be verified.' }).waitFor(LIVE)
+      check(await composer(alex).isDisabled(), 'the message box is disabled')
+      check((await composer(alex).getAttribute('placeholder')) === 'The key of this conversation could not be verified.', 'the message box says why')
+      // even with the box forced open, the send path refuses
+      await composer(alex).evaluate((el) => el.removeAttribute('disabled'))
+      const plain = `plain after rollback ${SFX}`
+      await composer(alex).fill(plain)
+      await composer(alex).press('Enter')
+      await alex.getByText('The key of this conversation could not be verified. Nothing was sent.').waitFor(LIVE)
+      await sleep(500)
+      check(sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n === before, 'no message stored')
+      check(sql("SELECT COUNT(*) AS n FROM messages WHERE content LIKE ?", `%${plain}%`)[0].n === 0, 'the text is nowhere in the database')
+    })
+
+    await step('12. no uncaught page errors and no native dialogs', async () => {
       if (errors.length) throw new Error(errors.join('; '))
     })
   } catch (e) {

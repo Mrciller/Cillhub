@@ -9,7 +9,7 @@ import { getState, useStore } from '../store'
 import type { Attachment, Channel, Message } from '../types'
 import { Attachments } from '../chat/Attachments'
 import * as C from './crypto'
-import { acceptKey, decryptDownload, enable, isDm, isEncrypted, keyChanged, myPublicKey, openChannel, publicKey, recover, safeType, useE2ee, useStatus, type FileRef } from './session'
+import { acceptKey, decryptDownload, enable, isDm, isEncrypted, keyChanged, keyProblem, myPublicKey, openChannel, publicKey, recover, safeType, useE2ee, useStatus, type FileRef } from './session'
 
 /** Shows a new recovery key once; Done needs the "saved it" tick. */
 function RecoveryKeyDialog({ text, onClose }: { text: string; onClose: () => void }) {
@@ -97,14 +97,17 @@ export function E2eeBar({ channel }: { channel: Channel }) {
   const enc = isEncrypted(channel)
   const missing = others.filter((u) => publicKey(u.id) === null)
   const changed = others.filter((u) => keyChanged(u.id))
+  const problem = !bot && keyProblem(channel)
   let line: ReactNode = null
-  if (bot) line = <>{t('Not encrypted: conversations with apps are never end-to-end encrypted.')}</>
+  if (problem) line = null // the warning below says it
+  else if (bot) line = <>{t('Not encrypted: conversations with apps are never end-to-end encrypted.')}</>
   else if (enc && status === 'locked') line = <>{t('Enter your recovery key to read this conversation.')} <button className="link" onClick={askRecovery}>{t('Enter recovery key')}</button></>
   else if (!enc && status === 'off') line = <>{t('Not encrypted yet: turn on encrypted messages in Settings.')}</>
   else if (!enc && missing.length) line = <>{t('Not encrypted yet: {name} has not set up encrypted messages.', { name: missing.map((u) => name(channel, u.id)).join(', ') })}</>
   return (
     <>
       {line && <p className="e2ee-bar" role="status"><Icon d={ICONS.lock} size={14} className={cls(!enc && 'e2ee-open')} /> {line}</p>}
+      {problem && <p className="e2ee-bar warn" role="alert">{t('The key of this conversation could not be verified.')}</p>}
       {!bot && changed.map((u) => (
         <p key={u.id} className="e2ee-bar warn" role="alert">
           {t("{name}'s security key changed.", { name: name(channel, u.id) })}{' '}
