@@ -11,6 +11,7 @@ before(async () => {
   api = srv.api;
   g = await guildWith(srv, ['alice', 'bob', 'carol']); // carol stays offline
   ({ alice, bob, carol } = g.users);
+  await api('PATCH', `/guilds/${g.guild.id}`, alice.token, { auto_spam_slowmode_enabled: false }); // these tests send fast on purpose
   alice.gw = await srv.gateway(alice.token);
   bob.gw = await srv.gateway(bob.token);
 });

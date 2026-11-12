@@ -1,4 +1,4 @@
-// Server Settings > Safety Setup: verification level and rules screening (membership screening with TERMS rules).
+// Server Settings > Safety Setup: verification level, automatic spam slow mode and rules screening (membership screening with TERMS rules).
 import { t } from '../i18n'
 import { useEffect, useState } from 'react'
 import { getMemberVerification, patchGuild, saveMemberVerification } from '../actions'
@@ -32,6 +32,13 @@ export function SafetyPage({ guild }: { guild: Guild }) {
           </label>
         ))}
       </fieldset>
+      <h2 className="sub-title">{t('Spam Protection')}</h2>
+      <Switch
+        label={t('Automatic spam slow mode')}
+        note={t('When one member floods a channel, only they get a 10 second slowmode for 10 minutes. When many members do, the channel gets a 10 second slowmode for 5 minutes. Moderators are not affected.')}
+        checked={guild.auto_spam_slowmode_enabled !== false}
+        onChange={(v) => patchGuild(guild.id, { auto_spam_slowmode_enabled: v }).catch((e: Error) => setError(e.message))}
+      />
       <FormError error={error} />
       <RulesScreening guild={guild} />
     </>

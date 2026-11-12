@@ -24,7 +24,7 @@ export function tx(fn) {
 
 // step i brings the database to user_version i + 1. v1 never set user_version, so a v1 database
 // reads 0 and replays 001, which only creates what is missing.
-const MIGRATIONS = ['001-v1.sql', '002-v2.sql', '003-v3.sql', '004-v4.sql', '005-v5.sql', '006-v6.sql', '007-v7.sql', '008-brand.sql', '009-guild-voice.sql', '010-modules.sql', '011-v9.sql', '012-v9-phase4.sql', '013-v10.sql', '014-v11.sql', '015-v12.sql', '016-v13.sql', '017-role-scope.sql', '018-attachment-sig.sql', '019-password-reset.sql', '020-account-security.sql', '021-legal.sql'];
+const MIGRATIONS = ['001-v1.sql', '002-v2.sql', '003-v3.sql', '004-v4.sql', '005-v5.sql', '006-v6.sql', '007-v7.sql', '008-brand.sql', '009-guild-voice.sql', '010-modules.sql', '011-v9.sql', '012-v9-phase4.sql', '013-v10.sql', '014-v11.sql', '015-v12.sql', '016-v13.sql', '017-role-scope.sql', '018-attachment-sig.sql', '019-password-reset.sql', '020-account-security.sql', '021-legal.sql', '022-spam-guard.sql'];
 for (let v = get('PRAGMA user_version').user_version; v < MIGRATIONS.length; v++) {
   const sql = readFileSync(new URL(`./migrations/${MIGRATIONS[v]}`, import.meta.url), 'utf8');
   tx(() => db.exec(`${sql}; PRAGMA user_version = ${v + 1};`));
@@ -129,7 +129,7 @@ export function guildObj(g, channels) {
     description: g.description, afk_channel_id: g.afk_channel_id, afk_timeout: g.afk_timeout, verification_level: g.verification_level,
     rules_channel_id: g.rules_channel_id, vanity_url_code: g.vanity_url_code, features: featuresOf(g), premium_tier: 0, nsfw_level: 0,
     banner: g.banner ?? null, splash: g.splash ?? null, profile: guildIdentity(g), brand_color_primary: json(g.profile, {}).brand_color_primary ?? null,
-    entrance_sounds_enabled: g.entrance_sounds == null ? true : !!g.entrance_sounds, greeting_templates: json(g.greeting_templates, []),
+    entrance_sounds_enabled: g.entrance_sounds == null ? true : !!g.entrance_sounds, auto_spam_slowmode_enabled: g.spam_slowmode == null ? true : !!g.spam_slowmode, greeting_templates: json(g.greeting_templates, []),
     voice_backend: g.voice_backend ?? null, // Cillhub: per-server voice server, null = instance default
     emojis: all('SELECT * FROM emojis WHERE guild_id = ? ORDER BY rowid', g.id).map(e => emojiObj(e)),
     stickers: all('SELECT * FROM stickers WHERE guild_id = ? ORDER BY rowid', g.id).map(s => stickerObj(s)),

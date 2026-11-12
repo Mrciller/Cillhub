@@ -9,6 +9,7 @@ before(async () => {
   api = srv.api;
   g = await guildWith(srv, ['alice', 'bob', 'carol']);
   ({ alice, bob, carol } = g.users);
+  await api('PATCH', `/guilds/${g.guild.id}`, alice.token, { auto_spam_slowmode_enabled: false }); // these tests send fast on purpose
   for (const u of [alice, bob]) u.gw = await srv.gateway(u.token);
   other = (await api('POST', '/guilds', bob.token, { name: 'Bob Place' })).body;
 });

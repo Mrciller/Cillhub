@@ -97,7 +97,7 @@ export function checkStart(ctx, parent, perm) {
 }
 
 export function announceNew(ctx, parent, t) {
-  markSent(parent, ctx.user.id);
+  markSent(parent, ctx.user.id, parent.perms);
   threadEvent(t, 'THREAD_CREATE', { newly_created: true });
   audit(ctx, t.guild_id, A.THREAD_CREATE, t.id, { changes: diff({}, { name: t.name, type: t.type, auto_archive_duration: t.auto_archive_duration }) });
 }

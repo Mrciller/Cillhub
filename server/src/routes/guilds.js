@@ -98,6 +98,7 @@ function settings(body, g) {
   if (body.rules_channel_id !== undefined) out.rules_channel_id = channelRef(body, 'rules_channel_id', g.id, [0]);
   if (body.description !== undefined) out.description = body.description === null ? null : str(body, 'description', 0, 300) || null;
   if (body.entrance_sounds_enabled !== undefined) out.entrance_sounds = Number(bool(body, 'entrance_sounds_enabled'));
+  if (body.auto_spam_slowmode_enabled !== undefined) out.spam_slowmode = Number(bool(body, 'auto_spam_slowmode_enabled'));
   if (body.voice_backend !== undefined) {
     if (body.voice_backend !== null && !configuredBackends().includes(body.voice_backend)) throw invalid('voice_backend', 'VOICE_BACKEND_UNAVAILABLE', `Must be null or one of: ${configuredBackends().join(', ') || 'none'}.`);
     out.voice_backend = body.voice_backend;
@@ -118,7 +119,7 @@ function settings(body, g) {
 }
 
 const AUDITED = ['owner_id', 'name', 'icon', 'description', 'verification_level', 'afk_channel_id', 'afk_timeout', 'system_channel_id', 'rules_channel_id', 'features',
-  'banner', 'splash', 'entrance_sounds_enabled', 'greeting_templates', 'voice_backend'];
+  'banner', 'splash', 'entrance_sounds_enabled', 'auto_spam_slowmode_enabled', 'greeting_templates', 'voice_backend'];
 
 async function patchGuild(ctx) {
   const { params, user } = ctx;
