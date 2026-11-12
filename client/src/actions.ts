@@ -348,8 +348,9 @@ export async function moveChannels(guildId: string, changes: { id: string; posit
 
 export const createInvite = (channelId: string) => api<Invite>(`/channels/${channelId}/invites`, { method: 'POST', body: { max_age: 86400 } })
 
-export async function leaveGuild(guildId: string, owner: boolean) {
-  await api(owner ? `/guilds/${guildId}` : `/users/@me/guilds/${guildId}`, { method: 'DELETE' })
+/** `code`: the owner's 2FA or backup code, which deleting a server needs (as a transfer does) when 2FA is on. */
+export async function leaveGuild(guildId: string, owner: boolean, code?: string) {
+  await api(owner ? `/guilds/${guildId}` : `/users/@me/guilds/${guildId}`, { method: 'DELETE', ...(code && { body: { code } }) })
   apply('GUILD_DELETE', { id: guildId })
   navigate('/channels/@me')
 }

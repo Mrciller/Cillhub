@@ -152,9 +152,10 @@ async function patchGuild(ctx) {
   return out;
 }
 
-function deleteGuild({ params, user }) {
-  const g = loadGuild(params.id, user);
-  if (g.owner_id !== user.id) throw missingPermissions();
+function deleteGuild(ctx) {
+  const g = loadGuild(ctx.params.id, ctx.user);
+  if (g.owner_id !== ctx.user.id) throw missingPermissions();
+  requireMfa(ctx); // like an ownership transfer
   destroyGuild(g);
 }
 
@@ -220,7 +221,9 @@ function putAntiRaid(ctx) {
 function backupExport({ params, user }) {
   const g = loadGuild(params.id, user);
   need(g.perms, P.MANAGE_GUILD);
-  const channels = all('SELECT id, type, name, position, topic, nsfw, rate_limit_per_user, parent_id, message_ttl, quality_mode FROM channels WHERE guild_id = ? ORDER BY position', g.id);
+  const seen = new Set(visibleChannels(g.id, user.id).map(c => c.id)); // names and topics of hidden channels stay out
+  const channels = all('SELECT id, type, name, position, topic, nsfw, rate_limit_per_user, parent_id, message_ttl, quality_mode FROM channels WHERE guild_id = ? ORDER BY position', g.id)
+    .filter(c => seen.has(c.id));
   const roles = all('SELECT id, name, color, hoist, position, permissions, mentionable FROM roles WHERE guild_id = ? ORDER BY position', g.id);
   const emojis = all('SELECT id, name, animated FROM emojis WHERE guild_id = ?', g.id);
   const soundboard = all('SELECT id, name, description, icon_emoji, sound_ids FROM soundboard_packs WHERE guild_id = ?', g.id);

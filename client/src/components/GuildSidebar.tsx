@@ -11,7 +11,7 @@ import { firstText, usePerms } from '../selectors'
 import { getState, setState, useStore } from '../store'
 import type { Guild } from '../types'
 import { ChannelList } from './ChannelList'
-import { ask, toastError } from './dialogs'
+import { ask, askText, toastError } from './dialogs'
 import { Field, FormError, Icon, ICONS, Modal } from './ui'
 import { accentVars } from '../custom/ServerCustomize'
 
@@ -28,11 +28,13 @@ export function GuildSidebar({ guild, channelId }: { guild: Guild; channelId?: s
   const isSim = useStore((s) => isSimulatingRoles(s, guild.id))
   const hideMuted = useStore((s) => !!s.guildSettings[guild.id]?.hide_muted_channels)
   const pick = (fn: () => void) => () => (menu.current?.hidePopover(), fn())
+  const deleting = { title: t("Delete '{name}'", { name: guild.name }), body: <p>{t('Are you sure you want to delete {name}? This action cannot be undone.', { name: guild.name })}</p>, confirm: t('Delete Server'), danger: true }
   const leave = () =>
-    void ask(owner
-      ? { title: t("Delete '{name}'", { name: guild.name }), body: <p>{t('Are you sure you want to delete {name}? This action cannot be undone.', { name: guild.name })}</p>, confirm: t('Delete Server'), danger: true }
-      : { title: t("Leave '{name}'", { name: guild.name }), body: <p>{t("Are you sure you want to leave {name}? You won't be able to rejoin this server unless you are re-invited.", { name: guild.name })}</p>, confirm: t('Leave Server'), danger: true },
-    ).then((ok) => void (ok && leaveGuild(guild.id, owner).catch(toastError)))
+    void (owner && me?.mfa_enabled
+      ? askText({ ...deleting, label: t('Authentication or backup code') }).then((code) => void (code && leaveGuild(guild.id, owner, code.trim()).catch(toastError)))
+      : ask(owner ? deleting
+        : { title: t("Leave '{name}'", { name: guild.name }), body: <p>{t("Are you sure you want to leave {name}? You won't be able to rejoin this server unless you are re-invited.", { name: guild.name })}</p>, confirm: t('Leave Server'), danger: true },
+      ).then((ok) => void (ok && leaveGuild(guild.id, owner).catch(toastError))))
   const create = (type: 0 | 4) => setState({ modal: { kind: 'create-channel', guildId: guild.id, parentId: null, type } })
   const current = channelId ? getState().channels[channelId] : undefined
   const inviteChannel = current && !current.thread_metadata && current.type !== 4 ? channelId : firstText(getState(), guild.id)?.id
