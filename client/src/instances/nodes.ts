@@ -78,19 +78,34 @@ function open(i: InstanceInfo) {
   conns.set(i.id, g)
   g.connect()
 }
-/** Over its budget (registry.ts): disconnected, its servers dropped, the state shown, until the next start. */
+/** Over its budget (registry.ts) or its data broke the client: disconnected, its servers and all it brought dropped, the
+ *  state shown, until the next start. */
 function cutOff(id: string) {
   close(id)
   if (nodeOf(getState().voice.guildId) === id) leaveVoice()
   for (const g of Object.keys(getState().guilds)) if (nodeOf(g) === id) apply('GUILD_DELETE', { id: g })
+  dropNodeState(id)
   setLive(id, { status: 'cut-off' })
+}
+/** After a render error (main.tsx): every node with state in the store is cut off. Which one's data broke the render is not
+ *  known, so all of them. One name per node cut off, none when no node had state. */
+export function cutOffNodes() {
+  const s = getState()
+  const ids = new Set(NODE_MAPS.flatMap((k) => Object.keys(s[k]).map(nodeOf)).filter((x): x is string => !!x))
+  for (const id of ids) cutOff(id)
+  return [...ids].map((id) => instanceById(id)?.name ?? '') // '': leftovers of a node removed meanwhile
 }
 function close(id: string) {
   conns.get(id)?.disconnect()
   conns.delete(id)
 }
 
+// A node event the client cannot apply (wrong-typed fields the boundary lets through) cuts the node off, like an over-budget
+// one: whatever part of it was applied goes with the node's state.
 function dispatch(id: string, t: string, raw: any) {
+  try { handle(id, t, raw) } catch (e) { console.warn(`Node ${id}: ${t} could not be applied, cut off`, e); cutOff(id) }
+}
+function handle(id: string, t: string, raw: any) {
   if (t === 'READY' && /^\d{1,20}$/.test(raw?.user?.id ?? '')) setLive(id, { meId: raw.user.id, sessionId: typeof raw.session_id === 'string' ? raw.session_id : null })
   // The one way in for node events: shape, ids, event type, target ownership and users are checked there.
   const d = admit(id, t, raw)

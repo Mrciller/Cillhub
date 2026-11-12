@@ -349,6 +349,35 @@ async function multiInstance(browser, errors) {
   assert.equal(await page.locator('.rail-entry.node-down').count(), 0)
   console.log('ok v7 7 - offline node: greyed servers and status line, reconnects when it is back')
 
+  // A hostile node: admitted payloads with wrong-typed fields. A render error cuts the nodes off and the hub view renders
+  // again; an event the store cannot apply cuts the node off. Both times its servers go and the hub keeps working.
+  const hubLink = rail.getByRole('link', { name: /^Nightfall Gaming/ })
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'GUILD_UPDATE', d: { id: NG, name: { x: 1 } } }))
+  await page.getByText("Display error: Dana's Node was disconnected", { exact: false }).waitFor()
+  await hubLink.waitFor()
+  assert.equal(await rail.getByRole('link', { name: /Dana's Node/ }).count(), 0, 'node servers dropped after the render error')
+  await page.reload() // cut off until the next start
+  await nodeIcon.click() // its channel's messages are loaded, then the hub view is shown
+  await page.waitForURL(`**/channels/7000~${NG}/7000~7101`)
+  await page.locator('.msg').first().waitFor()
+  await hubLink.click()
+  const warned = []
+  page.on('console', (m) => m.type() === 'warning' && warned.push(m.text()))
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_CREATE', d: { id: '7190', type: 0, channel_id: '7101', guild_id: NG, author: dana, content: 'poll', timestamp: new Date().toISOString(), mentions: [], attachments: [], embeds: [], poll: {} } }))
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_POLL_VOTE_ADD', d: { user_id: '7002', channel_id: '7101', guild_id: NG, message_id: '7190', answer_id: 1 } }))
+  await rail.getByRole('link', { name: /Dana's Node/ }).waitFor({ state: 'detached' }) // cut off after the reducer throw
+  assert.ok(warned.some((w) => w.includes('MESSAGE_POLL_VOTE_ADD could not be applied')), 'the store threw on the vote, not the render')
+  await rail.getByRole('button', { name: 'Add a server' }).click()
+  await page.getByRole('dialog', { name: 'Add a server' }).getByText('Cut off: sent too much or broken data').waitFor()
+  await page.keyboard.press('Escape')
+  // a render error with no node state left: the plain reload screen (a broken hub payload stands in for any other bug)
+  st.hubSock.send(JSON.stringify({ op: 0, t: 'GUILD_UPDATE', d: { id: hubGuild.id, name: { x: 1 } } }))
+  await page.getByRole('heading', { name: 'Something went wrong' }).waitFor()
+  await page.getByRole('button', { name: 'Reload' }).click()
+  await hubLink.waitFor()
+  await nodeIcon.waitFor({ timeout: 15000 }) // the next start connects the node again
+  console.log('ok v7 7b - hostile node: render error and reducer throw cut the node off, the hub view stays usable; reload screen without node state')
+
   // Suspended by the hub (seen on the next hub READY): the node connection closes and its servers disappear; the node
   // stays under "Your other instances" with its status, where it can be disconnected for good.
   st.nodes = [nodeRecord('suspended')]

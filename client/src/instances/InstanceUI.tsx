@@ -10,7 +10,7 @@ import { nodeOf, useInstances, type InstanceStatus, type Live } from './registry
 import './instances.css'
 
 export const STATUS_TEXT: Record<InstanceStatus, string> = {
-  connecting: 'Connecting…', ready: 'Connected', offline: 'Offline', suspended: 'Suspended by the hub', 'signed-out': 'Signed out', 'cut-off': 'Cut off: sent too much data',
+  connecting: 'Connecting…', ready: 'Connected', offline: 'Offline', suspended: 'Suspended by the hub', 'signed-out': 'Signed out', 'cut-off': 'Cut off: sent too much or broken data',
 }
 /** The linked node a guild lives on (undefined for hub servers); re-renders when node status changes. */
 export function useNode(guildId: string | undefined): Live | undefined {
@@ -32,7 +32,7 @@ export function NodeStatus({ guildId }: { guildId?: string }) {
   const text = n.status === 'offline' ? t('{name} is not reachable right now. Messages may be out of date; Cillhub keeps trying.', { name: n.name })
     : n.status === 'suspended' ? t('{name} was suspended or unlinked by the hub admins. Its servers are read-only here.', { name: n.name })
     : n.status === 'signed-out' ? t('{name} signed you out.', { name: n.name })
-    : n.status === 'cut-off' ? t('{name} sent more data than Cillhub keeps for one server and was disconnected. It connects again on the next start.', { name: n.name })
+    : n.status === 'cut-off' ? t('{name} sent too much or broken data and was disconnected. It connects again on the next start.', { name: n.name })
     : t('Connecting to {name}…', { name: n.name })
   return (
     <span className="node-status">

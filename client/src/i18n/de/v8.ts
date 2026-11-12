@@ -83,8 +83,11 @@ export const v8: Record<string, string> = {
   'Needs its own login · not connected': 'Braucht eigene Anmeldung · nicht verbunden', 'Not connected: {reason} Retrying…': 'Nicht verbunden: {reason} Neuer Versuch folgt …',
   '{name} is not reachable right now.': '{name} ist gerade nicht erreichbar.',
   'That is on another server and cannot be used here.': 'Das liegt auf einem anderen Server und kann hier nicht verwendet werden.',
-  'Cut off: sent too much data': 'Getrennt: zu viele Daten gesendet',
-  '{name} sent more data than Cillhub keeps for one server and was disconnected. It connects again on the next start.':
-    '{name} hat mehr Daten geschickt, als Cillhub für einen Server behält, und wurde getrennt. Beim nächsten Start verbindet es sich wieder.',
+  'Cut off: sent too much or broken data': 'Getrennt: zu viele oder fehlerhafte Daten gesendet',
+  '{name} sent too much or broken data and was disconnected. It connects again on the next start.':
+    '{name} hat zu viele oder fehlerhafte Daten geschickt und wurde getrennt. Beim nächsten Start verbindet es sich wieder.',
+  'Display error: {name} was disconnected so Cillhub stays usable. It connects again on the next start.':
+    'Anzeigefehler: {name} wurde getrennt, damit Cillhub benutzbar bleibt. Beim nächsten Start verbindet es sich wieder.',
+  'Something went wrong': 'Etwas ist schiefgelaufen', 'Cillhub could not show this page. Reloading usually fixes it.': 'Cillhub konnte diese Seite nicht anzeigen. Neu laden behebt das meist.',
   'From {instance}, a separate server. What you enter goes there.': 'Von {instance}, einem eigenen Server. Was du eingibst, geht dorthin.',
 }
