@@ -21,7 +21,7 @@ Cillhub is a chat platform you can host yourself: servers with text channels, vo
 
 ### Chat
 - Text, announcement and forum channels, threads, direct messages and group DMs
-- End-to-end encrypted direct messages and group DMs in the web, desktop and Android apps. Each device trusts a contact's key the first time it sees it and warns when it changes. Only DMs are encrypted, not server channels, and the web client comes from the server you use, so you trust that server's code.
+- End-to-end encrypted direct messages and group DMs in the web, desktop and Android apps. Each device trusts a contact's key the first time it sees it and warns when it changes; compare the security code with the other person to make sure it is the right key. Only DMs are encrypted, not server channels, and the web client comes from the server you use, so you trust that server's code.
 - Markdown, code blocks, spoilers, mentions, replies, reactions and pins
 - File and image uploads, link previews, message search
 - Custom emoji and stickers, a GIF picker with favourites
@@ -129,7 +129,7 @@ android/scripts/emulator-test.sh                       # instrumented Android te
 
 Releases are signed with an Ed25519 key held by the maintainer; the public half is `selfhost/release-public-key.pem`. The server installer checks `SHA256SUMS` against that key, the updater sidecar checks the signed release feed and the SHA-256 of each image, the desktop app verifies each update against the pinned key before installing it, and the Android app checks the signature of its update feed and the SHA-256 of each APK.
 
-To report a vulnerability, please [open a private security advisory on GitHub](https://github.com/TCCiller/Cillhub/security/advisories/new) instead of a public issue.
+Please do not open a public issue for a vulnerability. Use "Report a vulnerability" on the [Security tab](https://github.com/TCCiller/Cillhub/security) of this repository on GitHub instead. Only the newest release gets security fixes.
 
 ## License
 

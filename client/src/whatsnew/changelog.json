@@ -4,6 +4,33 @@
    "title": "Web app and server",
    "releases": [
     {
+     "version": "7.12.1",
+     "date": "2026-11-12",
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "Encrypted DMs: each device now remembers who is in an encrypted conversation. If a 1:1 conversation suddenly has another member, the app refuses it and sends nothing. When someone is added to a group DM, you accept them on each of your devices before anything is encrypted for them, and they never get the keys of older messages.",
+        "If a conversation key is missing or fails its check, the app no longer replaces it by itself. Compare security codes with the other person, then press \"Make a new key\".",
+        "A plain message that shows up in an encrypted conversation is marked \"Not encrypted\".",
+        "Both people need the updated apps for this protection: web 7.12.1 and Android 3.7.1."
+       ]
+      },
+      {
+       "title": "Fixed",
+       "items": [
+        "Recurring messages: at most 25 per member and 25 per channel. A channel gets at most 5 at once, the rest follow a minute later.",
+        "Deleting a server asks for your two-factor code if you have two-factor authentication turned on.",
+        "Server backups and channel sorting leave out channels you cannot see.",
+        "Friend requests and passkey sign-in have a rate limit.",
+        "Math formulas have size limits and stay inside their message.",
+        "Reports show the admins when a reported message was edited.",
+        "Disabled accounts no longer send scheduled messages."
+       ]
+      }
+     ]
+    },
+    {
      "version": "7.12.0",
      "date": "2026-11-12",
      "groups": [
@@ -657,6 +684,20 @@
    "title": "Android app",
    "releases": [
     {
+     "version": "3.7.1",
+     "date": "2026-11-12",
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "Encrypted DMs: the app encrypts only for the key it has stored for a contact, never for a different one the server shows later.",
+        "The app remembers who is in each encrypted conversation. A 1:1 conversation with an extra member is refused, and a new group member must be accepted before anything is encrypted for them.",
+        "A missing or unverifiable conversation key is no longer replaced by itself: compare security codes, then tap \"Make a new key\". Plain messages in an encrypted conversation are marked \"Not encrypted\"."
+       ]
+      }
+     ]
+    },
+    {
      "version": "3.7.0",
      "date": "2026-11-12",
      "groups": [
@@ -743,6 +784,33 @@
   {
    "title": "Web-App und Server",
    "releases": [
+    {
+     "version": "7.12.1",
+     "date": "2026-11-12",
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Verschlüsselte Direktnachrichten: Jedes Gerät merkt sich jetzt, wer in einer verschlüsselten Unterhaltung ist. Hat eine 1:1-Unterhaltung plötzlich ein weiteres Mitglied, verweigert die App sie und sendet nichts. Wird jemand zu einer Gruppennachricht hinzugefügt, nimmst du die Person auf jedem deiner Geräte an, bevor etwas für sie verschlüsselt wird; die Schlüssel älterer Nachrichten bekommt sie nie.",
+        "Fehlt ein Unterhaltungsschlüssel oder besteht er die Prüfung nicht, ersetzt die App ihn nicht mehr von selbst. Vergleiche die Sicherheitscodes mit der anderen Person und wähle dann „Neuen Schlüssel erstellen“.",
+        "Eine unverschlüsselte Nachricht in einer verschlüsselten Unterhaltung ist mit „Nicht verschlüsselt“ markiert.",
+        "Diesen Schutz gibt es nur, wenn beide die neuen Apps haben: Web 7.12.1 und Android 3.7.1."
+       ]
+      },
+      {
+       "title": "Behoben",
+       "items": [
+        "Wiederkehrende Nachrichten: höchstens 25 pro Mitglied und 25 pro Kanal. Ein Kanal bekommt höchstens 5 auf einmal, der Rest folgt eine Minute später.",
+        "Das Löschen eines Servers fragt nach deinem Zwei-Faktor-Code, wenn du die Zwei-Faktor-Authentifizierung eingeschaltet hast.",
+        "Server-Backups und das Sortieren von Kanälen lassen Kanäle aus, die du nicht sehen kannst.",
+        "Freundschaftsanfragen und die Anmeldung mit Passkey haben ein Rate-Limit.",
+        "Mathe-Formeln haben Größengrenzen und bleiben innerhalb ihrer Nachricht.",
+        "Meldungen zeigen den Admins, ob eine gemeldete Nachricht bearbeitet wurde.",
+        "Deaktivierte Konten senden keine geplanten Nachrichten mehr."
+       ]
+      }
+     ]
+    },
     {
      "version": "7.12.0",
      "date": "2026-11-12",
@@ -1396,6 +1464,20 @@
   {
    "title": "Android-App",
    "releases": [
+    {
+     "version": "3.7.1",
+     "date": "2026-11-12",
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Verschlüsselte Direktnachrichten: Die App verschlüsselt nur für den Schlüssel, den sie für einen Kontakt gespeichert hat, nie für einen anderen, den der Server später zeigt.",
+        "Die App merkt sich, wer in jeder verschlüsselten Unterhaltung ist. Eine 1:1-Unterhaltung mit einem zusätzlichen Mitglied wird verweigert, und ein neues Gruppenmitglied musst du annehmen, bevor etwas dafür verschlüsselt wird.",
+        "Ein fehlender oder nicht prüfbarer Unterhaltungsschlüssel wird nicht mehr von selbst ersetzt: Vergleiche die Sicherheitscodes und tippe dann auf „Neuen Schlüssel erstellen“. Unverschlüsselte Nachrichten in einer verschlüsselten Unterhaltung sind mit „Nicht verschlüsselt“ markiert."
+       ]
+      }
+     ]
+    },
     {
      "version": "3.7.0",
      "date": "2026-11-12",
