@@ -281,3 +281,65 @@ test('r4-17: forwards and other references only within one server', () => {
   assert.equal(reg.bodyFits({ content: 'x', attachments: [{ id: '0' }], user_id: '1' }, '7'), true, 'upload slots and our own user id')
   assert.equal(reg.bodyFits({ guild_folders: [{ id: 1, guild_ids: ['7~100'] }] }, undefined), true, 'hub settings list node servers')
 })
+
+test('r5-7: a refused READY keeps the budget; every store map is either pruned per node or never node-written', async () => {
+  reg.testNode('6', 'https://n6.example', '960', '1')
+  for (let i = 0; i < 3; i++) reg.admitRest('6', Array.from({ length: 5000 }, (_, j) => ({ id: String(i * 5000 + j + 1) })))
+  assert.equal(reg.admit('6', 'READY', { id: 'bad' }), null)
+  reg.LIMITS.budget = 14_000
+  assert.equal(reg.overBudget('6'), true, 'the refused READY did not reset what the node already brought')
+  reg.LIMITS.budget = 200_000
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/store.ts', import.meta.url), 'utf8')
+  const type = src.slice(src.indexOf('export type State = {'), src.indexOf('\n}\n', src.indexOf('export type State = {')))
+  const keys = [...type.matchAll(/^ {2}(\w+):/gm)].map((m) => m[1])
+  const listed = new Set([...reg.NODE_MAPS, ...reg.HUB_STATE])
+  assert.deepEqual(keys.filter((k) => !listed.has(k)), [], 'a new State key must be added to NODE_MAPS (pruned per node) or HUB_STATE')
+  assert.deepEqual(reg.NODE_MAPS.filter((k) => reg.HUB_STATE.includes(k)), [])
+})
+
+test('r5-12: a voice join that a leave or switch overtook while livekit-client loaded goes no further', async () => {
+  const { joins } = await import('../src/voice/join.ts')
+  const join = joins()
+  let release
+  const slow = join.start(() => new Promise((r) => (release = r)))
+  join.bump() // the user left or switched calls
+  release('lib')
+  assert.equal(await slow, null)
+  const fresh = await join.start(async () => 'lib')
+  assert.equal(fresh.lib, 'lib')
+  assert.equal(fresh.live(), true)
+  join.bump()
+  assert.equal(fresh.live(), false)
+})
+
+test('r5-18: a member sent next to user_id must be that user, or it is dropped', () => {
+  view.voiceGuild = null
+  const v = reg.admit('7', 'VOICE_STATE_UPDATE', { guild_id: '100', channel_id: '101', user_id: '900', session_id: 's', member: { user: { id: '666', username: 'attacker' } } })
+  assert.equal(v.user_id, '1')
+  assert.equal(v.member, undefined)
+  const ok = reg.admit('7', 'VOICE_STATE_UPDATE', { guild_id: '100', channel_id: '101', user_id: '901', session_id: 's', member: { user: { id: '901' } } })
+  assert.equal(ok.member.user.id, '7~901')
+})
+
+test('r5-17: references in id lists, map keys and text tokens must fit the target server too', () => {
+  assert.equal(reg.bodyFits({ sticker_ids: ['5'] }, '7'), false, 'a hub sticker to a node')
+  assert.equal(reg.bodyFits({ sticker_ids: ['7~5'] }, undefined), false, 'a node sticker to the hub')
+  assert.equal(reg.bodyFits({ sticker_ids: ['7~5'] }, '7'), true)
+  assert.equal(reg.bodyFits({ content: 'hi <@2>' }, '7'), false, 'a hub user mentioned on a node')
+  assert.equal(reg.bodyFits({ content: 'hi <@1> <@7~901> <:x:7~55>' }, '7'), true)
+  assert.equal(reg.bodyFits({ content: '<:x:7~55>' }, undefined), false, 'a node emoji in a hub message')
+  assert.equal(reg.bodyFits({ channel_overrides: { '8~1': {} } }, '7'), false)
+  assert.equal(reg.bodyFits({ guild_positions: ['7~100', '10'], guild_folders: [{ guild_ids: ['8~1'] }] }, undefined), true, 'hub rail settings')
+})
+
+test('r5-19: mentions go out in one pass: a node user whose id equals our hub id stays that user', () => {
+  assert.equal(reg.outbound('7', { content: '<@7~1> <@1> <@!7~1>' }).content, '<@1> <@900> <@!1>')
+})
+
+test('r5-20: call participants are users; poll answer numbers are not snowflakes', () => {
+  const m = reg.admit('7', 'MESSAGE_CREATE', { channel_id: '101', guild_id: '100', id: '9', author: { id: '901' }, call: { participants: ['900', '901'] },
+    poll: { answers: [{ answer_id: 1, poll_media: { text: 'a' } }], results: { answer_counts: [{ id: 1, count: 2, me_voted: false }] } } })
+  assert.deepEqual(m.call.participants, ['1', '7~901'])
+  assert.deepEqual([m.poll.answers[0].answer_id, m.poll.results.answer_counts[0].id], [1, 1])
+})

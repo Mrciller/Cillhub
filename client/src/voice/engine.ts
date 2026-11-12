@@ -1,4 +1,5 @@
 import { nodeOf, nodeUserId } from '../instances/registry'
+import { joins } from './join'
 // LiveKit identities of a node's room are that node's user ids: scoped (ours → our hub id) before any map key or tile.
 let roomNode: string | undefined
 const userOf = (p: { identity: string }) => nodeUserId(roomNode, p.identity)
@@ -84,7 +85,9 @@ export function leaveVoice() {
   setVoice({ ...idleVoice, selfMute: v.selfMute, selfDeaf: v.selfDeaf })
 }
 
+const join = joins()
 function teardown() {
+  join.bump() // a LiveKit join still loading or connecting is stale now
   clearTimeout(joinTimer)
   const r = room
   room = null
@@ -120,12 +123,16 @@ async function connectRoom(endpoint: string, token: string) {
   last = { endpoint, token }
   if (endpoint === 'cillvoice') return cv.connect(token)
   setVoice({ status: 'connecting', error: '', speaking: {} })
+  // whose call this is, before any await: a switch while livekit-client loads must not hand this room another origin
+  const origin = nodeOf(getState().voice.guildId)
+  let started
   try {
-    lk ??= await import('livekit-client')
+    started = await join.start(async () => (lk ??= await import('livekit-client')))
   } catch {
     return setVoice({ status: 'error', error: 'Could not load the voice module.' })
   }
-  const { Room, RoomEvent } = lk
+  if (!started) return // left or switched while loading
+  const { Room, RoomEvent } = started.lib
   installStartBitrateHint()
   const s = voiceSettings()
   const chId = getState().voice.channelId
@@ -138,7 +145,7 @@ async function connectRoom(endpoint: string, token: string) {
     audioOutput: { deviceId: s.output || undefined },
   })
   room = r
-  roomNode = nodeOf(getState().voice.guildId) // whose LiveKit this is: its identities are that node's user ids
+  roomNode = origin // whose LiveKit this is: its identities are that node's user ids
   last = { endpoint, token }
   const live = () => room === r
   r.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => live() && setVoice({ speaking: speakingOf(speakers) }))
@@ -633,9 +640,12 @@ setInterval(() => {
   }
 }, 5000)
 
+// Volumes are kept by our user ids; a node room's identities are that node's ids (userOf maps them).
+const participantOf = (userId: string) => (room ? [...room.remoteParticipants.values()].find((p) => userOf(p) === userId) : undefined)
+
 export function setUserVolume(userId: string, volume: number) {
   saveVoiceSettings({ volumes: { ...voiceSettings().volumes, [userId]: volume } })
-  const p = room?.remoteParticipants.get(userId)
+  const p = participantOf(userId)
   if (p) applyVolume(p)
   cv.applyVolumes()
 }
@@ -646,7 +656,7 @@ export function setStreamVolume(userId: string, volume: number) {
     volumes: { ...s.volumes, [`${userId}-screen`]: volume },
     screenVolumes: { ...(s.screenVolumes ?? {}), [userId]: volume },
   })
-  const p = room?.remoteParticipants.get(userId)
+  const p = participantOf(userId)
   if (p) applyVolume(p)
   cv.applyVolumes()
 }

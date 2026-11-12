@@ -9,10 +9,10 @@ import { t } from '../i18n'
 import { notifyEvent } from '../notifications/notify'
 import { navigate } from '../router'
 import { gatewayOk, inSession, keepSignIn, MAX_NODES, normalizeServerUrl, revocations } from '../privateNodes'
-import { apply, byId, getState, setState, setToken } from '../store'
+import { apply, byId, getState, setState, setToken, type State } from '../store'
 import type { GuildPayload, Presence, ReadState, User, UserGuildSettings } from '../types'
 import { leaveVoice, voiceEvent } from '../voice/engine'
-import { admit, outbound, overBudget, pruneNode, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
+import { admit, NODE_MAPS, outbound, overBudget, pruneNode, scoped, instanceById, instances, nodeOf, removeInstance, saveInstance, setIssue, setLive, setView, tokenOf, type InstanceInfo } from './registry'
 
 /** The hub's node directory record (§2), from GET /federation/nodes. */
 export type NodeRecord = {
@@ -95,19 +95,32 @@ function dispatch(id: string, t: string, raw: any) {
   if (t === 'READY') return ready(id, d)
   const s = getState()
   apply(t, d)
+  keepHubSelf(s)
   if (t === 'GUILD_DELETE') dropNodeState(id) // its members leave unless another server of the node still has them
   voiceEvent(t, d)
   notifyEvent(t, d)
   soundEvent(t, d, s)
 }
 
-/** Users, presences, activities and messages of node `id` that none of its remaining servers holds. */
+/** Our hub user record as it was before a node event: no node write may change it (one place for every node event). */
+function keepHubSelf(before: State) {
+  const me = before.me?.id
+  const mine = me && before.users[me]
+  if (mine && getState().users[me] !== mine) setState((x) => ({ users: { ...x.users, [me]: mine } }))
+}
+
+/** Everything of node `id` in every node-writable map (registry NODE_MAPS) that none of its remaining servers holds:
+ *  their ids, channels, members and events stay, the rest goes. */
 function dropNodeState(id: string) {
   const s = getState()
   const keep = new Set<string>()
-  for (const g of Object.keys(s.guilds)) if (nodeOf(g) === id) for (const u of Object.keys(s.members[g] ?? {})) keep.add(u)
-  setState({ users: pruneNode(id, s.users, keep), presences: pruneNode(id, s.presences, keep), activities: pruneNode(id, s.activities, keep),
-    messages: Object.fromEntries(Object.entries(s.messages).filter(([c]) => nodeOf(c) !== id || !!s.channels[c])) })
+  for (const g of Object.keys(s.guilds)) if (nodeOf(g) === id) {
+    keep.add(g)
+    for (const u of Object.keys(s.members[g] ?? {})) keep.add(u)
+  }
+  for (const [c, ch] of Object.entries(s.channels)) if (keep.has(ch.guild_id ?? '')) keep.add(c)
+  for (const [e, ev] of Object.entries(s.events)) if (keep.has(ev.guild_id)) keep.add(e)
+  setState(Object.fromEntries(NODE_MAPS.map((k) => [k, pruneNode(id, s[k] as Record<string, unknown>, keep)])) as Partial<State>)
 }
 
 const list = <T,>(x: unknown): T[] => (Array.isArray(x) ? x : Array.isArray((x as { entries?: unknown })?.entries) ? (x as { entries: T[] }).entries : [])
@@ -118,6 +131,7 @@ function ready(id: string, d: { guilds?: GuildPayload[]; users?: User[]; presenc
   // Replaced wholesale (like the hub's READY): drops servers we left while away, stale members and voice states, and
   // anything applied from a REST answer before our node identity was known (not yet aliased).
   for (const g of Object.keys(getState().guilds)) if (nodeOf(g) === id) apply('GUILD_DELETE', { id: g })
+  const before = getState()
   dropNodeState(id) // what the node brought before goes too, so its id budget (reset by this READY) matches what is kept
   for (const g of guilds) apply('GUILD_CREATE', g)
   setState((s) => ({
@@ -126,6 +140,7 @@ function ready(id: string, d: { guilds?: GuildPayload[]; users?: User[]; presenc
     readStates: { ...s.readStates, ...byId(list<ReadState>(d.read_state).filter((r) => r && nodeOf(r.id) === id)) },
     guildSettings: { ...s.guildSettings, ...Object.fromEntries(list<UserGuildSettings>(d.user_guild_settings).filter((g) => g?.guild_id && nodeOf(g.guild_id) === id).map((g) => [g.guild_id!, g])) },
   }))
+  keepHubSelf(before)
   setLive(id, { status: 'ready' })
   // A call on this node's server survives a node reconnect the same way a hub call survives a hub reconnect.
   if (nodeOf(getState().voice.guildId) === id) voiceEvent('READY', d)

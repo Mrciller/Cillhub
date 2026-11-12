@@ -97,7 +97,7 @@ const onNode = (n: Live, a: unknown) => {
 
 // Where an id names a user: these keys, these lists, and `id` of objects under the user object keys.
 const USER_ID_KEYS = new Set(['user_id', 'author_id', 'owner_id', 'creator_id', 'host_id', 'target_user_id'])
-const USER_LISTS = new Set(['user_ids', 'removed_member_ids', 'speaking'])
+const USER_LISTS = new Set(['user_ids', 'removed_member_ids', 'speaking', 'participants'])
 const USER_OBJECTS = new Set(['user', 'author', 'users', 'recipients', 'mentions', 'creator', 'target_user'])
 // Other id lists (strings only): member roles, bulk deletes, automod exemptions…
 const ID_LISTS = new Set(['ids', 'roles', 'mention_roles', 'applied_tags', 'exempt_roles', 'exempt_channels', ...USER_LISTS])
@@ -161,6 +161,8 @@ function inbound<T>(n: Live, data: T): T | null {
         continue
       }
       const typed = (key === 'emoji' && k === 'id') || key === 'default_values'
+      // poll answers are numbered (answer_id, answer_counts[].id): numbers there are not snowflakes
+      if (typeof v === 'number' && (k === 'answer_id' || (k === 'id' && key === 'answer_counts'))) { out[k] = v; continue }
       if (isIdKey(k) && v != null && (!inFree || typed)) {
         out[k] = USER_ID_KEYS.has(k) || (k === 'id' && (userObj || (key === 'default_values' && (x as { type?: unknown }).type === 'user'))) ? userRef(v) : ref(v)
         continue
@@ -213,6 +215,8 @@ const TERMINAL = new Set(['INTERACTION_SUCCESS', 'INTERACTION_FAILURE', 'INTERAC
 const mine = (inst: string, id: unknown) => typeof id === 'string' && nodeOf(id) === inst
 
 function allowed(inst: string, t: string, d: any): boolean {
+  // a member sent next to user_id (voice states, typing, reactions) must be that user, else it is dropped
+  if (d.member?.user && d.member.user.id !== d.user_id) delete d.member
   if (t === 'READY') return true
   if (BY_ID.includes(t)) return mine(inst, d.id)
   if (CHANNEL_BY_ID.includes(t)) return mine(inst, d.id) && mine(inst, d.guild_id ?? view.channel(d.id)?.guild_id)
@@ -239,10 +243,25 @@ function allowed(inst: string, t: string, d: any): boolean {
 /** A node gateway event (or READY) as the store may apply it, or null to drop it. READY starts the node's id budget anew. */
 export function admit<T>(inst: string, t: string, raw: T): T | null {
   const n = live[inst]
+  // A READY is counted on a fresh budget, which replaces the old one only if it passes; instances/nodes.ts then drops
+  // everything the node brought before (dropNodeState) before applying it. A refused READY changes nothing.
+  const before = seen.get(inst)
   if (n && t === 'READY') seen.delete(inst)
   const d = n ? (inbound(n, raw) as any) : null
-  return d && typeof d === 'object' && allowed(inst, t, d) ? (d as T) : null
+  const ok = !!d && typeof d === 'object' && allowed(inst, t, d)
+  if (!ok && t === 'READY') before ? seen.set(inst, before) : seen.delete(inst)
+  return ok ? (d as T) : null
 }
+
+// Every store map a node can write into, keyed by node-scoped ids: dropNodeState prunes all of them (pruneNode), and
+// scripts/private-nodes.test.mjs checks that every State key is listed here or in HUB_STATE.
+export const NODE_MAPS = ['guilds', 'channels', 'users', 'members', 'membersLoaded', 'presences', 'messages', 'hasMore', 'typing', 'voiceStates',
+  'readStates', 'pinsVersion', 'canvas', 'hasNewer', 'stageInstances', 'events', 'eventSubs', 'sounds', 'threadMembersVersion', 'slowmode',
+  'guildSettings', 'activities', 'watch', 'drafts', 'purgeSelected', 'simulatedRoles'] as const
+// State a node never writes (hub-only events, our own UI state) or that holds one value, not a map per object.
+export const HUB_STATE = ['token', 'status', 'sessionId', 'me', 'relationships', 'bansVersion', 'editingId', 'replying', 'voice', 'modal', 'popout',
+  'showNav', 'jump', 'panel', 'updateReady', 'settings', 'calls', 'interactions', 'autocomplete', 'showMembers', 'game', 'leagueLobby', 'reminders',
+  'bookmarks', 'modulePage', 'guideGuildId', 'dmRecipientReads', 'purgeMode'] as const
 /** A node REST answer, same rules. */
 export function admitRest<T>(inst: string, raw: T): T | null {
   const n = live[inst]
@@ -259,8 +278,9 @@ export function outbound<T>(inst: string, data: T): T {
   // our hub id becomes our node id only in typed user positions, never a stripped resource id that happens to equal it
   const strip = (x: string, user: boolean) =>
     user && me(x) ? n!.meId!
-    : bare(x).replace(TOKENS_SCOPED, (m, kind: string, i: string, v: string) => (i === inst ? `<${kind}${v}>` : m))
-      .replace(/<(@!?)(\d{1,20})>/g, (m, kind: string, v: string) => (me(v) ? `<${kind}${n!.meId}>` : m))
+    : bare(x).replace(ANY_TOKEN, (m, kind: string, a: string, b?: string) =>
+      b !== undefined ? (a === inst ? `<${kind}${b}>` : m) // our node's id, bare
+      : (kind === '@' || kind === '@!') && me(a) ? `<${kind}${n!.meId}>` : m) // a user mention of us; one pass, never both
   const walk = (x: unknown, key: string, userObj: boolean): unknown =>
     typeof x === 'string' ? strip(x, USER_ID_KEYS.has(key) || USER_LISTS.has(key) || (key === 'id' && userObj))
     : Array.isArray(x) ? x.map((v) => walk(v, key, userObj))
@@ -268,7 +288,7 @@ export function outbound<T>(inst: string, data: T): T {
     : x
   return walk(data, '', false) as T
 }
-const TOKENS_SCOPED = /<(@!?|@&|#|a?:\w{1,32}:)(\d{1,20})~(\d{1,20})>/g
+const ANY_TOKEN = /<(@!?|@&|#|a?:\w{1,32}:)(\d{1,20})(?:~(\d{1,20}))?>/g
 // Path segments that name a user: our hub id there becomes our node id.
 const USER_SEGMENT_PARENTS = new Set(['users', 'members', 'recipients', 'bans', 'thread-members'])
 /** A path (and query) going to the node: its scoped ids bare (also inside `name:id` emoji segments, URL-encoded too); our
@@ -282,21 +302,34 @@ export const outboundPath = (inst: string, path: string) => {
   return q === undefined ? out : `${out}?${strip(q)}`
 }
 
-/** A body may only reference objects of the server it goes to (forwards, replies, pins…): to a node, every `id`/`*_id`
- *  string is that node's or our own user id; to the hub, none is a node's. */
+/** A body may only reference objects of the server it goes to (forwards, replies, stickers, mentions, emoji…): to a
+ *  node, every id (fields, id lists, id-keyed map keys, text tokens) is that node's or our own user id; to the hub, none
+ *  is a node's, except the hub's own lists of rail servers (guild_folders, guild_positions). */
+const RAIL_LISTS = new Set(['guild_ids', 'guild_positions'])
 export function bodyFits(body: unknown, to: string | undefined) {
+  const fits = (v: string) => (to ? nodeOf(v) === to || v === hub.meId : nodeOf(v) === undefined)
+  const idLike = (v: unknown): v is string => typeof v === 'string' && /^\d{1,20}(~\d{1,20})?$/.test(v)
   let ok = true
-  const walk = (x: unknown, depth: number): void => {
-    if (!ok || !x || typeof x !== 'object' || depth > LIMITS.depth) return
+  const walk = (x: unknown, key: string, depth: number): void => {
+    if (!ok || depth > LIMITS.depth) return
+    if (typeof x === 'string') {
+      if (key === 'content' || key === 'value' || key === 'description' || key === 'title')
+        for (const m of x.matchAll(ANY_TOKEN)) if (!fits(m[3] !== undefined ? `${m[2]}~${m[3]}` : m[2])) ok = false
+      return
+    }
+    if (Array.isArray(x)) {
+      if (isIdList(key) || RAIL_LISTS.has(key)) { if (!(RAIL_LISTS.has(key) && !to) && x.some((v) => idLike(v) && !fits(v))) ok = false; return }
+      return x.forEach((v) => walk(v, key, depth + 1))
+    }
+    if (!x || typeof x !== 'object') return
     for (const [k, v] of Object.entries(x)) {
       if (k === 'attachments') continue // upload slots ('0', '1', …) and attachment ids of the message itself
-      if (typeof v === 'string' && isIdKey(k) && /^[\d~]+$/.test(v)) {
-        const n = nodeOf(v)
-        if (to ? n !== to && v !== hub.meId : n !== undefined) ok = false
-      } else walk(v, depth + 1)
+      if (idLike(k) && !fits(k)) ok = false
+      if (idLike(v) && isIdKey(k)) { if (!fits(v)) ok = false }
+      else walk(v, k, depth + 1)
     }
   }
-  walk(body, 0)
+  walk(body, '', 0)
   return ok
 }
 
