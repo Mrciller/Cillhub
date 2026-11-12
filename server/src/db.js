@@ -7,24 +7,43 @@ mkdirSync(DATA_DIR, { recursive: true });
 export const db = new DatabaseSync(join(DATA_DIR, 'cillcord.sqlite'));
 db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
 
-export const get = (sql, ...args) => db.prepare(sql).get(...args);
-export const all = (sql, ...args) => db.prepare(sql).all(...args);
-export const run = (sql, ...args) => db.prepare(sql).run(...args);
+// prepared statements by SQL text; SQLite re-prepares them itself after a schema change. Oldest goes past the cap
+// (dynamic `IN (?,?,…)` lists make one entry per length)
+const stmts = new Map();
+function stmt(sql) {
+  let s = stmts.get(sql);
+  if (!s) {
+    if (stmts.size >= 500) stmts.delete(stmts.keys().next().value);
+    stmts.set(sql, s = db.prepare(sql));
+  }
+  return s;
+}
+export const get = (sql, ...args) => stmt(sql).get(...args);
+export const all = (sql, ...args) => stmt(sql).all(...args);
+export const run = (sql, ...args) => stmt(sql).run(...args);
+let afterCommit = [];
+// runs fn once the open tx() commits (dropped on rollback), or right away outside a transaction
+export const onCommit = fn => db.isTransaction ? afterCommit.push(fn) : fn();
 export function tx(fn) {
   db.exec('BEGIN');
+  let result;
   try {
-    const result = fn();
+    result = fn();
     db.exec('COMMIT');
-    return result;
   } catch (e) {
+    afterCommit = [];
     db.exec('ROLLBACK');
     throw e;
   }
+  const later = afterCommit;
+  afterCommit = [];
+  later.forEach(f => f());
+  return result;
 }
 
 // step i brings the database to user_version i + 1. v1 never set user_version, so a v1 database
 // reads 0 and replays 001, which only creates what is missing.
-const MIGRATIONS = ['001-v1.sql', '002-v2.sql', '003-v3.sql', '004-v4.sql', '005-v5.sql', '006-v6.sql', '007-v7.sql', '008-brand.sql', '009-guild-voice.sql', '010-modules.sql', '011-v9.sql', '012-v9-phase4.sql', '013-v10.sql', '014-v11.sql', '015-v12.sql', '016-v13.sql', '017-role-scope.sql', '018-attachment-sig.sql', '019-password-reset.sql', '020-account-security.sql', '021-legal.sql', '022-spam-guard.sql'];
+const MIGRATIONS = ['001-v1.sql', '002-v2.sql', '003-v3.sql', '004-v4.sql', '005-v5.sql', '006-v6.sql', '007-v7.sql', '008-brand.sql', '009-guild-voice.sql', '010-modules.sql', '011-v9.sql', '012-v9-phase4.sql', '013-v10.sql', '014-v11.sql', '015-v12.sql', '016-v13.sql', '017-role-scope.sql', '018-attachment-sig.sql', '019-password-reset.sql', '020-account-security.sql', '021-legal.sql', '022-spam-guard.sql', '023-message-order.sql'];
 for (let v = get('PRAGMA user_version').user_version; v < MIGRATIONS.length; v++) {
   const sql = readFileSync(new URL(`./migrations/${MIGRATIONS[v]}`, import.meta.url), 'utf8');
   tx(() => db.exec(`${sql}; PRAGMA user_version = ${v + 1};`));

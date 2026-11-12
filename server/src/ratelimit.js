@@ -34,6 +34,7 @@ const RULES = [
   ['AUTH', 'forgot-ip', 10, 3_600_000], // password reset mails per IP (IPv6: per /64)
   ['AUTH', 'forgot-email', 3, 3_600_000], // and per address (never answered with a 429)
   ['AUTH', 'reset-ip', 10, 15 * 60_000], // new password with a reset link, per IP
+  ['AUTH', 'bad-token', 30, 60_000], // requests with a missing or wrong token, per IP (IPv6: per /64); valid tokens never count
   ['GET', '/download', 60, 10 * 60_000], // per IP: /download/* files fetched from the hub (an update check and a download take a few)
   ['*', '*', 50, 1000],
 ];

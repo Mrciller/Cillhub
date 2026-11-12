@@ -2,7 +2,7 @@ import { mkdirSync, existsSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { snowflake } from './snowflake.js';
-import { DATA_DIR, get, all, run, tx, json, userById, userObj, channelUserIds, threadObj } from './db.js';
+import { DATA_DIR, get, all, run, tx, onCommit, json, userById, userObj, channelUserIds, threadObj } from './db.js';
 import { P, has, viewersOf } from './permissions.js';
 import { sendToUsers, isOnline } from './gateway.js';
 import { notifyMessage } from './push.js';
@@ -130,9 +130,9 @@ export function reactionEmoji(key) {
 export const broadcastMessage = (ch, t, m, extra) => sendToUsers(viewersOf(ch), t, uid => ({ ...messageObj(m, ch, uid), ...extra }));
 
 export function deleteMessages(rows) {
-  const pinnedChannels = new Set();
+  const pinnedChannels = new Set(), files = [];
   for (const m of rows) {
-    for (const a of all('SELECT id, channel_id FROM attachments WHERE message_id = ?', m.id)) removeAttachment(a.channel_id, a.id);
+    files.push(...all('SELECT id, channel_id FROM attachments WHERE message_id = ?', m.id));
     // Any unread mention from this message is withdrawn before the cascade removes recent_mentions.
     run(`UPDATE read_states SET mention_count = MAX(0, mention_count - 1)
          WHERE channel_id = ? AND user_id IN (SELECT user_id FROM recent_mentions WHERE message_id = ?)
@@ -143,6 +143,7 @@ export function deleteMessages(rows) {
          WHERE id = ? AND last_message_id = ?`, m.channel_id, m.channel_id, m.id);
     if (m.pinned_at) pinnedChannels.add(m.channel_id);
   }
+  onCommit(() => files.forEach(a => removeAttachment(a.channel_id, a.id))); // a rolled back delete keeps its files
   for (const channelId of pinnedChannels) {
     const ch = getChannel(channelId);
     if (!ch) continue;

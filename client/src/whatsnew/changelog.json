@@ -4,6 +4,31 @@
    "title": "Web app and server",
    "releases": [
     {
+     "version": "Unreleased",
+     "date": null,
+     "groups": [
+      {
+       "title": "Changed",
+       "items": [
+        "Loading older messages uses a new database index, so scrolling back in channels with a long history no longer reads the whole channel.",
+        "The server keeps its prepared database queries instead of preparing them again on every request.",
+        "The browser keeps the web app's script and style files until the next release and only checks the page itself for changes."
+       ]
+      },
+      {
+       "title": "Fixed",
+       "items": [
+        "Self-hosted updates now keep only the three newest backups, plus the one a rollback needs. Backups leave out the link preview cache and unfinished uploads.",
+        "If deleting several messages at once fails, their attached files are kept.",
+        "Many requests with a wrong or expired login token from one network are now answered with a rate limit. Signed-in users on the same network are not affected.",
+        "Marking a channel as read stops at its newest message, and a second device that is behind no longer marks messages as unread again.",
+        "Deleting several messages with an invalid message id returns a clear error instead of a server error.",
+        "Failed app downloads relayed from the hub are logged."
+       ]
+      }
+     ]
+    },
+    {
      "version": "7.11.0",
      "date": "2026-11-12",
      "groups": [
@@ -694,6 +719,31 @@
   {
    "title": "Web-App und Server",
    "releases": [
+    {
+     "version": "Unreleased",
+     "date": null,
+     "groups": [
+      {
+       "title": "Geändert",
+       "items": [
+        "Ältere Nachrichten werden über einen neuen Datenbankindex geladen. Beim Zurückscrollen in Kanälen mit langem Verlauf liest der Server nicht mehr den ganzen Kanal.",
+        "Der Server behält vorbereitete Datenbankabfragen, statt sie bei jeder Anfrage neu vorzubereiten.",
+        "Der Browser behält Skript- und Stildateien der Web-App bis zum nächsten Release und prüft nur die Seite selbst auf Änderungen."
+       ]
+      },
+      {
+       "title": "Behoben",
+       "items": [
+        "Selbst gehostete Updates behalten nur noch die drei neuesten Backups und dazu das, das ein Rollback braucht. Backups lassen den Cache der Linkvorschauen und unfertige Uploads weg.",
+        "Schlägt das Löschen mehrerer Nachrichten fehl, bleiben ihre Anhänge erhalten.",
+        "Viele Anfragen mit falschem oder abgelaufenem Login-Token aus einem Netz werden jetzt mit einem Rate-Limit beantwortet. Angemeldete Nutzer im selben Netz merken davon nichts.",
+        "Als gelesen markieren endet bei der neuesten Nachricht eines Kanals, und ein zweites Gerät, das hinterherhinkt, markiert Nachrichten nicht mehr wieder als ungelesen.",
+        "Mehrere Nachrichten mit einer ungültigen Nachrichten-ID zu löschen ergibt einen verständlichen Fehler statt eines Serverfehlers.",
+        "Fehlgeschlagene App-Downloads, die über den Hub weitergereicht werden, landen im Log."
+       ]
+      }
+     ]
+    },
     {
      "version": "7.11.0",
      "date": "2026-11-12",

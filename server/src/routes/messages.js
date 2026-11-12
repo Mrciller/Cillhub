@@ -49,7 +49,7 @@ function list({ params, query, user }) {
   // after= returns the oldest `limit` messages following the id, still newest first
   const rows = after
     ? all('SELECT * FROM messages WHERE channel_id = ? AND CAST(id AS INTEGER) > CAST(? AS INTEGER) ORDER BY CAST(id AS INTEGER) LIMIT ?', ch.id, after, limit).reverse()
-    : all('SELECT * FROM messages WHERE channel_id = ? AND (? IS NULL OR CAST(id AS INTEGER) < CAST(? AS INTEGER)) ORDER BY CAST(id AS INTEGER) DESC LIMIT ?', ch.id, before, before, limit);
+    : all('SELECT * FROM messages WHERE channel_id = ? AND CAST(id AS INTEGER) < CAST(COALESCE(?, 9223372036854775807) AS INTEGER) ORDER BY CAST(id AS INTEGER) DESC LIMIT ?', ch.id, before, limit); // a bound the index can seek to
   return rows.map(m => forViewer(messageObj(m, ch, user.id), user));
 }
 
@@ -178,6 +178,7 @@ function bulkDelete(ctx) {
   need(ch.perms, P.MANAGE_MESSAGES);
   const rawList = Array.isArray(ctx.body?.messages) ? ctx.body.messages : [];
   const ids = [...new Set(rawList.map(String))];
+  if (ids.some(id => !/^\d{1,19}$/.test(id))) throw invalid('messages', 'NUMBER_TYPE_COERCE', 'Value is not a snowflake.');
   if (ids.length < 2 || ids.length > 100) {
     throw new HttpError(400, 50016, 'You must provide between 2 and 100 messages to delete.');
   }

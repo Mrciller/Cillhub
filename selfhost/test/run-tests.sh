@@ -61,6 +61,7 @@ else
 fi
 check "node --check updater.mjs" node --check "$SELFHOST/updater.mjs"
 check "updater feed unit tests (key list, expiry, minimum version)" node --test "$SELFHOST/test/updater-feed.test.mjs"
+check "updater backup pruning unit test" node --test "$SELFHOST/test/updater-backups.test.mjs"
 mkdir -p "$T/c" && cp "$SELFHOST/docker-compose.yml" "$T/c/" &&
   printf 'CILLCORD_IMAGE=x\nCILLCORD_HTTP_PORT=1\nCILLVOICE_UDP_PORT=2\nCILLCORD_HOSTNAME=h\nLIVEKIT_API_KEY=k\nLIVEKIT_API_SECRET=s\n' > "$T/c/.env"
 check "compose file parses (all profiles)" sh -c "cd '$T/c' && docker compose --profile caddy --profile livekit config -q"

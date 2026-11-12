@@ -229,7 +229,9 @@ async function swap(target, label, restoreFrom) {
   fs.mkdirSync(dir, { recursive: true });
   step('backing up files');
   // Files while the app still runs (can take a while); the database below with the app stopped.
-  execFileSync('tar', ['-czf', path.join(dir, 'data.tar.gz'), '-C', ROOT, '--exclude=data/cillcord.sqlite*', 'data']);
+  // the media proxy cache and half-finished uploads/exports come back by themselves
+  execFileSync('tar', ['-czf', path.join(dir, 'data.tar.gz'), '-C', ROOT, '--exclude=data/cillcord.sqlite*',
+    '--exclude=data/external', '--exclude=data/uploads-tmp', '--exclude=data/exports-tmp', 'data']);
   step('stopping the app');
   await docker('POST', `/containers/${old.Id}/stop?t=30`);
   const snapshot = path.join(dir, 'cillcord.sqlite');
@@ -272,6 +274,16 @@ async function swap(target, label, restoreFrom) {
   }
 }
 
+// keeps the newest `keep` backups/<timestamp>-<label> folders, and always the one holding `protect` (the rollback snapshot)
+export function pruneBackups(root, keep, protect) {
+  const base = path.join(root, 'backups');
+  const dirs = fs.readdirSync(base).filter((d) => /^\d{4}-\d{2}-\d{2}T/.test(d)).sort().reverse();
+  for (const d of dirs.slice(keep)) {
+    if (protect && path.dirname(protect) === path.join(base, d)) continue;
+    fs.rmSync(path.join(base, d), { recursive: true, force: true });
+  }
+}
+
 async function run(kind, target, fn) {
   save({ state: kind === 'update' ? 'updating' : 'rolling_back', action: kind, target_version: target, step: null,
     error: null, rolled_back: null, logs: null, started_at: new Date().toISOString(), finished_at: null });
@@ -295,6 +307,7 @@ async function update(j) {
   const r = await swap(image.Id, `pre-${j.version}`, null);
   await tag(r.previous.image, 'previous');
   save({ previous: r.previous, rollback_snapshot: r.snapshot, backup: r.backup });
+  try { pruneBackups(ROOT, 3, state.rollback_snapshot); } catch (e) { console.error(`updater: pruning old backups failed: ${e.message}`); }
 }
 async function rollback() {
   const from = await currentVersion().catch(() => null);

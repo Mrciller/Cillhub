@@ -228,7 +228,10 @@ async function api(req, url, headers) {
     const ctx = { req, params, query: url.searchParams, status: 200, ip: clientIp(req), headers };
     if (!route.open) {
       Object.assign(ctx, authenticate(req.headers.authorization));
-      if (!ctx.user) throw unauthorized();
+      if (!ctx.user) {
+        limit('AUTH', 'bad-token', {}, netOf(ctx.ip), headers); // a token-guessing flood gets 429s, not endless 401s
+        throw unauthorized();
+      }
       if (route.userOnly && ctx.user.bot) throw new HttpError(403, 20001, 'Bots cannot use this endpoint');
       if (route.botOnly && !ctx.user.bot) throw new HttpError(403, 20002, 'Only bots can use this endpoint');
       if (ctx.user.require_password_change && !PASSWORD_CHANGE_ROUTES.has(`${route.method} ${route.pattern}`)) {
@@ -283,12 +286,21 @@ async function serveStatic(res, pathname) {
   }
   if (!data) data = await readFile(file = path.join(STATIC_DIR, 'index.html')); // SPA fallback
   const headers = { 'Content-Type': TYPES[path.extname(file)] ?? 'application/octet-stream', ...STATIC_HEADERS };
+  // Vite's hashed bundles never change; everything else (app shell, sw.js, feeds, downloads) is revalidated every time
+  const s = await stat(file);
+  const etag = `W/"${s.size.toString(16)}-${Math.floor(s.mtimeMs).toString(16)}"`;
+  if (file.startsWith(path.join(STATIC_DIR, 'assets') + path.sep)) headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+  else Object.assign(headers, { 'Cache-Control': 'no-cache', ETag: etag });
   // the app shell gets the full policy; other pages (offline.html, downloads) may use inline code, so only framing is limited
   if (file === path.join(STATIC_DIR, 'index.html')) headers['Content-Security-Policy'] = csp();
   else if (file === path.join(STATIC_DIR, 'captcha.html')) headers['Content-Security-Policy'] = CAPTCHA_CSP;
   else if (path.extname(file) === '.html') headers['Content-Security-Policy'] = "frame-ancestors 'self'";
   // browsers ignore HSTS over plain http, so a spoofed X-Forwarded-Proto cannot do harm
   if (res.req.socket.encrypted || res.req.headers['x-forwarded-proto'] === 'https') headers['Strict-Transport-Security'] = 'max-age=31536000';
+  if (headers.ETag && res.req.headers['if-none-match'] === etag) {
+    res.writeHead(304, headers);
+    return res.end();
+  }
   res.writeHead(200, headers);
   res.end(data);
 }
@@ -345,7 +357,11 @@ async function proxyHubDownload(req, res, pathname) {
   res.writeHead(upstreamRes.status, headers);
   if (upstreamRes.body) {
     const { Readable, pipeline } = await import('node:stream');
-    pipeline(Readable.fromWeb(upstreamRes.body), res, () => {});
+    pipeline(Readable.fromWeb(upstreamRes.body), res, err => {
+      if (!err) return;
+      if (err.code !== 'ERR_STREAM_PREMATURE_CLOSE') console.error(`download relay ${pathname}: ${err.message}`); // a closed tab is not news
+      res.destroy();
+    });
   } else {
     res.end();
   }
