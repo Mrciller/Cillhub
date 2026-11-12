@@ -112,7 +112,7 @@ export function E2eeBar({ channel }: { channel: Channel }) {
         <p key={u.id} className="e2ee-bar warn" role="alert">
           {t("{name}'s security key changed.", { name: name(channel, u.id) })}{' '}
           <button className="link" onClick={() => setVerify(u.id)}>{t('Verify security code')}</button>{' · '}
-          <button className="link" onClick={() => acceptKey(u.id)}>{t('Dismiss')}</button>
+          <button className="link" onClick={() => (acceptKey(u.id), void openChannel(channel).catch(() => {}))}>{t('Accept')}</button>
         </p>
       ))}
       {verify && <SecurityCode channel={channel} userId={verify} onClose={() => setVerify(null)} />}

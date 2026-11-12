@@ -41,6 +41,7 @@ export const e2ee: Record<string, string> = {
   'Messages and files in this conversation are encrypted on your device. Only its members can read them. The server sees who writes when, not what.':
     'Nachrichten und Dateien in dieser Unterhaltung werden auf deinem Gerät verschlüsselt. Nur ihre Mitglieder können sie lesen. Der Server sieht, wer wann schreibt, aber nicht was.',
   '{name} has not set up encrypted messages.': '{name} hat verschlüsselte Nachrichten nicht eingerichtet.',
+  "{name}'s security key changed. Check it and accept it before you send.": 'Der Sicherheitsschlüssel von {name} hat sich geändert. Prüfe ihn und nimm ihn an, bevor du sendest.',
   "{name}'s security key changed.": 'Der Sicherheitsschlüssel von {name} hat sich geändert.',
   'No security code yet: one of you has no encryption key on this device.': 'Noch kein Sicherheitscode: Einer von euch hat auf diesem Gerät keinen Schlüssel.',
   'Not encrypted: conversations with apps are never end-to-end encrypted.': 'Nicht verschlüsselt: Unterhaltungen mit Apps sind nie Ende-zu-Ende-verschlüsselt.',

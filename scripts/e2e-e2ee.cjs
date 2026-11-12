@@ -54,11 +54,11 @@ async function until(what, fn, ms = 10000) {
 }
 const check = (ok, what) => { if (!ok) throw new Error(what) }
 
+const attackerKey = () => { const k = createECDH('prime256v1'); k.generateKeys(); return k }
 // What someone with only database access can do: a wrap v2 of a channel key of their own, claiming to be `by`, with a key
 // pair of their own in place of by's account key (they know only public keys).
-function forgeWrap(channelKey, memberPub, channelId, epoch, userId, by) {
-  const eph = createECDH('prime256v1'), mine = createECDH('prime256v1')
-  eph.generateKeys(); mine.generateKeys()
+function forgeWrap(channelKey, memberPub, channelId, epoch, userId, by, mine = attackerKey()) {
+  const eph = attackerKey()
   const pub = Buffer.from(memberPub, 'base64url')
   const ikm = Buffer.concat([eph.computeSecret(pub), mine.computeSecret(pub)])
   const wk = Buffer.from(hkdfSync('sha256', ikm, Buffer.from(channelId), `cillhub-e2ee-wrap-v2|${epoch}|${userId}|${by}`, 32))
@@ -284,7 +284,7 @@ async function main() {
       await card.locator('img[alt="map.png"]').waitFor(LIVE)
     })
 
-    await step('9. Sam resets encryption: Alex sees the key-change warning, wraps the key for Sam\'s new key on send, Sam reads it', async () => {
+    await step('9. Sam resets encryption: Alex sees the key-change warning and cannot send until Accept; then the key is wrapped for Sam\'s new key and Sam reads it', async () => {
       await sam.getByRole('button', { name: 'User Settings' }).click()
       await sam.getByRole('tab', { name: 'Encrypted Messages' }).click()
       await sam.getByRole('button', { name: 'Reset encryption' }).click()
@@ -294,14 +294,42 @@ async function main() {
       await dlg.getByRole('button', { name: 'Done' }).click()
       await sam.keyboard.press('Escape')
       await openDm(alex)
-      await alex.locator('.e2ee-bar.warn').filter({ hasText: "security key changed" }).waitFor(LIVE)
+      const line = alex.locator('.e2ee-bar.warn').filter({ hasText: 'security key changed' })
+      await line.waitFor(LIVE)
+      await until('the message box to refuse', async () => (await composer(alex).isDisabled()) && /accept it before you send/.test(await composer(alex).getAttribute('placeholder')))
+      await line.getByRole('button', { name: 'Accept' }).click()
+      await until('the warning to go after Accept', async () => (await line.count()) === 0)
+      await until('the message box to open', async () => !(await composer(alex).isDisabled()))
       await send(alex, `after the reset ${SFX}`)
       await openDm(sam)
       await msg(sam, `after the reset ${SFX}`).locator('.content').waitFor(LIVE)
       check(!(await msg(sam, `after the reset ${SFX}`).innerText()).includes('Cannot decrypt'), 'readable with the new key')
     })
 
-    await step('10. A database attacker inserts a new epoch wrapped with a key of their own: Alex sees the warning, renews on send, the attacker\'s key is never used', async () => {
+    await step('10. A database attacker swaps Sam\'s public key for their own and inserts an epoch "by Sam": Alex sees the key change, refuses to send, nothing stored', async () => {
+      const epoch = sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e + 1
+      const real = sql('SELECT public_key FROM user_e2ee_keys WHERE user_id = ?', ids.sam)[0].public_key
+      const evil = randomBytes(32), mine = attackerKey()
+      const pub = (id) => sql('SELECT public_key FROM user_e2ee_keys WHERE user_id = ?', id)[0].public_key
+      for (const id of [ids.alex, ids.sam]) {
+        write('INSERT INTO dm_keys (channel_id, epoch, user_id, wrapped) VALUES (?, ?, ?, ?)', ids.dm, epoch, id, forgeWrap(evil, pub(id), ids.dm, epoch, id, ids.sam, mine))
+      }
+      write('UPDATE user_e2ee_keys SET public_key = ? WHERE user_id = ?', mine.getPublicKey().toString('base64url'), ids.sam)
+      write('UPDATE channels SET e2ee_epoch = ? WHERE id = ?', epoch, ids.dm)
+      const before = sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n
+      await openDm(alex)
+      await alex.locator('.e2ee-bar.warn').filter({ hasText: 'security key changed' }).waitFor(LIVE)
+      await until('the message box to refuse', async () => (await composer(alex).isDisabled()) && /accept it before you send/.test(await composer(alex).getAttribute('placeholder')))
+      await composer(alex).evaluate((el) => el.removeAttribute('disabled'))
+      await composer(alex).fill(`to the swapped key ${SFX}`)
+      await composer(alex).press('Enter')
+      await alex.getByText(/security key changed\. Check it and accept it before you send\./).last().waitFor(LIVE)
+      await sleep(500)
+      check(sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n === before, 'no message stored')
+      write('UPDATE user_e2ee_keys SET public_key = ? WHERE user_id = ?', real, ids.sam) // the forged epoch stays: the next step renews over it
+    })
+
+    await step('11. A database attacker inserts a new epoch wrapped with a key of their own: Alex sees the warning, renews on send, the attacker\'s key is never used', async () => {
       const epoch = sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e + 1
       const evil = randomBytes(32)
       const pub = (id) => sql('SELECT public_key FROM user_e2ee_keys WHERE user_id = ?', id)[0].public_key
@@ -327,7 +355,7 @@ async function main() {
       check(!(await msg(sam, `after the attack ${SFX}`).innerText()).includes('Cannot decrypt'), 'Sam reads the message sent with the renewed key')
     })
 
-    await step('11. The attacker sets the epoch back to 0: Alex\'s device remembers it was encrypted, warns and sends no plain text', async () => {
+    await step('12. The attacker sets the epoch back to 0: Alex\'s device remembers it was encrypted, warns and sends no plain text', async () => {
       const before = sql('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?', ids.dm)[0].n
       write('UPDATE channels SET e2ee_epoch = 0 WHERE id = ?', ids.dm)
       await openDm(alex)
@@ -345,7 +373,7 @@ async function main() {
       check(sql("SELECT COUNT(*) AS n FROM messages WHERE content LIKE ?", `%${plain}%`)[0].n === 0, 'the text is nowhere in the database')
     })
 
-    await step('12. no uncaught page errors and no native dialogs', async () => {
+    await step('13. no uncaught page errors and no native dialogs', async () => {
       if (errors.length) throw new Error(errors.join('; '))
     })
   } catch (e) {

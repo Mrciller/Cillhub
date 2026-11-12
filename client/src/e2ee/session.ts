@@ -146,7 +146,27 @@ export const keyChanged = (id: string) => {
   const p = pinsOf(id)
   return !!pubs.get(id) && !!p.length && p[p.length - 1] !== pubs.get(id)
 }
-export const acceptKey = (id: string) => (pubs.get(id) && pin(id, pubs.get(id)!), changed())
+let accepted = 0 // bumped on accept: messages that failed are tried again with the newly pinned key
+/** Pins the member's current key; channel keys load again so wraps made with it open. */
+export function acceptKey(id: string) {
+  if (pubs.get(id)) pin(id, pubs.get(id)!)
+  channels.clear()
+  for (const [k, v] of plains) if (v.state === 'fail') plains.delete(k)
+  accepted++
+  changed()
+}
+/** Refuses while a member's key differs from the newest one pinned here: nothing is wrapped for or opened with it. */
+function refuseChanged(ch: Channel) {
+  const id = members(ch).find((x) => x !== owner && keyChanged(x))
+  if (id) throw new Error(t("{name}'s security key changed. Check it and accept it before you send.", { name: nameOf(ch, id) }))
+}
+/** The key to wrap for: this account's own, else the member's newest pinned key once the server shows no other (null: none). */
+async function wrapPub(ch: Channel, id: string) {
+  if (id === owner) return myPub
+  if (!(await publicKeyOf(id))) return null // pinned here on first sight
+  refuseChanged(ch)
+  return pinsOf(id).at(-1) ?? null
+}
 export const publicKey = (id: string) => pubs.get(id)
 
 const members = (ch: Channel) => [owner, ...(ch.recipients ?? []).map((u) => u.id).filter((id) => id !== owner)]
@@ -165,7 +185,11 @@ export const keyProblem = (ch: Channel) => isDm(ch) && (rolledBack(ch) || !!chan
 export function sendHint(ch: Channel) {
   if (!isDm(ch)) return null
   if (rolledBack(ch)) return t('The key of this conversation could not be verified.')
-  if (!isEncrypted(ch) || status === 'unknown' || status === 'ready') return null
+  if (!isEncrypted(ch) || status === 'unknown') return null
+  if (status === 'ready') {
+    try { refuseChanged(ch) } catch (e) { return (e as Error).message }
+    return null
+  }
   return status === 'locked' ? t('Enter your recovery key to send messages here.') : t('Set up encrypted messages to send messages here.')
 }
 const guard = (ch: Channel) => {
@@ -216,7 +240,9 @@ async function channelKeys(ch: Channel, fresh = false): Promise<Keys> {
 
 /** A wrap opened with this account's key and a key of its maker: own key, then every key pinned for them (newest first), then the server's. */
 async function openWrap(wrapped: string, channelId: string, epoch: number, by: string) {
-  const candidates = by === owner ? [myPub] : [...pinsOf(by).reverse(), pubs.has(by) ? pubs.get(by) : await publicKeyOf(by).catch(() => null)]
+  // the server's key counts only on first sight (publicKeyOf pins it then); once pinned, only pinned or accepted keys
+  if (by !== owner && !pinsOf(by).length) await publicKeyOf(by).catch(() => null)
+  const candidates = by === owner ? [myPub] : pinsOf(by).reverse()
   for (const pub of new Set(candidates)) {
     if (!pub) continue
     try { return await C.unwrap(priv!, wrapped, channelId, epoch, owner, pub) } catch { /* not this key */ }
@@ -229,7 +255,7 @@ async function newEpoch(ch: Channel, epoch: number) {
   const key = C.random(32)
   const wraps: Record<string, string> = {}
   for (const id of ids) {
-    const pub = pubs.get(id) ?? (await publicKeyOf(id))
+    const pub = await wrapPub(ch, id)
     if (!pub) throw new Error(t('{name} has not set up encrypted messages.', { name: nameOf(ch, id) }))
     wraps[id] = await C.wrap(key, pub, ch.id, epoch, id, { id: owner, priv: priv! })
   }
@@ -260,9 +286,10 @@ export async function sendKey(chIn: Channel, fresh = false): Promise<{ key: Uint
     if (status !== 'ready') return null
     await openChannel(ch)
     ch = getState().channels[ch.id] ?? ch
-    if (!(ch.e2ee_epoch ?? 0)) return null
+    if (!(ch.e2ee_epoch ?? 0)) return (refuseChanged(ch), null)
   }
   if (status !== 'ready') throw new Error(status === 'locked' ? t('Enter your recovery key to send messages here.') : t('Set up encrypted messages to send messages here.'))
+  refuseChanged(ch)
   let c = await channelKeys(ch, fresh)
   const ids = members(ch)
   if (c.wrapped.some((id) => !ids.includes(id)) || !c.keys.has(c.epoch)) {
@@ -274,7 +301,7 @@ export async function sendKey(chIn: Channel, fresh = false): Promise<{ key: Uint
       const key = c.keys.get(c.epoch)!
       const wraps: Record<string, string> = {}
       for (const id of lacking) {
-        const pub = await publicKeyOf(id).catch(() => null)
+        const pub = await wrapPub(ch, id)
         if (pub) wraps[id] = await C.wrap(key, pub, ch.id, c.epoch, id, { id: owner, priv: priv! })
       }
       if (Object.keys(wraps).length) {
@@ -343,7 +370,7 @@ export function usePlain(m?: Message | null): Plain | null {
   useE2ee()
   const env = m?.e2ee_envelope
   const k = m && env ? cacheKey(m) : ''
-  useEffect(() => void (k && m && decrypt(m)), [k, status]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => void (k && m && decrypt(m)), [k, status, accepted]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!m || !env) return null
   return plains.get(k) ?? (status === 'locked' || status === 'off' ? { state: 'locked' } : { state: 'pending' })
 }
