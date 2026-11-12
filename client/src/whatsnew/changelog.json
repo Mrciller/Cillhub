@@ -657,6 +657,21 @@
    "title": "Android app",
    "releases": [
     {
+     "version": "3.7.0",
+     "date": "2026-11-12",
+     "groups": [
+      {
+       "title": "Added",
+       "items": [
+        "Encrypted direct messages: turn them on under You › Encrypted messages. A DM or group DM is end-to-end encrypted as soon as all its members have turned them on. Text and files are encrypted on the phone, also when you reply from a notification or from Android Auto.",
+        "A recovery key, shown once, unlocks your encrypted messages on another device. The lock in a DM's header shows a 60-digit security code to compare with the other person, and the DM warns you when a contact's key changes.",
+        "Report a message from its long-press menu. For an encrypted message, the report sends its text and files to the admins, and up to 10 earlier messages if you choose.",
+        "Polls and the media gallery are not available in encrypted conversations."
+       ]
+      }
+     ]
+    },
+    {
      "version": "3.6.0",
      "date": "2026-11-12",
      "groups": [
@@ -1381,6 +1396,21 @@
   {
    "title": "Android-App",
    "releases": [
+    {
+     "version": "3.7.0",
+     "date": "2026-11-12",
+     "groups": [
+      {
+       "title": "Hinzugefügt",
+       "items": [
+        "Verschlüsselte Direktnachrichten: Schalte sie unter Du › Verschlüsselte Nachrichten ein. Eine Direkt- oder Gruppennachricht ist Ende-zu-Ende-verschlüsselt, sobald alle Mitglieder sie eingeschaltet haben. Text und Dateien werden auf dem Telefon verschlüsselt, auch wenn du aus einer Benachrichtigung oder aus Android Auto antwortest.",
+        "Ein Wiederherstellungsschlüssel, der nur einmal angezeigt wird, entsperrt deine verschlüsselten Nachrichten auf einem anderen Gerät. Das Schloss im Kopf einer Unterhaltung zeigt einen 60-stelligen Sicherheitscode zum Vergleichen, und die Unterhaltung warnt dich, wenn sich der Schlüssel eines Kontakts ändert.",
+        "Melde eine Nachricht über ihr Menü (lange drücken). Bei einer verschlüsselten Nachricht gehen ihr Text und ihre Dateien an die Admins, auf Wunsch auch bis zu 10 Nachrichten davor.",
+        "Umfragen und die Mediengalerie gibt es in verschlüsselten Unterhaltungen nicht."
+       ]
+      }
+     ]
+    },
     {
      "version": "3.6.0",
      "date": "2026-11-12",
