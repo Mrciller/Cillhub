@@ -2,6 +2,7 @@ import { mkdirSync, rmSync, createReadStream } from 'node:fs';
 import { pipeline } from 'node:stream';
 import { writeFile, rename, stat, open } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
+import { sameText } from './fedcrypto.js';
 import { join } from 'node:path';
 import { DATA_DIR, get, run } from './db.js';
 import { HttpError, invalid } from './errors.js';
@@ -209,7 +210,7 @@ export async function serveCdn(req, res, pathname) {
   } else {
     const [, channelId, id, sig, name] = ATTACHMENT_PATH.exec(pathname);
     const a = get('SELECT * FROM attachments WHERE id = ? AND channel_id = ?', id, channelId);
-    if (!a || name !== a.filename || (sig ? sig !== attachmentSig(channelId, id) : !a.legacy_url)) throw new HttpError(404, 0, '404: Not Found');
+    if (!a || name !== a.filename || (sig ? !sameText(sig, attachmentSig(channelId, id)) : !a.legacy_url)) throw new HttpError(404, 0, '404: Not Found');
     file = join(DATA_DIR, 'attachments', channelId, id);
     type = a.content_type;
     disposition = `${INLINE.has(type) ? 'inline' : 'attachment'}; filename="${a.filename}"`;

@@ -1,6 +1,7 @@
 // Interactions: tokens (15 min), delivery to the bot (gateway or Ed25519-signed HTTP), the 3 s deadline, callbacks,
 // and the messages they create; ephemeral messages live only in memory and only reach the invoking user
 import { createHash, randomBytes, sign as edSign, createPrivateKey } from 'node:crypto';
+import { sameText } from './fedcrypto.js';
 import { maxUpload } from './instance.js';
 import { mkdirSync, renameSync, createReadStream } from 'node:fs';
 import { pipeline } from 'node:stream';
@@ -90,7 +91,7 @@ export function serveEphemeral(req, res, pathname) {
   const [, appId, id, name] = EPH_PATH.exec(pathname);
   const f = ephFiles.get(id);
   const key = new URL(req.url, 'http://x').searchParams.get('key');
-  if (!f || f.appId !== appId || f.filename !== name || f.key !== key || f.expires <= Date.now()) throw new HttpError(404, 0, '404: Not Found');
+  if (!f || f.appId !== appId || f.filename !== name || !sameText(f.key, key ?? '') || f.expires <= Date.now()) throw new HttpError(404, 0, '404: Not Found');
   res.writeHead(200, {
     'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Content-Type': f.content_type,
     'Content-Length': f.size, 'Content-Disposition': `attachment; filename="${f.filename}"`, 'Cache-Control': 'private, max-age=900',
