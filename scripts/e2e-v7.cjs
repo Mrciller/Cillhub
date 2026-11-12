@@ -457,7 +457,7 @@ async function main() {
       const popup = await popupP
       await popup.getByRole('heading', { name: `Sign in to ${NODE_NAME} with your Cillhub account` }).waitFor({ timeout: 15000 })
       await popup.getByRole('button', { name: 'Authorize' }).click()
-      await bob.waitForURL(`**/channels/${ids.arena}/**`, { timeout: 15000 })
+      await bob.waitForURL(`**/channels/${N}~${ids.arena}/**`, { timeout: 15000 })
       await until('the popup to close', async () => popup.isClosed())
       await rail(bob).getByRole('link', { name: new RegExp(`^${ARENA} on ${NODE_NAME} \\(Connected\\)`) }).waitFor(LIVE)
       check(await bob.evaluate((n) => !!localStorage.getItem(`instance-token:${n}`), N), 'node token stored per instance')
@@ -487,7 +487,7 @@ async function main() {
     })
 
     await step('9. voice on the node server from the hub client (cillvoice through the node\'s gateway) with Dana on the node; voice on the hub server with LiveKit', async () => {
-      await bob.goto(`${HUB}/channels/${ids.arena}/${ids.arenaGeneral}`)
+      await bob.goto(`${HUB}/channels/${N}~${ids.arena}/${N}~${ids.arenaGeneral}`)
       await ready(bob)
       const join = async (page, guild) => {
         await page.getByRole('navigation', { name: `${guild} channels` }).getByRole('button', { name: /^General \(voice channel/ }).click()
@@ -611,7 +611,7 @@ async function main() {
       const popup = await popupP
       await popup.getByRole('heading', { name: `Sign in to ${NODE_NAME} with your Cillhub account` }).waitFor({ timeout: 15000 })
       await popup.getByRole('button', { name: 'Authorize' }).click()
-      await bob.waitForURL(`**/channels/${ids.arena}/**`, { timeout: 15000 })
+      await bob.waitForURL(`**/channels/${N}~${ids.arena}/**`, { timeout: 15000 })
       await admin(dana, NODE, 'federation')
       await dana.getByRole('button', { name: 'Unlink from Hub' }).click()
       await codeIn(dana, 'Unlink from the hub?', await freshCode(danaSecret), 'Unlink')
@@ -636,7 +636,7 @@ async function main() {
       await bob.locator('.dir-card').filter({ hasText: ARENA }).getByRole('button', { name: `Join ${ARENA}` }).click()
       const popup = await popupP
       await popup.getByRole('button', { name: 'Authorize' }).click()
-      await bob.waitForURL(`**/channels/${ids.arena}/**`, { timeout: 15000 })
+      await bob.waitForURL(`**/channels/${N}~${ids.arena}/**`, { timeout: 15000 })
       await rail(bob).getByRole('link', { name: new RegExp(`^${ARENA} on ${NODE_NAME} \\(Connected\\)`) }).waitFor(LIVE)
       await alice.reload()
       await alice.getByRole('button', { name: NODE_NAME }).click()
