@@ -12,6 +12,7 @@ import { useStore } from '../store'
 import type { Sound } from '../types'
 import { myState, playSound } from '../voice/engine'
 import { saveVoiceSettings, voiceSettings } from '../voice/settings'
+import { NodeGuard } from '../instances/NodeGuard'
 import './soundboard.css'
 
 const SoundEmoji = ({ s }: { s: Sound }) =>
@@ -76,7 +77,7 @@ export function SoundboardButton() {
         title={muted ? t('Unmute to use the soundboard') : t('Soundboard')} onClick={(e) => setAt({ rect: e.currentTarget.getBoundingClientRect(), side: 'above' })}>
         <Icon d={ICONS.soundboard} />
       </button>
-      {at && <SoundboardPopover at={at} onClose={() => setAt(null)} />}
+      {at && <NodeGuard id={null}><SoundboardPopover at={at} onClose={() => setAt(null)} /></NodeGuard>}{/* every server's sounds */}
     </>
   )
 }

@@ -13,6 +13,7 @@ const NODE = 'https://node.example'
 const N = '7000' // node id
 const NODE_ME = '7001' // our linked account on the node (the hub knows us as h.me.id = '100')
 const dana = h.user('7002', 'dana')
+const NODE_SESS = '0123456789abcdef0123456789abcdef' // as server/src/gateway.js makes them
 const nodeRecord = (status = 'active', online = true) => ({ node_id: N, name: "Dana's Node", url: NODE, description: 'LAN crew', icon: null, version: '7.0.0', mode: 'connected',
   public_servers_count: 1, member_count: 12, online, last_seen: h.iso(-60e3), status })
 const nodeMe = { ...h.user(NODE_ME, 'ciller'), hub_user_id: '100', avatar: 'nodehash' }
@@ -104,11 +105,11 @@ async function twoInstances(browser, errors, { init } = {}) {
       st.nodeOps.push(f)
       if (f.op === 2) {
         st.nodeIdentify.push(f.d.token)
-        ws.send(JSON.stringify({ op: 0, s: 1, t: 'READY', d: { v: 9, session_id: 'node-sess', user: nodeMe, users: [dana], private_channels: [{ id: '7900', type: 1, recipients: [dana] }],
+        ws.send(JSON.stringify({ op: 0, s: 1, t: 'READY', d: { v: 9, session_id: NODE_SESS, user: nodeMe, users: [dana], private_channels: [{ id: '7900', type: 1, recipients: [dana] }],
           relationships: [], read_state: [{ id: '7101', last_message_id: '7150', mention_count: 0 }], presences: [{ user: { id: '7002' }, status: 'online' }], guilds: [nodeGuild] } }))
       }
       if (f.op === 4 && f.d.channel_id) {
-        ws.send(JSON.stringify({ op: 0, s: 2, t: 'VOICE_STATE_UPDATE', d: { guild_id: NG, channel_id: f.d.channel_id, user_id: NODE_ME, session_id: 'node-sess', self_mute: false, self_deaf: false, mute: false, deaf: false, member: h.member(nodeMe) } }))
+        ws.send(JSON.stringify({ op: 0, s: 2, t: 'VOICE_STATE_UPDATE', d: { guild_id: NG, channel_id: f.d.channel_id, user_id: NODE_ME, session_id: NODE_SESS, self_mute: false, self_deaf: false, mute: false, deaf: false, member: h.member(nodeMe) } }))
         ws.send(JSON.stringify({ op: 0, s: 3, t: 'VOICE_SERVER_UPDATE', d: { guild_id: NG, channel_id: f.d.channel_id, token: 'node-voice-token', endpoint: '/livekit' } }))
       }
     })
@@ -134,6 +135,8 @@ async function twoInstances(browser, errors, { init } = {}) {
     if (p === `/guilds/${NG}/members/@me` && method === 'PUT') return json(nodeGuild)
     if (p === '/invites/abc' && method === 'POST') return json(nodeGuild2)
     if (p === `/guilds/${NG}/members`) return json(nodeGuild.members)
+    if (p === `/guilds/${NG}/application-command-index`) return json({ applications: [{ id: '7300', name: 'Pinger', description: '', icon: null, bot_id: '7300' }],
+      application_commands: [{ id: '7301', application_id: '7300', version: '1', type: 1, name: 'ping', description: 'Ping' }] })
     if (p === '/channels/7101/messages' && method === 'GET') return json([
       { id: '7150', channel_id: '7101', guild_id: NG, type: 0, author: dana, content: `welcome <@${NODE_ME}>!`, mentions: [nodeMe], attachments: [{ id: '1', filename: 'map.png', size: 68, content_type: 'image/png', url: '/attachments/7101/1/map.png', proxy_url: '/attachments/7101/1/map.png', width: 1, height: 1 }], embeds: [], timestamp: h.iso(-60e3), edited_timestamp: null, pinned: false, flags: 0 },
     ])
@@ -349,10 +352,10 @@ async function multiInstance(browser, errors) {
   assert.equal(await page.locator('.rail-entry.node-down').count(), 0)
   console.log('ok v7 7 - offline node: greyed servers and status line, reconnects when it is back')
 
-  // A hostile node: wrong-typed fields the boundary does not type-check get through. A render error cuts the node off (the
-  // one whose data went in last) and the hub view renders again; an event the store cannot apply cuts the node off. Both
-  // times its servers go and the hub keeps working; it stays cut off after a reload until Reconnect. A wrong-typed name or
-  // topic is refused at admission and changes nothing.
+  // A hostile node. Wrong-typed fields are refused at admission and change nothing. A value that still breaks a render cuts
+  // off exactly the node that owns what is rendered (NodeGuard), whatever node sent data last, and it stays off after a
+  // reload until Reconnect; so does a node whose event the store cannot apply. A render error no NodeGuard owns (here a
+  // broken hub payload) cuts off every node for this session only; without node state it shows the reload screen.
   const hubLink = rail.getByRole('link', { name: /^Nightfall Gaming/ })
   const reconnect = async () => {
     await rail.getByRole('button', { name: 'Add a server' }).click()
@@ -362,37 +365,69 @@ async function multiInstance(browser, errors) {
     await page.keyboard.press('Escape')
     await nodeIcon.waitFor({ timeout: 15000 })
   }
-  st.nodeSock.send(JSON.stringify({ op: 0, t: 'GUILD_UPDATE', d: { id: NG, name: { x: 1 } } }))
+  const nodeMsg = (id, extra) => ({ id, type: 0, channel_id: '7101', guild_id: NG, author: dana, content: 'm' + id, timestamp: new Date().toISOString(), mentions: [], attachments: [], embeds: [], ...extra })
   await page.waitForURL(`**/channels/7000~${NG}/7000~7101`)
+  await page.locator('.msg').first().waitFor() // channel C (7101) is loaded: later messages are not fetched again
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'GUILD_UPDATE', d: { id: NG, name: { x: 1 } } }))
   st.nodeSock.send(JSON.stringify({ op: 0, t: 'CHANNEL_UPDATE', d: { id: '7101', guild_id: NG, topic: { x: 1 } } }))
-  await page.waitForTimeout(300)
-  assert.equal(await nodeIcon.count(), 1, 'a wrong-typed topic is refused, nothing cut off')
   st.nodeSock.send(JSON.stringify({ op: 0, t: 'GUILD_MEMBER_UPDATE', d: { guild_id: NG, user: dana, nick: { x: 1 }, roles: [] } }))
-  await page.getByText("Display error: Dana's Node was disconnected", { exact: false }).waitFor()
+  await hubLink.click()
+  // attack 1: poll answers without their text (refused), then a message whose reaction breaks the render
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_CREATE', d: nodeMsg('7189', { poll: { question: { text: 'q' }, answers: [{}] } }) }))
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_CREATE', d: nodeMsg('7190', { reactions: [{ count: 1, me: false, emoji: null }] }) }))
+  await page.waitForTimeout(300)
+  assert.equal(await nodeIcon.count(), 1, 'wrong-typed name, topic, nick and poll answers are refused, nothing cut off')
+  await nodeIcon.click() // opening C renders the broken message: the node that owns C is cut off
+  await page.getByText("Display error: Dana's Node was disconnected so Cillhub stays usable. It stays off", { exact: false }).waitFor()
   await hubLink.waitFor()
   assert.equal(await rail.getByRole('link', { name: /Dana's Node/ }).count(), 0, 'node servers dropped after the render error')
+  const callsBefore = st.nodeCalls.length
   await page.reload() // stays cut off on the next start
   await hubLink.waitFor()
   await page.waitForTimeout(1000)
   assert.equal(await rail.getByRole('link', { name: /Dana's Node/ }).count(), 0, 'still cut off after a reload')
+  assert.deepEqual(st.nodeCalls.slice(callsBefore), [], 'no request to a cut-off node')
   await reconnect()
-  await nodeIcon.click() // its channel's messages are loaded, then the hub view is shown
+  // attack 2: a modal for our pending command without components (refused), then one after the node deleted the server
+  // (the pending command went with it: refused); the node stays connected
+  await nodeIcon.click()
+  await page.waitForURL(`**/channels/7000~${NG}/7000~7101`)
+  await box.fill('/pi')
+  await page.getByRole('listbox', { name: 'Commands' }).getByRole('option', { name: /\/ping/ }).waitFor()
+  await box.press('Enter')
+  await page.getByRole('group', { name: 'Command /ping' }).getByRole('button', { name: 'Send' }).click()
+  const { nonce } = (await until(() => st.nodeCalls.find((c) => c.p === '/interactions' && c.method === 'POST'), 'command on the node')).body
+  const modal = (components) => st.nodeSock.send(JSON.stringify({ op: 0, t: 'INTERACTION_MODAL_CREATE', d: { id: '7310', nonce, channel_id: '7101', custom_id: 'm', title: 'Sign in again', ...(components && { components }) } }))
+  modal()
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'GUILD_DELETE', d: { id: NG } }))
+  await rail.getByRole('link', { name: /Dana's Node/ }).waitFor({ state: 'detached' })
+  modal([])
+  await page.waitForTimeout(300)
+  assert.equal(await page.getByRole('dialog', { name: 'Sign in again' }).count(), 0, 'no modal')
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'GUILD_CREATE', d: nodeGuild }))
+  await nodeIcon.waitFor() // not cut off
+  // a store throw: the reaction remove names the broken reaction of a loaded message
+  await nodeIcon.click()
   await page.waitForURL(`**/channels/7000~${NG}/7000~7101`)
   await page.locator('.msg').first().waitFor()
   await hubLink.click()
   const warned = []
   page.on('console', (m) => m.type() === 'warning' && warned.push(m.text()))
-  st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_CREATE', d: { id: '7190', type: 0, channel_id: '7101', guild_id: NG, author: dana, content: 'poll', timestamp: new Date().toISOString(), mentions: [], attachments: [], embeds: [], poll: { question: { text: 'q' } } } }))
-  st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_POLL_VOTE_ADD', d: { user_id: '7002', channel_id: '7101', guild_id: NG, message_id: '7190', answer_id: 1 } }))
-  await rail.getByRole('link', { name: /Dana's Node/ }).waitFor({ state: 'detached' }) // cut off after the reducer throw
-  assert.ok(warned.some((w) => w.includes('MESSAGE_POLL_VOTE_ADD could not be applied')), 'the store threw on the vote, not the render')
-  // a render error with no node state left: the plain reload screen (a broken hub payload stands in for any other bug)
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_CREATE', d: nodeMsg('7191', { reactions: [{ count: 1, me: false, emoji: null }] }) }))
+  st.nodeSock.send(JSON.stringify({ op: 0, t: 'MESSAGE_REACTION_REMOVE_EMOJI', d: { channel_id: '7101', guild_id: NG, message_id: '7191', emoji: { id: null, name: 'x' } } }))
+  await rail.getByRole('link', { name: /Dana's Node/ }).waitFor({ state: 'detached' }) // cut off after the store throw
+  assert.ok(warned.some((w) => w.includes('MESSAGE_REACTION_REMOVE_EMOJI could not be applied')), 'the store threw, not the render')
+  await page.reload()
+  await hubLink.waitFor()
+  await reconnect() // cut off by the store throw, so still off after the reload
+  // a render error no NodeGuard owns: the node is cut off for this session only, then (still broken) the reload screen
   st.hubSock.send(JSON.stringify({ op: 0, t: 'GUILD_UPDATE', d: { id: hubGuild.id, name: { x: 1 } } }))
   await page.getByRole('heading', { name: 'Something went wrong' }).waitFor()
+  assert.ok(!(await page.evaluate(() => localStorage.getItem('instances'))).includes('"cut"'), 'that cut-off is not kept')
   await page.getByRole('button', { name: 'Reload' }).click()
   await hubLink.waitFor()
-  await reconnect() // cut off by the reducer throw, so still off after the reload
-  console.log('ok v7 7b - hostile node: render error and reducer throw cut the node off and it stays off until Reconnect, the hub view stays usable; reload screen without node state')
+  await nodeIcon.waitFor({ timeout: 15000 }) // back by itself: that cut-off was not kept
+  console.log('ok v7 7b - hostile node: refused shapes change nothing; a render error cuts off exactly the node that owns what is shown and a store throw cuts it off, both kept until Reconnect; a node modal needs components and a pending command; an unowned render error cuts nodes off for the session only')
 
   // Suspended by the hub (seen on the next hub READY): the node connection closes and its servers disappear; the node
   // stays under "Your other instances" with its status, where it can be disconnected for good.

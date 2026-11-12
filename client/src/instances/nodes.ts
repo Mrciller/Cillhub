@@ -79,31 +79,33 @@ function open(i: InstanceInfo) {
   conns.set(i.id, g)
   g.connect()
 }
-/** Over its budget (registry.ts) or its data broke the client: disconnected, its servers and all it brought dropped, the
- *  state shown, until the user reconnects it (reconnectNode; kept across starts by registry.ts). */
-function cutOff(id: string) {
+/** Over its budget (registry.ts), its event broke the store or its data broke a render (NodeGuard): disconnected, its
+ *  servers and all it brought dropped, the state shown, until the user reconnects it (reconnectNode). `sticky`: the node
+ *  was shown to be the cause, so it stays off across starts (registry.ts persist). */
+export function cutOff(id: string, sticky = true) {
   close(id)
   if (nodeOf(getState().voice.guildId) === id) leaveVoice()
   for (const g of Object.keys(getState().guilds)) if (nodeOf(g) === id) apply('GUILD_DELETE', { id: g })
   dropNodeState(id)
-  // what the node opened outside its maps: its interaction modal, pending interactions, autocomplete choices
+  // what the node opened outside its maps: its interaction modal, pending interactions, autocomplete choices (each carries
+  // the node channel it was sent into)
+  for (const [nonce, p] of sentInteractions) if (nodeOf(p.channelId) === id) sentInteractions.delete(nonce)
   setState((s) => {
     const m = s.modal as { guildId?: string; channelId?: string; data?: { channel_id?: string } } | null
     return {
       interactions: Object.fromEntries(Object.entries(s.interactions).filter(([, p]) => nodeOf(p.channelId) !== id)),
-      autocomplete: null, // shortcut: also a hub autocomplete list open at that moment; it comes back on the next keystroke
+      ...(nodeOf(s.autocomplete?.channelId) === id && { autocomplete: null }),
       ...([m?.guildId, m?.channelId, m?.data?.channel_id].some((x) => nodeOf(x) === id) && { modal: null }),
     }
   })
-  setLive(id, { status: 'cut-off' })
+  setLive(id, { status: 'cut-off', sticky })
 }
-/** After a render error (main.tsx): `only` (the node whose data went in last) is cut off if it has state, else every node
- *  with state in the store. One name per node cut off, none when no node had state. */
-export function cutOffNodes(only?: string) {
+/** Last resort after a render error no NodeGuard placed (main.tsx): every node with state or a connection is cut off for
+ *  this session only (not kept: the cause is unknown, they connect again on the next start). One name per node. */
+export function cutOffNodes() {
   const s = getState()
-  let ids = new Set(NODE_MAPS.flatMap((k) => Object.keys(s[k]).map(nodeOf)).filter((x): x is string => !!x))
-  if (only && ids.has(only)) ids = new Set([only])
-  for (const id of ids) cutOff(id)
+  const ids = new Set([...conns.keys(), ...NODE_MAPS.flatMap((k) => Object.keys(s[k]).map(nodeOf)).filter((x): x is string => !!x)])
+  for (const id of ids) cutOff(id, false)
   return [...ids].map((id) => instanceById(id)?.name ?? '') // '': leftovers of a node removed meanwhile
 }
 /** "Reconnect" on a cut-off node (Settings › Private Nodes, Add a server › Your other instances). */
@@ -157,6 +159,8 @@ function dropNodeState(id: string) {
   }
   for (const [c, ch] of Object.entries(s.channels)) if (keep.has(ch.guild_id ?? '')) keep.add(c)
   for (const [e, ev] of Object.entries(s.events)) if (keep.has(ev.guild_id)) keep.add(e)
+  // interactions we sent into channels it no longer has: their answers are refused (registry.ts allowed)
+  for (const [nonce, p] of sentInteractions) if (nodeOf(p.channelId) === id && !keep.has(p.channelId)) sentInteractions.delete(nonce)
   setState(Object.fromEntries(NODE_MAPS.map((k) => [k, pruneNode(id, s[k] as Record<string, unknown>, keep)])) as Partial<State>)
 }
 
@@ -219,6 +223,8 @@ const CHANNEL = 'cillcord-instance-signin'
 
 /** Joins a node server (by invite code or directory listing), signing in to the node first if we have no token for it. */
 export async function joinOnNode(node: InstanceInfo, then: Then) {
+  // a cut-off node is not used, not even by an invite, until the user reconnects it
+  if (instanceById(node.id)?.status === 'cut-off') throw new Error(t('Cut off: sent too much or broken data'))
   if (tokenOf(node.id) && instanceById(node.id)?.status !== 'signed-out') {
     // A node that was suspended or unlinked meanwhile has ended our session there: then sign in again.
     try { return await finish(node.id, then) } catch (e) { if (!(e instanceof ApiError && e.status === 401)) throw e }

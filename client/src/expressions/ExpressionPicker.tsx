@@ -14,6 +14,7 @@ import { FavoriteMedia, GifStar } from './GifStar'
 import { getState, useStore } from '../store'
 import type { FavoriteGif, Gif, Sticker } from '../types'
 import { skin } from '../custom/AppearanceV6'
+import { NodeGuard } from '../instances/NodeGuard'
 import './expressions.css'
 
 const tone = () => getState().settings.default_emoji_skin_tone ?? 0
@@ -245,8 +246,9 @@ export function ExpressionPicker({ at, onClose, guildId, perms, initial = 'emoji
         </div>
       )}
       <div role="tabpanel" aria-label={tabs.find(([k]) => k === current)?.[1]} className="expr-panel" key={current}>
-        {current === 'emoji' && <EmojiTab guildId={guildId} perms={perms} onPick={(text, r) => (onEmoji(text, r), onClose())} />}
-        {current === 'sticker' && <StickerTab guildId={guildId} perms={perms} onPick={pickAndClose(onSticker)} />}
+        {/* every server's emoji and stickers: an error here is nobody's in particular */}
+        {current === 'emoji' && <NodeGuard id={null}><EmojiTab guildId={guildId} perms={perms} onPick={(text, r) => (onEmoji(text, r), onClose())} /></NodeGuard>}
+        {current === 'sticker' && <NodeGuard id={null}><StickerTab guildId={guildId} perms={perms} onPick={pickAndClose(onSticker)} /></NodeGuard>}
         {current === 'gif' && <GifTab onPick={pickAndClose(onGif)} onMissing={() => (setNoGifs(true), setTab('emoji'))} />}
       </div>
     </Popover>

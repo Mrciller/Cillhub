@@ -130,6 +130,11 @@ test('list changes stop as soon as the hub session changed (logout or login, in 
 const mem = new Map()
 globalThis.localStorage ??= { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) }
 const reg = await import('../src/instances/registry.ts')
+// READYs within a minute of each other keep the old budget: tests that want a fresh one move the clock past it
+const realNow = Date.now
+let skew = 0
+Date.now = () => realNow() + skew
+const aMinuteLater = () => void (skew += 61_000)
 const { gatewayOk, safePath } = await import('../src/privateNodes.ts')
 const sent = new Map()
 const view = { voiceGuild: null, channels: { '7~101': { guild_id: '7~100' } } }
@@ -184,6 +189,10 @@ test('6: a modal shows where we sent the interaction and names our application, 
   assert.equal(reg.admit('7', 'INTERACTION_MODAL_CREATE', { nonce: '55', id: '57', custom_id: 'm', title: 'x', components: [] }), null, 'used up')
   sent.set('56', { channelId: '7~101', appId: '7~30', type: 5 })
   assert.equal(reg.admit('7', 'INTERACTION_MODAL_CREATE', { nonce: '56', components: [] }), null, 'a modal submit cannot open another modal')
+  sent.set('57', { channelId: '7~101', appId: '7~30', type: 2 })
+  for (const components of [undefined, null, [null], [{ type: 1, components: [null] }]])
+    assert.equal(reg.admit('7', 'INTERACTION_MODAL_CREATE', { nonce: '57', id: '58', custom_id: 'm', title: 't', components }), null, JSON.stringify(components))
+  assert.ok(sent.has('57'), 'a refused modal does not use up the interaction')
 })
 
 test('7: one id budget per node; past it the payload is refused and the node is over budget', () => {
@@ -194,8 +203,12 @@ test('7: one id budget per node; past it the payload is refused and the node is 
   for (let i = 0; i < 60 && !refused; i++) refused = reg.admitRest('9', big.map((x) => ({ id: String(Number(x.id) + i * 5000) }))) === null
   assert.ok(refused && reg.overBudget('9'))
   reg.newConnection('9')
+  assert.equal(reg.admit('9', 'READY', { user: { id: '990' }, guilds: [] }), null, 'a READY within a minute of the last keeps the old budget (spent)')
+  assert.equal(reg.overBudget('9'), true)
+  reg.newConnection('9')
+  aMinuteLater()
   reg.admit('9', 'READY', { user: { id: '990' }, guilds: [] })
-  assert.equal(reg.overBudget('9'), false, 'a new READY starts again')
+  assert.equal(reg.overBudget('9'), false, 'a new READY a minute later starts again')
 })
 
 test('11: only user references alias to us; a channel with our node user id stays scoped', () => {
@@ -392,11 +405,13 @@ test('r7-7: free choices spend the node budget; polls take votes only for their 
   for (let i = 0; i < 100 && !refused; i++) refused = reg.admitRest('4', { [`k${i}`]: 1 }) === null
   assert.ok(refused, 'new property names count')
   reg.newConnection('4')
+  aMinuteLater()
   reg.admit('4', 'READY', { user: { id: '940' }, guilds: [] })
   refused = false
   for (let i = 0; i < 100 && !refused; i++) refused = reg.admitRest('4', { emoji: { id: null, name: `e${i}` } }) === null
   assert.ok(refused, 'new emoji names count')
   reg.newConnection('4')
+  aMinuteLater()
   reg.admit('4', 'READY', { user: { id: '940' }, guilds: [] })
   refused = false
   for (let i = 0; i < 100 && !refused; i++) refused = reg.admitRest('4', { answer_id: i }) === null
@@ -460,42 +475,56 @@ test('r8-2: one READY per connection; another one is over budget until a new con
   assert.equal(reg.overBudget('3'), false)
 })
 
-test('r8-3: a READY is read with the account it names, but a refused one changes no stored identity', () => {
+test('r8-3/r10-8: the first READY of a sign-in pins our node account; a READY naming another one is refused', () => {
   reg.testNode('2', 'https://n8.example', '920', '1')
   reg.newConnection('2')
-  assert.equal(reg.admit('2', 'READY', { user: { id: '921' }, session_id: 's', guilds: [{ id: 'x' }] }), null)
+  assert.equal(reg.admit('2', 'READY', { user: { id: '921' }, session_id: 's', guilds: [] }), null, 'another account')
   assert.deepEqual([reg.instanceById('2').meId, reg.instanceById('2').sessionId], ['920', null])
   reg.newConnection('2')
-  assert.equal(reg.admit('2', 'READY', { user: { id: '921' }, session_id: 's2', guilds: [] }).user.id, '1', 'aliased with the account it names')
-  assert.equal(reg.instanceById('2').meId, '920', 'stored by instances/nodes.ts after admission, not by admit')
+  assert.equal(reg.admit('2', 'READY', { user: { id: '920' }, session_id: 's2', guilds: [{ id: 'x' }] }), null, 'refused READY')
+  reg.newConnection('2')
+  assert.equal(reg.admit('2', 'READY', { user: { id: '920' }, guilds: [] }).user.id, '1', 'aliased with the pinned account')
+  reg.saveInstance({ id: '2', name: '2', url: 'https://n8.example' }, 'tok') // a new sign-in names the account anew
+  reg.newConnection('2')
+  assert.equal(reg.admit('2', 'READY', { user: { id: '921' }, guilds: [] }).user.id, '1')
 })
 
 test('r8-5: fields the UI renders must have their type, or the payload is refused', () => {
   const ok = { id: '5', channel_id: '101', content: 'hi', embeds: [], mentions: [], attachments: [], reactions: [], components: [], author: { id: '2', username: 'sam', global_name: null } }
   assert.ok(reg.admitRest('7', ok))
   for (const bad of [{ content: { x: 1 } }, { name: 5 }, { author: { id: '2', username: [] } }, { embeds: {} }, { mentions: 'x' }, { reactions: null },
-    { poll: {} }, { poll: { question: { text: 1 } }, answers: [] }, { poll: { question: { text: 'q' }, answers: {} } }])
+    { poll: {} }, { poll: { question: { text: 1 } }, answers: [] }, { poll: { question: { text: 'q' }, answers: {} } },
+    { poll: { question: { text: 'q' } } }, { poll: { question: { text: 'q' }, answers: [{}] } }, { poll: { question: { text: 'q' }, answers: [null] } },
+    { poll: { question: { text: 'q' }, answers: [{ poll_media: { emoji: { name: '🙂' } } }] } },
+    { embeds: [null] }, { components: [null] }, { components: [{ type: 1, components: [5] }] }, { nick: { x: 1 } }])
     assert.equal(reg.admitRest('7', { ...ok, ...bad }), null, JSON.stringify(bad))
   assert.ok(reg.admitRest('7', { ...ok, poll: { question: { text: 'q' }, answers: [] } }))
+  // server/src/compose.js: every answer has its text, an emoji next to it is optional
+  assert.ok(reg.admitRest('7', { ...ok, nick: null, poll: { question: { text: 'q' }, answers: [{ answer_id: 1, poll_media: { text: 'a' } }, { answer_id: 2, poll_media: { text: 'b', emoji: { name: '🙂' } } }] } }))
   assert.ok(reg.admitRest('7', { ...ok, poll: null, name: null }))
 })
 
-test('r9-6: the node whose data went in last is blamed; a cut-off node stays cut off on the next start', async () => {
-  reg.testNode('11', 'https://n11.example', '911', '1')
-  reg.testNode('12', 'https://n12.example', '912', '1')
-  assert.ok(reg.admitRest('11', { id: '5' }))
-  assert.equal(reg.lastNode(), '11')
-  assert.ok(reg.admit('12', 'GUILD_UPDATE', { id: '100', name: 'x' }))
-  assert.equal(reg.lastNode(), '12')
-  assert.equal(reg.admitRest('11', { name: 5 }), null)
-  assert.equal(reg.lastNode(), '12', 'a refused answer is not blamed')
-  reg.setLive('12', { status: 'cut-off' })
-  reg.setLive('11', { status: 'ready' })
+test('r10-1/5: a cut-off for a direct cause is kept across starts, a last-resort one is not; another tab keeps the flag', async () => {
+  reg.saveInstance({ id: '11', name: 'n11', url: 'https://n11.example' }, 't11')
+  reg.saveInstance({ id: '12', name: 'n12', url: 'https://n12.example' }, 't12')
+  const tab2 = await import('../src/instances/registry.ts?tab2') // another tab, started while both were connected
+  reg.setLive('12', { status: 'cut-off', sticky: true }) // over budget, store throw, second READY, NodeGuard
+  reg.setLive('11', { status: 'cut-off', sticky: false }) // main.tsx Guard: cause unknown
   const again = await import('../src/instances/registry.ts?restart')
   assert.equal(again.instanceById('12').status, 'cut-off', 'kept across starts')
-  assert.equal(again.instanceById('11').status, 'connecting')
-  reg.setLive('12', { status: 'connecting' }) // Reconnect
-  assert.equal((await import('../src/instances/registry.ts?restart2')).instanceById('12').status, 'connecting')
+  assert.equal(again.instanceById('11').status, 'connecting', 'not kept: connects again on the next start')
+  // the other tab still has 12 connected; its own status changes do not lift this tab's cut flag
+  tab2.setLive('12', { status: 'ready' })
+  tab2.setLive('12', { status: 'offline' })
+  assert.equal((await import('../src/instances/registry.ts?restart2')).instanceById('12').status, 'cut-off', 'another tab kept the flag')
+  assert.equal(reg.admitRest('12', { id: '5' }), null, 'a cut-off node\'s answers are refused')
+  reg.setLive('12', { status: 'connecting' }) // Reconnect, in the tab that cut it off
+  assert.ok(reg.admitRest('12', { id: '5' }))
+  assert.equal((await import('../src/instances/registry.ts?restart3')).instanceById('12').status, 'connecting', 'Reconnect lifts it')
+  reg.setLive('12', { status: 'ready', meId: '912' })
+  assert.equal((await import('../src/instances/registry.ts?restart4')).instanceById('12').meId, '912', 'the pinned node account is kept with the sign-in')
+  reg.removeInstance('11')
+  reg.removeInstance('12')
 })
 
 test('r9-6/10: more rendered fields typed; maps under resolved and honest values stay', () => {
@@ -515,9 +544,9 @@ test('r9-11: module data is free-form (sizes and ids still checked)', () => {
   assert.equal(reg.admitRest('7', { data: { name: 5 }, name: 5 }, true), null, 'only inside data')
 })
 
-test('r9-8: node session id capped; replaced only at session_id', () => {
-  assert.equal(reg.sessionOf('a'.repeat(32)), 'a'.repeat(32))
-  assert.equal(reg.sessionOf('a'.repeat(101)), null)
+test('r9-8: node session id is 32 hex; replaced only at session_id', () => {
+  assert.equal(reg.sessionOf('0123456789abcdef'.repeat(2)), '0123456789abcdef'.repeat(2)) // server/src/gateway.js randomBytes(16) hex
+  for (const bad of ['a'.repeat(101), 'a'.repeat(31), 'A'.repeat(32), 'node-sess', 'g'.repeat(32)]) assert.equal(reg.sessionOf(bad), null, bad)
   assert.equal(reg.sessionOf(5), null)
   reg.testNode('13', 'https://n13.example', '913', '1')
   reg.setLive('13', { sessionId: 'nodesess' })

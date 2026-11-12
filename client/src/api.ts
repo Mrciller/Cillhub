@@ -121,8 +121,9 @@ function target(path: string, body: unknown, instance?: string) {
   if (!safePath(path)) throw new ApiError(0, { message: t('Request failed ({status})', { status: 0 }) })
   const node = instance ?? route(path, body)
   const info = instanceById(node)
-  // a node id of a node we no longer have, or ids of another server in the path: never sent
-  if ((node && !info) || !pathFits(path, node)) throw new ApiError(0, { message: t('Request failed ({status})', { status: 0 }) })
+  // a node id of a node we no longer have or that is cut off (only its sign-out goes out), or ids of another server in
+  // the path: never sent
+  if ((node && !info) || (info?.status === 'cut-off' && path !== '/auth/logout') || !pathFits(path, node)) throw new ApiError(0, { message: t('Request failed ({status})', { status: 0 }) })
   if (!bodyFits(body, node)) throw new ApiError(0, { message: t('That is on another server and cannot be used here.') })
   const base = apiOrigin() + '/api/v9'
   return info ? { node: info.id, url: info.url + '/api/v9' + outboundPath(info.id, path), body: outbound(info.id, body) } : { node: undefined, url: base + path, body }

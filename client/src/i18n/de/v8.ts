@@ -88,6 +88,7 @@ export const v8: Record<string, string> = {
     '{name} hat zu viele oder fehlerhafte Daten geschickt und wurde getrennt. Es bleibt getrennt, bis du es neu verbindest.',
   'Display error: {name} was disconnected so Cillhub stays usable. It stays off until you reconnect it.':
     'Anzeigefehler: {name} wurde getrennt, damit Cillhub benutzbar bleibt. Es bleibt getrennt, bis du es neu verbindest.',
+  'Display error: {name} was disconnected so Cillhub stays usable.': 'Anzeigefehler: {name} wurde getrennt, damit Cillhub benutzbar bleibt.',
   'Reconnect': 'Neu verbinden', 'Reconnect {name}': '{name} neu verbinden',
   'Something went wrong': 'Etwas ist schiefgelaufen', 'Cillhub could not show this page. Reloading usually fixes it.': 'Cillhub konnte diese Seite nicht anzeigen. Neu laden behebt das meist.',
   'From {instance}, a separate server. What you enter goes there.': 'Von {instance}, einem eigenen Server. Was du eingibst, geht dorthin.',

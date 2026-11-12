@@ -97,7 +97,7 @@ export type State = {
   calls: Record<string, Call> // DM channel id -> active call
   activities: Record<string, Activity[]> // user id -> activities (custom status, bot "Playing …")
   interactions: Record<string, PendingInteraction>
-  autocomplete: { nonce: string; choices: { name: string; value: string | number }[] } | null
+  autocomplete: { nonce: string; channelId?: string; choices: { name: string; value: string | number }[] } | null // channelId: whose answer (a node's is scoped)
   showMembers: boolean // member list (guilds) / recipient list (group DMs), remembered locally
   // v5
   watch: Record<string, WatchSession> // voice channel id -> Watch Together session
@@ -683,7 +683,7 @@ export function apply(t: string, d: any) {
       // commands of an app changed (a module was disabled, a bot registered some): actions.ts drops its cached index
       return void dispatchEvent(new CustomEvent('cillcord:command-index', { detail: d.guild_id }))
     case 'APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE':
-      return setState({ autocomplete: { nonce: d.nonce, choices: d.choices ?? [] } })
+      return setState({ autocomplete: { nonce: d.nonce, channelId: d.channel_id, choices: d.choices ?? [] } })
     case 'INTERACTION_MODAL_CREATE':
       return setState({ modal: { kind: 'interaction-modal', data: d }, ...(d.nonce && s.interactions[d.nonce] && { interactions: omit(s.interactions, d.nonce) }) })
     // ---------- v5 ----------

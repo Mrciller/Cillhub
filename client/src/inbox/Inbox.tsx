@@ -12,6 +12,7 @@ import { mentionCount, privateName, unreadChannels, isUnread } from '../selector
 import { cmpId, displayName, getState, isPrivate, useStore } from '../store'
 import type { Channel, Message } from '../types'
 import { BookmarksTab, RemindersTab, ScheduledTab } from '../scheduling/Scheduling'
+import { NodeGuard } from '../instances/NodeGuard'
 import './inbox.css'
 
 const where = (c: Channel | undefined) => {
@@ -180,7 +181,8 @@ export function InboxButton({ guildId }: { guildId?: string }) {
             </div>
           </header>
           <div role="tabpanel" className="inbox-body">
-            {tab === 'mentions' ? <Mentions guildId={guildId} close={close} /> : tab === 'unreads' ? <Unreads close={close} /> : tab === 'threads' ? <ActiveThreadsTab close={close} /> : tab === 'bookmarks' ? <BookmarksTab close={close} /> : tab === 'reminders' ? <RemindersTab close={close} /> : <ScheduledTab />}
+            {/* every server's data: an error here is nobody's in particular */}
+            <NodeGuard id={null}>{tab === 'mentions' ? <Mentions guildId={guildId} close={close} /> : tab === 'unreads' ? <Unreads close={close} /> : tab === 'threads' ? <ActiveThreadsTab close={close} /> : tab === 'bookmarks' ? <BookmarksTab close={close} /> : tab === 'reminders' ? <RemindersTab close={close} /> : <ScheduledTab />}</NodeGuard>
           </div>
         </Popover>
       )}

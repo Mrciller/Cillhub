@@ -233,7 +233,7 @@ export async function votePoll(m: Message, answerIds: number[]) {
   }
 }
 export const endPoll = (m: Message) => api<Message>(`/channels/${m.channel_id}/polls/${m.id}/expire`, { method: 'POST' }).then((r) => r && apply('MESSAGE_UPDATE', r))
-export const pollVoters = (m: Message, answerId: number) => api<{ users: User[] }>(`/channels/${m.channel_id}/polls/${m.id}/answers/${answerId}?limit=100`).then((r) => r.users)
+export const pollVoters = (m: Message, answerId: number) => api<{ users: User[] }>(`/channels/${m.channel_id}/polls/${m.id}/answers/${answerId}?limit=100`).then((r) => rows(r.users))
 
 const acked: Record<string, string> = {}
 /** Marks a channel read up to `messageId` (deduplicated per channel). */
@@ -404,7 +404,7 @@ export const listThreadMembers = (threadId: string) => api<(ThreadMember & { mem
 /** Archived threads of a channel (public, or private ones you can see). Fills the store so they open like any thread. */
 export async function archivedThreads(channelId: string, kind: 'public' | 'private', before?: string) {
   const r = await api<{ threads: Channel[]; members: ThreadMember[]; has_more: boolean }>(`/channels/${channelId}/threads/archived/${kind}${qs({ before, limit: 50 })}`)
-  apply('THREAD_LIST_SYNC', { guild_id: getState().channels[channelId]?.guild_id, threads: rows(r.threads), members: r.members })
+  apply('THREAD_LIST_SYNC', { guild_id: getState().channels[channelId]?.guild_id, threads: rows(r.threads), members: rows(r.members) })
   return r
 }
 
@@ -413,7 +413,7 @@ export type SearchParams = Record<string, string | string[] | number | boolean |
 export type SearchResult = { total_results: number; messages: Message[][]; threads?: Channel[]; members?: ThreadMember[] }
 export const searchMessages = (scope: { guildId?: string; channelId?: string }, params: SearchParams) =>
   api<SearchResult>(scope.guildId ? `/guilds/${scope.guildId}/messages/search${qs(params as never)}` : `/channels/${scope.channelId}/messages/search${qs(params as never)}`).then((r) => {
-    if (r?.threads?.length) apply('THREAD_LIST_SYNC', { guild_id: scope.guildId, threads: r.threads, members: r.members ?? [] })
+    if (r?.threads?.length) apply('THREAD_LIST_SYNC', { guild_id: scope.guildId, threads: rows(r.threads), members: rows(r.members ?? []) })
     return r
   })
 
@@ -728,6 +728,7 @@ export function commandIndex(scope: { guildId?: string; channelId: string }) {
   let p = indexes.get(key)
   if (!p) {
     p = api<CommandIndex>(scope.guildId ? `/guilds/${scope.guildId}/application-command-index` : `/channels/${scope.channelId}/application-command-index`)
+      .then((r) => ({ ...r, applications: rows(r.applications), application_commands: rows(r.application_commands) }))
       .catch(() => ({ applications: [], application_commands: [] }))
     indexes.set(key, p)
     setTimeout(() => indexes.delete(key), 60_000)
