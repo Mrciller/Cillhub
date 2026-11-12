@@ -102,10 +102,18 @@ export function cmp(a, b) {
 }
 
 // ---- release from the hub, trusted only after the signature check
-async function get(url) {
+// latest.json and its signature only (the tarball has its own size check): at most 1 MB, read in chunks
+const FEED_MAX = 1024 * 1024;
+export async function get(url) {
   const r = await fetch(url, { signal: AbortSignal.timeout(30000) });
   if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
-  return Buffer.from(await r.arrayBuffer());
+  const chunks = [];
+  let n = 0;
+  for await (const c of r.body ?? []) {
+    if ((n += c.length) > FEED_MAX) throw new Error(`${url}: larger than 1 MB`); // leaving the loop cancels the download
+    chunks.push(c);
+  }
+  return Buffer.concat(chunks);
 }
 const fingerprint = (k) => crypto.createHash('sha256').update(k.export({ type: 'spki', format: 'der' })).digest('hex');
 export const parseKeys = (pem) => new Map((String(pem).match(/-----BEGIN PUBLIC KEY-----[A-Za-z0-9+/=\s]+-----END PUBLIC KEY-----/g) ?? [])

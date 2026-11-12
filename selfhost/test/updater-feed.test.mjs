@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { verifyFeed, parseKeys } from '../updater.mjs';
+import { verifyFeed, parseKeys, get } from '../updater.mjs';
 
 const pair = () => crypto.generateKeyPairSync('ed25519');
 const pem = (k) => k.publicKey.export({ type: 'spki', format: 'pem' });
@@ -45,4 +45,14 @@ test('a key list cannot drop the key that signed the feed (no permanent lockout)
   assert.throws(() => verifyFeed(...feed(oldKey, { keys: [pem(newKey)] }), keys, null, now), /drops the key that signed it/);
   assert.throws(() => verifyFeed(...feed(oldKey, { keys: [] }), keys, null, now), /drops the key that signed it/);
   assert.deepEqual(verifyFeed(...feed(newKey, { keys: [pem(newKey)] }), keys, null, now).keys, [pem(newKey)]); // rotation: the new key retires the old
+});
+
+test('feed and signature downloads stop past 1 MB', async () => {
+  const http = await import('node:http');
+  const srv = http.createServer((req, res) => res.end(Buffer.alloc(req.url === '/big' ? 1024 * 1024 + 1 : 1024 * 1024)));
+  await new Promise((ok) => srv.listen(3393, '127.0.0.1', ok));
+  try {
+    assert.equal((await get('http://127.0.0.1:3393/ok')).length, 1024 * 1024);
+    await assert.rejects(get('http://127.0.0.1:3393/big'), /larger than 1 MB/);
+  } finally { srv.close(); }
 });
