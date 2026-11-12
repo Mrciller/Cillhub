@@ -419,7 +419,7 @@ impl CillhubApp {
         for o in std::mem::take(&mut self.cut_off) {
             self.cut_off_node(&o); // found by a member-list answer
         }
-        if !(self.settings.pending_revokes.is_empty() && self.unsaved_revokes.is_empty() && self.removing.is_empty()) && self.last_revoke_retry.elapsed() >= Duration::from_secs(60) {
+        if !(self.settings.pending_revokes.is_empty() && self.unsaved_revokes.is_empty() && self.settings.pending_removals.is_empty()) && self.last_revoke_retry.elapsed() >= Duration::from_secs(60) {
             self.last_revoke_retry = Instant::now();
             // not saved yet: save again (then it is an ordinary pending sign-out), else try the node again
             for (id, origin, token) in std::mem::take(&mut self.unsaved_revokes) {
@@ -432,7 +432,7 @@ impl CillhubApp {
                 }
             }
             self.retry_revokes(); // a node that was down may be back; each try is bounded (nodes::revoke)
-            for o in self.removing.keys().cloned().collect::<Vec<_>>() {
+            for o in self.settings.pending_removals.keys().cloned().collect::<Vec<_>>() {
                 self.drop_node(&o, true); // a removal whose sign-out could not be recorded yet
             }
         }
@@ -641,7 +641,7 @@ impl CillhubApp {
     /// memory first) is revoked on the node; until the node confirms, that sign-out stays saved and is retried.
     pub fn drop_node(&mut self, origin: &str, sign_out: bool) {
         // a retried removal keeps the key it started with (logout clears the hub identity it is made from)
-        let key = self.removing.get(origin).cloned().unwrap_or_else(|| self.node_key(origin));
+        let key = self.settings.pending_removals.get(origin).cloned().unwrap_or_else(|| self.node_key(origin));
         let live = self.conns.get(origin).and_then(|c| c.api.as_ref()).and_then(|a| a.token.clone());
         let Ok(stored) = self.settings.node_token_checked(&key) else {
             // the keyring cannot be read now: whether a credential is stored is unknown, so nothing is deleted or
@@ -664,7 +664,9 @@ impl CillhubApp {
                 return self.removal_pending(origin, &key, e.to_string());
             }
         }
-        self.removing.remove(origin);
+        if self.settings.pending_removals.remove(origin).is_some() {
+            let _ = self.settings.save();
+        }
         self.conns.remove(origin); // Drop closes it and ends it for every worker
         self.drop_node_data(origin);
         // also when the keyring could not be read: the entry is tombstoned before it is deleted
@@ -675,7 +677,8 @@ impl CillhubApp {
     /// removal is tried again every minute (tick_nodes).
     fn removal_pending(&mut self, origin: &str, key: &str, why: String) {
         self.status_banner = Some(why);
-        self.removing.insert(origin.to_string(), key.to_string());
+        self.settings.pending_removals.insert(origin.to_string(), key.to_string());
+        let _ = self.settings.save(); // kept for the next start too, if the file can be written
         if let Some(c) = self.conns.get_mut(origin) {
             c.close();
             c.link = NodeLink::Down(tr("Sign-out pending").to_string());
@@ -1235,11 +1238,11 @@ mod tests {
         app.drop_node(a, true);
         crate::settings::FAIL_SAVE.with(|f| f.set(false));
         assert_eq!(app.settings.node_token(&key).as_deref(), Some("node-token"), "the only durable record stays");
-        assert!(app.conns.contains_key(a) && app.removing.get(a) == Some(&key), "the removal is not done yet, its key kept");
+        assert!(app.conns.contains_key(a) && app.settings.pending_removals.get(a) == Some(&key), "the removal is not done yet, its key kept (in the settings, for a restart too)");
         app.hub_user = "someone-else".into(); // a logout meanwhile changes the identity keys are made from
         app.last_revoke_retry = Instant::now() - Duration::from_secs(61);
         app.tick_nodes();
-        assert!(app.removing.is_empty() && !app.conns.contains_key(a) && app.settings.pending_revokes.len() == 1, "recorded now, then removed");
+        assert!(app.settings.pending_removals.is_empty() && !app.conns.contains_key(a) && app.settings.pending_revokes.len() == 1, "recorded now, then removed");
         assert_eq!(app.settings.node_token(&key), None);
     }
 
@@ -1464,6 +1467,41 @@ mod tests {
         api.max_body = crate::api::NODE_MAX_BODY;
         assert_eq!(api.get("/channels/1/messages").unwrap_err().message, "The answer is too large.");
         seen.join().unwrap();
+    }
+
+    /// Round 8, item 6: paging follows the server's offset and stops at the kept limit.
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn search_paging_follows_the_offset_and_stops_at_the_cap() {
+        let body = r#"{"total_results": 900, "messages": [[{"id": "m1", "channel_id": "c_general", "content": "a"}], [{"id": "m1", "channel_id": "c_general", "content": "a"}]]}"#;
+        let (hub, seen) = crate::api::testing::serve(1, move |_| (200, body.into()));
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(crate::api::ApiClient::new(url::Url::parse(&hub).unwrap(), None));
+        app.selected_channel_id = Some("c_general".into());
+        app.search_query = "a".into();
+        app.run_search(false);
+        settle(&mut app);
+        let s = app.search.as_ref().unwrap();
+        assert_eq!((s.hits.len(), s.offset), (1, 2), "a repeated hit is dropped, the offset still moves on");
+        seen.join().unwrap();
+        app.search.as_mut().unwrap().hits = (0..crate::ui::MAX_SEARCH_HITS).map(|i| crate::model::Message { id: i.to_string(), ..Default::default() }).collect();
+        app.run_search(true);
+        assert_eq!(app.bg.pending, 0, "no request past the cap");
+    }
+
+    /// Round 8, item 7: our own presence is shown in the hub's data, whichever connection is in front.
+    #[test]
+    fn own_presence_goes_to_the_hub_data() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example";
+        let tx = fake_node(&mut app, a, None);
+        send(&tx, "READY", json!({ "session_id": "s", "user": { "id": "n1", "username": "alex" }, "guilds": [{ "id": "g", "name": "n" }] }));
+        app.tick_nodes();
+        app.show(&Some(a.into()));
+        app.my_status = "dnd".into();
+        app.broadcast_presence();
+        assert!(!app.state.presences.contains_key("n1"), "not in the node's data");
+        assert_eq!(app.conn_state(&None).unwrap().presences["u_me"].status, "dnd");
     }
 
     #[test]

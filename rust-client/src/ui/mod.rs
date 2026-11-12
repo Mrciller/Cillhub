@@ -80,6 +80,8 @@ pub struct SearchResults {
     pub scope: String,
     pub generation: u64,
     pub total: usize,
+    /// the server's results asked for so far (the next page starts here; hits drop repeats)
+    pub offset: usize,
     pub hits: Vec<Message>,
     pub loading: bool,
 }
@@ -177,8 +179,6 @@ pub struct CillhubApp {
     /// Sign-outs whose record could not be saved yet: (id, node origin, token), saved again with each retry.
     unsaved_revokes: Vec<(String, String, String)>,
     /// Nodes whose removal waits until its sign-out can be recorded (the connection and token stay meanwhile).
-    /// (origin -> the credential key it was started with)
-    removing: std::collections::HashMap<String, String>,
     /// Where the open dialog posts to (connection, its generation, server, channel), taken when it opened.
     modal_dest: Option<(connections::Conn, u64, Option<String>, Option<String>)>,
     /// Bumped whenever the add-link dialog shows another node: older name lookups are dropped.
@@ -403,7 +403,6 @@ impl CillhubApp {
             cut_off: Vec::new(),
             pending_nav: None,
             unsaved_revokes: Vec::new(),
-            removing: Default::default(),
             add_dialog_gen: 0,
             modal_dest: None,
             unsaved_seq: 0,
@@ -956,6 +955,11 @@ impl CillhubApp {
                 game: game.clone(),
             });
         }
+        // our presence is the hub's (its gateway gets it): shown in the hub's data, whichever is in front
+        self.with_conn(&None, |app| app.set_own_presence(custom_status, game));
+    }
+
+    fn set_own_presence(&mut self, custom_status: Option<CustomStatus>, game: Option<GameActivity>) {
         if let Some(me) = &self.state.me {
             let activities = game
                 .map(|g| {
@@ -1137,7 +1141,10 @@ impl CillhubApp {
         if q.is_empty() || self.api.is_none() {
             return;
         }
-        let offset = if more { self.search.as_ref().map_or(0, |s| s.hits.len()) } else { 0 };
+        let offset = if more { self.search.as_ref().map_or(0, |s| s.offset) } else { 0 };
+        if more && self.search.as_ref().is_some_and(|s| s.hits.len() >= MAX_SEARCH_HITS) {
+            return; // the kept results are full
+        }
         if !more || self.search.is_none() {
             let scope = match &self.selected_guild_id {
                 Some(gid) => format!("/guilds/{gid}"),
@@ -1159,6 +1166,8 @@ impl CillhubApp {
             let Some(v) = report(&mut app.status_banner, r) else { return };
             s.total = v.get("total_results").and_then(Value::as_u64).unwrap_or(0) as usize;
             // each hit is [message, ...context]
+            let page = v.get("messages").and_then(Value::as_array).map_or(0, Vec::len);
+            s.offset = offset + page;
             let hits = v.get("messages").and_then(Value::as_array).into_iter().flatten().filter_map(|h| h.get(0));
             for m in hits.filter_map(|m| crate::model::parse::<Message>(m.clone()).ok()) {
                 if s.hits.len() < MAX_SEARCH_HITS && !s.hits.iter().any(|h| h.id == m.id) {

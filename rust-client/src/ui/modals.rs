@@ -17,6 +17,9 @@ use serde_json::json;
 use crate::i18n::{tr, trf};
 use crate::theme::ui_font;
 
+/// Shown under search results once the kept list is full.
+pub const SEARCH_CUT: &str = "Only the first {n} results are shown. Narrow your search to find the others.";
+
 /// What adding a private node agrees to (the add-link dialog and Settings › Private Nodes).
 pub const SIGN_IN_NOTE: &str = "Cillhub signs you in there with your account here: the node gets your user name and avatar, never your password. Its servers then show up in your server list.";
 
@@ -664,6 +667,8 @@ impl CillhubApp {
                     }
                     if loading {
                         ui.label(RichText::new(tr("Searching…")).color(TEXT_MUTED()));
+                    } else if hits.len() >= super::MAX_SEARCH_HITS && total > hits.len() {
+                        ui.label(RichText::new(crate::i18n::trf(SEARCH_CUT, &[("n", &super::MAX_SEARCH_HITS.to_string())])).color(TEXT_MUTED()));
                     } else if hits.len() < total && secondary_btn(ui, tr("Load more")).clicked() {
                         self.run_search(true);
                     }

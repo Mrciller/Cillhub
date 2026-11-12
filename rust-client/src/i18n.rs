@@ -66,6 +66,7 @@ const NATIVE_DE: &[(&str, &str)] = &[
     ("Needs its own login · not connected", "Braucht eigene Anmeldung · nicht verbunden"),
     ("Not connected: {reason} Retrying…", "Nicht verbunden: {reason} Neuer Versuch folgt …"),
     ("Not connected", "Nicht verbunden"),
+    ("Only the first {n} results are shown. Narrow your search to find the others.", "Nur die ersten {n} Ergebnisse werden angezeigt. Grenze deine Suche ein, um die anderen zu finden."),
     ("Sign-out pending", "Abmeldung steht aus"),
     ("Too much is going on right now. Try again in a moment.", "Gerade ist zu viel los. Versuch es gleich noch einmal."),
     ("Direct messages and friends are not available on private nodes yet.", "Direktnachrichten und Freunde gibt es auf Private Nodes noch nicht."),

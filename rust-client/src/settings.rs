@@ -73,6 +73,10 @@ pub struct AppSettings {
     /// or here when the keyring failed. Retried at every start until the node confirms.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub pending_revokes: HashMap<String, Option<String>>,
+    /// Node removals waiting until their sign-out can be recorded: origin -> the credential key they started
+    /// with. Finished on a later try or start (ui::connections::drop_node).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub pending_removals: HashMap<String, String>,
     #[serde(default)]
     pub audio_config: AudioConfig,
     #[serde(default)]
@@ -139,6 +143,7 @@ impl Default for AppSettings {
             node_tokens: HashMap::new(),
             node_tombstones: Default::default(),
             pending_revokes: HashMap::new(),
+            pending_removals: HashMap::new(),
             audio_config: AudioConfig::default(),
             drafts: HashMap::new(),
             show_members: true,
