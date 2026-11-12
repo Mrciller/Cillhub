@@ -86,9 +86,10 @@ export const BADGES: [string, string][] = [
   ['Flame', 'M12 2s5 5 5 10a5 5 0 0 1-10 0c0-2.4 1.2-4 2.2-5 .3 1.6 1 2.6 1.8 3C11 7 12 2 12 2z'],
   ['Crown', 'M3 7l4.5 4L12 4l4.5 7L21 7l-2 12H5L3 7z'],
 ]
+const str = (v: unknown) => (typeof v === 'string' ? v : undefined) // a node's profile is not type-checked on the way in
 /** A guild identity (guild `profile` or a user's `primary_guild`) as the tag chip draws it. */
 const chipOf = (p: (Partial<Omit<GuildIdentity, 'tag'>> & { tag?: string | null }) | null | undefined): GuildTag | null =>
-  p?.tag ? { tag: p.tag, badge: p.badge_type ?? 0, badge_color_primary: p.badge_color_primary ?? '#8a93a6', badge_color_secondary: p.badge_color_secondary ?? p.badge_color_primary ?? '#c0c6d2' } : null
+  p?.tag ? { tag: String(p.tag), badge: p.badge_type ?? 0, badge_color_primary: str(p.badge_color_primary) ?? '#8a93a6', badge_color_secondary: str(p.badge_color_secondary) ?? str(p.badge_color_primary) ?? '#c0c6d2' } : null
 export const tagOf = (guild?: Guild): GuildTag | null => chipOf(guild?.profile)
 export function TagChip({ tag, title }: { tag: GuildTag; title?: string }) {
   const [label, d] = BADGES[tag.badge] ?? BADGES[0]

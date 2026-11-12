@@ -137,7 +137,7 @@ const SHAPES = new Map<string, (v: unknown) => boolean>([
   ...['name', 'content', 'username', 'global_name', 'topic', 'description', 'title', 'label', 'text', 'nick'].map((k) => [k, strOrNull] as const),
   ...['mentions', 'attachments', 'reactions', 'channels', 'members'].map((k) => [k, Array.isArray] as const),
   ...['emojis', 'stickers'].map((k) => [k, named] as const),
-  ...['embeds', 'components', 'answers', 'choices', 'fields'].map((k) => [k, objects] as const), // rendered element by element
+  ...['embeds', 'components', 'answers', 'choices', 'fields', 'soundboard_sounds', 'permission_overwrites'].map((k) => [k, objects] as const), // rendered element by element
   ['poll', poll],
 ])
 const isIdKey = (k: string) => (k === 'id' || k.endsWith('_id')) && !FREE_IDS.has(k)
@@ -267,7 +267,7 @@ export const setView = (v: View) => void (view = v)
 const BY_ID = ['GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE']
 const CHANNEL_BY_ID = ['VOICE_CHANNEL_STATUS_UPDATE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'THREAD_MEMBER_UPDATE', 'THREAD_MEMBERS_UPDATE']
 // The ones that put a channel in the store with the type they name (a deleted one is gone either way).
-const DM_EVENTS = ['CHANNEL_CREATE', 'CHANNEL_UPDATE', 'THREAD_CREATE']
+const DM_EVENTS = ['CHANNEL_CREATE', 'CHANNEL_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE']
 const BY_GUILD = ['GUILD_ROLE_CREATE', 'GUILD_ROLE_UPDATE', 'GUILD_ROLE_DELETE', 'GUILD_MEMBER_ADD', 'GUILD_MEMBER_UPDATE', 'GUILD_MEMBER_REMOVE', 'GUILD_BAN_ADD',
   'GUILD_BAN_REMOVE', 'GUILD_EMOJIS_UPDATE', 'GUILD_STICKERS_UPDATE', 'GUILD_SCHEDULED_EVENT_CREATE', 'GUILD_SCHEDULED_EVENT_UPDATE',
   'GUILD_SCHEDULED_EVENT_DELETE', 'GUILD_SCHEDULED_EVENT_USER_ADD', 'GUILD_SCHEDULED_EVENT_USER_REMOVE', 'GUILD_SOUNDBOARD_SOUND_CREATE',

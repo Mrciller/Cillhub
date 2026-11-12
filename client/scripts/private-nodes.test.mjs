@@ -586,3 +586,10 @@ test('r11-6: a cut-off node sends nothing we apply, gateway events as well as RE
   assert.ok(reg.admit('14', 'GUILD_UPDATE', ev))
   reg.removeInstance('14')
 })
+
+test('r12: sound and overwrite lists are lists of objects; a thread update cannot turn a node channel into a DM', () => {
+  for (const bad of [{ soundboard_sounds: 5 }, { soundboard_sounds: [null] }, { permission_overwrites: 5 }, { permission_overwrites: [null] }])
+    assert.equal(reg.admitRest('7', { id: '5', ...bad }), null, JSON.stringify(bad))
+  assert.ok(reg.admitRest('7', { id: '5', soundboard_sounds: [{ sound_id: '57', name: 'horn' }], permission_overwrites: [] }))
+  assert.equal(reg.admit('7', 'THREAD_UPDATE', { id: '106', guild_id: '100', type: 1 }), null)
+})

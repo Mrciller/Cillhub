@@ -96,8 +96,9 @@ export const Icon = ({ d, size = 20, className }: { d: string; size?: number; cl
   </svg>
 )
 
-export const initials = (name: string, max: number) =>
-  name.trim().split(/\s+/).map((w) => Array.from(w)[0]).slice(0, max).join('')
+// a node may send a null name
+export const initials = (name: string | null | undefined, max: number) =>
+  (name ?? '').trim().split(/\s+/).map((w) => Array.from(w)[0]).slice(0, max).join('')
 
 // Darkened default-avatar hues so white initials keep 4.5:1 contrast.
 const COLORS = ['#0b6e85', '#3d4a6b', '#157f49', '#8a5a00', '#b81c55', '#6b3fd1']
