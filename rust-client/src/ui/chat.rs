@@ -20,6 +20,11 @@ use egui::{
 };
 use serde_json::json;
 
+/// Longest message text whose parsed form is cached (see render_formatted_content).
+const MD_CACHE_TEXT: usize = 16 * 1024;
+/// Invite cards kept at most.
+const MAX_INVITE_CARDS: usize = 500;
+
 impl CillhubApp {
     pub fn render_chat_view(&mut self, ui: &mut Ui, channel: &Channel) {
         let cid = channel.id.clone();
@@ -1127,6 +1132,9 @@ impl CillhubApp {
         }) {
             self.invite_lookups += 1;
             // a stale answer stays on screen while it refreshes
+            if self.invite_cards.len() >= MAX_INVITE_CARDS {
+                self.invite_cards.clear(); // looked up again when shown
+            }
             self.invite_cards.entry(code.to_string()).or_insert_with(InviteCard::loading).at = std::time::Instant::now();
         }
     }
@@ -1137,6 +1145,7 @@ impl CillhubApp {
     }
 
     /// Message text through the web client's Markdown rules (see crate::markdown).
+    /// (Texts longer than MD_CACHE_TEXT are not cached.)
     fn render_formatted_content(&mut self, ui: &mut Ui, msg_id: &str, content: &str) {
         let gid = self.md_key();
         // parsed once per content and connection; names and relative times may be a minute old
@@ -1164,7 +1173,10 @@ impl CillhubApp {
         let time = |unix: i64, style: char| unix_time(unix, style);
         let ctx = crate::markdown::Ctx { user: &user, role: &role, channel: &channel, time: &time };
         let blocks = std::rc::Rc::new(crate::markdown::parse(content, &ctx));
-        self.md_cache.2.insert(content.to_string(), blocks.clone());
+        // long texts are parsed each time: the cache holds at most 2000 x MD_CACHE_TEXT bytes of them
+        if content.len() <= MD_CACHE_TEXT {
+            self.md_cache.2.insert(content.to_string(), blocks.clone());
+        }
         self.render_md_blocks(ui, msg_id, &blocks);
     }
 

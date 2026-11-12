@@ -12,6 +12,9 @@ type UiFn = Box<dyn FnOnce(&mut CillhubApp) + Send>;
 /// Jobs waiting or running at most, for the hub and for private nodes each; more are refused (the caller sees
 /// false), so nothing queues without bound and a node's slow or many jobs cannot hold up the hub's.
 pub const MAX_JOBS: usize = 1000;
+/// Private nodes' jobs at most, queued, running or answered but not yet applied: their answers wait in memory
+/// (up to api::NODE_MAX_BODY each) until the next frame, so few are allowed.
+pub const NODE_MAX_JOBS: usize = 16;
 /// (session, for a node, job)
 type Job = (u64, bool, Box<dyn FnOnce() -> UiFn + Send>);
 
@@ -67,7 +70,8 @@ impl CillhubApp {
         done: impl FnOnce(&mut CillhubApp, R) + Send + 'static,
     ) -> bool {
         let hub_pending = self.bg.pending - self.bg.node_pending;
-        if (if node { self.bg.node_pending } else { hub_pending }) >= MAX_JOBS {
+        let full = if node { self.bg.node_pending >= NODE_MAX_JOBS } else { hub_pending >= MAX_JOBS };
+        if full {
             eprintln!("cillhub: too much background work queued; refused a job");
             return false;
         }

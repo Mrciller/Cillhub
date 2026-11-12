@@ -20,6 +20,8 @@ use url::Url;
 #[derive(Debug)]
 pub enum GatewayEvent {
     Dispatch(String, Value),
+    /// A private node's event with the bytes it holds in that node's queue (the UI gives them back on receipt).
+    NodeDispatch(String, Value, usize),
     ConnectionError(String),
     RejectedToken,
     Connected,
@@ -46,6 +48,26 @@ pub enum GatewayCommand {
 
 /// Events wait here for the UI; a full queue stalls the socket reader instead of growing memory.
 pub const EVENT_QUEUE: usize = 10_000;
+/// A private node's queue also holds at most this many bytes of events; the reader waits for the UI meanwhile.
+pub const NODE_QUEUE_BYTES: usize = 32 << 20;
+/// How long the reader waits for room before it gives the connection up (it reconnects later).
+const NODE_QUEUE_WAIT: Duration = Duration::from_secs(60);
+
+/// Gateway events a node may send: about its own servers only. Account-wide events (settings, relationships,
+/// DMs, read states, sessions, saved messages) come from the hub alone. Others are dropped on the reader.
+pub const NODE_EVENTS: &[&str] = &[
+    "READY", "GUILD_CREATE", "GUILD_UPDATE", "GUILD_DELETE", "GUILD_ROLE_CREATE", "GUILD_ROLE_UPDATE", "GUILD_ROLE_DELETE",
+    "GUILD_MEMBER_ADD", "GUILD_MEMBER_UPDATE", "GUILD_MEMBER_REMOVE", "CHANNEL_CREATE", "CHANNEL_UPDATE", "CHANNEL_DELETE",
+    "THREAD_CREATE", "THREAD_UPDATE", "THREAD_DELETE", "THREAD_LIST_SYNC", "MESSAGE_CREATE", "MESSAGE_UPDATE", "MESSAGE_DELETE",
+    "MESSAGE_DELETE_BULK", "MESSAGE_REACTION_ADD", "MESSAGE_REACTION_REMOVE", "MESSAGE_REACTION_REMOVE_ALL",
+    "MESSAGE_POLL_VOTE_ADD", "MESSAGE_POLL_VOTE_REMOVE", "PRESENCE_UPDATE", "TYPING_START", "VOICE_STATE_UPDATE",
+    "VOICE_CHANNEL_STATUS_UPDATE", "GUILD_EMOJIS_UPDATE", "GUILD_STICKERS_UPDATE", "GUILD_SCHEDULED_EVENT_CREATE",
+    "GUILD_SCHEDULED_EVENT_UPDATE", "GUILD_SCHEDULED_EVENT_DELETE", "STAGE_INSTANCE_CREATE", "STAGE_INSTANCE_UPDATE",
+    "STAGE_INSTANCE_DELETE", "CHANNEL_CANVAS_UPDATE",
+];
+
+/// The bytes a node's events hold in its queue (shared by the reader and the UI).
+pub type QueueBytes = std::sync::Arc<std::sync::atomic::AtomicUsize>;
 
 pub fn spawn(origin: Url, token: String, sender: SyncSender<GatewayEvent>) -> thread::JoinHandle<()> {
     let (_cmd_tx, cmd_rx) = mpsc::channel();
@@ -58,12 +80,13 @@ pub fn spawn_with_commands(
     sender: SyncSender<GatewayEvent>,
     commands: Receiver<GatewayCommand>,
 ) -> thread::JoinHandle<()> {
-    spawn_inner(origin, token, sender, commands, false)
+    spawn_inner(origin, token, sender, commands, None)
 }
 
-/// A private node's gateway: the node names its gateway URL, and our node token goes only to the node's own host.
-pub fn spawn_node(origin: Url, token: String, sender: SyncSender<GatewayEvent>, commands: Receiver<GatewayCommand>) -> thread::JoinHandle<()> {
-    spawn_inner(origin, token, sender, commands, true)
+/// A private node's gateway: the node names its gateway URL, our node token goes only to the node's own host,
+/// only NODE_EVENTS are queued and its queue holds at most NODE_QUEUE_BYTES (`queued`).
+pub fn spawn_node(origin: Url, token: String, sender: SyncSender<GatewayEvent>, commands: Receiver<GatewayCommand>, queued: QueueBytes) -> thread::JoinHandle<()> {
+    spawn_inner(origin, token, sender, commands, Some(queued))
 }
 
 fn spawn_inner(
@@ -71,7 +94,7 @@ fn spawn_inner(
     token: String,
     sender: SyncSender<GatewayEvent>,
     commands: Receiver<GatewayCommand>,
-    pin: bool,
+    node: Option<QueueBytes>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let client = crate::api::no_redirect_client(10);
@@ -89,7 +112,7 @@ fn spawn_inner(
                 &commands,
                 &mut last_presence,
                 &mut outbox,
-                pin,
+                node.as_ref(),
             ) {
                 Ok(true) => break, // clean shutdown
                 Ok(false) => backoff = 1,
@@ -131,8 +154,9 @@ fn run_once(
     commands: &Receiver<GatewayCommand>,
     last_presence: &mut (String, Option<CustomStatus>, Option<GameActivity>),
     outbox: &mut Outbox,
-    pin: bool,
+    node: Option<&QueueBytes>,
 ) -> io::Result<bool> {
+    let pin = node.is_some();
     let endpoint = api_url(origin, "/gateway").ok_or_else(|| invalid("Invalid gateway API URL"))?;
     let resp = client
         .get(endpoint)
@@ -178,7 +202,11 @@ fn run_once(
                         last_presence.1.as_ref(),
                         last_presence.2.as_ref(),
                     );
-                    if !apply_actions(&mut socket, &mut heartbeat, actions, sender)? {
+                    let (actions, sized) = match node {
+                        Some(q) => node_actions(actions, frame.payload.len(), q)?,
+                        None => (actions, None),
+                    };
+                    if !apply_actions(&mut socket, &mut heartbeat, actions, sender, sized)? {
                         return Ok(false);
                     }
                     if ready {
@@ -217,6 +245,7 @@ fn run_once(
                     &mut heartbeat,
                     vec![protocol.heartbeat_due()],
                     sender,
+                    None,
                 )? {
                     return Err(io::Error::from(io::ErrorKind::ConnectionAborted));
                 }
@@ -295,6 +324,7 @@ fn apply_actions(
     heartbeat: &mut Option<(Duration, Instant)>,
     actions: Vec<Action>,
     sender: &SyncSender<GatewayEvent>,
+    sized: Option<usize>,
 ) -> io::Result<bool> {
     for action in actions {
         match action {
@@ -312,11 +342,33 @@ fn apply_actions(
                 return Ok(false);
             }
             Action::Dispatch(name, payload) => {
-                let _ = sender.send(GatewayEvent::Dispatch(name, payload));
+                let _ = sender.send(match sized {
+                    Some(n) => GatewayEvent::NodeDispatch(name, payload, n),
+                    None => GatewayEvent::Dispatch(name, payload),
+                });
             }
         }
     }
     Ok(true)
+}
+
+/// A node frame's actions: events not on NODE_EVENTS dropped here, before they are queued; a dispatch waits until
+/// the node's queue has room for its bytes (the frame size), then counts them. Err when no room comes.
+fn node_actions(actions: Vec<Action>, bytes: usize, queued: &QueueBytes) -> io::Result<(Vec<Action>, Option<usize>)> {
+    use std::sync::atomic::Ordering;
+    let actions: Vec<Action> = actions.into_iter().filter(|a| !matches!(a, Action::Dispatch(n, _) if !NODE_EVENTS.contains(&n.as_str()))).collect();
+    if !actions.iter().any(|a| matches!(a, Action::Dispatch(..))) {
+        return Ok((actions, None));
+    }
+    let since = Instant::now();
+    while queued.load(Ordering::SeqCst) + bytes > NODE_QUEUE_BYTES {
+        if since.elapsed() > NODE_QUEUE_WAIT {
+            return Err(invalid("The node sends faster than this app can take"));
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    queued.fetch_add(bytes, Ordering::SeqCst);
+    Ok((actions, Some(bytes)))
 }
 
 /// A node's gateway must be on the node's own host and port: wss, or ws only for an http loopback node.
@@ -339,6 +391,27 @@ fn invalid(message: &'static str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn node_frames_are_filtered_and_bounded_in_bytes() {
+        use std::sync::atomic::Ordering;
+        let q = QueueBytes::default();
+        let ev = |n: &str| vec![Action::Dispatch(n.into(), serde_json::json!({}))];
+        let (kept, sized) = node_actions(ev("USER_SETTINGS_UPDATE"), 100, &q).unwrap();
+        assert!(kept.is_empty() && sized.is_none() && q.load(Ordering::SeqCst) == 0, "dropped before the queue");
+        let (kept, sized) = node_actions(ev("MESSAGE_CREATE"), 100, &q).unwrap();
+        assert_eq!((kept.len(), sized, q.load(Ordering::SeqCst)), (1, Some(100), 100));
+        q.store(NODE_QUEUE_BYTES, Ordering::SeqCst); // full: the reader waits (then gives up)
+        let t = Instant::now();
+        let waiter = std::thread::spawn({
+            let q = q.clone();
+            move || node_actions(ev("MESSAGE_CREATE"), 100, &q).map(|(_, s)| s)
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        q.store(0, Ordering::SeqCst); // the UI took them
+        assert_eq!(waiter.join().unwrap().unwrap(), Some(100));
+        assert!(t.elapsed() >= Duration::from_millis(50), "it waited for room");
+    }
 
     #[test]
     fn node_gateway_must_be_on_the_node_itself() {

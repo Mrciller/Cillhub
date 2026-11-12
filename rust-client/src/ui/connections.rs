@@ -6,7 +6,7 @@
 //! applied to that connection's data again, only while that connection still exists.
 use super::CillhubApp;
 use crate::i18n::tr;
-use crate::native_gateway::{spawn_node, GatewayCommand, GatewayEvent, EVENT_QUEUE};
+use crate::native_gateway::{spawn_node, GatewayCommand, GatewayEvent, QueueBytes, EVENT_QUEUE, NODE_EVENTS};
 use crate::nodes::{NodeLink, SignInFail};
 use crate::state::State;
 use serde_json::{json, Value};
@@ -89,18 +89,6 @@ pub fn weight(v: &Value) -> usize {
 /// Node events applied per frame; the rest wait in the bounded queue (the gateway stops reading when it is full).
 const EVENT_BUDGET: usize = 500;
 
-/// Gateway events a node may send: about its own servers only. Account-wide events (settings, relationships,
-/// DMs, read states, sessions, saved messages) come from the hub alone.
-const NODE_EVENTS: &[&str] = &[
-    "GUILD_CREATE", "GUILD_UPDATE", "GUILD_DELETE", "GUILD_ROLE_CREATE", "GUILD_ROLE_UPDATE", "GUILD_ROLE_DELETE",
-    "GUILD_MEMBER_ADD", "GUILD_MEMBER_UPDATE", "GUILD_MEMBER_REMOVE", "CHANNEL_CREATE", "CHANNEL_UPDATE", "CHANNEL_DELETE",
-    "THREAD_CREATE", "THREAD_UPDATE", "THREAD_DELETE", "THREAD_LIST_SYNC", "MESSAGE_CREATE", "MESSAGE_UPDATE", "MESSAGE_DELETE",
-    "MESSAGE_DELETE_BULK", "MESSAGE_REACTION_ADD", "MESSAGE_REACTION_REMOVE", "MESSAGE_REACTION_REMOVE_ALL",
-    "MESSAGE_POLL_VOTE_ADD", "MESSAGE_POLL_VOTE_REMOVE", "PRESENCE_UPDATE", "TYPING_START", "VOICE_STATE_UPDATE",
-    "VOICE_CHANNEL_STATUS_UPDATE", "GUILD_EMOJIS_UPDATE", "GUILD_STICKERS_UPDATE", "GUILD_SCHEDULED_EVENT_CREATE",
-    "GUILD_SCHEDULED_EVENT_UPDATE", "GUILD_SCHEDULED_EVENT_DELETE", "STAGE_INSTANCE_CREATE", "STAGE_INSTANCE_UPDATE",
-    "STAGE_INSTANCE_DELETE", "CHANNEL_CANVAS_UPDATE",
-];
 
 
 pub struct NodeConn {
@@ -119,12 +107,14 @@ pub struct NodeConn {
     /// what its data weighs: last full measure plus everything let in since (None: measure now)
     used: usize,
     measured_at: Option<Instant>,
+    /// bytes of its events waiting in the gateway queue (native_gateway::NODE_QUEUE_BYTES)
+    queued: QueueBytes,
 }
 
 impl NodeConn {
     fn new(gen: u64) -> Self {
         let live = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(gen));
-        Self { link: NodeLink::Connecting, rx: None, cmd: None, api: None, tries: 0, retry_at: None, busy: false, gen, live, used: 0, measured_at: None }
+        Self { link: NodeLink::Connecting, rx: None, cmd: None, api: None, tries: 0, retry_at: None, busy: false, gen, live, used: 0, measured_at: None, queued: QueueBytes::default() }
     }
     fn set_gen(&mut self, gen: u64) {
         self.gen = gen;
@@ -352,14 +342,17 @@ impl CillhubApp {
         self.parked.entry(Some(origin.to_string())).or_default();
         let (ev_tx, ev_rx) = mpsc::sync_channel(EVENT_QUEUE);
         let (cmd_tx, cmd_rx) = mpsc::channel();
-        spawn_node(url.clone(), token.clone(), ev_tx, cmd_rx);
+        let queued = QueueBytes::default();
+        spawn_node(url.clone(), token.clone(), ev_tx, cmd_rx, queued.clone());
         self.node_gen += 1; // answers for the earlier credentials are dropped
         let gen = self.node_gen;
         let Some(c) = self.conns.get_mut(origin) else { return };
         c.close();
         c.set_gen(gen);
-        (c.rx, c.cmd, c.link) = (Some(ev_rx), Some(cmd_tx), NodeLink::Connecting);
-        c.api = Some(crate::api::ApiClient::new(url, Some(token)));
+        (c.rx, c.cmd, c.link, c.queued) = (Some(ev_rx), Some(cmd_tx), NodeLink::Connecting, queued);
+        let mut api = crate::api::ApiClient::new(url, Some(token));
+        api.max_body = crate::api::NODE_MAX_BODY;
+        c.api = Some(api);
         // answers of the earlier credentials are dropped: their member loads will not come back, and dialogs about
         // their messages close
         self.with_conn(&Some(origin.to_string()), |app| {
@@ -439,7 +432,7 @@ impl CillhubApp {
                 }
             }
             self.retry_revokes(); // a node that was down may be back; each try is bounded (nodes::revoke)
-            for o in self.removing.clone() {
+            for o in self.removing.keys().cloned().collect::<Vec<_>>() {
                 self.drop_node(&o, true); // a removal whose sign-out could not be recorded yet
             }
         }
@@ -500,9 +493,19 @@ impl CillhubApp {
 
     fn node_event(&mut self, origin: &str, ev: GatewayEvent) {
         let conn = Some(origin.to_string());
+        let ev = match ev {
+            GatewayEvent::NodeDispatch(name, d, bytes) => {
+                if let Some(c) = self.conns.get(origin) {
+                    c.queued.fetch_sub(bytes.min(c.queued.load(std::sync::atomic::Ordering::SeqCst)), std::sync::atomic::Ordering::SeqCst);
+                }
+                GatewayEvent::Dispatch(name, d)
+            }
+            ev => ev,
+        };
         match ev {
+            GatewayEvent::NodeDispatch(..) => {}
             GatewayEvent::Dispatch(name, d) => {
-                if name != "READY" && !NODE_EVENTS.contains(&name.as_str()) {
+                if !NODE_EVENTS.contains(&name.as_str()) {
                     eprintln!("cillhub: {origin} sent {name}: dropped");
                     return;
                 }
@@ -565,6 +568,7 @@ impl CillhubApp {
             // requests and choices from before this READY belong to the replaced data
             self.new_scope("history");
             self.close_message_dialogs();
+            self.search = None; // results of the replaced data
             self.loading_history.clear();
             self.poll_pending.clear();
             let ids: Vec<String> = self.state.guilds.keys().cloned().collect();
@@ -589,7 +593,11 @@ impl CillhubApp {
     pub fn within_budget(&mut self, extra: usize) -> bool {
         let Some(o) = self.front.clone() else { return true };
         let stale = self.conns.get(&o).is_none_or(|c| c.measured_at.is_none_or(|t| t.elapsed() >= MEASURE_EVERY));
-        let measured = stale.then(|| retained(&self.state));
+        // its data plus what the view keeps of it outside State (search results)
+        let measured = stale.then(|| {
+            let search = self.search.as_ref().and_then(|s| serde_json::to_value(&s.hits).ok()).map_or(0, |v| weight(&v));
+            retained(&self.state) + search
+        });
         let Some(c) = self.conns.get_mut(&o) else { return false };
         if let Some(m) = measured {
             (c.used, c.measured_at) = (m, Some(Instant::now()));
@@ -632,12 +640,13 @@ impl CillhubApp {
     /// Ends a node connection: gateway closed, data gone, token forgotten. With `sign_out` the token (the one in
     /// memory first) is revoked on the node; until the node confirms, that sign-out stays saved and is retried.
     pub fn drop_node(&mut self, origin: &str, sign_out: bool) {
-        let key = self.node_key(origin);
+        // a retried removal keeps the key it started with (logout clears the hub identity it is made from)
+        let key = self.removing.get(origin).cloned().unwrap_or_else(|| self.node_key(origin));
         let live = self.conns.get(origin).and_then(|c| c.api.as_ref()).and_then(|a| a.token.clone());
         let Ok(stored) = self.settings.node_token_checked(&key) else {
             // the keyring cannot be read now: whether a credential is stored is unknown, so nothing is deleted or
             // tombstoned; the removal is tried again
-            self.removal_pending(origin, tr("Sign-out pending").to_string());
+            self.removal_pending(origin, &key, tr("Sign-out pending").to_string());
             return;
         };
         if sign_out {
@@ -652,7 +661,7 @@ impl CillhubApp {
             if let Some(e) = failed {
                 // nothing durable records the sign-out yet: the connection (with its token) and the stored
                 // credential stay, the removal is tried again (tick_nodes); the node is no longer used meanwhile
-                return self.removal_pending(origin, e.to_string());
+                return self.removal_pending(origin, &key, e.to_string());
             }
         }
         self.removing.remove(origin);
@@ -664,9 +673,9 @@ impl CillhubApp {
 
     /// Leaves a removal unfinished: the node is no longer used, its connection and credentials stay, and the
     /// removal is tried again every minute (tick_nodes).
-    fn removal_pending(&mut self, origin: &str, why: String) {
+    fn removal_pending(&mut self, origin: &str, key: &str, why: String) {
         self.status_banner = Some(why);
-        self.removing.insert(origin.to_string());
+        self.removing.insert(origin.to_string(), key.to_string());
         if let Some(c) = self.conns.get_mut(origin) {
             c.close();
             c.link = NodeLink::Down(tr("Sign-out pending").to_string());
@@ -1226,7 +1235,8 @@ mod tests {
         app.drop_node(a, true);
         crate::settings::FAIL_SAVE.with(|f| f.set(false));
         assert_eq!(app.settings.node_token(&key).as_deref(), Some("node-token"), "the only durable record stays");
-        assert!(app.conns.contains_key(a) && app.removing.contains(a), "the removal is not done yet");
+        assert!(app.conns.contains_key(a) && app.removing.get(a) == Some(&key), "the removal is not done yet, its key kept");
+        app.hub_user = "someone-else".into(); // a logout meanwhile changes the identity keys are made from
         app.last_revoke_retry = Instant::now() - Duration::from_secs(61);
         app.tick_nodes();
         assert!(app.removing.is_empty() && !app.conns.contains_key(a) && app.settings.pending_revokes.len() == 1, "recorded now, then removed");
@@ -1419,6 +1429,41 @@ mod tests {
         app.pending_add_node = Some(crate::nodes::PendingNode { origin: "https://b.example".into(), check: None, added: false, error: None });
         assert!(app.add_dialog("https://a.example", 3).is_none() && app.add_dialog("https://b.example", 2).is_none());
         assert!(app.add_dialog("https://b.example", 3).is_some());
+    }
+
+    /// Round 7, finding 7: search results count against the node's budget and go with a READY.
+    #[test]
+    fn search_results_are_measured_and_dropped_on_ready() {
+        let mut app = CillhubApp::new(None, true);
+        let a = "https://a.example";
+        let tx = fake_node(&mut app, a, None);
+        let conn = Some(a.to_string());
+        let hits: Vec<crate::model::Message> = (0..MAX_ITEMS).map(|i| crate::model::Message { id: i.to_string(), ..Default::default() }).collect();
+        app.with_conn(&conn, |app| app.search = Some(crate::ui::SearchResults { hits, ..Default::default() }));
+        assert_eq!(app.with_conn(&conn, |app| app.within_budget(0)), Some(false), "the results alone are over the budget");
+        app.cut_off.clear();
+        app.conns.get_mut(a).unwrap().measured_at = None;
+        send(&tx, "READY", json!({ "session_id": "s", "user": { "id": "n1", "username": "alex" }, "guilds": [] }));
+        app.tick_nodes();
+        assert!(app.with_conn(&conn, |app| app.search.is_none()).unwrap());
+    }
+
+    /// Round 7 sweep: images in flight are bounded, and a node's answers are read with the smaller limit.
+    #[cfg(feature = "native-net")]
+    #[test]
+    fn images_in_flight_and_node_answers_are_bounded() {
+        let mut app = CillhubApp::new(None, true);
+        app.api = Some(crate::api::ApiClient::new(url::Url::parse("http://localhost:9/").unwrap(), None));
+        for i in 0..crate::ui::MAX_IMAGE_LOADS + 2 {
+            app.request_image(&None, 0, &format!("bytes://i{i}"), format!("http://localhost:9/{i}.png"));
+        }
+        assert_eq!(app.images.len(), crate::ui::MAX_IMAGE_LOADS, "the rest waits for a free slot");
+        let big = format!("[\"{}\"]", "x".repeat(crate::api::NODE_MAX_BODY as usize));
+        let (node, seen) = crate::api::testing::serve(1, move |_| (200, big.clone()));
+        let mut api = crate::api::ApiClient::new(url::Url::parse(&node).unwrap(), None);
+        api.max_body = crate::api::NODE_MAX_BODY;
+        assert_eq!(api.get("/channels/1/messages").unwrap_err().message, "The answer is too large.");
+        seen.join().unwrap();
     }
 
     #[test]

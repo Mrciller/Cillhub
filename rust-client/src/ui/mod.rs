@@ -91,6 +91,13 @@ pub enum ImageLoad {
     Failed,
 }
 
+/// Search results kept (Load more stops adding past this).
+pub const MAX_SEARCH_HITS: usize = 500;
+
+/// Images being fetched at most, and image entries (ready, loading, failed) kept before failed ones are dropped.
+pub const MAX_IMAGE_LOADS: usize = 4;
+pub const MAX_IMAGE_ENTRIES: usize = 2000;
+
 pub const VOICE_UNAVAILABLE: &str = "Voice calls are not available in this app yet.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,7 +177,8 @@ pub struct CillhubApp {
     /// Sign-outs whose record could not be saved yet: (id, node origin, token), saved again with each retry.
     unsaved_revokes: Vec<(String, String, String)>,
     /// Nodes whose removal waits until its sign-out can be recorded (the connection and token stay meanwhile).
-    removing: std::collections::HashSet<String>,
+    /// (origin -> the credential key it was started with)
+    removing: std::collections::HashMap<String, String>,
     /// Where the open dialog posts to (connection, its generation, server, channel), taken when it opened.
     modal_dest: Option<(connections::Conn, u64, Option<String>, Option<String>)>,
     /// Bumped whenever the add-link dialog shows another node: older name lookups are dropped.
@@ -233,6 +241,8 @@ pub struct CillhubApp {
     image_jobs: Sender<images::Job>,
     image_rx: Receiver<images::Done>,
     image_cache: images::Cache,
+    /// image jobs sent and not yet answered
+    image_loading: usize,
     /// Full-size image view: (egui URI, file name, absolute URL).
     pub lightbox: Option<(String, String, String)>,
     pub bg: background::Workers,
@@ -442,6 +452,7 @@ impl CillhubApp {
             image_jobs: images::spawn_workers(image_tx),
             image_rx,
             image_cache: images::Cache::default(),
+            image_loading: 0,
             lightbox: None,
             forget_images: false,
             bg: background::Workers::new(),
@@ -1150,7 +1161,7 @@ impl CillhubApp {
             // each hit is [message, ...context]
             let hits = v.get("messages").and_then(Value::as_array).into_iter().flatten().filter_map(|h| h.get(0));
             for m in hits.filter_map(|m| crate::model::parse::<Message>(m.clone()).ok()) {
-                if !s.hits.iter().any(|h| h.id == m.id) {
+                if s.hits.len() < MAX_SEARCH_HITS && !s.hits.iter().any(|h| h.id == m.id) {
                     s.hits.push(m);
                 }
             }
@@ -1217,6 +1228,7 @@ impl CillhubApp {
                         // requests started before READY belong to the replaced state
                         self.new_scope("history");
                         self.close_message_dialogs();
+                        self.search = None; // results of the replaced data
                         self.loading_history.clear();
                         self.poll_pending.clear(); // choices come from the reloaded history now
                         let ids: Vec<String> = self.state.guilds.keys().cloned().collect();
@@ -1264,6 +1276,7 @@ impl CillhubApp {
                 GatewayEvent::Connected => {
                     self.status_banner = None;
                 }
+                GatewayEvent::NodeDispatch(..) => {} // only node gateways send these
             }
         }
     }
@@ -1348,6 +1361,9 @@ impl CillhubApp {
     /// Opens a server at its first text channel (web firstText: the system channel if visible).
     pub fn open_guild(&mut self, gid: &str) {
         self.selected_guild_id = Some(gid.to_string());
+        if !self.state.members.contains_key(gid) {
+            self.load_members(gid); // a load refused while busy (READY asks for many) is asked again here
+        }
         let groups = self.sidebar_groups(gid);
         let texts: Vec<&Channel> = groups.iter().flat_map(|(_, l)| l).filter(|c| matches!(c.kind, 0 | 5)).collect();
         let sys = self.state.guilds.get(gid).and_then(|g| g.system_channel_id.clone());
@@ -2013,11 +2029,19 @@ impl CillhubApp {
         if self.images.contains_key(uri) {
             return;
         }
+        // at most as many as there are workers in flight: their answers (25 MB each at most) wait for the next frame
+        if self.image_loading >= MAX_IMAGE_LOADS {
+            return; // asked again next frame
+        }
+        if self.images.len() >= MAX_IMAGE_ENTRIES {
+            self.images.retain(|_, l| *l != ImageLoad::Failed); // failed ones are asked again when shown
+        }
         let allowed = match conn {
             None => true,
             Some(o) => Url::parse(&url).is_ok_and(|u| u.origin().ascii_serialization() == *o),
         };
         let queued = allowed && self.api.is_some() && self.image_jobs.send((self.session_gen, uri.to_string(), url, conn.clone(), gen)).is_ok();
+        self.image_loading += queued as usize;
         self.images.insert(uri.to_string(), if queued { ImageLoad::Loading } else { ImageLoad::Failed });
     }
 
@@ -2160,6 +2184,7 @@ impl CillhubApp {
             ctx.forget_all_images();
         }
         while let Ok((session, uri, conn, gen, bytes)) = self.image_rx.try_recv() {
+            self.image_loading = self.image_loading.saturating_sub(1);
             if !self.image_wanted(session, &conn, gen) {
                 continue; // asked before a logout, another login, or for a node connection that is gone
             }

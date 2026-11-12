@@ -41,7 +41,7 @@ pub fn spawn_workers(done: mpsc::Sender<Done>) -> mpsc::Sender<Job> {
                 let Ok(Ok((session, uri, url, conn, gen))) = rx.lock().map(|r| r.recv()) else { return };
                 let bytes = fetch(if conn.is_some() { &pinned_client } else { &client }, &url).and_then(|b| check(&b).map(|n| (b, n)));
                 if let Err(e) = &bytes {
-                    eprintln!("cillhub: image {url}: {e}");
+                    eprintln!("cillhub: image {}: {e}", url.chars().take(200).collect::<String>());
                 }
                 if done.send((session, uri, conn, gen, bytes.ok())).is_err() {
                     return; // the app has closed

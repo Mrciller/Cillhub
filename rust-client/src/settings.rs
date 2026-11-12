@@ -280,7 +280,15 @@ impl AppSettings {
     /// start reads (`take_revoke_stash`). False when the keyring cannot take it either.
     pub fn stash_revoke(origin: &str, token: &str) -> bool {
         let Some(k) = keyring_entry(STASH) else { return false };
-        let mut list: Vec<(String, String)> = k.get_password().ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        // only an absent stash is empty: one that cannot be read or parsed is never overwritten
+        let mut list: Vec<(String, String)> = match k.get_password() {
+            Err(keyring::Error::NoEntry) => Vec::new(),
+            Ok(s) => match serde_json::from_str(&s) {
+                Ok(l) => l,
+                Err(_) => return false,
+            },
+            Err(_) => return false,
+        };
         list.push((origin.to_string(), token.to_string()));
         serde_json::to_string(&list).is_ok_and(|s| k.set_password(&s).is_ok())
     }

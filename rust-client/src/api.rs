@@ -87,7 +87,9 @@ pub fn parse_api_error(status: u16, data: Value) -> ApiError {
         .get("message")
         .and_then(Value::as_str)
         .unwrap_or("Request failed")
-        .to_string();
+        .chars()
+        .take(300) // shown in the status line; a server's text is not trusted to be short
+        .collect::<String>();
     let retry_after = data.get("retry_after").and_then(Value::as_f64);
     let mut fields = HashMap::new();
     if let Some(errors) = data.get("errors").and_then(Value::as_object) {
@@ -173,6 +175,8 @@ pub struct ApiClient {
     pub client: reqwest::blocking::Client,
     pub origin: Url,
     pub token: Option<String>,
+    /// largest answer read (a private node's client gets less: see NODE_MAX_BODY)
+    pub max_body: u64,
 }
 
 #[cfg(feature = "native-net")]
@@ -182,6 +186,7 @@ impl ApiClient {
             client: no_redirect_client(15),
             origin,
             token,
+            max_body: MAX_BODY,
         }
     }
 
@@ -189,6 +194,9 @@ impl ApiClient {
 
 /// Largest answer body read; a bigger one is refused before it is parsed (a private node is untrusted).
 pub const MAX_BODY: u64 = 16 << 20;
+
+/// A private node's answers: history pages, member lists and search pages are far smaller.
+pub const NODE_MAX_BODY: u64 = 4 << 20;
 
 /// The answer as JSON (Null when it is not JSON), or an error when it is larger than MAX_BODY.
 #[cfg(feature = "native-net")]
@@ -261,7 +269,7 @@ impl ApiClient {
         if status == 204 {
             return Ok(Value::Null);
         }
-        let data = read_json(resp)?;
+        let data = read_json_max(resp, self.max_body)?;
         if !(200..300).contains(&status) {
             return Err(parse_api_error(status, data));
         }
@@ -325,7 +333,7 @@ impl ApiClient {
             raw: Value::Null,
         })?;
         let status = resp.status().as_u16();
-        let data = read_json(resp)?;
+        let data = read_json_max(resp, self.max_body)?;
         if !(200..300).contains(&status) {
             return Err(parse_api_error(status, data));
         }
