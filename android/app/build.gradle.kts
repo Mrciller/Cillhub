@@ -26,8 +26,8 @@ android {
         applicationId = "io.github.mrciller.cillhub"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
-        versionName = "3.7.0"
+        versionCode = 17
+        versionName = "3.7.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "HAS_FIREBASE", hasFirebase.toString())
     }
