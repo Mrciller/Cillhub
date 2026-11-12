@@ -623,8 +623,8 @@
    "title": "Android app",
    "releases": [
     {
-     "version": "Unreleased",
-     "date": null,
+     "version": "3.6.0",
+     "date": "2026-11-12",
      "groups": [
       {
        "title": "Changed",
@@ -642,7 +642,11 @@
         "Camera with front and back camera, and other people's cameras and screen shares in full screen with zoom and picture-in-picture.",
         "Share your phone's screen in a call, in 720p or 1080p.",
         "Calls and voice channels behave like phone calls: pick speaker, earpiece, headset or Bluetooth, the screen turns off at your ear, and a phone call puts Cillhub on hold. The call notification has Mute and Leave.",
-        "Android Auto: your conversations with read aloud, voice reply and mark as read, voice channels to join with mute, deafen and leave, calls to your DMs, and your status."
+        "Android Auto: your conversations with read aloud, voice reply and mark as read, voice channels to join with mute, deafen and leave, calls to your DMs, and your status.",
+        "Sign-up shows the server's terms and privacy notice and asks you to accept the terms and confirm your minimum age, as servers from 7.10.3 require. Version 3.5.0 could not create accounts on these servers.",
+        "The sign-in screen links to the server's imprint, privacy notice, terms of use and the form to report illegal content.",
+        "When a server asks you to accept new terms, the app says so and opens the server's website, where you can accept them.",
+        "Two more dark themes: Ash and Onyx."
        ]
       }
      ]
@@ -1310,8 +1314,8 @@
    "title": "Android-App",
    "releases": [
     {
-     "version": "Unreleased",
-     "date": null,
+     "version": "3.6.0",
+     "date": "2026-11-12",
      "groups": [
       {
        "title": "Geändert",
@@ -1329,7 +1333,11 @@
         "Kamera mit Front- und Rückkamera, dazu Kameras und Bildschirmübertragungen der anderen im Vollbild mit Zoom und Bild-im-Bild.",
         "Teile im Anruf den Bildschirm deines Telefons, in 720p oder 1080p.",
         "Anrufe und Sprachkanäle verhalten sich wie Telefonate: Lautsprecher, Hörmuschel, Headset oder Bluetooth wählbar, der Bildschirm geht am Ohr aus, und ein Telefonanruf hält Cillhub an. Die Anrufbenachrichtigung hat Stummschalten und Verlassen.",
-        "Android Auto: deine Unterhaltungen mit Vorlesen, Antworten per Sprache und Als-gelesen-Markieren, Sprachkanäle zum Beitreten mit Stummschalten, Taubschalten und Verlassen, Anrufe zu deinen Direktnachrichten und dein Status."
+        "Android Auto: deine Unterhaltungen mit Vorlesen, Antworten per Sprache und Als-gelesen-Markieren, Sprachkanäle zum Beitreten mit Stummschalten, Taubschalten und Verlassen, Anrufe zu deinen Direktnachrichten und dein Status.",
+        "Die Registrierung zeigt die Nutzungsbedingungen und die Datenschutzerklärung des Servers und lässt dich den Bedingungen zustimmen und dein Mindestalter bestätigen, wie es Server ab 7.10.3 verlangen. Version 3.5.0 konnte auf diesen Servern keine Konten anlegen.",
+        "Der Anmeldebildschirm verlinkt Impressum, Datenschutzerklärung und Nutzungsbedingungen des Servers sowie das Formular, um rechtswidrige Inhalte zu melden.",
+        "Wenn ein Server die Zustimmung zu neuen Bedingungen verlangt, sagt die App das und öffnet die Website des Servers, wo du zustimmen kannst.",
+        "Zwei weitere dunkle Designs: Ash und Onyx."
        ]
       }
      ]
