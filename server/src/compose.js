@@ -14,6 +14,7 @@ import {
 import { usableEmoji } from './routes/emojis.js';
 import { usableSticker } from './routes/stickers.js';
 import { messageComponents } from './components.js';
+import { PLACEHOLDER, isEncrypted, refused, envelopeField, checkWrapsCurrent } from './e2ee.js';
 
 const USER_FLAGS = F.SUPPRESS_EMBEDS | F.SUPPRESS_NOTIFICATIONS | F.IS_VOICE_MESSAGE;
 const WEBHOOK_FLAGS = F.SUPPRESS_EMBEDS | F.SUPPRESS_NOTIFICATIONS;
@@ -176,6 +177,7 @@ async function forwardOf(ref, userId) {
     throw new HttpError(403, 160014, 'You cannot forward a message whose content you cannot read');
   }
   if (![0, 19].includes(src.type) || get('SELECT 1 FROM polls WHERE message_id = ?', src.id)) throw new HttpError(400, 50068, 'Invalid message type');
+  if (src.e2ee_envelope) throw refused('Forwards of encrypted messages'); // the server holds only the placeholder
   return { src, srcCh };
 }
 
@@ -231,11 +233,20 @@ export async function prepare(who, body, files) {
     if (!webhook) need(perms, P.SEND_POLLS);
     d.poll = pollField(body.poll);
   }
-  if (body.e2ee_envelope != null) {
-    if (typeof body.e2ee_envelope !== 'object') throw invalid('e2ee_envelope', 'MODEL_TYPE_CONVERT', 'Must be an object.');
-    d.e2eeEnvelope = body.e2ee_envelope;
-    d.type = 100;
-  }
+  // encrypted DM: an envelope and nothing readable next to it; only a sticker alone stays plain (spec: stickers as before)
+  if (isEncrypted(ch)) {
+    if (d.poll) throw refused('Polls');
+    if (body.message_reference?.type === 1) throw refused('Forwards');
+    if (body.e2ee_envelope == null) {
+      if (content || files.length || !d.stickerItems.length) throw new HttpError(400, 50305, 'This conversation is encrypted. Update the app to send messages here.');
+    } else {
+      if (content) throw invalid('content', 'E2EE_PLAINTEXT', 'An encrypted message carries no plain text.');
+      if (flags & F.IS_VOICE_MESSAGE) throw refused('Voice messages');
+      d.e2eeEnvelope = envelopeField(body.e2ee_envelope, ch.e2ee_epoch);
+      checkWrapsCurrent(ch);
+      d.files.forEach(f => (f.meta = undefined)); // names and alt text would be plain text: they live in the payload
+    }
+  } else if (body.e2ee_envelope != null) throw invalid('e2ee_envelope', 'E2EE_NOT_ENABLED', 'This conversation is not encrypted.');
   if (webhook || bot) {
     // validated now so nothing is stored for a bad body; attachment:// names resolve for real in send()
     richEmbeds(body.embeds, name => (files.some(f => f.file.name === name) ? '/' : null));
@@ -260,10 +271,11 @@ export async function prepare(who, body, files) {
     throw new HttpError(400, 50006, 'Cannot send an empty message');
   }
   if (!webhook) d.content = content = filterEmoji(content, ch, userId, perms);
+  if (d.e2eeEnvelope) d.content = content = PLACEHOLDER; // what old clients, push and bots see
   const allowed = allowedMentions(body.allowed_mentions);
   d.counted = countedMentions(content, ch, webhook ? P.MENTION_EVERYONE : perms, allowed);
   d.allowedUsers = allowed && (id => allowed.parse.includes('users') || allowed.users.includes(id));
-  d.embedLinks = webhook || has(perms, P.EMBED_LINKS);
+  d.embedLinks = !d.e2eeEnvelope && (webhook || has(perms, P.EMBED_LINKS));
   return d;
 }
 
@@ -276,6 +288,7 @@ async function saveFiles(ch, d) {
       const a = { id, ...await saveAttachment(ch.id, id, file) };
       saved.push(a);
       if (typeof meta?.filename === 'string' && meta.filename) a.filename = safeFilename(meta.filename);
+      if (d.e2eeEnvelope) Object.assign(a, { filename: 'file.bin', content_type: 'application/octet-stream', width: null, height: null }); // ciphertext
       if (meta?.description) a.description = meta.description;
       if (meta?.is_spoiler || a.filename.startsWith('SPOILER_')) a.flags = (a.flags || 0) | IS_SPOILER;
       if (meta?.is_view_once || meta?.view_once) a.flags = (a.flags || 0) | 16;
@@ -319,7 +332,7 @@ export async function send(d, authorId, { webhook, id, type = 0, inTx } = {}) {
       return a && attachmentUrl({ ...a, channel_id: ch.id });
     }) : [];
     m = insertMessage({
-      id, ch, authorId, content: d.content, type: d.forward ? 0 : d.referenceId ? 19 : (d.type ?? type), flags: d.flags | (d.forward ? F.HAS_SNAPSHOT : 0),
+      id, ch, authorId, content: d.content, type: d.forward ? 0 : d.referenceId ? 19 : type, flags: d.flags | (d.forward ? F.HAS_SNAPSHOT : 0),
       referenceId: d.referenceId, mentionEveryone: d.counted.all || d.counted.here, mentionRoles: d.counted.roleIds, embeds,
       stickerItems: d.stickerItems, poll: d.poll, attachments, webhook, components: d.components,
       snapshot, reference: d.forward && { type: 1, message_id: d.forward.src.id, channel_id: d.forward.srcCh.id, guild_id: d.forward.srcCh.guild_id ?? undefined },

@@ -20,6 +20,7 @@ import { configuredBackends, defaultBackend } from './voice.js';
 import { requireAdmin, auditAdminRequest } from './routes/admin.js';
 import auth from './routes/auth.js';
 import users from './routes/users.js';
+import e2ee from './routes/e2ee.js';
 import guilds from './routes/guilds.js';
 import channels from './routes/channels.js';
 import messages from './routes/messages.js';
@@ -178,7 +179,7 @@ const routes = [
   }, { open: true }],
   ['GET', '/policies/instance', spacebarPolicies, { open: true }], ['GET', '/policies/instance/domains', spacebarDomains, { open: true }],
   ...setup, ...legal, ...hub, ...node, ...directory, ...admin, ...modules, ...canvas, ...onboarding, ...guide, ...analytics, ...webauthn, ...customization, ...templates, ...watch, ...later, ...savedFolders, ...connections, ...cillbot,
-  ...auth, ...account, ...relationships, ...profiles, ...settings, ...inbox, ...push, ...users, ...guilds, ...roles, ...community,
+  ...auth, ...account, ...relationships, ...profiles, ...settings, ...inbox, ...push, ...e2ee, ...users, ...guilds, ...roles, ...community,
   ...members, ...bans, ...groups, ...channels, ...reads, ...search, ...messages, ...threads, ...reactions, ...pins, ...polls, ...invites,
   ...emojis, ...stickers, ...soundboard, ...interactions, ...webhooks, ...stage, ...events, ...automod, ...auditlog, ...gifs, ...snippets,
   ...applications, ...commands,

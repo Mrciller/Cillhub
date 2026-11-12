@@ -92,70 +92,13 @@ test('Federated Public Module Catalog (Contract v9 §10)', async () => {
   }
 });
 
-test('End-to-End Encrypted (E2EE) 1-on-1 DMs (Contract v9 §11)', async () => {
+// The v9 draft's free-form key blobs and type 100 messages are retired: encrypted DMs live in e2ee.test.js
+test('the v9 E2EE draft shapes are refused', async () => {
   const srv = await startServer();
   try {
-    const aliceAuth = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
-      email: 'alice-e2ee@example.com',
-      username: 'alice_e2ee',
-      password: 'password123',
-    })).body;
-    const alice = (await srv.api('GET', '/users/@me', aliceAuth.token)).body;
-
-    const bobAuth = (await srv.api('POST', '/auth/register', null, { age_confirmed: true,
-      email: 'bob-e2ee@example.com',
-      username: 'bob_e2ee',
-      password: 'password123',
-    })).body;
-    const bob = (await srv.api('GET', '/users/@me', bobAuth.token)).body;
-
-    // 1. Alice registers her E2EE public keys
-    const aliceKeys = {
-      identity_key: 'alice-public-identity-key-base64',
-      signed_prekey: 'alice-signed-prekey-base64',
-      signature: 'alice-signature-base64',
-    };
-    const putRes = await srv.api('PUT', '/users/@me/e2ee/keys', aliceAuth.token, aliceKeys);
-    assert.equal(putRes.status, 200);
-    assert.equal(putRes.body.ok, true);
-
-    // 2. Bob fetches Alice's public keys
-    const getRes = await srv.api('GET', `/users/${alice.id}/e2ee/keys`, bobAuth.token);
-    assert.equal(getRes.status, 200);
-    assert.equal(getRes.body.user_id, alice.id);
-    assert.equal(getRes.body.keys.identity_key, aliceKeys.identity_key);
-
-    // Make Alice and Bob friends so they can open a DM
-    await srv.api('POST', '/users/@me/relationships', aliceAuth.token, { username: 'bob_e2ee' });
-    await srv.api('PUT', `/users/@me/relationships/${alice.id}`, bobAuth.token, {});
-
-    // 3. Open 1-on-1 DM channel
-    const dmRes = await srv.api('POST', '/users/@me/channels', bobAuth.token, { recipient_id: alice.id });
-    assert.equal(dmRes.status, 200);
-    const dm = dmRes.body;
-
-    // 4. Send an E2EE encrypted message
-    const envelope = {
-      ciphertext: '5a2b8e...base64ciphertext...',
-      iv: '12-byte-iv-base64',
-      sender_key: 'bob-ephemeral-key',
-      recipient_key: aliceKeys.identity_key,
-    };
-
-    const msgRes = await srv.api('POST', `/channels/${dm.id}/messages`, bobAuth.token, {
-      content: '', // cleartext is empty
-      e2ee_envelope: envelope,
-    });
-    assert.equal(msgRes.status, 201);
-    assert.equal(msgRes.body.type, 100);
-    assert.deepEqual(msgRes.body.e2ee_envelope, envelope);
-
-    // 5. Alice reads DM messages and sees the envelope
-    const listRes = await srv.api('GET', `/channels/${dm.id}/messages`, aliceAuth.token);
-    assert.equal(listRes.status, 200);
-    assert.equal(listRes.body.length, 1);
-    assert.equal(listRes.body[0].type, 100);
-    assert.deepEqual(listRes.body[0].e2ee_envelope, envelope);
+    const alex = await srv.register('alex_e2ee');
+    const put = await srv.api('PUT', '/users/@me/e2ee/keys', alex.token, { identity_key: 'alex-public-identity-key-base64', signed_prekey: 'x', signature: 'y' });
+    assert.equal(put.status, 400);
   } finally {
     await srv.stop();
   }

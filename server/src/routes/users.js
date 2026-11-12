@@ -67,35 +67,11 @@ function getUser({ params }) {
   return userObj(u);
 }
 
-function putE2eeKeys(ctx) {
-  const body = ctx.body ?? {};
-  if (!body.public_key && !body.identity_key) throw invalid('public_key', 'BASE_TYPE_REQUIRED', 'E2EE public key is required.');
-  const pub = typeof body.public_key === 'string' ? body.public_key : JSON.stringify(body);
-  if (pub.length > 8192) throw invalid('public_key', 'BASE_TYPE_MAX_LENGTH', 'E2EE keys must be 8192 characters or fewer.');
-  const now = new Date().toISOString();
-  run(`INSERT INTO user_e2ee_keys (user_id, public_key, created_at, updated_at)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET public_key = excluded.public_key, updated_at = excluded.updated_at`,
-    ctx.user.id, pub, now, now);
-  return { ok: true, user_id: ctx.user.id, updated_at: now };
-}
-
-function getE2eeKeys({ params }) {
-  const row = get('SELECT * FROM user_e2ee_keys WHERE user_id = ?', params.id);
-  if (!row) throw notFound(10013, 'User E2EE keys');
-  let keys;
-  try { keys = JSON.parse(row.public_key); } catch { keys = row.public_key; }
-  return { user_id: row.user_id, public_key: row.public_key, keys, updated_at: row.updated_at };
-}
-
 // @me routes must precede /users/:id
 export default [
   ['GET', '/users/@me', ({ user }) => userObj(user, true)],
   ['PATCH', '/users/@me', patchMe, { maxBody: 12 * 1024 * 1024 }],
   ['PATCH', '/users/@me/profile', patchMe, { maxBody: 12 * 1024 * 1024, userOnly: true }],
   ['GET', '/users/@me/guilds', ({ user }) => guildsOf(user.id).map(g => guildObj(g))],
-  ['PUT', '/users/@me/e2ee/keys', putE2eeKeys, { userOnly: true }],
-  ['GET', '/users/@me/e2ee/keys', ({ user }) => getE2eeKeys({ params: { id: user.id } }), { userOnly: true }],
-  ['GET', '/users/:id/e2ee/keys', getE2eeKeys],
   ['GET', '/users/:id', getUser],
 ];

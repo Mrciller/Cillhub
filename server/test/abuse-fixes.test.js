@@ -52,10 +52,10 @@ test('webhooks cannot post into a locked thread or edit in an archived one', asy
   assert.equal((await api('POST', `${url}?thread_id=${thread.id}`, null, { content: 'locked' })).status, 403);
 });
 
-test('e2ee keys are at most 8192 characters', async () => {
-  assert.equal((await api('PUT', '/users/@me/e2ee/keys', sam.token, { public_key: 'k'.repeat(9000) })).status, 400);
+test('e2ee keys are a raw P-256 public key; long or old-style bodies are refused', async () => {
+  assert.equal((await api('PUT', '/users/@me/e2ee/keys', sam.token, { public_key: 'k'.repeat(9000), backup: '{}' })).status, 400);
   assert.equal((await api('PUT', '/users/@me/e2ee/keys', sam.token, { identity_key: 'k'.repeat(9000) })).status, 400);
-  assert.equal((await api('PUT', '/users/@me/e2ee/keys', sam.token, { identity_key: 'k'.repeat(100) })).status, 200);
+  assert.equal((await api('PUT', '/users/@me/e2ee/keys', sam.token, { identity_key: 'k'.repeat(100) })).status, 400);
 });
 
 test('a snippet posts its embed only for members who may embed links', async () => {

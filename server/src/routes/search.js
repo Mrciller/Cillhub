@@ -56,7 +56,7 @@ function timeOrIdToSnowflake(val) {
 
 // the search itself, over channels the caller already proved they can read
 function search(query, readable, userId) {
-  const where = ['m.channel_id IN (SELECT value FROM json_each(?))'];
+  const where = ['m.channel_id IN (SELECT value FROM json_each(?))', 'm.e2ee_envelope IS NULL']; // encrypted: only the placeholder is stored
   const args = [];
   const wanted = [...ids(query, 'channel_id'), ...ids(query, 'in'), ...ids(query, 'channel')];
   const nsfw = boolParam(query, 'include_nsfw') ?? false;

@@ -12,6 +12,7 @@ import { addJob, schedule } from '../timers.js';
 import { blockedEither } from './relationships.js';
 import { loadChannel } from './channels.js';
 import { reopened } from './threads.js';
+import { isEncrypted, refused } from '../e2ee.js';
 
 const MAX_SCHEDULED = 25;
 const MAX_SAVED = 200; // docs
@@ -30,6 +31,7 @@ function futureTime(body, field, required) {
 // everything a send needs except slowmode, which applies to the moment of sending, not to scheduling
 async function checked(ch, user, body) {
   if (!MESSAGEABLE.includes(ch.type)) throw new HttpError(400, 50008, 'Cannot send messages in a non-text channel');
+  if (isEncrypted(ch)) throw refused('Scheduled messages'); // the server would have to hold the text until it is sent
   need(ch.perms, P.SEND_MESSAGES);
   if (ch.guild_id) checkVerification(ch.guild_id, user.id);
   checkThreadOpen(ch, ch.perms);
@@ -250,6 +252,7 @@ async function createRecurring(ctx) {
   const ch = loadChannel(ctx.params.id, ctx.user);
   need(ch.perms, P.SEND_MESSAGES);
   if (ch.guild_id) need(ch.perms, P.MANAGE_MESSAGES);
+  if (isEncrypted(ch)) throw refused('Recurring messages');
   const content = str(ctx.body ?? {}, 'content', 1, 2000);
   const intervalType = ['daily', 'weekly', 'monthly'].includes(ctx.body?.interval_type) ? ctx.body.interval_type : 'daily';
   const timeOfDay = typeof ctx.body?.time_of_day === 'string' && TIME_OF_DAY.test(ctx.body.time_of_day) ? ctx.body.time_of_day : '12:00';

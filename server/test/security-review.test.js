@@ -66,7 +66,8 @@ test('account deletion clears private records and credentials while preserving s
   run("INSERT INTO dm_recipients (channel_id,user_id) VALUES ('201','102')");
   run("INSERT INTO saved_message_folders (id,user_id,name,created_at) VALUES ('folder','102','private','now')");
   run("INSERT INTO user_connections (id,user_id,type,name,created_at) VALUES ('connection','102','github','private','now')");
-  run("INSERT INTO user_e2ee_keys VALUES ('102','key','now','now')");
+  run("INSERT INTO user_e2ee_keys (user_id,public_key,created_at,updated_at) VALUES ('102','key','now','now')");
+  run("INSERT INTO dm_keys (channel_id,epoch,user_id,wrapped) VALUES ('201',1,'102','wrap')");
   run("INSERT INTO password_resets VALUES ('reset','102',9999999999999)");
   run("INSERT INTO recurring_messages (id,channel_id,author_id,content,next_run,created_at) VALUES ('rec','201','102','private',1,1)");
   run("INSERT INTO dm_requests VALUES ('201','102','pending','now')");

@@ -43,7 +43,7 @@ export function tx(fn) {
 
 // step i brings the database to user_version i + 1. v1 never set user_version, so a v1 database
 // reads 0 and replays 001, which only creates what is missing.
-const MIGRATIONS = ['001-v1.sql', '002-v2.sql', '003-v3.sql', '004-v4.sql', '005-v5.sql', '006-v6.sql', '007-v7.sql', '008-brand.sql', '009-guild-voice.sql', '010-modules.sql', '011-v9.sql', '012-v9-phase4.sql', '013-v10.sql', '014-v11.sql', '015-v12.sql', '016-v13.sql', '017-role-scope.sql', '018-attachment-sig.sql', '019-password-reset.sql', '020-account-security.sql', '021-legal.sql', '022-spam-guard.sql', '023-message-order.sql'];
+const MIGRATIONS = ['001-v1.sql', '002-v2.sql', '003-v3.sql', '004-v4.sql', '005-v5.sql', '006-v6.sql', '007-v7.sql', '008-brand.sql', '009-guild-voice.sql', '010-modules.sql', '011-v9.sql', '012-v9-phase4.sql', '013-v10.sql', '014-v11.sql', '015-v12.sql', '016-v13.sql', '017-role-scope.sql', '018-attachment-sig.sql', '019-password-reset.sql', '020-account-security.sql', '021-legal.sql', '022-spam-guard.sql', '023-message-order.sql', '024-e2ee-dm.sql'];
 for (let v = get('PRAGMA user_version').user_version; v < MIGRATIONS.length; v++) {
   const sql = readFileSync(new URL(`./migrations/${MIGRATIONS[v]}`, import.meta.url), 'utf8');
   tx(() => db.exec(`${sql}; PRAGMA user_version = ${v + 1};`));
@@ -184,13 +184,13 @@ export const voiceStatuses = new Map(); // channel id -> status
 export function channelObj(c, viewerId) {
   if (c.type === 1) {
     const others = all('SELECT u.* FROM dm_recipients d JOIN users u ON u.id = d.user_id WHERE d.channel_id = ? AND d.user_id != ?', c.id, viewerId);
-    return { id: c.id, type: 1, recipients: others.map(u => userObj(u)), last_message_id: c.last_message_id, message_ttl: c.message_ttl ?? 0 };
+    return { id: c.id, type: 1, recipients: others.map(u => userObj(u)), last_message_id: c.last_message_id, message_ttl: c.message_ttl ?? 0, e2ee_epoch: c.e2ee_epoch ?? 0 };
   }
   if (c.type === 3) {
     const others = all('SELECT u.* FROM dm_recipients d JOIN users u ON u.id = d.user_id WHERE d.channel_id = ? AND d.user_id != ? ORDER BY d.rowid', c.id, viewerId ?? '');
     return {
       id: c.id, type: 3, name: c.name, icon: c.icon, owner_id: c.owner_id, recipients: others.map(u => userObj(u)),
-      last_message_id: c.last_message_id, flags: 0, message_ttl: c.message_ttl ?? 0,
+      last_message_id: c.last_message_id, flags: 0, message_ttl: c.message_ttl ?? 0, e2ee_epoch: c.e2ee_epoch ?? 0,
     };
   }
   if (c.type >= 10 && c.type <= 12) return threadObj(c, viewerId);

@@ -28,6 +28,7 @@ import { settingsOf } from '../userdata.js';
 import { anonymize } from './account.js';
 import { removeMember, destroyGuild } from './guilds.js';
 import { loadMessage } from './messages.js';
+import { openWithKey, MAX_REVEAL } from '../e2ee.js';
 import { fedState, isHub, publicUrl, publicUrlSetting, PUBLIC_URL } from '../federation.js';
 import { decide, statement, noticeDecided } from './legal.js';
 
@@ -268,10 +269,16 @@ function createReport(ctx) {
   const note = body.note == null ? null : str(body, 'note', 0, 1000) || null;
   if (m.author_id === ctx.user.id && !m.webhook_id) throw new HttpError(400, 0, 'You cannot report your own message.');
   if (get('SELECT 1 FROM reports WHERE reporter_id = ? AND message_id = ?', ctx.user.id, m.id)) throw new HttpError(400, 0, 'You already reported this message.');
+  const revealed = reveal(m, ch, body.reveal);
+  const own = revealed?.find(r => r.row.id === m.id);
   const snapshot = {
-    content: m.content, timestamp: m.timestamp, edited_timestamp: m.edited_timestamp, type: m.type, embeds: json(m.embeds, []),
-    attachments: all('SELECT * FROM attachments WHERE message_id = ? ORDER BY rowid', m.id).map(a => ({ id: a.id, filename: a.filename, size: a.size, content_type: a.content_type, url: attachmentUrl(a) })),
+    content: own ? own.p.content : m.content, timestamp: m.timestamp, edited_timestamp: m.edited_timestamp, type: m.type, embeds: json(m.embeds, []),
+    attachments: own ? revealedFiles(m, own.p) : all('SELECT * FROM attachments WHERE message_id = ? ORDER BY rowid', m.id).map(a => ({ id: a.id, filename: a.filename, size: a.size, content_type: a.content_type, url: attachmentUrl(a) })),
     webhook_id: m.webhook_id ?? null,
+    ...(m.e2ee_envelope && { encrypted: true, revealed: !!own }),
+    ...(revealed && revealed.length > 1 && { context: revealed.filter(r => r !== own).map(({ row, p }) => ({
+      id: row.id, author_id: row.author_id, author_name: userById(row.author_id)?.username ?? null, timestamp: row.timestamp, content: p.content, attachments: revealedFiles(row, p),
+    })) }),
   };
   const id = snowflake();
   run(`INSERT INTO reports (id, reporter_id, message_id, channel_id, guild_id, author_id, reason, note, snapshot, created_at)
@@ -282,6 +289,35 @@ function createReport(ctx) {
     : `We received your report ${id}. The administrators will review it; you will get the outcome here.`);
   ctx.status = 201;
   return { id, message_id: m.id, channel_id: ch.id, reason: body.reason, created_at: iso(Date.now()) };
+}
+
+// encrypted DM report: the reporter's client hands over the message keys of the reported message and of up to 10 older
+// ones from the same conversation; every key must open its message (commitment and AES-GCM), else nothing is stored
+function reveal(m, ch, list) {
+  if (list == null) return null;
+  const bad = msg => invalid('reveal', 'E2EE_REVEAL_INVALID', msg);
+  if (!m.e2ee_envelope) throw bad('Only encrypted messages are revealed.');
+  if (!Array.isArray(list) || list.length < 1 || list.length > MAX_REVEAL + 1) throw bad(`The reported message and at most ${MAX_REVEAL} before it.`);
+  const seen = new Set();
+  const out = list.map(r => {
+    if (typeof r?.id !== 'string' || !/^\d{1,20}$/.test(r.id) || seen.has(r.id)) throw bad('Each entry needs a message id, once.');
+    seen.add(r.id);
+    const row = r.id === m.id ? m : get('SELECT * FROM messages WHERE id = ? AND channel_id = ?', r.id, ch.id);
+    if (!row?.e2ee_envelope || BigInt(row.id) > BigInt(m.id)) throw bad('Only encrypted messages of this conversation, up to the reported one.');
+    const p = openWithKey(row, r.mk);
+    if (!p) throw bad('A message key does not open its message.');
+    return { row, p };
+  });
+  if (!seen.has(m.id)) throw bad('The reported message must be revealed.');
+  return out.sort((a, b) => (BigInt(a.row.id) < BigInt(b.row.id) ? -1 : 1));
+}
+// payload files point at the stored ciphertext by position; the key stays in the report so the Reports page decrypts in the browser
+function revealedFiles(row, p) {
+  const stored = all('SELECT * FROM attachments WHERE message_id = ? AND in_snapshot = 0 ORDER BY rowid', row.id);
+  return p.files.map(f => {
+    const a = /^\d{1,2}$/.test(f.id) ? stored[Number(f.id)] : undefined;
+    return { id: a?.id ?? null, filename: f.name, size: f.size, content_type: f.type, url: a ? attachmentUrl(a) : null, key: f.k, iv: f.n };
+  });
 }
 
 const loadReport = id => {

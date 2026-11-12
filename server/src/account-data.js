@@ -18,7 +18,7 @@ export const PRIVATE_DATA = [
   ['read_states', 'user_id', 'read_states', 'channel_id, last_message_id, mention_count'],
   ['thread_members', 'user_id', 'thread_memberships', 'channel_id, join_timestamp, flags'],
   ['scheduled_event_users', 'user_id', 'event_subscriptions', 'event_id'],
-  ['bot_card_members', 'user_id'], ['fed_node_accounts', 'user_id'],
+  ['bot_card_members', 'user_id'], ['fed_node_accounts', 'user_id'], ['dm_keys', 'user_id'],
   ['dm_requests', 'recipient_id', 'message_requests', 'channel_id, status, created_at'],
   ['recurring_messages', 'author_id', 'recurring_messages', 'id, channel_id, content, interval_type, time_of_day, next_run, created_at'],
 ];

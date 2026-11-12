@@ -13,6 +13,7 @@ import {
 import { removeAttachment } from '../files.js';
 import { loadChannel } from './channels.js';
 import { reopened } from './threads.js';
+import { PLACEHOLDER, isEncrypted, refused, envelopeField, checkWrapsCurrent } from '../e2ee.js';
 
 // bots without the MESSAGE_CONTENT flag on their application read content only where the docs allow it
 export const seesContent = user => !user.bot
@@ -91,6 +92,7 @@ function edit(ctx) {
   const own = ownMessage(m, ctx.user.id);
   if (body.flags === undefined && !own) throw missingPermissions();
   requireUnarchived(ch);
+  if (body.e2ee_envelope !== undefined || (isEncrypted(ch) && body.content !== undefined)) return editEncrypted(ctx, ch, m, own);
   let { flags, content } = m;
   if (body.flags !== undefined) {
     if (!own) need(ch.perms, P.MANAGE_MESSAGES);
@@ -126,6 +128,26 @@ function edit(ctx) {
   broadcastMessage(ch, 'MESSAGE_UPDATE', out);
   if (relink && !(flags & F.SUPPRESS_EMBEDS) && (m.webhook_id || has(ch.perms, P.EMBED_LINKS))) unfurlLater(out);
   mod?.execute(m.id);
+  return messageObj(out, ch, ctx.user.id);
+}
+
+// encrypted DM: a new envelope replaces the old one, no edit history; plain text is never taken
+function editEncrypted(ctx, ch, m, own) {
+  const body = ctx.body;
+  if (!isEncrypted(ch)) throw invalid('e2ee_envelope', 'E2EE_NOT_ENABLED', 'This conversation is not encrypted.');
+  if (body.e2ee_envelope == null) throw new HttpError(400, 50305, 'This conversation is encrypted. Update the app to edit messages here.');
+  if (!own) throw missingPermissions();
+  if (body.content) throw invalid('content', 'E2EE_PLAINTEXT', 'An encrypted message carries no plain text.');
+  if (body.flags !== undefined) throw invalid('flags', 'E2EE_FLAGS', 'Change flags in a separate request.');
+  if (m.flags & F.IS_VOICE_MESSAGE) throw refused('Voice messages');
+  if (m.type !== 0 && m.type !== 19) throw new HttpError(400, 50021, 'Cannot execute action on a system message');
+  const env = envelopeField(body.e2ee_envelope, ch.e2ee_epoch);
+  checkWrapsCurrent(ch);
+  run(`UPDATE messages SET content = ?, e2ee_envelope = ?, mention_everyone = 0, mention_roles = '[]', link_embeds = '[]', edited_timestamp = ?
+       WHERE id = ?`, PLACEHOLDER, JSON.stringify(env), new Date().toISOString(), m.id);
+  run('DELETE FROM message_edits WHERE message_id = ?', m.id); // an older plain version would outlive the encrypted one
+  const out = getMessage(m.id);
+  broadcastMessage(ch, 'MESSAGE_UPDATE', out);
   return messageObj(out, ch, ctx.user.id);
 }
 
