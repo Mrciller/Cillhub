@@ -15,6 +15,8 @@ import { reopened } from './threads.js';
 import { isEncrypted, refused } from '../e2ee.js';
 
 const MAX_SCHEDULED = 25;
+const MAX_RECURRING = 25; // per author and per channel
+const RECURRING_PER_RUN = 5; // per channel and run; the rest moves to the next run, a minute later
 const MAX_SAVED = 200; // docs
 const YEAR = 365 * 24 * 3600 * 1000;
 const KEPT = ['content', 'flags', 'message_reference', 'allowed_mentions', 'sticker_ids'];
@@ -107,7 +109,7 @@ async function deliverScheduled(r) {
   try {
     const user = userById(r.user_id);
     const ch = getChannel(r.channel_id);
-    if (!user || user.deleted || !ch) throw missingAccess();
+    if (!user || user.deleted || user.disabled || !ch) throw missingAccess();
     gone.guild_id = ch.guild_id ?? null;
     ch.perms = channelPerms(ch, user.id);
     if (!has(ch.perms, P.VIEW_CHANNEL)) throw missingAccess();
@@ -256,6 +258,10 @@ async function createRecurring(ctx) {
   const content = str(ctx.body ?? {}, 'content', 1, 2000);
   const intervalType = ['daily', 'weekly', 'monthly'].includes(ctx.body?.interval_type) ? ctx.body.interval_type : 'daily';
   const timeOfDay = typeof ctx.body?.time_of_day === 'string' && TIME_OF_DAY.test(ctx.body.time_of_day) ? ctx.body.time_of_day : '12:00';
+  const count = (col, v) => get(`SELECT COUNT(*) AS n FROM recurring_messages WHERE ${col} = ?`, v).n;
+  if (count('author_id', ctx.user.id) >= MAX_RECURRING || count('channel_id', ch.id) >= MAX_RECURRING) {
+    throw new HttpError(400, 0, `Maximum number of recurring messages reached (${MAX_RECURRING})`);
+  }
   const nextRun = computeNextRun(intervalType, timeOfDay);
   const id = snowflake();
   run('INSERT INTO recurring_messages (id, channel_id, author_id, content, interval_type, time_of_day, next_run, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -278,7 +284,11 @@ addJob({
   name: 'recurring messages',
   next: () => get('SELECT MIN(next_run) AS t FROM recurring_messages').t,
   run: async now => {
-    for (const r of all('SELECT * FROM recurring_messages WHERE next_run <= ?', now)) {
+    const sent = new Map(); // channel id -> rows handled this run
+    for (const r of all('SELECT * FROM recurring_messages WHERE next_run <= ? ORDER BY next_run', now)) {
+      const n = sent.get(r.channel_id) ?? 0;
+      if (n >= RECURRING_PER_RUN) { run('UPDATE recurring_messages SET next_run = ? WHERE id = ?', now + 60_000, r.id); continue; }
+      sent.set(r.channel_id, n + 1);
       const ch = getChannel(r.channel_id);
       const author = userById(r.author_id);
       if (ch && author && !author.deleted && !author.disabled) {
