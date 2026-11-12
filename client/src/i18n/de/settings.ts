@@ -542,4 +542,8 @@ export const settings: Record<string, string> = {
   '∞ (no limit)': '∞ (kein Limit)',
   'Spatial 3D Audio': 'Räumliches 3D-Audio',
   'Positions speakers around you in 3D stereo space for natural immersion.': 'Positioniert Sprecher für ein natürliches Raumgefühl um dich herum.',
+  'Spam Protection': 'Spamschutz',
+  'Automatic spam slow mode': 'Automatischer Spam-Slowmode',
+  'When one member floods a channel, only they get a 10 second slowmode for 10 minutes. When many members do, the channel gets a 10 second slowmode for 5 minutes. Moderators are not affected.':
+    'Flutet ein Mitglied einen Kanal, bekommt nur es 10 Minuten lang einen Slowmode von 10 Sekunden. Fluten viele Mitglieder, bekommt der Kanal 5 Minuten lang einen Slowmode von 10 Sekunden. Moderatoren sind nicht betroffen.',
 }

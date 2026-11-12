@@ -4,7 +4,7 @@ import { get, all, run, userById, channelUserIds, json } from '../db.js';
 import { HttpError, invalid, notFound, missingAccess, str } from '../errors.js';
 import { P, has, need, channelPerms, isThread, MESSAGEABLE } from '../permissions.js';
 import { sendToUsers } from '../gateway.js';
-import { prepare, send, checkVerification, checkThreadOpen } from '../compose.js';
+import { prepare, send, checkVerification, checkThreadOpen, checkSlowmode, markSent } from '../compose.js';
 import { moderateMessage } from '../automod.js';
 import { messageObj, getChannel, SOURCE_GONE } from '../message.js';
 import { pushTo } from '../push.js';
@@ -96,7 +96,7 @@ function deleteScheduled(ctx) {
   sendToUsers([r.user_id], 'SCHEDULED_MESSAGE_DELETE', { id: r.id, channel_id: r.channel_id, guild_id: getChannel(r.channel_id)?.guild_id ?? null });
 }
 
-// at send time the author's current permissions decide; a refused message is dropped and the author told why.
+// at send time the author's current permissions and slow mode decide; a refused message is dropped and the author told why.
 // Any other failure (storage, a rolled-back send) is thrown: the row stays for a later run, but at most GIVE_UP past
 // its time, so no row retries forever. A forwarded file that is gone is a refusal (the live forward fails on it too).
 const GIVE_UP = 60 * 60 * 1000;
@@ -111,7 +111,9 @@ async function deliverScheduled(r) {
     if (!has(ch.perms, P.VIEW_CHANNEL)) throw missingAccess();
     if (!get('SELECT 1 FROM messages WHERE id = ?', r.message_id)) { // there already: sent just before a crash
       const { d, mod } = await checked(ch, user, JSON.parse(r.body));
+      checkSlowmode(ch, user.id, ch.perms);
       const m = await send(d, user.id, { id: r.message_id, inTx: () => run('DELETE FROM scheduled_messages WHERE id = ?', r.id) });
+      markSent(ch, user.id, ch.perms);
       if (isThread(ch)) reopened(ch);
       mod?.execute(m.id);
     }

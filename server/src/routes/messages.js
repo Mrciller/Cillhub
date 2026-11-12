@@ -78,7 +78,7 @@ async function create(ctx) {
   const mod = moderateMessage(ch, ctx.user.id, d.content);
   if (mod?.blocked) throw mod.reject();
   const m = await send(d, ctx.user.id);
-  markSent(ch, ctx.user.id);
+  markSent(ch, ctx.user.id, ch.perms);
   if (isThread(ch)) reopened(ch);
   mod?.execute(m.id);
   ctx.status = 201;

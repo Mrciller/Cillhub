@@ -38,6 +38,7 @@ export type Guild = {
   emojis?: Emoji[]; stickers?: Sticker[]
   // v6: splash /splashes/<id>/<hash>.png; brand_color_primary '#rrggbb' (discovery profile); entrance_sounds_enabled and greeting_templates are Cillhub extras
   splash?: string | null; brand_color_primary?: string | null; entrance_sounds_enabled?: boolean; greeting_templates?: string[]
+  auto_spam_slowmode_enabled?: boolean // automatic spam slow mode, on unless false
   voice_backend?: 'livekit' | 'cillvoice' | null // Cillhub: voice server for new calls, null = instance default
   profile?: GuildIdentity | null
   module_panels?: ModulePanel[] // v8: panels of the modules enabled in this server (READY, GUILD_CREATE, GUILD_MODULE_PANELS_UPDATE)

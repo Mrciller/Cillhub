@@ -1,6 +1,8 @@
 import { snowflake } from './snowflake.js';
 import { maxUpload } from './instance.js';
-import { get, idTime } from './db.js';
+import { get, all, run, idTime } from './db.js';
+import { channelEvent } from './gateway.js';
+import { addJob, schedule } from './timers.js';
 import { HttpError, str, int, invalid, snowflakeField, snowflakes, rateLimited, notFound } from './errors.js';
 import { P, has, need, channelPerms, isThread } from './permissions.js';
 import { saveAttachment, removeAttachment, safeFilename } from './files.js';
@@ -31,19 +33,81 @@ export async function readPayload(ctx) {
   return { body: body ?? {}, files };
 }
 
+// automatic spam slow mode (guild text channels, not threads): every threshold lives here
+const TEST_MS = process.env.NODE_ENV === 'test' && Number(process.env.CILLCORD_TEST_SPAM_MS);
+export const SPAM = {
+  WINDOW_MS: 5000,
+  MEMBER_MESSAGES: 5, MEMBER_SLOW_S: 10, MEMBER_SLOW_MS: TEST_MS || 10 * 60 * 1000, // one member: 5 in 5 s -> 1 per 10 s for 10 min
+  CROWD_MEMBERS: 3, CROWD_EACH: 3, CROWD_TOTAL: 15, CROWD_SLOW_S: 10, CROWD_SLOW_MS: TEST_MS || 5 * 60 * 1000, // many: channel 10 s for 5 min
+};
+const exempt = perms => has(perms, P.MANAGE_MESSAGES) || has(perms, P.MANAGE_CHANNELS);
+const watched = ch => ch.guild_id && !isThread(ch);
+// shortcut: counters and personal slow modes are in memory, a restart forgets them; the channel restore is in the database
+const recent = new Map(); // channel id -> [{ t, user }] inside the window
+const personal = new Map(); // `${channel}:${user}` -> personal slow mode end (ms)
+const personalOn = key => (personal.get(key) ?? 0) > Date.now() || (personal.delete(key), false);
+
 // slowmode: last send per channel and user, in memory (a restart forgives the remaining wait)
 const lastSent = new Map();
 export function checkSlowmode(ch, userId, perms) {
-  const s = ch.rate_limit_per_user;
-  if (!s || has(perms, P.MANAGE_MESSAGES) || has(perms, P.MANAGE_CHANNELS)) return;
-  const wait = (lastSent.get(`${ch.id}:${userId}`) ?? 0) + s * 1000 - Date.now();
+  if (exempt(perms)) return;
+  const key = `${ch.id}:${userId}`;
+  const s = Math.max(ch.rate_limit_per_user ?? 0, personalOn(key) ? SPAM.MEMBER_SLOW_S : 0);
+  if (!s) return;
+  const wait = (lastSent.get(key) ?? 0) + s * 1000 - Date.now();
   if (wait > 0) throw rateLimited(wait / 1000);
 }
-export function markSent(ch, userId) {
-  if (!ch.rate_limit_per_user) return;
+export function markSent(ch, userId, perms) {
+  const key = `${ch.id}:${userId}`;
+  if (watched(ch) && !exempt(perms)) watchSpam(ch, userId);
+  if (!ch.rate_limit_per_user && !personalOn(key)) return;
   const now = Date.now();
   for (const [k, t] of lastSent) if (now - t > 21600 * 1000) lastSent.delete(k);
-  lastSent.set(`${ch.id}:${userId}`, now);
+  for (const [k, t] of personal) if (t <= now) personal.delete(k);
+  lastSent.set(key, now);
+}
+
+function watchSpam(ch, userId) {
+  const now = Date.now();
+  if (recent.size > 1000) for (const [id, l] of recent) if (now - l.at(-1).t > SPAM.WINDOW_MS) recent.delete(id);
+  const list = (recent.get(ch.id) ?? []).filter(e => now - e.t < SPAM.WINDOW_MS);
+  list.push({ t: now, user: userId });
+  recent.set(ch.id, list);
+  const counts = new Map();
+  for (const e of list) counts.set(e.user, (counts.get(e.user) ?? 0) + 1);
+  const key = `${ch.id}:${userId}`;
+  const member = counts.get(userId) >= SPAM.MEMBER_MESSAGES && !personalOn(key);
+  const crowd = list.length >= SPAM.CROWD_TOTAL && [...counts.values()].filter(n => n >= SPAM.CROWD_EACH).length >= SPAM.CROWD_MEMBERS
+    && (ch.rate_limit_per_user ?? 0) < SPAM.CROWD_SLOW_S;
+  if (!member && !crowd) return;
+  if (!get('SELECT spam_slowmode FROM guilds WHERE id = ?', ch.guild_id)?.spam_slowmode) return; // switched off for this server
+  if (member) personal.set(key, now + SPAM.MEMBER_SLOW_MS);
+  if (crowd) {
+    const r = run(`UPDATE channels SET auto_slowmode_prev = rate_limit_per_user, auto_slowmode_until = ?,
+      rate_limit_per_user = ? WHERE id = ? AND rate_limit_per_user < ?`, now + SPAM.CROWD_SLOW_MS, SPAM.CROWD_SLOW_S, ch.id, SPAM.CROWD_SLOW_S);
+    if (!r.changes) return;
+    recent.delete(ch.id);
+    channelEvent(getChannel(ch.id), 'CHANNEL_UPDATE');
+    schedule();
+  }
+}
+
+// the automatic channel slow mode ends: the value from before comes back (read from the database, so a restart keeps it)
+function restoreSlowmode(id) {
+  run('UPDATE channels SET rate_limit_per_user = auto_slowmode_prev, auto_slowmode_prev = NULL, auto_slowmode_until = NULL WHERE id = ?', id);
+  channelEvent(getChannel(id), 'CHANNEL_UPDATE');
+}
+addJob({
+  name: 'spam slow mode end',
+  next: () => get('SELECT MIN(auto_slowmode_until) AS t FROM channels WHERE auto_slowmode_until IS NOT NULL')?.t ?? null,
+  run(now) {
+    for (const { id } of all('SELECT id FROM channels WHERE auto_slowmode_until <= ?', now)) restoreSlowmode(id);
+  },
+});
+
+// the server switch goes off: its automatic channel slow modes end now (personal ones run out on their own)
+export function endAutoSlowmode(guildId) {
+  for (const { id } of all('SELECT id FROM channels WHERE guild_id = ? AND auto_slowmode_until IS NOT NULL', guildId)) restoreSlowmode(id);
 }
 
 // guild verification level: LOW = account older than 5 minutes, MEDIUM = also a member for 5 minutes; members with a role skip it

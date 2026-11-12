@@ -9,6 +9,7 @@ before(async () => {
   api = srv.api;
   g = await guildWith(srv, ['alice', 'bob', 'carol']);
   ({ alice, bob, carol } = g.users);
+  await api('PATCH', `/guilds/${g.guild.id}`, alice.token, { auto_spam_slowmode_enabled: false }); // these tests send fast on purpose
   for (const u of [alice, bob, carol]) u.gw = await srv.gateway(u.token);
   // carol moderates: MODERATE_MEMBERS, VIEW_AUDIT_LOG, MANAGE_GUILD
   s.mod = (await api('POST', `/guilds/${g.guild.id}/roles`, alice.token, { name: 'Mod', permissions: bits(10, 11, 16, 40, 7, 5) })).body;

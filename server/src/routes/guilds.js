@@ -10,6 +10,7 @@ import { sendToUsers, presences, guildFull, visibility, syncVisibility } from '.
 import { disconnect } from '../voice.js';
 import { saveImage, removeImage, removeChannelFiles, removeAsset } from '../files.js';
 import { requireMfa } from '../mfa.js';
+import { endAutoSlowmode } from '../compose.js';
 import { createFromSnapshot } from './templates.js';
 import { unequipDecorations, announceUser } from './customization.js';
 import { recordGuildMetric } from '../analytics.js';
@@ -98,6 +99,7 @@ function settings(body, g) {
   if (body.rules_channel_id !== undefined) out.rules_channel_id = channelRef(body, 'rules_channel_id', g.id, [0]);
   if (body.description !== undefined) out.description = body.description === null ? null : str(body, 'description', 0, 300) || null;
   if (body.entrance_sounds_enabled !== undefined) out.entrance_sounds = Number(bool(body, 'entrance_sounds_enabled'));
+  if (body.auto_spam_slowmode_enabled !== undefined) out.spam_slowmode = Number(bool(body, 'auto_spam_slowmode_enabled'));
   if (body.voice_backend !== undefined) {
     if (body.voice_backend !== null && !configuredBackends().includes(body.voice_backend)) throw invalid('voice_backend', 'VOICE_BACKEND_UNAVAILABLE', `Must be null or one of: ${configuredBackends().join(', ') || 'none'}.`);
     out.voice_backend = body.voice_backend;
@@ -118,7 +120,7 @@ function settings(body, g) {
 }
 
 const AUDITED = ['owner_id', 'name', 'icon', 'description', 'verification_level', 'afk_channel_id', 'afk_timeout', 'system_channel_id', 'rules_channel_id', 'features',
-  'banner', 'splash', 'entrance_sounds_enabled', 'greeting_templates', 'voice_backend'];
+  'banner', 'splash', 'entrance_sounds_enabled', 'auto_spam_slowmode_enabled', 'greeting_templates', 'voice_backend'];
 
 async function patchGuild(ctx) {
   const { params, user } = ctx;
@@ -139,6 +141,7 @@ async function patchGuild(ctx) {
   }
   const seen = next.owner_id && visibility(g.id, [g.owner_id, next.owner_id]);
   for (const [k, v] of Object.entries(next)) run(`UPDATE guilds SET ${k} = ? WHERE id = ?`, v, g.id); // keys are fixed above
+  if (next.spam_slowmode === 0) endAutoSlowmode(g.id); // the running automatic channel slow modes of this server end now
   if ('icon' in next && next.icon !== g.icon) removeImage('icons', g.id, g.icon);
   if ('banner' in next && next.banner !== g.banner) removeImage('banners', g.id, g.banner);
   if ('splash' in next && next.splash !== g.splash) removeImage('splashes', g.id, g.splash);
