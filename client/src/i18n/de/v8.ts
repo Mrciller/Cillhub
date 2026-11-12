@@ -63,4 +63,33 @@ export const v8: Record<string, string> = {
   // Server invite card in messages
   "You've been invited to join a server": 'Du wurdest auf einen Server eingeladen', 'You sent an invite to join a server': 'Du hast eine Servereinladung gesendet',
   Joined: 'Beigetreten', 'This invite has expired or was revoked.': 'Diese Einladung ist abgelaufen oder wurde widerrufen.',
+  // Settings › Private Nodes and add-node links
+  'Private Nodes': 'Private Nodes', 'Node address': 'Node-Adresse', 'Add node': 'Node hinzufügen', Reachable: 'Erreichbar', 'Not reachable': 'Nicht erreichbar',
+  'Copy add link': 'Hinzufügen-Link kopieren', 'No private nodes saved yet.': 'Noch keine privaten Nodes gespeichert.',
+  'Private nodes you use besides the Main Hub, all connected at once. Each node is a separate server with its own accounts and admins. The list is saved with your account.':
+    'Private Nodes, die du neben dem Haupt-Hub nutzt, alle gleichzeitig verbunden. Jeder Node ist ein eigener Server mit eigenen Konten und Admins. Die Liste wird mit deinem Konto gespeichert.',
+  'This server is already in your list.': 'Dieser Server ist schon in deiner Liste.', 'You can save up to {n} nodes.': 'Du kannst bis zu {n} Nodes speichern.',
+  '{address} leaves the list on all your devices. Cillhub signs you out there and its servers leave your server list. Your account there stays as it is.':
+    '{address} wird auf allen deinen Geräten aus der Liste entfernt. Cillhub meldet dich dort ab und seine Server verschwinden aus deiner Serverliste. Dein Konto dort bleibt, wie es ist.',
+  'Enter only the server address, with https:// (http only for localhost), e.g. https://chat.example.org.':
+    'Gib nur die Serveradresse ein, mit https:// (http nur für localhost), z. B. https://chat.example.org.',
+  'Add a private node?': 'Privaten Node hinzufügen?', 'Node added': 'Node hinzugefügt', 'Invalid link': 'Ungültiger Link',
+  'This link does not contain a usable node address.': 'Dieser Link enthält keine gültige Node-Adresse.',
+  // Private nodes connected next to the hub
+  'This is a separate server with its own accounts and admins.': 'Das ist ein eigener Server mit eigenen Konten und Admins.',
+  'Cillhub signs you in there with your account here: the node gets your user name and avatar, never your password. Its servers then show up in your server list.':
+    'Cillhub meldet dich dort mit deinem Konto von hier an: Der Node bekommt deinen Benutzernamen und dein Profilbild, nie dein Passwort. Seine Server erscheinen dann in deiner Serverliste.',
+  'Add {name}?': '{name} hinzufügen?', 'Add and sign in': 'Hinzufügen und anmelden', 'Sign in': 'Anmelden', 'Not connected': 'Nicht verbunden',
+  'Needs its own login · not connected': 'Braucht eigene Anmeldung · nicht verbunden', 'Not connected: {reason} Retrying…': 'Nicht verbunden: {reason} Neuer Versuch folgt …',
+  '{name} is not reachable right now.': '{name} ist gerade nicht erreichbar.',
+  'That is on another server and cannot be used here.': 'Das liegt auf einem anderen Server und kann hier nicht verwendet werden.',
+  'Cut off: sent too much or broken data': 'Getrennt: zu viele oder fehlerhafte Daten gesendet',
+  '{name} sent too much or broken data and was disconnected. It stays off until you reconnect it.':
+    '{name} hat zu viele oder fehlerhafte Daten geschickt und wurde getrennt. Es bleibt getrennt, bis du es neu verbindest.',
+  'Display error: {name} was disconnected so Cillhub stays usable. It stays off until you reconnect it.':
+    'Anzeigefehler: {name} wurde getrennt, damit Cillhub benutzbar bleibt. Es bleibt getrennt, bis du es neu verbindest.',
+  'Display error: {name} was disconnected so Cillhub stays usable.': 'Anzeigefehler: {name} wurde getrennt, damit Cillhub benutzbar bleibt.',
+  'Reconnect': 'Neu verbinden', 'Reconnect {name}': '{name} neu verbinden',
+  'Something went wrong': 'Etwas ist schiefgelaufen', 'Cillhub could not show this page. Reloading usually fixes it.': 'Cillhub konnte diese Seite nicht anzeigen. Neu laden behebt das meist.',
+  'From {instance}, a separate server. What you enter goes there.': 'Von {instance}, einem eigenen Server. Was du eingibst, geht dorthin.',
 }

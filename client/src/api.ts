@@ -1,6 +1,9 @@
 import { DEFAULT_HUB_URL } from './hub'
 import { t } from './i18n'
-import { inbound, instanceById, outbound, outboundPath, route, tokenOf } from './instances/registry'
+import { admitRest, bodyFits, instanceById, instances, outbound, outboundPath, pathFits, route, tokenOf } from './instances/registry'
+import { cleanName, normalizeServerUrl, parseNodes, safePath, tokenFor, type SavedNode } from './privateNodes'
+
+export { normalizeServerUrl }
 
 export const SERVER_TARGET_KEY = 'cillhub_server_target'
 export const CUSTOM_NODE_KEY = 'cillhub_custom_node_url'
@@ -21,29 +24,16 @@ export function getCustomNodeUrl(): string {
   }
 }
 
-/** A typed server address as an origin: https:// added when missing, http only for localhost; null when unusable. */
-export function normalizeServerUrl(raw: string): string | null {
-  const v = raw.trim()
-  if (!v) return null
-  try {
-    const u = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(v) ? v : `https://${v}`)
-    const local = u.hostname === 'localhost' || u.hostname.endsWith('.localhost') || u.hostname === '127.0.0.1' || u.hostname === '[::1]'
-    return u.protocol === 'https:' || (u.protocol === 'http:' && local) ? u.origin : null
-  } catch {
-    return null
-  }
-}
-if (import.meta.env.DEV) {
-  console.assert(normalizeServerUrl('chat.example.org/') === 'https://chat.example.org' && normalizeServerUrl('http://chat.example.org') === null
-    && normalizeServerUrl('http://localhost:3000/x') === 'http://localhost:3000' && normalizeServerUrl('ftp://a.b') === null && normalizeServerUrl(' ') === null, 'normalizeServerUrl')
-}
-
 export const ORIGIN = import.meta.env.VITE_API_BASE ?? ''
 
 /** The server this client talks to (the login page's Main Hub / Private Node choice): REST, media, voice, and every link people share. */
 export function apiOrigin(): string {
   const custom = getServerTarget() === 'private' && normalizeServerUrl(getCustomNodeUrl())
-  if (custom) return custom
+  return custom || hubOrigin()
+}
+
+/** The Main Hub choice: the build's API base, else the server that served this page. */
+export function hubOrigin(): string {
   if (ORIGIN) return ORIGIN.replace(/\/+$/, '')
   if (typeof window !== 'undefined' && /^https?:\/\//.test(window.location?.origin ?? '')) return window.location.origin
   return DEFAULT_HUB_URL
@@ -60,8 +50,28 @@ export function setServerTarget(target: 'hub' | 'private', customUrl?: string): 
   return true
 }
 
+export const NODES_KEY = 'cillhub_private_nodes'
+const local = (key: string) => { try { return localStorage.getItem(key) } catch { return null } }
+
+/** This device's saved private nodes (Settings › Private Nodes). */
+export const savedNodes = (): SavedNode[] => parseNodes(local(NODES_KEY))
+export const saveNodes = (list: SavedNode[]) => { try { localStorage.setItem(NODES_KEY, JSON.stringify(list)) } catch {} }
+
+/** Whether a server answers as Cillhub, and its name (GET /instance: no credentials, no redirects, 5 s). */
+export async function testNode(origin: string): Promise<{ name: string }> {
+  const res = await fetch(`${origin}/api/v9/instance`, { credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(5000) })
+  const data = res.ok ? await res.json().catch(() => null) : null
+  if (!data || typeof data !== 'object') throw new Error('Not answering as Cillhub')
+  return { name: cleanName((data as { name?: unknown }).name) }
+}
+
 /** Root-relative CDN paths (avatars, icons, attachments) resolved against the API origin, or the node's origin for node ids (v7). */
-export const cdn = (path: string) => (/^https?:\/\//.test(path) || path.startsWith('data:') ? path : (instanceById(route(path))?.url ?? apiOrigin()) + path)
+export const cdn = (path: string) => {
+  if (/^https?:\/\//.test(path) || path.startsWith('data:')) return path
+  if (!safePath(path)) return '' // an id that walks out of its segment never becomes a request
+  const node = instanceById(route(path))
+  return node ? node.url + outboundPath(node.id, path) : apiOrigin() + path
+}
 
 type FieldErrors = Record<string, { _errors?: { code: string; message: string }[] }>
 
@@ -99,15 +109,22 @@ export class ApiError extends Error {
   }
 }
 
-const auth = (node?: string): Record<string, string> => {
-  const token = node ? tokenOf(node) : localStorage.getItem('token')
+// By the address the request really goes to, so a routing slip can never hand one server another's token.
+const auth = (url: string): Record<string, string> => {
+  const token = tokenFor(url, { origin: apiOrigin(), token: localStorage.getItem('token') }, instances().map((i) => ({ url: i.url, token: tokenOf(i.id) })))
   return token ? { Authorization: token } : {}
 }
 
 /** Where a call goes: the hub (this origin), or a linked node (v7) chosen by `instance` or by the node-owned ids in the path/body. */
 function target(path: string, body: unknown, instance?: string) {
+  // Ids from servers end up in paths; one that walks out of its segment never leaves the client.
+  if (!safePath(path)) throw new ApiError(0, { message: t('Request failed ({status})', { status: 0 }) })
   const node = instance ?? route(path, body)
   const info = instanceById(node)
+  // a node id of a node we no longer have or that is cut off (only its sign-out goes out), or ids of another server in
+  // the path: never sent
+  if ((node && !info) || (info?.status === 'cut-off' && path !== '/auth/logout') || !pathFits(path, node)) throw new ApiError(0, { message: t('Request failed ({status})', { status: 0 }) })
+  if (!bodyFits(body, node)) throw new ApiError(0, { message: t('That is on another server and cannot be used here.') })
   const base = apiOrigin() + '/api/v9'
   return info ? { node: info.id, url: info.url + '/api/v9' + outboundPath(info.id, path), body: outbound(info.id, body) } : { node: undefined, url: base + path, body }
 }
@@ -115,22 +132,51 @@ function target(path: string, body: unknown, instance?: string) {
 /** `reason` goes into the X-Audit-Log-Reason header (URL-encoded). `instance` sends the call to a linked node (v7). */
 export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; reason?: string; instance?: string; headers?: Record<string, string> } = {}): Promise<T> {
   const to = target(path, init.body, init.instance)
-  const headers = { ...init.headers, ...auth(to.node) }
+  const headers = { ...init.headers, ...auth(to.url) }
   if (init.body !== undefined) headers['Content-Type'] = 'application/json'
   if (init.reason) headers['X-Audit-Log-Reason'] = encodeURIComponent(init.reason)
   let res: Response
   const sent = Date.now()
   try {
-    res = await fetch(to.url, { method: init.method ?? 'GET', headers, body: to.body === undefined ? undefined : JSON.stringify(to.body) })
+    // A node's redirect is not followed: the token was meant for that node only.
+    res = await fetch(to.url, { method: init.method ?? 'GET', headers, body: to.body === undefined ? undefined : JSON.stringify(to.body), ...(to.node && { redirect: 'error' as const }) })
   } catch {
     throw new ApiError(0, null)
   }
   if (!to.node) clockSample(res.headers.get('Date'), sent, Date.now())
   if (res.status === 204) return undefined as T
-  const data = await res.json().catch(() => null)
+  const data = to.node ? await nodeJson(res) : await res.json().catch(() => null)
   // A 200 that is not JSON means something other than the API answered (e.g. an SPA fallback).
   if (!res.ok || data === null) throw new ApiError(res.ok ? 0 : res.status, data)
-  return (to.node ? inbound(to.node, data) : data) as T
+  return (to.node ? admitted(to.node, data, /^\/modules\/[^/?]+\/ui$/.test(path)) : data) as T
+}
+
+// A node answer: at most 8 MB, then the node boundary (shape, ids, users); a refused one is an error, never applied.
+const NODE_ANSWER_BYTES = 8 * 1024 * 1024
+async function nodeJson(res: Response) {
+  if (Number(res.headers.get('Content-Length') ?? 0) > NODE_ANSWER_BYTES) return null
+  // Counted while it streams in: a node cannot make us buffer more than the limit.
+  const reader = res.body?.getReader()
+  if (!reader) return null
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.length
+      if (size > NODE_ANSWER_BYTES) return void reader.cancel().catch(() => {}), null
+      chunks.push(value)
+    }
+    return JSON.parse(await new Blob(chunks as BlobPart[]).text())
+  } catch {
+    return null
+  }
+}
+function admitted(node: string, data: unknown, moduleData = false) {
+  const d = admitRest(node, data, moduleData)
+  if (d === null) throw new ApiError(0, { message: t('{name} sent an invalid answer.', { name: instanceById(node)?.name ?? '' }) })
+  return d
 }
 
 // Server clock offset (Watch Together sync) from the Date header. The header has 1 s resolution, so each answer bounds the
@@ -150,18 +196,32 @@ export const serverOffset = () => (Number.isFinite(lo) && Number.isFinite(hi) ? 
 
 /** Multipart POST with upload progress (fetch has no upload progress events). */
 export function upload<T>(path: string, form: FormData, onProgress: (fraction: number) => void = () => {}): Promise<T> {
+  // The JSON part decides where it goes (an interaction's channel) and goes out in that server's ids.
+  let payload: unknown
+  try { payload = JSON.parse(String(form.get('payload_json') ?? 'null')) } catch { payload = null }
+  const to = target(path, payload ?? undefined)
+  if (to.node && payload) form.set('payload_json', JSON.stringify(to.body))
+  // A node upload never follows a redirect (XHR would re-send the files elsewhere): fetch, without progress steps.
+  if (to.node) {
+    return fetch(to.url, { method: 'POST', headers: auth(to.url), body: form, redirect: 'error' }).then(async (res) => {
+      if (res.status === 204) return undefined as T
+      const data = await nodeJson(res)
+      if (!res.ok || data === null) throw new ApiError(res.ok ? 0 : res.status, data)
+      onProgress(1)
+      return admitted(to.node!, data) as T
+    }, () => { throw new ApiError(0, null) })
+  }
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    const to = target(path, undefined)
     xhr.open('POST', to.url)
-    for (const [k, v] of Object.entries(auth(to.node))) xhr.setRequestHeader(k, v)
+    for (const [k, v] of Object.entries(auth(to.url))) xhr.setRequestHeader(k, v)
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
     xhr.onerror = () => reject(new ApiError(0, null))
     xhr.onload = () => {
       let data = null
       try { data = JSON.parse(xhr.responseText) } catch { /* not JSON */ }
       if (xhr.status === 204) resolve(undefined as T)
-      else if (xhr.status >= 200 && xhr.status < 300 && data) resolve((to.node ? inbound(to.node, data) : data) as T)
+      else if (xhr.status >= 200 && xhr.status < 300 && data) resolve(data as T)
       else reject(new ApiError(xhr.status, data))
     }
     xhr.send(form)

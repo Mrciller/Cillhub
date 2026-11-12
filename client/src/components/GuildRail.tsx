@@ -12,6 +12,7 @@ import { MenuItem, MenuSep, Popover, useContextMenu, type Anchor } from './menu'
 import { dropBefore, dropIntoFolder, dropOnto, moveBy, moveFolder, newFolder, railLayout, removeFromFolder, saveLayout } from './railOrder'
 import { Avatar, channelIconUrl, cls, Field, FormError, GuildIcon, Icon, ICONS, Modal } from './ui'
 import { useInstance } from '../admin/instance'
+import { NodeGuard } from '../instances/NodeGuard'
 import { AddFromInstance, confirmDisconnect, InstanceList, NodeMarker, STATUS_TEXT, useNode } from '../instances/InstanceUI'
 
 const toNav = () => setState({ showNav: true })
@@ -138,14 +139,14 @@ function FolderEntry({ f, guildId, drop, setDrop }: { f: GuildFolder; guildId: s
         }}>
         <button className="rail-icon folder-icon" aria-expanded={open} aria-label={t('Folder {name}', { name }) + (mentions ? t(mentions === 1 ? ', {n} mention' : ', {n} mentions', { n: mentions }) : unread && !open ? t(', unread') : '')} title={name} onClick={toggle}>
           {open ? <Icon d={ICONS.folder} size={24} /> : (
-            <span className="folder-minis" aria-hidden="true">{f.guild_ids.slice(0, 4).map((id) => <span key={id} className="folder-mini">{s.guilds[id] && <GuildIcon guild={s.guilds[id]} />}</span>)}</span>
+            <span className="folder-minis" aria-hidden="true">{f.guild_ids.slice(0, 4).map((id) => <span key={id} className="folder-mini">{s.guilds[id] && <NodeGuard id={id}><GuildIcon guild={s.guilds[id]} /></NodeGuard>}</span>)}</span>
           )}
         </button>
         {mentions > 0 && !open && <span className="badge rail-badge" aria-hidden="true">{mentions > 99 ? '99+' : mentions}</span>}
       </div>
       {open && (
         <ul className="folder-guilds" aria-label={name}>
-          {f.guild_ids.map((id) => <GuildEntry key={id} id={id} active={id === guildId} drop={drop} setDrop={setDrop} inside />)}
+          {f.guild_ids.map((id) => <NodeGuard key={id} id={id}><GuildEntry id={id} active={id === guildId} drop={drop} setDrop={setDrop} inside /></NodeGuard>)}
         </ul>
       )}
       {menu.at && (
@@ -166,8 +167,8 @@ export function GuildRail({ guildId }: { guildId: string }) {
   const [adding, setAdding] = useState(!!templateCode)
   const [drop, setDrop] = useState<Drop>(null)
   const hub = useInstance()?.federation?.role === 'hub'
-  // DMs with unread mentions sit above the separator.
-  const dms = Object.values(state.channels).filter((c) => (c.type === 1 || c.type === 3) && mentionCount(state, c.id) > 0)
+  // DMs with unread mentions sit above the separator; a channel of a server (a node's) is never one.
+  const dms = Object.values(state.channels).filter((c) => !c.guild_id && (c.type === 1 || c.type === 3) && mentionCount(state, c.id) > 0)
   const layout = railLayout(state)
   return (
     <nav className="rail" aria-label={t('Servers')}>
@@ -182,7 +183,7 @@ export function GuildRail({ guildId }: { guildId: string }) {
       <hr className="rail-sep" />
       <ul onDragLeave={(e) => e.currentTarget === e.target && setDrop(null)}>
         {layout.map((f) => f.id === null
-          ? <GuildEntry key={f.guild_ids[0]} id={f.guild_ids[0]} active={f.guild_ids[0] === guildId} drop={drop} setDrop={setDrop} />
+          ? <NodeGuard key={f.guild_ids[0]} id={f.guild_ids[0]}><GuildEntry id={f.guild_ids[0]} active={f.guild_ids[0] === guildId} drop={drop} setDrop={setDrop} /></NodeGuard>
           : <FolderEntry key={f.id} f={f} guildId={guildId} drop={drop} setDrop={setDrop} />)}
       </ul>
       <div className="rail-item">

@@ -14,6 +14,7 @@ import { FavoriteMedia, GifStar } from './GifStar'
 import { getState, useStore } from '../store'
 import type { FavoriteGif, Gif, Sticker } from '../types'
 import { skin } from '../custom/AppearanceV6'
+import { NodeGuard } from '../instances/NodeGuard'
 import './expressions.css'
 
 const tone = () => getState().settings.default_emoji_skin_tone ?? 0
@@ -42,7 +43,7 @@ function EmojiTab({ guildId, perms, onPick }: { guildId?: string; perms: bigint;
   const servers = !guildId && !has(perms, P.USE_EXTERNAL_EMOJIS) ? [] : Object.values(guilds)
     .filter((g) => g.emojis?.length && (g.id === guildId || has(perms, P.USE_EXTERNAL_EMOJIS)))
     .sort((a, b) => Number(b.id === guildId) - Number(a.id === guildId))
-    .map((g) => ({ g, list: (g.emojis ?? []).filter((e) => e.id && e.available !== false && canUseEmoji(e.roles, g.id === guildId ? member : members[g.id]?.[meId ?? ''], g.owner_id === meId) && (!query || e.name.toLowerCase().includes(query))) }))
+    .map((g) => ({ g, list: (g.emojis ?? []).filter((e) => e.id && e.available !== false && canUseEmoji(e.roles, g.id === guildId ? member : members[g.id]?.[meId ?? ''], g.owner_id === meId) && (!query || e.name?.toLowerCase().includes(query))) }))
     .filter((x) => x.list.length)
   const unicode = EMOJI.map((c) => ({ ...c, list: query ? c.list.filter((e) => e.keywords.includes(query)) : c.list })).filter((c) => c.list.length)
   const first = servers[0]?.list[0]
@@ -102,7 +103,7 @@ function StickerTab({ guildId, perms, onPick }: { guildId?: string; perms: bigin
   const groups = Object.values(guilds)
     .filter((g) => g.id === guildId || has(perms, P.USE_EXTERNAL_STICKERS))
     .sort((a, b) => Number(b.id === guildId) - Number(a.id === guildId))
-    .map((g) => ({ g, list: (g.stickers ?? []).filter((s) => s.available !== false && (!query || s.name.toLowerCase().includes(query) || s.tags?.toLowerCase().includes(query))) }))
+    .map((g) => ({ g, list: (g.stickers ?? []).filter((s) => s.available !== false && (!query || s.name?.toLowerCase().includes(query) || s.tags?.toLowerCase().includes(query))) }))
     .filter((x) => x.list.length)
   return (
     <>
@@ -245,8 +246,9 @@ export function ExpressionPicker({ at, onClose, guildId, perms, initial = 'emoji
         </div>
       )}
       <div role="tabpanel" aria-label={tabs.find(([k]) => k === current)?.[1]} className="expr-panel" key={current}>
-        {current === 'emoji' && <EmojiTab guildId={guildId} perms={perms} onPick={(text, r) => (onEmoji(text, r), onClose())} />}
-        {current === 'sticker' && <StickerTab guildId={guildId} perms={perms} onPick={pickAndClose(onSticker)} />}
+        {/* every server's emoji and stickers: an error here is nobody's in particular */}
+        {current === 'emoji' && <NodeGuard id={null}><EmojiTab guildId={guildId} perms={perms} onPick={(text, r) => (onEmoji(text, r), onClose())} /></NodeGuard>}
+        {current === 'sticker' && <NodeGuard id={null}><StickerTab guildId={guildId} perms={perms} onPick={pickAndClose(onSticker)} /></NodeGuard>}
         {current === 'gif' && <GifTab onPick={pickAndClose(onGif)} onMissing={() => (setNoGifs(true), setTab('emoji'))} />}
       </div>
     </Popover>

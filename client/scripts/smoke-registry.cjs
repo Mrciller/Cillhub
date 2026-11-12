@@ -17,26 +17,21 @@ exports.run = async () => {
   globalThis.localStorage = { getItem: (k) => mem[k] ?? null, setItem: (k, v) => void (mem[k] = String(v)), removeItem: (k) => void delete mem[k] }
   const R = await import(FILE)
   const DM = '1300000000000000001', GUILD = '1300000000000000002', FRIEND = '1300000000000000003', MSG = '1300000000000000004', ME = '1300000000000000009'
-  const hubIds = new Set([DM, GUILD, FRIEND, ME])
-  R.setHubHas((id) => hubIds.has(id))
+  R.setView({ user: () => undefined, channel: () => undefined, interaction: () => undefined, consume: () => {}, voiceGuild: () => null })
   R.setHubIdentity(ME, 'hubsess')
-  for (const n of ['evil', 'other']) (R.saveInstance({ id: n, name: n, url: `https://${n}.example` }, 't'), R.setLive(n, { meId: n === 'evil' ? '42' : '43', status: 'ready' }))
-  R.inbound('other', { id: '900', channel_id: '901' }) // the other node's own message and channel
+  for (const n of ['70', '71']) (R.saveInstance({ id: n, name: n, url: `https://n${n}.example` }, 't'), R.setLive(n, { meId: n === '70' ? '42' : '43', status: 'ready' }))
 
-  R.inbound('evil', { id: '777', channel_id: '778', referenced: { channel_id: DM, guild_id: GUILD, message_id: MSG, other: '901' }, author: { id: FRIEND }, mentions: [{ id: ME }] })
+  // a node naming hub ids (and the other node's) gets its own scoped copies, never the originals
+  const m = R.admit('70', 'MESSAGE_CREATE', { id: MSG, channel_id: DM, guild_id: GUILD, author: { id: FRIEND }, mentions: [{ id: '42' }], content: `<@${FRIEND}>` })
+  assert.deepEqual([m.id, m.channel_id, m.guild_id, m.author.id, m.mentions[0].id, m.content], [`70~${MSG}`, `70~${DM}`, `70~${GUILD}`, `70~${FRIEND}`, ME, `<@70~${FRIEND}>`])
   for (const p of [`/channels/${DM}/messages`, `/channels/${DM}/messages/${MSG}`, `/guilds/${GUILD}/members/@me`, `/users/${FRIEND}/profile`, `/users/${ME}/profile`])
     assert.equal(R.route(p), undefined, `${p} stays on the hub`)
-  assert.equal(R.nodeOf(GUILD), undefined, 'hub guild is not the node\'s')
-  assert.equal(R.nodeOf('901'), 'other', 'first node keeps its ids')
-  assert.equal(R.route('/channels/778/messages'), 'evil', 'the node still owns its own ids')
-  assert.equal(R.route(`/users/${ME}/profile?guild_id=778`), 'evil', 'own profile in a node server goes to the node')
+  assert.equal(R.route(`/channels/70~${DM}/messages`), '70', 'the node owns its scoped ids')
+  assert.equal(R.route(`/channels/71~${DM}/messages`), '71', 'and the other node its own')
+  assert.equal(R.route(`/users/${ME}/profile?guild_id=70~${GUILD}`), '70', 'own profile in a node server goes to the node')
+  assert.equal(R.outboundPath('70', `/channels/70~${DM}/messages/70~${MSG}`), `/channels/${DM}/messages/${MSG}`)
 
-  const e = R.inbound('evil', { embeds: [{ thumbnail: { url: 'https://x.example/a.png', proxy_url: 'https://tracker.example/a.png' }, image: { proxy_url: '/external/1' } }] }).embeds[0]
-  assert.deepEqual([e.thumbnail.proxy_url, e.thumbnail.url, e.image.proxy_url], [undefined, 'https://x.example/a.png', 'https://evil.example/external/1'], 'node media proxy only on its own origin')
-
-  // A hub server the node named before we joined it: the hub's GUILD_CREATE takes it back.
-  R.inbound('evil', { id: '555' })
-  R.hubTakes('555')
-  assert.equal(R.route('/guilds/555/channels'), undefined, 'hub wins')
-  console.log('ok 0 - a linked node cannot take over hub ids (registry ownership)')
+  const e = R.admitRest('70', { embeds: [{ thumbnail: { url: 'https://x.example/a.png', proxy_url: 'https://tracker.example/a.png' }, image: { proxy_url: '/external/1' } }] }).embeds[0]
+  assert.deepEqual([e.thumbnail.proxy_url, e.thumbnail.url, e.image.proxy_url], [undefined, 'https://x.example/a.png', 'https://n70.example/external/1'], 'node media proxy only on its own origin')
+  console.log('ok 0 - a linked node cannot take over hub ids (node ids in their own namespace)')
 }

@@ -8,6 +8,7 @@ import { setState, displayName, useStore } from '../store'
 import type { Status } from '../types'
 import { setSelfDeaf, setSelfMute } from '../voice/engine'
 import { VoicePanel } from '../voice/VoicePanel'
+import { NodeGuard } from '../instances/NodeGuard'
 import { toastError } from './dialogs'
 import { MenuItem, MenuSep, Popover, type Anchor } from './menu'
 import { Avatar, cls, Icon, ICONS, STATUS_LABEL } from './ui'
@@ -27,11 +28,12 @@ export function UserPanel() {
   const presence = useStore((s) => (s.me && s.presences[s.me.id]) || 'online')
   const mute = useStore((s) => s.voice.selfMute)
   const deaf = useStore((s) => s.voice.selfDeaf)
+  const voiceGuild = useStore((s) => s.voice.guildId) // a call on a node server: its data, its blame
   const custom = useStore((s) => (s.me ? userActivities(s, s.me.id) : NONE)).some((a) => a.type === 4)
   const [picker, setPicker] = useState<Anchor | null>(null)
   return (
     <>
-      <VoicePanel />
+      <NodeGuard key={voiceGuild ?? ''} id={voiceGuild}><VoicePanel /></NodeGuard>
       <section className="user-panel" aria-label={t('Your account')}>
         <button
           className="who-btn"

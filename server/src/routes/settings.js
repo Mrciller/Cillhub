@@ -4,7 +4,7 @@ import { notFound, missingAccess } from '../errors.js';
 import { sendToUsers, refreshPresence } from '../gateway.js';
 import { addJob, schedule } from '../timers.js';
 import {
-  settingsOf, settingsPatch, saveSettings, favoriteGifsChange, patchGuildSettings, nextCustomStatusExpiry, expiredCustomStatus,
+  settingsOf, settingsPatch, saveSettings, favoriteGifsChange, privateNodesChange, patchGuildSettings, nextCustomStatusExpiry, expiredCustomStatus,
 } from '../userdata.js';
 
 function patchSettings({ body, user }) {
@@ -19,6 +19,11 @@ function patchSettings({ body, user }) {
 function changeFavoriteGifs(user, list) {
   saveSettings(user.id, { favorite_gifs: list });
   sendToUsers([user.id], 'USER_SETTINGS_UPDATE', { favorite_gifs: list });
+  return settingsOf(user.id);
+}
+function changePrivateNodes(user, list) {
+  saveSettings(user.id, { private_nodes: list });
+  sendToUsers([user.id], 'USER_SETTINGS_UPDATE', { private_nodes: list });
   return settingsOf(user.id);
 }
 
@@ -56,5 +61,8 @@ export default [
   ['PATCH', '/users/@me/settings', patchSettings, user],
   ['PUT', '/users/@me/settings/favorite-gifs', ({ body, user: me }) => changeFavoriteGifs(me, favoriteGifsChange(me.id, body ?? null)), user],
   ['DELETE', '/users/@me/settings/favorite-gifs', ({ query, user: me }) => changeFavoriteGifs(me, favoriteGifsChange(me.id, undefined, query.get('url'))), user],
+  ['PUT', '/users/@me/settings/private-nodes', ({ body, user: me }) => changePrivateNodes(me, privateNodesChange(me.id, body ?? null)), user],
+  ['PUT', '/users/@me/settings/private-nodes/initial', ({ body, user: me }) => changePrivateNodes(me, privateNodesChange(me.id, undefined, undefined, body?.nodes)), user],
+  ['DELETE', '/users/@me/settings/private-nodes', ({ query, user: me }) => changePrivateNodes(me, privateNodesChange(me.id, undefined, query.get('origin'))), user],
   ['PATCH', '/users/@me/guilds/:guild_id/settings', patchGuildSettingsRoute, user],
 ];

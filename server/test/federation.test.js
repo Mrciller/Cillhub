@@ -397,6 +397,25 @@ test('sign in on the node with a hub account: consent, PKCE, audience-bound ID t
   await node.api('PATCH', '/admin/federation', nodeAdmin.token, { sign_in: 'both' });
 });
 
+test('background sign-in (answer=json): the same PKCE flow answers JSON, refusals too', async () => {
+  const sam = await hub.register('sam');
+  const startJson = () => fetch(`${NODE}/api/v9/federation/hub-login?${new URLSearchParams({ return_to: `${HUB}/instances/callback`, state: 'bg', answer: 'json' })}`, { redirect: 'manual' });
+  const start = await startJson();
+  assert.equal(start.status, 200);
+  const consent = new URL((await start.json()).authorize_url);
+  assert.equal(consent.origin + consent.pathname, `${HUB}/oauth2/authorize`);
+  const yes = await hub.api('POST', `/oauth2/authorize${consent.search}`, sam.token, { authorize: true });
+  const back = await fetch(yes.body.location, { redirect: 'manual' });
+  assert.equal(back.status, 200);
+  const out = await back.json();
+  assert.deepEqual([out.state, out.node_id, out.error], ['bg', nodeId, undefined]);
+  assert.equal((await node.api('GET', '/users/@me', out.token)).body.username, 'sam');
+  assert.equal((await fetch(yes.body.location)).status, 400, 'a code and login are single use');
+  await node.api('PATCH', '/admin/federation', nodeAdmin.token, { sign_in: 'local' });
+  assert.equal((await (await startJson()).json()).error, 'unavailable');
+  await node.api('PATCH', '/admin/federation', nodeAdmin.token, { sign_in: 'both' });
+});
+
 let nodeGuild;
 test('server directory: Manage Server lists hub and node servers, hub users browse and search, text is cleaned, node icons are proxied', async () => {
   nodeGuild = (await node.api('POST', '/guilds', nodeAdmin.token, { name: 'Node Esports' })).body;

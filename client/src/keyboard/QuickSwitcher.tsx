@@ -31,7 +31,7 @@ export function QuickSwitcher({ onClose }: { onClose: () => void }) {
       }
   }
   const dmUsers = new Set<string>()
-  for (const c of Object.values(s.channels).filter((x) => x.type === 1 || x.type === 3)) {
+  for (const c of Object.values(s.channels).filter((x) => !x.guild_id && (x.type === 1 || x.type === 3))) {
     if (c.type === 1 && c.recipients?.[0]) dmUsers.add(c.recipients[0].id)
     items.push({ key: 'd' + c.id, kind: 'dm', label: privateName(s, c), sub: c.type === 3 ? t('Group DM') : c.recipients?.[0]?.username, go: go(`/channels/@me/${c.id}`), icon: <Avatar user={c.recipients?.[0]} size={20} />, unread: isUnread(s, c), mentions: mentionCount(s, c.id), recent: c.last_message_id ?? c.id })
   }

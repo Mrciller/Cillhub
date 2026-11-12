@@ -114,7 +114,7 @@ export function useShortcuts(guildId: string, channelId?: string) {
 /** Fuzzy score: every query character in order; earlier, consecutive and word-start matches score higher. -1 = no match. */
 export function fuzzy(query: string, text: string) {
   const q = query.toLowerCase()
-  const s = text.toLowerCase()
+  const s = (typeof text === 'string' ? text : '').toLowerCase() // a node's guild or channel name may be null
   if (!q) return 0
   let score = 0
   let j = 0

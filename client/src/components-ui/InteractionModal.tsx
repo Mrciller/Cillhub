@@ -4,6 +4,7 @@ import { sendInteraction } from '../actions'
 import { FormError, Modal } from '../components/ui'
 import { t } from '../i18n'
 import { getState, type InteractionModal } from '../store'
+import { instanceById, nodeOf } from '../instances/registry'
 import type { Component } from '../types'
 import './components-ui.css'
 
@@ -29,8 +30,11 @@ export function InteractionModalView({ data, onClose }: { data: InteractionModal
       { kind: 'modal', channelId: data.channel_id, appId: app, name: data.title },
     ).then(onClose, (err: Error) => (setError(err.message), setBusy(false)))
   }
+  // A node's modal says where it comes from (and where typed values go).
+  const node = instanceById(nodeOf(data.channel_id))
   return (
     <Modal title={data.title} onClose={onClose} className="interaction-modal">
+      {node && <p className="hint small node-origin">{t('From {instance}, a separate server. What you enter goes there.', { instance: node.name })}</p>}
       {data.application?.name && <p className="hint small">{data.application.name}</p>}
       <form onSubmit={submit}>
         {fields.map(({ input: c, label, description }) => {

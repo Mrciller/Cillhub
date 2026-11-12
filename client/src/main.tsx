@@ -1,7 +1,10 @@
-import { StrictMode } from 'react'
+import { Component, StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { ORIGIN } from './api'
+import { toast } from './components/dialogs'
+import { t } from './i18n'
+import { cutOffNodes } from './instances/nodes'
 import { startAndroidBridge } from './android/bridge'
 import { startAppearance } from './appearance/apply'
 import { startDesktopBridge } from './desktop/bridge'
@@ -12,10 +15,39 @@ import { startReminders } from './scheduling/reminders'
 import { startUpdateChecks } from './update'
 import './index.css'
 
+/** A render error must not leave a blank page. Regions that show a node's data have their own NodeGuard (exact blame); an
+ *  error that reaches this one has no known owner, so every node is cut off for this session only (not kept: they connect
+ *  again on the next start) and the app renders again. Without node state, or after a few tries, a reload screen. */
+class Guard extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  tries = 0 // cut-off nodes stay off, but a late REST answer can bring node state back: no endless retry
+  static getDerivedStateFromError = () => ({ failed: true })
+  componentDidCatch() { // React logs the error itself
+    const names = this.tries++ < 3 ? cutOffNodes() : []
+    if (!names.length) return
+    for (const name of names) if (name) toast(t('Display error: {name} was disconnected so Cillhub stays usable.', { name }))
+    this.setState({ failed: false })
+  }
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <main className="auth-bg">
+        <section className="auth-card" aria-labelledby="crash-h1">
+          <h1 id="crash-h1">{t('Something went wrong')}</h1>
+          <p className="sub">{t('Cillhub could not show this page. Reloading usually fixes it.')}</p>
+          <button className="primary" autoFocus onClick={() => location.reload()}>{t('Reload')}</button>
+        </section>
+      </main>
+    )
+  }
+}
+
 startAppearance() // theme and language before the first paint
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <Guard>
+      <App />
+    </Guard>
   </StrictMode>,
 )
 

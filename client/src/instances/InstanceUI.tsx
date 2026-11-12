@@ -5,12 +5,12 @@ import { ask, toastError } from '../components/dialogs'
 import { Field, FormError } from '../components/ui'
 import { t } from '../i18n'
 import { navigate } from '../router'
-import { disconnectInstance, joinOnNode, nodeForInvite, signInCallback } from './nodes'
+import { disconnectInstance, joinOnNode, nodeForInvite, reconnectNode, signInCallback } from './nodes'
 import { nodeOf, useInstances, type InstanceStatus, type Live } from './registry'
 import './instances.css'
 
 export const STATUS_TEXT: Record<InstanceStatus, string> = {
-  connecting: 'Connecting…', ready: 'Connected', offline: 'Offline', suspended: 'Suspended by the hub', 'signed-out': 'Signed out',
+  connecting: 'Connecting…', ready: 'Connected', offline: 'Offline', suspended: 'Suspended by the hub', 'signed-out': 'Signed out', 'cut-off': 'Cut off: sent too much or broken data',
 }
 /** The linked node a guild lives on (undefined for hub servers); re-renders when node status changes. */
 export function useNode(guildId: string | undefined): Live | undefined {
@@ -32,12 +32,13 @@ export function NodeStatus({ guildId }: { guildId?: string }) {
   const text = n.status === 'offline' ? t('{name} is not reachable right now. Messages may be out of date; Cillhub keeps trying.', { name: n.name })
     : n.status === 'suspended' ? t('{name} was suspended or unlinked by the hub admins. Its servers are read-only here.', { name: n.name })
     : n.status === 'signed-out' ? t('{name} signed you out.', { name: n.name })
+    : n.status === 'cut-off' ? t('{name} sent too much or broken data and was disconnected. It stays off until you reconnect it.', { name: n.name })
     : t('Connecting to {name}…', { name: n.name })
   return (
     <span className="node-status">
       {text}
       {n.status === 'signed-out' && <button className="link" onClick={() => void joinOnNode(n, {}).catch(toastError)}>{t('Sign in again')}</button>}
-      {(n.status === 'suspended' || n.status === 'signed-out') && <button className="link" onClick={() => confirmDisconnect(n)}>{t('Disconnect from instance')}</button>}
+      {(n.status === 'suspended' || n.status === 'signed-out' || n.status === 'cut-off') && <button className="link" onClick={() => confirmDisconnect(n)}>{t('Disconnect from instance')}</button>}
     </span>
   )
 }
@@ -84,6 +85,7 @@ export function InstanceList() {
         {all.map((n) => (
           <li key={n.id}>
             <NodeMarker node={n} /> <span><strong>{n.name}</strong> <span className="hint small">{new URL(n.url).host} · {t(STATUS_TEXT[n.status])}</span></span>
+            {n.status === 'cut-off' && <button type="button" className="link" onClick={() => reconnectNode(n.id)} aria-label={t('Reconnect {name}', { name: n.name })}>{t('Reconnect')}</button>}
             <button type="button" className="link" onClick={() => confirmDisconnect(n)} aria-label={t('Disconnect from {name}', { name: n.name })}>{t('Disconnect')}</button>
           </li>
         ))}

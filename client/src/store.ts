@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { instanceEvent } from './admin/instance'
-import { nodeOf, setHubHas } from './instances/registry'
+import { nodeOf } from './instances/registry'
 import { moduleUiEvent } from './modules/events'
 import type { Anchor } from './components/menu'
 import type { Activity, Call, Channel, ChannelCanvas, Component, Guild, GuildPayload, Member, Message, Poll, Presence, ReadState, Relationship, SavedMessage, ScheduledEvent, Sound, StageInstance, Status, User, UserGuildSettings, UserSettings, VoiceState, WatchSession } from './types'
@@ -97,7 +97,7 @@ export type State = {
   calls: Record<string, Call> // DM channel id -> active call
   activities: Record<string, Activity[]> // user id -> activities (custom status, bot "Playing …")
   interactions: Record<string, PendingInteraction>
-  autocomplete: { nonce: string; choices: { name: string; value: string | number }[] } | null
+  autocomplete: { nonce: string; channelId?: string; choices: { name: string; value: string | number }[] } | null // channelId: whose answer (a node's is scoped)
   showMembers: boolean // member list (guilds) / recipient list (group DMs), remembered locally
   // v5
   watch: Record<string, WatchSession> // voice channel id -> Watch Together session
@@ -227,7 +227,6 @@ let state: State = { ...empty, token: localStorage.getItem('token'), updateReady
 const listeners = new Set<() => void>()
 
 export const getState = () => state
-setHubHas((id) => !!(state.guilds[id] || state.channels[id] || state.users[id]))
 export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }
   listeners.forEach((l) => l())
@@ -258,7 +257,12 @@ export function mergeSettings(patch: UserSettings) {
 
 export const byId = <T extends { id: string }>(xs: T[]) => Object.fromEntries(xs.map((x) => [x.id, x]))
 const omit = <T,>(r: Record<string, T>, key: string) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== key))
-export const cmpId = (a: string, b: string) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0)
+/** Snowflake order (node ids compare by their snowflake part). */
+export const cmpId = (a: string, b: string) => {
+  const x = a.slice(a.indexOf('~') + 1)
+  const y = b.slice(b.indexOf('~') + 1)
+  return x.length - y.length || (x < y ? -1 : x > y ? 1 : 0)
+}
 export const displayName = (u?: User | null) => (u ? u.global_name || u.username : 'Unknown')
 const byUser = (ps: Presence[]) => Object.fromEntries(ps.map((p) => [p.user.id, p.status]))
 const activitiesOf = (ps: Presence[]) => Object.fromEntries(ps.filter((p) => p.activities).map((p) => [p.user.id, p.activities!]))
@@ -333,6 +337,7 @@ export function mentionsMe(s: State, m: Message) {
 }
 const EPHEMERAL = 1 << 6
 
+export const MAX_LIVE_MESSAGES = 2000
 function addMessage(s: State, m: Message): Partial<State> {
   const ch = s.channels[m.channel_id]
   const typing = s.typing[m.channel_id]
@@ -346,14 +351,20 @@ function addMessage(s: State, m: Message): Partial<State> {
   }
   const fresh = ch && !m.pending && (!ch.last_message_id || cmpId(m.id, ch.last_message_id) > 0)
   // A thread's counters are not dispatched per message; count new ones locally.
+  let trimmed = false
   const counted = fresh && ch.thread_metadata ? { message_count: (ch.message_count ?? 0) + 1, total_message_sent: (ch.total_message_sent ?? 0) + 1 } : {}
   return {
     // While a jumped-to window is shown, new messages are not appended (there is a gap); "Jump to Present" loads them.
     ...(s.hasNewer[m.channel_id] && !m.pending && !mine ? {} : patchList(s, m.channel_id, (list) => {
       // Our own echo replaces the optimistic copy carrying the same nonce.
       const i = !m.pending && m.nonce ? list.findIndex((x) => x.pending !== undefined && x.nonce === m.nonce && x.id !== m.id) : -1
-      return upsert(i < 0 ? list : list.toSpliced(i, 1), m)
+      const next = upsert(i < 0 ? list : list.toSpliced(i, 1), m)
+      // A live channel keeps its newest messages only; older ones load again when scrolled to (a flood cannot fill memory).
+      if (next.length <= MAX_LIVE_MESSAGES) return next
+      trimmed = true
+      return next.slice(-MAX_LIVE_MESSAGES)
     })),
+    ...(trimmed ? { hasMore: { ...s.hasMore, [m.channel_id]: true } } : {}),
     channels: fresh ? { ...s.channels, [ch.id]: { ...ch, last_message_id: m.id, ...counted } } : s.channels,
     typing: typing?.[m.author.id] ? { ...s.typing, [m.channel_id]: omit(typing, m.author.id) } : s.typing,
     users: s.users[m.author.id] ? s.users : { ...s.users, [m.author.id]: m.author },
@@ -364,12 +375,14 @@ function addMessage(s: State, m: Message): Partial<State> {
 /** Custom emoji are identified by id, Unicode emoji by name. */
 export const emojiKey = (e: { id?: string | null; name?: string | null }) => e.id || e.name || ''
 
+const MAX_REACTIONS = 20
 function react(s: State, d: { user_id: string; channel_id: string; message_id: string; emoji: { id?: string | null; name: string; animated?: boolean } }, add: boolean): Partial<State> {
   const me = d.user_id === s.me?.id
   return patchMessage(s, d.channel_id, d.message_id, (m) => {
     const list = m.reactions ?? []
     const r = list.find((x) => emojiKey(x.emoji) === emojiKey(d.emoji))
     if (me && (r?.me ?? false) === add) return m // our own optimistic change already applied
+    if (add && !r && list.length >= MAX_REACTIONS) return m // a server keeps at most 20 different reactions per message
     if (add) return { ...m, reactions: r ? list.map((x) => (x === r ? { ...x, count: x.count + 1, me: x.me || me } : x)) : [...list, { emoji: { id: d.emoji.id ?? null, name: d.emoji.name, ...(d.emoji.animated && { animated: true }) }, count: 1, me }] }
     if (!r) return m
     return { ...m, reactions: r.count <= 1 ? list.filter((x) => x !== r) : list.map((x) => (x === r ? { ...x, count: x.count - 1, me: me ? false : x.me } : x)) }
@@ -380,7 +393,7 @@ function react(s: State, d: { user_id: string; channel_id: string; message_id: s
 function vote(s: State, d: { user_id: string; channel_id: string; message_id: string; answer_id: number }, add: boolean): Partial<State> {
   const me = d.user_id === s.me?.id
   return patchMessage(s, d.channel_id, d.message_id, (m) => {
-    if (!m.poll) return m
+    if (!m.poll || !m.poll.answers.some((a) => a.answer_id === d.answer_id)) return m // only answers the poll has
     const counts = m.poll.results?.answer_counts ?? []
     const c = counts.find((x) => x.id === d.answer_id)
     if (me && (c?.me_voted ?? false) === add) return m
@@ -670,7 +683,7 @@ export function apply(t: string, d: any) {
       // commands of an app changed (a module was disabled, a bot registered some): actions.ts drops its cached index
       return void dispatchEvent(new CustomEvent('cillcord:command-index', { detail: d.guild_id }))
     case 'APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE':
-      return setState({ autocomplete: { nonce: d.nonce, choices: d.choices ?? [] } })
+      return setState({ autocomplete: { nonce: d.nonce, channelId: d.channel_id, choices: d.choices ?? [] } })
     case 'INTERACTION_MODAL_CREATE':
       return setState({ modal: { kind: 'interaction-modal', data: d }, ...(d.nonce && s.interactions[d.nonce] && { interactions: omit(s.interactions, d.nonce) }) })
     // ---------- v5 ----------

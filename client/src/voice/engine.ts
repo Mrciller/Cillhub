@@ -1,3 +1,9 @@
+import { nodeOf, nodeUserId } from '../instances/registry'
+import { joins } from './join'
+// LiveKit identities of a node's room are that node's user ids: scoped (ours → our hub id) before any map key or tile.
+let roomNode: string | undefined
+const userOf = (p: { identity: string }) => nodeUserId(roomNode, p.identity)
+const speakingOf = (ps: { identity: string }[]) => Object.fromEntries(ps.flatMap((p) => { const id = userOf(p); return id ? [[id, true as const]] : [] }))
 // Voice connection: gateway op 4 / VOICE_SERVER_UPDATE handling and the LiveKit room (CONTRACT-v2 section 10).
 // livekit-client is imported lazily so it only loads once someone joins voice. When VOICE_SERVER_UPDATE names the
 // endpoint "cillvoice", Cillhub's own media server is used instead: every action below then goes to ./cillvoice.
@@ -79,7 +85,9 @@ export function leaveVoice() {
   setVoice({ ...idleVoice, selfMute: v.selfMute, selfDeaf: v.selfDeaf })
 }
 
+const join = joins()
 function teardown() {
+  join.bump() // a LiveKit join still loading or connecting is stale now
   clearTimeout(joinTimer)
   const r = room
   room = null
@@ -115,12 +123,16 @@ async function connectRoom(endpoint: string, token: string) {
   last = { endpoint, token }
   if (endpoint === 'cillvoice') return cv.connect(token)
   setVoice({ status: 'connecting', error: '', speaking: {} })
+  // whose call this is, before any await: a switch while livekit-client loads must not hand this room another origin
+  const origin = nodeOf(getState().voice.guildId)
+  let started
   try {
-    lk ??= await import('livekit-client')
+    started = await join.start(async () => (lk ??= await import('livekit-client')))
   } catch {
     return setVoice({ status: 'error', error: 'Could not load the voice module.' })
   }
-  const { Room, RoomEvent } = lk
+  if (!started) return // left or switched while loading
+  const { Room, RoomEvent } = started.lib
   installStartBitrateHint()
   const s = voiceSettings()
   const chId = getState().voice.channelId
@@ -133,9 +145,10 @@ async function connectRoom(endpoint: string, token: string) {
     audioOutput: { deviceId: s.output || undefined },
   })
   room = r
+  roomNode = origin // whose LiveKit this is: its identities are that node's user ids
   last = { endpoint, token }
   const live = () => room === r
-  r.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => live() && setVoice({ speaking: Object.fromEntries(speakers.map((p) => [p.identity, true])) }))
+  r.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => live() && setVoice({ speaking: speakingOf(speakers) }))
     .on(RoomEvent.TrackSubscribed, (track: Track, _pub, p: RemoteParticipant) => {
       if (!live()) return
       if (track.kind === 'audio') audioBox().appendChild(track.attach())
@@ -150,6 +163,7 @@ async function connectRoom(endpoint: string, token: string) {
     .on(RoomEvent.TrackUnmuted, bump)
     .on(RoomEvent.LocalTrackPublished, bump)
     .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
+      if (!live()) return // an old room's tracks say nothing about the current call
       // The browser's own "Stop sharing" button ends the screen share without going through us.
       const v = getState().voice
       if (pub.source === 'screen_share' && v.stream && !republishing) (setVoice({ stream: false }), sendState())
@@ -169,7 +183,7 @@ async function connectRoom(endpoint: string, token: string) {
   }
   if (!live()) return void r.disconnect()
   // Speakers announced while connect() was pending are already in activeSpeakers; resetting to {} would drop them.
-  setVoice({ status: 'connected', speaking: Object.fromEntries(r.activeSpeakers.map((p) => [p.identity, true])) })
+  setVoice({ status: 'connected', speaking: speakingOf(r.activeSpeakers) })
   r.remoteParticipants.forEach(applyVolume)
   if (!decodesAv1()) void r.localParticipant.setAttributes({ av1: '0' }).catch(() => {}) // needs canUpdateOwnMetadata (server 7.4+)
   await syncMic()
@@ -215,8 +229,9 @@ const deafened = () => getState().voice.selfDeaf || !!myState()?.deaf
 function applyVolume(p: RemoteParticipant) {
   const s = voiceSettings()
   // Capped at 300 % overall to protect ears when user and output volume are both raised.
-  const vol = deafened() ? 0 : Math.min(3, (s.volumes[p.identity] ?? 1) * s.outputVolume)
-  const streamVol = deafened() ? 0 : Math.min(3, (s.screenVolumes?.[p.identity] ?? s.volumes[`${p.identity}-screen`] ?? 1) * s.outputVolume)
+  const id = userOf(p) ?? ''
+  const vol = deafened() ? 0 : Math.min(3, (s.volumes[id] ?? 1) * s.outputVolume)
+  const streamVol = deafened() ? 0 : Math.min(3, (s.screenVolumes?.[id] ?? s.volumes[`${id}-screen`] ?? 1) * s.outputVolume)
   p.setVolume(vol)
   p.setVolume(streamVol, 'screen_share_audio' as Track.Source.ScreenShareAudio)
 }
@@ -296,14 +311,17 @@ export async function toggleCamera() {
 
 export async function toggleScreen() {
   const r = room
+  const g = join.now()
   const v = getState().voice
   if (!r && !cv.active()) return
   try {
     if (cv.active()) await (v.stream ? cv.stopScreen() : cv.startScreen(voiceSettings().stream))
     else await r!.localParticipant.setScreenShareEnabled(!v.stream, { audio: true, selfBrowserSurface: 'exclude' })
+    if (staleSince(g)) return void (!cv.active() && !v.stream && r!.localParticipant.setScreenShareEnabled(false).catch(() => {}))
     setVoice({ stream: !v.stream })
     sendState()
   } catch (e) {
+    if (staleSince(g)) return
     // Cancelling the browser's picker lands here too; that is not worth an error.
     if (!(e instanceof Error && e.name === 'NotAllowedError')) setVoice({ error: `Couldn't share your screen${e instanceof Error ? `: ${e.message}` : '.'}` })
   }
@@ -386,9 +404,15 @@ const screenOptions = (q: StreamQuality, codecs: VideoCodecName[]) => {
 }
 
 /** Starts screen sharing with the chosen quality (remembered for next time). */
+// A screen share start or switch belongs to the call it began in: after a leave or switch it stops what it captured and
+// changes nothing (join generation, voice/join.ts).
+const stopAll = (m: MediaStream) => m.getTracks().forEach((t) => t.stop())
+const staleSince = (g: number) => join.now() !== g
+
 export async function startScreenShare(q: StreamQuality, captureCardDeviceId?: string) {
   saveVoiceSettings({ stream: q })
   const r = room
+  const g = join.now()
   if ((!r && !cv.active()) || getState().voice.stream) return
   try {
     if (cv.active()) await cv.startScreen(q, captureCardDeviceId)
@@ -403,25 +427,35 @@ export async function startScreenShare(q: StreamQuality, captureCardDeviceId?: s
           video: { deviceId: { exact: captureCardDeviceId }, width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: q.fps } },
           audio: captureAudio ? { deviceId: captureCardDeviceId } : false,
         })
-        const vTrack = m.getVideoTracks()[0]
-        if (!vTrack) throw new Error('No video track found on capture card')
-        vTrack.contentHint = q.mode
-        const localVideo = new lk.LocalVideoTrack(vTrack, undefined, false)
-        localVideo.source = 'screen_share' as Track.Source.ScreenShare
-        await r!.localParticipant.publishTrack(localVideo, { ...o.publish, source: 'screen_share' as Track.Source.ScreenShare })
-        const aTrack = m.getAudioTracks()[0]
-        if (aTrack) {
-          const localAudio = new lk.LocalAudioTrack(aTrack, undefined, false)
-          localAudio.source = 'screen_share_audio' as Track.Source.ScreenShareAudio
-          await r!.localParticipant.publishTrack(localAudio, { source: 'screen_share_audio' as Track.Source.ScreenShareAudio })
+        try {
+          if (staleSince(g)) return stopAll(m)
+          const vTrack = m.getVideoTracks()[0]
+          if (!vTrack) throw new Error('No video track found on capture card')
+          vTrack.contentHint = q.mode
+          const localVideo = new lk.LocalVideoTrack(vTrack, undefined, false)
+          localVideo.source = 'screen_share' as Track.Source.ScreenShare
+          await r!.localParticipant.publishTrack(localVideo, { ...o.publish, source: 'screen_share' as Track.Source.ScreenShare })
+          const aTrack = m.getAudioTracks()[0]
+          if (aTrack && !staleSince(g)) {
+            const localAudio = new lk.LocalAudioTrack(aTrack, undefined, false)
+            localAudio.source = 'screen_share_audio' as Track.Source.ScreenShareAudio
+            await r!.localParticipant.publishTrack(localAudio, { source: 'screen_share_audio' as Track.Source.ScreenShareAudio })
+          }
+          if (staleSince(g)) return stopAll(m)
+        } catch (e) {
+          stopAll(m)
+          throw e
         }
       } else {
         await r!.localParticipant.setScreenShareEnabled(true, o.capture, o.publish)
+        if (staleSince(g)) return void r!.localParticipant.setScreenShareEnabled(false).catch(() => {})
       }
     }
+    if (staleSince(g)) return
     setVoice({ stream: true })
     sendState()
   } catch (e) {
+    if (staleSince(g)) return
     // Cancelling the browser's picker lands here too; that is not worth an error.
     if (!(e instanceof Error && e.name === 'NotAllowedError')) setVoice({ error: `Couldn't share your screen${e instanceof Error ? `: ${e.message}` : '.'}` })
   }
@@ -431,6 +465,7 @@ export async function startScreenShare(q: StreamQuality, captureCardDeviceId?: s
 /** Changes which window/screen is streamed while screen sharing is active. */
 export async function switchScreenShare(q: StreamQuality = voiceSettings().stream, captureCardDeviceId?: string) {
   const r = room
+  const g = join.now()
   const v = getState().voice
   if ((!r && !cv.active()) || !v.stream) return
   try {
@@ -463,16 +498,25 @@ export async function switchScreenShare(q: StreamQuality = voiceSettings().strea
       } else {
         newTracks = await r!.localParticipant.createScreenTracks(o.capture)
       }
-      const oldScreen = r!.localParticipant.getTrackPublication('screen_share' as Track.Source.ScreenShare)
-      if (oldScreen?.track) await r!.localParticipant.unpublishTrack(oldScreen.track)
-      const oldAudio = r!.localParticipant.getTrackPublication('screen_share_audio' as Track.Source.ScreenShareAudio)
-      if (oldAudio?.track) await r!.localParticipant.unpublishTrack(oldAudio.track)
-      for (const t of newTracks) {
-        await r!.localParticipant.publishTrack(t, { ...o.publish, source: t.source })
+      if (staleSince(g)) return newTracks.forEach((t) => t.stop())
+      try {
+        const oldScreen = r!.localParticipant.getTrackPublication('screen_share' as Track.Source.ScreenShare)
+        if (oldScreen?.track) await r!.localParticipant.unpublishTrack(oldScreen.track)
+        const oldAudio = r!.localParticipant.getTrackPublication('screen_share_audio' as Track.Source.ScreenShareAudio)
+        if (oldAudio?.track) await r!.localParticipant.unpublishTrack(oldAudio.track)
+        for (const t of newTracks) {
+          if (staleSince(g)) return newTracks.forEach((x) => x.stop())
+          await r!.localParticipant.publishTrack(t, { ...o.publish, source: t.source })
+        }
+      } catch (e) {
+        newTracks.forEach((t) => t.stop()) // never leave a capture running that nothing publishes
+        throw e
       }
     }
+    if (staleSince(g)) return
     bump()
   } catch (e) {
+    if (staleSince(g)) return
     if (!(e instanceof Error && e.name === 'NotAllowedError')) {
       setVoice({ error: `Couldn't change screen share${e instanceof Error ? `: ${e.message}` : '.'}` })
     }
@@ -482,14 +526,17 @@ export async function switchScreenShare(q: StreamQuality = voiceSettings().strea
 /** Explicitly stops an active screen share. */
 export async function stopScreenShare() {
   const r = room
+  const g = join.now()
   const v = getState().voice
   if ((!r && !cv.active()) || !v.stream) return
   try {
     if (cv.active()) await cv.stopScreen()
     else await r!.localParticipant.setScreenShareEnabled(false)
+    if (staleSince(g)) return // the call it was for is gone; the next one has its own state
     setVoice({ stream: false })
     sendState()
   } catch (e) {
+    if (staleSince(g)) return
     if (!(e instanceof Error && e.name === 'NotAllowedError')) {
       setVoice({ error: `Couldn't stop screen share${e instanceof Error ? `: ${e.message}` : '.'}` })
     }
@@ -626,9 +673,12 @@ setInterval(() => {
   }
 }, 5000)
 
+// Volumes are kept by our user ids; a node room's identities are that node's ids (userOf maps them).
+const participantOf = (userId: string) => (room ? [...room.remoteParticipants.values()].find((p) => userOf(p) === userId) : undefined)
+
 export function setUserVolume(userId: string, volume: number) {
   saveVoiceSettings({ volumes: { ...voiceSettings().volumes, [userId]: volume } })
-  const p = room?.remoteParticipants.get(userId)
+  const p = participantOf(userId)
   if (p) applyVolume(p)
   cv.applyVolumes()
 }
@@ -639,7 +689,7 @@ export function setStreamVolume(userId: string, volume: number) {
     volumes: { ...s.volumes, [`${userId}-screen`]: volume },
     screenVolumes: { ...(s.screenVolumes ?? {}), [userId]: volume },
   })
-  const p = room?.remoteParticipants.get(userId)
+  const p = participantOf(userId)
   if (p) applyVolume(p)
   cv.applyVolumes()
 }
@@ -685,7 +735,7 @@ export function videoTiles(): Tile[] {
   const out: Tile[] = []
   for (const p of [r.localParticipant, ...r.remoteParticipants.values()])
     for (const pub of p.videoTrackPublications.values())
-      if (pub.track && !pub.isMuted) out.push({ userId: p.identity, source: pub.source === 'screen_share' ? 'screen' : 'camera', track: pub.track })
+      if (pub.track && !pub.isMuted && userOf(p)) out.push({ userId: userOf(p)!, source: pub.source === 'screen_share' ? 'screen' : 'camera', track: pub.track })
   return out
 }
 
@@ -721,7 +771,9 @@ export function voiceEvent(t: string, d: any) {
       return void connectRoom(d.endpoint, d.token)
     case 'VOICE_STATE_UPDATE': {
       if (d.user_id !== s.me?.id || !v.channelId) return
-      if (d.channel_id && d.session_id !== s.sessionId) return void (teardown(), setVoice({ ...idleVoice, selfMute: v.selfMute, selfDeaf: v.selfDeaf })) // joined elsewhere
+      // Joined elsewhere on the same server (hub or one node); a voice state from another node never ends this call.
+      if (nodeOf(d.guild_id) !== nodeOf(v.guildId)) return
+      if (d.channel_id && d.session_id !== s.sessionId) return void (teardown(), setVoice({ ...idleVoice, selfMute: v.selfMute, selfDeaf: v.selfDeaf }))
       if ((d.guild_id ?? null) !== v.guildId) return
       if (ringOnJoin && d.channel_id === ringOnJoin) (api(`/channels/${ringOnJoin}/call/ring`, { method: 'POST', body: { recipients: null } }).catch(() => {}), (ringOnJoin = null))
       if (!d.channel_id) return void (teardown(), setVoice({ ...idleVoice, selfMute: v.selfMute, selfDeaf: v.selfDeaf })) // disconnected by someone or something

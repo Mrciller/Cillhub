@@ -43,6 +43,7 @@ import { MemberList } from './MemberList'
 import { UserPanel } from './UserPanel'
 import { UserPopout } from './UserPopout'
 import { NodeStatus } from '../instances/InstanceUI'
+import { NodeGuard } from '../instances/NodeGuard'
 import { ModuleMainPage, ModuleSidePanel } from '../modules/ModulePanel'
 import { ServerGuide } from '../guilds/ServerGuide'
 import { RoleSimulatorBanner } from '../guilds/RoleSimulator'
@@ -50,7 +51,14 @@ import { InviteUserModal } from './InviteUserModal'
 import { ResizeHandle } from './ResizeHandle'
 import './shell-v4.css'
 
+// A modal shows the object it names (a node's, when the id is scoped): exact blame for a render error inside (NodeGuard).
 function Modals() {
+  const m = useStore((s) => s.modal) as { kind?: string; guildId?: string; channelId?: string; userId?: string; data?: { channel_id?: string } } | null
+  // forward, follow and invite list every server's channels or servers: nobody's in particular
+  const owner = m?.kind === 'forward' || m?.kind === 'follow' || m?.kind === 'invite-user' ? undefined : m?.guildId ?? m?.channelId ?? m?.data?.channel_id ?? m?.userId
+  return <NodeGuard key={`${m?.kind}:${owner}`} id={owner}><ModalView /></NodeGuard>
+}
+function ModalView() {
   const modal = useStore((s) => s.modal)
   const close = () => setState({ modal: null })
   switch (modal?.kind) {
@@ -140,13 +148,18 @@ export function Shell({ guildId, channelId, messageId }: { guildId: string; chan
   useEffect(() => void (target && navigate(target, true)), [target])
 
   const friends = home && !channelId
+  // whose data each region shows (NodeGuard: a render error there cuts off exactly that node)
+  const mainId = page || guide ? guild?.id : visible?.id ?? guild?.id
+  const sideId = panel?.kind === 'thread' || panel?.kind === 'canvas' ? panel.channelId : panel?.kind === 'module' ? panel.guildId
+    : panel?.kind === 'search' ? panel.guildId ?? panel.channelId : guild?.id ?? visible?.id
+  const popoutId = s.popout?.guildId ?? s.popout?.userId
   const voiceLike = visible?.type === 2 || visible?.type === 13
   return (
     <div className="app" data-pane={(visible || friends || page || guide) && !showNav ? 'chat' : 'nav'} data-gateway={status} data-panel={panel ? panel.kind : undefined}>
       <div className="conn" role="status">{status === 'ready' ? <NodeStatus guildId={guild?.id} /> : t('Connecting…')}</div>
       <GuildRail guildId={guildId} />
       <div className="sidebar">
-        {guild ? <GuildSidebar guild={guild} channelId={page || guide ? undefined : visible?.id} /> : <DmSidebar channelId={visible?.id} />}
+        {guild ? <NodeGuard key={guild.id} id={guild.id}><GuildSidebar guild={guild} channelId={page || guide ? undefined : visible?.id} /></NodeGuard> : <DmSidebar channelId={visible?.id} />}
         <UserPanel />
         <ResizeHandle
           id="sidebar-resizer"
@@ -160,6 +173,7 @@ export function Shell({ guildId, channelId, messageId }: { guildId: string; chan
         />
       </div>
       <div className="server-main-col">
+        <NodeGuard key={mainId} id={mainId}>
         {guild && <RoleSimulatorBanner guild={guild} />}
         {page ? (
           <ModuleMainPage key={page.moduleId + page.panelId} {...page} channelId={visible?.id ?? null} />
@@ -180,16 +194,19 @@ export function Shell({ guildId, channelId, messageId }: { guildId: string; chan
             <p>{home ? t('Pick a conversation on the left, or find someone to talk to.') : t('No channel selected.')}</p>
           </main>
         )}
+        </NodeGuard>
       </div>
+      <NodeGuard key={sideId} id={sideId}>
       {panel?.kind === 'thread' ? <ThreadPanel key={panel.channelId} channelId={panel.channelId} />
         : panel?.kind === 'canvas' ? <CanvasPanel key={panel.channelId} channelId={panel.channelId} />
         : panel?.kind === 'module' ? <ModuleSidePanel key={panel.moduleId + panel.panelId} guildId={panel.guildId} moduleId={panel.moduleId} panelId={panel.panelId} channelId={visible?.id ?? null} />
         : panel?.kind === 'search' ? <SearchPanel key={panel.query + (panel.guildId ?? panel.channelId)} guildId={panel.guildId} channelId={panel.channelId} query={panel.query} />
         : guild && !voiceLike && visible?.type !== 15 ? s.showMembers && <MemberList guild={guild} />
         : visible?.type === 3 && s.showMembers && <GroupMembers channel={visible} />}
+      </NodeGuard>
       <Modals />
       <IncomingCall />
-      <UserPopout />
+      <NodeGuard key={popoutId} id={popoutId}><UserPopout /></NodeGuard>
       <DialogHost />
     </div>
   )

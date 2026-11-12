@@ -3,7 +3,8 @@ import { apply, getState, setState } from '../store'
 import type { Channel } from '../types'
 
 /** Creation time of a snowflake id (ms). */
-export const snowflakeTime = (id: string) => (/^\d+$/.test(id) ? Number(BigInt(id) >> 22n) + 1420070400000 : Date.now())
+// node ids carry their node's prefix (`<node>~<snowflake>`, instances/registry.ts)
+export const snowflakeTime = (id: string) => { const b = id.slice(id.indexOf('~') + 1); return /^\d+$/.test(b) ? Number(BigInt(b) >> 22n) + 1420070400000 : Date.now() }
 
 /** The thread PATCH takes archived/locked/invitable/applied_tags/flags at the top level. */
 export const patchThread = (t: Channel, body: Record<string, unknown>) => updateChannel(t.id, body as Partial<Channel>)

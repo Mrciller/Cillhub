@@ -9,6 +9,9 @@ const boolean = (v, f) => (typeof v === 'boolean' ? v : fail(f, 'Must be a boole
 const intIn = (min, max) => (v, f) => (Number.isInteger(v) && v >= min && v <= max ? v : fail(f, `Must be an integer between ${min} and ${max}.`));
 const strOrNull = max => (v, f) => (v === null || (typeof v === 'string' && v.length <= max) ? v || null : fail(f, `Must be a string of at most ${max} characters or null.`));
 const isoOrNull = (v, f) => (v === null ? null : typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : fail(f, 'Must be an ISO8601 timestamp or null.'));
+// server lists in the rail (folders, order) also hold node servers, as the client names them: <node id>~<snowflake>
+const GUILD_REF = /^\d{1,19}(~\d{1,20})?$/;
+const guildList = max => (v, f) => (Array.isArray(v) && v.length <= max && v.every(x => typeof x === 'string' && GUILD_REF.test(x)) ? [...new Set(v)] : fail(f, 'Must be a list of server ids.'));
 const snowflakeList = max => (v, f) => (Array.isArray(v) && v.length <= max && v.every(x => typeof x === 'string' && SNOWFLAKE.test(x)) ? [...new Set(v)] : fail(f, 'Must be a list of snowflakes.'));
 
 function customStatus(v, f) {
@@ -27,7 +30,7 @@ function guildFolders(v, f) {
   if (!Array.isArray(v) || v.length > 200) fail(f, 'Must be a list of guild folders.');
   return v.map((x, i) => ({
     id: x?.id == null ? null : intIn(0, 2 ** 31)(x.id, `${f}.${i}.id`),
-    guild_ids: snowflakeList(200)(x?.guild_ids, `${f}.${i}.guild_ids`),
+    guild_ids: guildList(200)(x?.guild_ids, `${f}.${i}.guild_ids`),
     name: strOrNull(100)(x?.name ?? null, `${f}.${i}.name`),
     color: x?.color == null ? null : intIn(0, 0xffffff)(x.color, `${f}.${i}.color`),
   }));
@@ -146,6 +149,36 @@ export function favoriteGifsChange(userId, add, removeUrl) {
   return list.filter(x => x.url !== removeUrl);
 }
 
+// saved private nodes (Settings › Private Nodes), synced to the user's other devices: at most 20 {origin, name}, the origin
+// exactly as URL.origin gives it (https, http only for localhost), the name plain text; a repeated origin is dropped
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\]|.+\.localhost)$/;
+function privateNodes(v, f) {
+  if (!Array.isArray(v) || v.length > 20) fail(f, 'Must be a list of at most 20 nodes.');
+  const seen = new Set();
+  return v.map((n, i) => {
+    let u;
+    try { u = new URL(n?.origin); } catch { fail(`${f}.${i}.origin`, 'Must be an https origin (http only for localhost).'); }
+    if (u.origin !== n.origin || !(u.protocol === 'https:' || (u.protocol === 'http:' && LOCAL_HOST.test(u.hostname)))) fail(`${f}.${i}.origin`, 'Must be an https origin (http only for localhost).');
+    return { origin: u.origin, name: typeof n.name === 'string' ? n.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 64) : '' };
+  }).filter(n => !seen.has(n.origin) && seen.add(n.origin));
+}
+
+// one node added at the end (an origin already there keeps its entry) or removed by origin, applied to the stored list in
+// one synchronous step, so two devices changing the list at once never bring back a removed node
+export function privateNodesChange(userId, add, removeOrigin, initial) {
+  const stored = settingsOf(userId).private_nodes;
+  if (initial !== undefined) return stored ?? privateNodes(initial, 'nodes'); // a device's list only while the account has none
+  const list = stored ?? [];
+  if (add !== undefined) {
+    const [n] = privateNodes([add], 'node');
+    if (list.some(x => x.origin === n.origin)) return list;
+    if (list.length >= 20) fail('node', 'At most 20 nodes.');
+    return [...list, n];
+  }
+  if (typeof removeOrigin !== 'string' || !removeOrigin) fail('origin', 'Give the origin of the node to remove.');
+  return list.filter(x => x.origin !== removeOrigin);
+}
+
 // the allow-list: the documented user settings names where they exist, Cillhub's own keys for the rest
 const SETTINGS = {
   privacy: [privacySettings, { dm_read_receipts: true }],
@@ -184,9 +217,12 @@ const SETTINGS = {
   timestamp_hour_cycle: [oneOf('auto', 'h12', 'h23'), 'auto'],
   show_current_game: [boolean, true],
   guild_folders: [guildFolders, []],
-  guild_positions: [snowflakeList(200), []],
+  guild_positions: [guildList(200), []],
   status: [oneOf('online', 'idle', 'dnd', 'invisible'), 'online'],
   custom_status: [customStatus, null],
+  // null: never saved. Changed only through /users/@me/settings/private-nodes (one add, one remove, or the first list),
+  // never replaced whole: a stale copy would bring removed nodes back
+  private_nodes: [(v, f) => fail(f, 'Use /users/@me/settings/private-nodes.'), null],
 };
 
 const stored = userId => get('SELECT settings, status FROM users WHERE id = ?', userId);

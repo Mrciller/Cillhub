@@ -386,21 +386,30 @@ class Session {
         preferCurrentTab: false,
       } as DisplayMediaStreamOptions & { selfBrowserSurface?: string; surfaceSwitching?: string; systemAudio?: string; preferCurrentTab?: boolean })
     }
-    const video = m.getVideoTracks()[0]
-    video.contentHint = q.mode
-    video.addEventListener('ended', () => {
-      if (this.local.screen_share === video) hooks.onScreenEnded()
-    })
-    const codecs = await screenCodecs(q)
-    await this.publishVideo('screen_share', video, screenLayers(q, codecs[0] === 'av1'), codecs)
-    await this.setStreamParams(q)
-    const audio = m.getAudioTracks()[0]
-    if (audio) {
-      this.local.screen_share_audio = audio
-      const tr = this.pub.screen_share_audio
-      if (tr) (await tr.sender.replaceTrack(audio), (tr.direction = 'sendonly'))
-      else this.pub.screen_share_audio = this.pc.addTransceiver(audio, { direction: 'sendonly' })
-      await this.negotiate()
+    // closed while the picker was open, or failing below: what was just captured is stopped, never kept
+    if (this.closed) return stopTracks(m)
+    try {
+      const video = m.getVideoTracks()[0]
+      video.contentHint = q.mode
+      video.addEventListener('ended', () => {
+        if (this.local.screen_share === video) hooks.onScreenEnded()
+      })
+      const codecs = await screenCodecs(q)
+      if (this.closed) return stopTracks(m)
+      await this.publishVideo('screen_share', video, screenLayers(q, codecs[0] === 'av1'), codecs)
+      await this.setStreamParams(q)
+      const audio = m.getAudioTracks()[0]
+      if (audio && !this.closed) {
+        this.local.screen_share_audio = audio
+        const tr = this.pub.screen_share_audio
+        if (tr) (await tr.sender.replaceTrack(audio), (tr.direction = 'sendonly'))
+        else this.pub.screen_share_audio = this.pc.addTransceiver(audio, { direction: 'sendonly' })
+        await this.negotiate()
+      }
+      if (this.closed) stopTracks(m)
+    } catch (e) {
+      stopTracks(m)
+      throw e
     }
   }
 
@@ -429,40 +438,51 @@ class Session {
         preferCurrentTab: false,
       } as DisplayMediaStreamOptions & { selfBrowserSurface?: string; surfaceSwitching?: string; systemAudio?: string; preferCurrentTab?: boolean })
     }
-    const video = m.getVideoTracks()[0]
-    if (!video) return
-    video.contentHint = q.mode
-    video.addEventListener('ended', () => {
-      if (this.local.screen_share === video) hooks.onScreenEnded()
-    })
+    if (this.closed) return stopTracks(m)
     const oldVideo = this.local.screen_share
-    this.local.screen_share = video
-    if (this.pub.screen_share) {
-      await this.pub.screen_share.sender.replaceTrack(video)
-      await this.setStreamParams(q)
-    } else {
-      const codecs = await screenCodecs(q)
-      await this.publishVideo('screen_share', video, screenLayers(q, codecs[0] === 'av1'), codecs)
-    }
-    if (oldVideo) oldVideo.stop()
-
-    const audio = m.getAudioTracks()[0]
     const oldAudio = this.local.screen_share_audio
-    if (audio) {
-      this.local.screen_share_audio = audio
-      const tr = this.pub.screen_share_audio
-      if (tr) {
-        await tr.sender.replaceTrack(audio)
-        tr.direction = 'sendonly'
+    try {
+      const video = m.getVideoTracks()[0]
+      if (!video) return stopTracks(m)
+      video.contentHint = q.mode
+      video.addEventListener('ended', () => {
+        if (this.local.screen_share === video) hooks.onScreenEnded()
+      })
+      this.local.screen_share = video
+      if (this.pub.screen_share) {
+        await this.pub.screen_share.sender.replaceTrack(video)
+        await this.setStreamParams(q)
       } else {
-        this.pub.screen_share_audio = this.pc.addTransceiver(audio, { direction: 'sendonly' })
-        await this.negotiate()
+        const codecs = await screenCodecs(q)
+        await this.publishVideo('screen_share', video, screenLayers(q, codecs[0] === 'av1'), codecs)
       }
-    } else if (oldAudio) {
-      await this.unpublish('screen_share_audio')
+      if (oldVideo) oldVideo.stop()
+
+      const audio = m.getAudioTracks()[0]
+      if (audio) {
+        this.local.screen_share_audio = audio
+        const tr = this.pub.screen_share_audio
+        if (tr) {
+          await tr.sender.replaceTrack(audio)
+          tr.direction = 'sendonly'
+        } else {
+          this.pub.screen_share_audio = this.pc.addTransceiver(audio, { direction: 'sendonly' })
+          await this.negotiate()
+        }
+      } else if (oldAudio) {
+        await this.unpublish('screen_share_audio')
+      }
+      if (oldAudio && oldAudio !== audio) oldAudio.stop()
+      if (this.closed) return stopTracks(m) // closed meanwhile: close() stopped the tracks it knew, these are newer
+      hooks.bump()
+    } catch (e) {
+      // a failed switch is half done: no capture, old or new, stays running, and the share ends as if the capture stopped
+      stopTracks(m)
+      oldVideo?.stop()
+      oldAudio?.stop()
+      hooks.onScreenEnded()
+      throw e
     }
-    if (oldAudio && oldAudio !== audio) oldAudio.stop()
-    hooks.bump()
   }
 
   /** Stream Quality while live: capture constraints, content hint and the layers' bitrate and frame rate. */
@@ -521,6 +541,8 @@ export function close() {
   s?.close()
   s = null
 }
+
+const stopTracks = (m: MediaStream) => m.getTracks().forEach((t) => t.stop())
 
 /** CILLVOICE_* dispatches. */
 export function event(type: string, d: any) {

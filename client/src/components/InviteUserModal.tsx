@@ -23,7 +23,7 @@ export function InviteUserModal({ userId, onClose }: { userId: string; onClose: 
   })
 
   const q = filter.trim().toLowerCase()
-  const list = q ? eligibleGuilds.filter((g) => g.name.toLowerCase().includes(q)) : eligibleGuilds
+  const list = q ? eligibleGuilds.filter((g) => g.name?.toLowerCase().includes(q)) : eligibleGuilds
 
   const handleInvite = async (g: Guild) => {
     setError('')
