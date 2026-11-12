@@ -12,7 +12,8 @@ export type FileRef = { id: string; k: string; n: string; name: string; type: st
 export type Plain = { state: 'ok'; content: string; files: FileRef[] } | { state: 'pending' | 'locked' | 'fail' }
 type Status = 'unknown' | 'off' | 'locked' | 'ready'
 // unverified: this device holds a wrap of the current key that no current member provably made (or that does not open)
-type Keys = { epoch: number; keys: Map<number, Uint8Array<ArrayBuffer>>; wrapped: string[]; unverified: boolean }
+// stale: members whose current-epoch wrap is a tombstone (they reset their key): the epoch is renewed before sending
+type Keys = { epoch: number; keys: Map<number, Uint8Array<ArrayBuffer>>; wrapped: string[]; stale: string[]; unverified: boolean }
 
 let owner = '' // the account everything below belongs to
 let status: Status = 'unknown'
@@ -62,7 +63,11 @@ export function ready(): Promise<void> {
   if (!owner) return Promise.resolve()
   return (loading ??= (async () => {
     const server = await api<{ public_key: string; backup: string }>('/users/@me/e2ee/keys').catch((e) => (notFound(e) ? null : Promise.reject(e)))
-    const local = await loadLocal(owner).catch(() => undefined)
+    let local = await loadLocal(owner).catch(() => undefined)
+    if (server && local?.pub !== server.public_key) { // a reset whose answer got lost: the new key waits under :next
+      const next = await loadLocal(`${owner}:next`).catch(() => undefined)
+      if (next?.pub === server.public_key) await saveLocal(owner, (local = next))
+    }
     if (!server) {
       status = 'off'
       if (local) await dropLocal(owner).catch(() => {})
@@ -92,8 +97,12 @@ export async function enable(): Promise<string> {
   const k = await C.newAccountKey()
   const recovery = C.random(20)
   const backup = await C.sealBackup(recovery, owner, k.pkcs8)
-  await saveLocal(owner, { priv: k.priv, pub: k.pub }) // stored before the server knows it, so a stored key is never lost
+  // stored aside before the server knows it (never lost if the answer is), and in use only once the server took it,
+  // so a failed reset leaves the old key working on this device
+  await saveLocal(`${owner}:next`, { priv: k.priv, pub: k.pub })
   await api('/users/@me/e2ee/keys', { method: 'PUT', body: { public_key: k.pub, backup } })
+  await saveLocal(owner, { priv: k.priv, pub: k.pub })
+  await dropLocal(`${owner}:next`).catch(() => {})
   settle(k.pub, k.priv)
   return C.recoveryText(recovery)
 }
@@ -146,13 +155,18 @@ export const keyChanged = (id: string) => {
   const p = pinsOf(id)
   return !!pubs.get(id) && !!p.length && p[p.length - 1] !== pubs.get(id)
 }
-let accepted = 0 // bumped on accept: messages that failed are tried again with the newly pinned key
+let retries = 0 // bumped when keys change: messages that failed for want of a key are tried again
+const soft = new Set<string>() // cache keys of those messages (no channel, no key for the epoch, network error)
+function retrySoft() {
+  for (const k of soft) plains.delete(k)
+  soft.clear()
+  retries++
+}
 /** Pins the member's current key; channel keys load again so wraps made with it open. */
 export function acceptKey(id: string) {
   if (pubs.get(id)) pin(id, pubs.get(id)!)
   channels.clear()
-  for (const [k, v] of plains) if (v.state === 'fail') plains.delete(k)
-  accepted++
+  retrySoft()
   changed()
 }
 /** Refuses while a member's key differs from the newest one pinned here: nothing is wrapped for or opened with it. */
@@ -219,11 +233,11 @@ export async function openChannel(ch: Channel) {
 async function channelKeys(ch: Channel, fresh = false): Promise<Keys> {
   const have = channels.get(ch.id)
   if (have && !fresh && have.epoch === (ch.e2ee_epoch ?? 0)) return have
-  const r = await api<{ epoch: number; keys: { epoch: number; wrapped: string }[]; wrapped_users: string[] }>(`/channels/${ch.id}/e2ee/keys`)
+  const r = await api<{ epoch: number; keys: { epoch: number; wrapped: string }[]; wrapped_users: string[]; stale_users?: string[] }>(`/channels/${ch.id}/e2ee/keys`)
   const keys = new Map(have?.keys)
   let unverified = false
   for (const k of r.keys) {
-    if (keys.has(k.epoch) || !priv) continue
+    if (keys.has(k.epoch) || !priv || !k.wrapped) continue // '' = tombstone after this account's reset: no key for that epoch
     // the current key counts only when a current member (or this account) made its wrap; older ones from anyone known here.
     // A wrap made for an older account key (after a reset) does not open: those messages stay unreadable here.
     const by = C.wrapper(k.wrapped)
@@ -231,8 +245,9 @@ async function channelKeys(ch: Channel, fresh = false): Promise<Keys> {
     if (key) keys.set(k.epoch, key)
     else if (k.epoch === r.epoch) unverified = true
   }
-  const out = { epoch: r.epoch, keys, wrapped: r.wrapped_users, unverified }
+  const out = { epoch: r.epoch, keys, wrapped: r.wrapped_users, stale: r.stale_users ?? [], unverified }
   channels.set(ch.id, out)
+  if (keys.size > (have?.keys.size ?? 0)) retrySoft()
   see(ch.id, r.epoch)
   if (r.epoch !== (ch.e2ee_epoch ?? 0)) apply('CHANNEL_UPDATE', { id: ch.id, e2ee_epoch: r.epoch })
   return out
@@ -250,7 +265,7 @@ async function openWrap(wrapped: string, channelId: string, epoch: number, by: s
   return null
 }
 
-async function newEpoch(ch: Channel, epoch: number) {
+async function newEpoch(ch: Channel, epoch: number, retried = false): Promise<unknown> {
   const ids = members(ch)
   const key = C.random(32)
   const wraps: Record<string, string> = {}
@@ -263,10 +278,15 @@ async function newEpoch(ch: Channel, epoch: number) {
     await api(`/channels/${ch.id}/e2ee/epoch`, { method: 'PUT', body: { epoch, wraps } })
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) return channelKeys({ ...ch, e2ee_epoch: epoch }, true) // someone else was first
+    if (e instanceof ApiError && e.status === 400 && !retried) { // members changed (or one just set up a key): load them, try once more
+      const fresh = await api<Channel>(`/channels/${ch.id}`)
+      apply('CHANNEL_UPDATE', fresh)
+      return newEpoch(getState().channels[ch.id] ?? fresh, epoch, true)
+    }
     throw e
   }
   const prev = channels.get(ch.id)
-  channels.set(ch.id, { epoch, keys: new Map(prev?.keys).set(epoch, key), wrapped: ids, unverified: false })
+  channels.set(ch.id, { epoch, keys: new Map(prev?.keys).set(epoch, key), wrapped: ids, stale: [], unverified: false })
   see(ch.id, epoch)
   apply('CHANNEL_UPDATE', { id: ch.id, e2ee_epoch: epoch })
 }
@@ -292,7 +312,7 @@ export async function sendKey(chIn: Channel, fresh = false): Promise<{ key: Uint
   refuseChanged(ch)
   let c = await channelKeys(ch, fresh)
   const ids = members(ch)
-  if (c.wrapped.some((id) => !ids.includes(id)) || !c.keys.has(c.epoch)) {
+  if (c.wrapped.some((id) => !ids.includes(id)) || c.stale.length || !c.keys.has(c.epoch)) {
     await newEpoch(ch, c.epoch + 1)
     c = await channelKeys(getState().channels[ch.id] ?? ch)
   } else {
@@ -344,22 +364,25 @@ export function decrypt(m: Message): Promise<Plain> {
   if (hit && hit.state !== 'pending') return Promise.resolve(hit)
   let p = inflight.get(k)
   if (p) return p
-  p = (async (): Promise<Plain> => {
+  const noKey = { state: 'fail', soft: true } as const // shown as failed, tried again when keys change
+  p = (async (): Promise<Plain & { soft?: true }> => {
     await ready()
     if (status !== 'ready') return { state: 'locked' }
     const ch = getState().channels[m.channel_id]
     const env = m.e2ee_envelope!
-    if (!ch) return { state: 'fail' }
+    if (!ch) return noKey
     let keys = await channelKeys(ch)
     if (!keys.keys.has(env.e)) keys = await channelKeys(ch, true) // a key that arrived after we loaded
     const key = keys.keys.get(env.e)
-    if (!key) return { state: 'fail' }
+    if (!key) return noKey
     try { return payload((await C.open(key, m.channel_id, m.author.id, env)).text) } catch { return { state: 'fail' } }
-  })().catch((): Plain => ({ state: 'fail' })).then((r) => {
+  })().catch(() => noKey).then(({ soft: isSoft, ...r }) => {
     inflight.delete(k)
     if (r.state !== 'locked') plains.set(k, r) // locked ones are tried again once the key is there
+    if (isSoft) soft.add(k)
+    else soft.delete(k)
     changed()
-    return r
+    return r as Plain
   })
   inflight.set(k, p)
   return p
@@ -370,11 +393,10 @@ export function usePlain(m?: Message | null): Plain | null {
   useE2ee()
   const env = m?.e2ee_envelope
   const k = m && env ? cacheKey(m) : ''
-  useEffect(() => void (k && m && decrypt(m)), [k, status, accepted]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => void (k && m && decrypt(m)), [k, status, retries]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!m || !env) return null
   return plains.get(k) ?? (status === 'locked' || status === 'off' ? { state: 'locked' } : { state: 'pending' })
 }
-export const plainOf = (m: Message) => plains.get(cacheKey(m))
 
 /** The message keys a report reveals: the message itself and the given older ones that open here. */
 export async function revealKeys(list: Message[]) {

@@ -64,11 +64,12 @@ export function envelopeField(v, epoch) {
 export const isEncrypted = ch => (ch?.e2ee_epoch ?? 0) > 0;
 export const refused = what => new HttpError(400, 50301, `${what} are not available in encrypted conversations.`);
 
-// a member left: the current key must not reach new messages, so a sender renews it first (409, the client rotates)
+// a member left, or reset their key (tombstone ''): the current key must not reach new messages, so a sender renews it first
+// (409, the client rotates)
 export function checkWrapsCurrent(ch) {
-  const stale = get(`SELECT 1 FROM dm_keys k WHERE k.channel_id = ? AND k.epoch = ?
-    AND NOT EXISTS (SELECT 1 FROM dm_recipients d WHERE d.channel_id = k.channel_id AND d.user_id = k.user_id)`, ch.id, ch.e2ee_epoch);
-  if (stale) throw new HttpError(409, 50302, 'A member left this conversation. Its key must be renewed before sending.');
+  const stale = get(`SELECT 1 FROM dm_keys k WHERE k.channel_id = ? AND k.epoch = ? AND (k.wrapped = ''
+    OR NOT EXISTS (SELECT 1 FROM dm_recipients d WHERE d.channel_id = k.channel_id AND d.user_id = k.user_id))`, ch.id, ch.e2ee_epoch);
+  if (stale) throw new HttpError(409, 50302, 'A member left or reset their key. The key of this conversation must be renewed before sending.');
 }
 
 export const wrappedUsers = (channelId, epoch) => all('SELECT user_id FROM dm_keys WHERE channel_id = ? AND epoch = ?', channelId, epoch).map(r => r.user_id);

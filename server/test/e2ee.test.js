@@ -315,7 +315,7 @@ test('report reveal: a matching key stores the plain text; a forged key or anoth
   assert.equal((await api('POST', `/channels/${plainDm.id}/messages/${p.id}/report`, robin.token, { reason: 'spam', reveal: [{ id: p.id, mk: bad.mk }] })).status, 400);
 });
 
-test('groups: a removed member forces a new epoch; wraps are added, never overwritten; a key reset drops current wraps', async () => {
+test('groups: a removed member forces a new epoch; wraps are added, never overwritten; a key reset leaves tombstones and forces a renewal', async () => {
   await friends(alex, sam);
   await friends(alex, robin);
   const g = (await api('POST', '/users/@me/channels', alex.token, { recipients: [sam.id, robin.id] })).body;
@@ -332,12 +332,24 @@ test('groups: a removed member forces a new epoch; wraps are added, never overwr
   const ck2 = randomBytes(32);
   assert.equal((await api('PUT', `/channels/${g.id}/e2ee/epoch`, sam.token, { epoch: 2, wraps: wrapsFor(g.id, 2, [alex, sam], ck2, sam) })).status, 200);
   assert.equal((await api('POST', `/channels/${g.id}/messages`, alex.token, { e2ee_envelope: seal(ck2, g.id, alex.id, 2, { content: 'new key' }).envelope })).status, 201);
-  // Sam resets: the epoch 2 wrap for Sam goes (it opens only with the old key), the old epoch's stays
+  // Sam resets: the epoch 2 wrap for Sam becomes a tombstone (it opened only with the old key), the old epoch's stays
   await setupKeys(sam);
-  const left = sql('SELECT epoch FROM dm_keys WHERE channel_id = ? AND user_id = ? ORDER BY epoch', g.id, sam.id).map(r => r.epoch);
-  assert.deepEqual(left, [1]);
-  const fresh = await api('PUT', `/channels/${g.id}/e2ee/wraps`, alex.token, { epoch: 2, wraps: wrapsFor(g.id, 2, [sam], ck2) });
-  assert.deepEqual(fresh.body.wrapped_users.sort(), [alex.id, sam.id].sort());
+  const left = sql('SELECT epoch, wrapped FROM dm_keys WHERE channel_id = ? AND user_id = ? ORDER BY epoch', g.id, sam.id);
+  assert.deepEqual(left.map(r => [r.epoch, r.wrapped === '']), [[1, false], [2, true]]);
+  // nobody can plant a second key for Sam in epoch 2; senders must renew
+  const planted = await api('PUT', `/channels/${g.id}/e2ee/wraps`, alex.token, { epoch: 2, wraps: wrapsFor(g.id, 2, [sam], randomBytes(32)) });
+  assert.deepEqual(planted.body.wrapped_users.sort(), [alex.id, sam.id].sort());
+  assert.equal(sql('SELECT wrapped FROM dm_keys WHERE channel_id = ? AND epoch = 2 AND user_id = ?', g.id, sam.id)[0].wrapped, '', 'the tombstone stays');
+  const view = (await api('GET', `/channels/${g.id}/e2ee/keys`, sam.token)).body;
+  assert.deepEqual(view.stale_users, [sam.id]);
+  assert.deepEqual(view.keys.map(k => [k.epoch, k.wrapped === '']), [[2, true], [1, false]]);
+  assert.deepEqual(Object.keys(view).sort(), ['epoch', 'keys', 'stale_users', 'wrapped_users']);
+  const stale = await api('POST', `/channels/${g.id}/messages`, alex.token, { e2ee_envelope: seal(ck2, g.id, alex.id, 2, { content: 'to the old key' }).envelope });
+  assert.equal(stale.body.code, 50302, 'renew before sending');
+  const ck3 = randomBytes(32);
+  assert.equal((await api('PUT', `/channels/${g.id}/e2ee/epoch`, alex.token, { epoch: 3, wraps: wrapsFor(g.id, 3, [alex, sam], ck3) })).status, 200);
+  assert.equal((await api('GET', `/channels/${g.id}/e2ee/keys`, sam.token)).body.stale_users.length, 0);
+  assert.equal((await api('POST', `/channels/${g.id}/messages`, alex.token, { e2ee_envelope: seal(ck3, g.id, alex.id, 3, { content: 'renewed' }).envelope })).status, 201);
 });
 
 test('a DM with a bot is never encrypted: the bot has no key and cannot set one', async () => {

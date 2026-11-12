@@ -211,7 +211,8 @@ export async function editMessage(m: Message, content: string) {
   if (m.e2ee_envelope || E.isEncrypted(ch)) { // a new envelope with the same files; the server keeps no history
     const key = await E.sendKey(ch)
     if (!key) throw new Error(t('Cannot encrypt for this conversation right now. Try again.'))
-    const prev = E.plainOf(m)
+    const prev = m.e2ee_envelope ? await E.decrypt(m) : null // the files ride along inside the payload: never drop them
+    if (prev && prev.state !== 'ok') throw new Error(t('This message cannot be decrypted here, so it cannot be edited.'))
     const files = prev?.state === 'ok' ? prev.files : []
     const r = await api<Message>(`/channels/${m.channel_id}/messages/${m.id}`, { method: 'PATCH', body: { e2ee_envelope: await E.sealPayload(ch, key, content, files) } })
     E.remember(r, content, files)

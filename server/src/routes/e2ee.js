@@ -15,9 +15,10 @@ function putKeys({ user, body }) {
     run(`INSERT INTO user_e2ee_keys (user_id, public_key, backup, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(user_id) DO UPDATE SET public_key = excluded.public_key, backup = excluded.backup, updated_at = excluded.updated_at`,
     user.id, pub, backup, now, now);
-    // a reset: the wraps of the current epochs open only with the old key, so they go and the other members wrap again
+    // a reset: the wraps of the current epochs open only with the old key. They become tombstones ('') that no PUT wraps can
+    // replace, so nobody plants a second key for this member in an epoch; senders renew the epoch instead (checkWrapsCurrent)
     if (old && old.public_key !== pub) {
-      run('DELETE FROM dm_keys WHERE user_id = ? AND epoch = (SELECT c.e2ee_epoch FROM channels c WHERE c.id = dm_keys.channel_id)', user.id);
+      run(`UPDATE dm_keys SET wrapped = '' WHERE user_id = ? AND epoch = (SELECT c.e2ee_epoch FROM channels c WHERE c.id = dm_keys.channel_id)`, user.id);
     }
   });
   return { public_key: pub, backup };
@@ -99,11 +100,12 @@ function putWraps(ctx) {
   return { epoch, wrapped_users: wrappedUsers(ch.id, epoch) };
 }
 
-// the caller's own wraps for every epoch, and who holds one for the current epoch
+// the caller's own wraps for every epoch ('' = tombstone after a key reset), who holds one for the current epoch, and whose is a tombstone
 function channelKeys(ctx) {
   const ch = loadDm(ctx);
   const keys = all('SELECT epoch, wrapped FROM dm_keys WHERE channel_id = ? AND user_id = ? ORDER BY epoch DESC LIMIT 1000', ch.id, ctx.user.id);
-  return { epoch: ch.e2ee_epoch, keys, wrapped_users: wrappedUsers(ch.id, ch.e2ee_epoch) };
+  const stale = all(`SELECT user_id FROM dm_keys WHERE channel_id = ? AND epoch = ? AND wrapped = ''`, ch.id, ch.e2ee_epoch).map(r => r.user_id);
+  return { epoch: ch.e2ee_epoch, keys, wrapped_users: wrappedUsers(ch.id, ch.e2ee_epoch), stale_users: stale };
 }
 
 const user = { userOnly: true };

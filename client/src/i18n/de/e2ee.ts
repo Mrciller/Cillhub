@@ -58,6 +58,7 @@ export const e2ee: Record<string, string> = {
   'The key of this conversation could not be verified. Nothing was sent.': 'Der Schlüssel dieser Unterhaltung ließ sich nicht überprüfen. Es wurde nichts gesendet.',
   'This conversation is not encrypted. It becomes encrypted once every member has turned on encrypted messages.':
     'Diese Unterhaltung ist nicht verschlüsselt. Sie wird verschlüsselt, sobald alle Mitglieder verschlüsselte Nachrichten eingeschaltet haben.',
+  'This message cannot be decrypted here, so it cannot be edited.': 'Diese Nachricht lässt sich hier nicht entschlüsseln und kann deshalb nicht bearbeitet werden.',
   'This message cannot be decrypted here, so it cannot be reported with its text.': 'Diese Nachricht lässt sich hier nicht entschlüsseln und kann deshalb nicht mit ihrem Text gemeldet werden.',
   'This message is end-to-end encrypted. Reporting it sends its text and files to the admins, and nothing else from this conversation unless you add the messages before it.':
     'Diese Nachricht ist Ende-zu-Ende-verschlüsselt. Mit der Meldung gehen ihr Text und ihre Dateien an die Admins, sonst nichts aus dieser Unterhaltung, außer du schickst die Nachrichten davor mit.',

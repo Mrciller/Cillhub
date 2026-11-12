@@ -287,6 +287,7 @@ async function main() {
     await step('9. Sam resets encryption: Alex sees the key-change warning and cannot send until Accept; then the key is wrapped for Sam\'s new key and Sam reads it', async () => {
       await sam.getByRole('button', { name: 'User Settings' }).click()
       await sam.getByRole('tab', { name: 'Encrypted Messages' }).click()
+      const epochBefore = sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e
       await sam.getByRole('button', { name: 'Reset encryption' }).click()
       await modal(sam, 'Reset encryption?').getByRole('button', { name: 'Reset', exact: true }).click()
       const dlg = modal(sam, 'Your recovery key')
@@ -301,6 +302,7 @@ async function main() {
       await until('the warning to go after Accept', async () => (await line.count()) === 0)
       await until('the message box to open', async () => !(await composer(alex).isDisabled()))
       await send(alex, `after the reset ${SFX}`)
+      await until('the epoch to be renewed (Sam\'s old wrap is a tombstone)', async () => sql('SELECT e2ee_epoch AS e FROM channels WHERE id = ?', ids.dm)[0].e === epochBefore + 1)
       await openDm(sam)
       await msg(sam, `after the reset ${SFX}`).locator('.content').waitFor(LIVE)
       check(!(await msg(sam, `after the reset ${SFX}`).innerText()).includes('Cannot decrypt'), 'readable with the new key')

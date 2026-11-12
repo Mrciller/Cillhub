@@ -304,6 +304,12 @@ async function saveFiles(ch, d) {
   return saved;
 }
 
+function recheckEpoch(ch, env) {
+  const now = get('SELECT * FROM channels WHERE id = ?', ch.id);
+  if (now?.e2ee_epoch !== env.e) throw new HttpError(409, 50300, 'The conversation has a newer key. Reload it and send again.');
+  checkWrapsCurrent(now);
+}
+
 // stores and announces a prepared message. author: { id } of the user (or the webhook's creator) and optional webhook
 // inTx: more writes that commit or fail together with the message row
 export async function send(d, authorId, { webhook, id, type = 0, inTx } = {}) {
@@ -336,7 +342,9 @@ export async function send(d, authorId, { webhook, id, type = 0, inTx } = {}) {
       referenceId: d.referenceId, mentionEveryone: d.counted.all || d.counted.here, mentionRoles: d.counted.roleIds, embeds,
       stickerItems: d.stickerItems, poll: d.poll, attachments, webhook, components: d.components,
       snapshot, reference: d.forward && { type: 1, message_id: d.forward.src.id, channel_id: d.forward.srcCh.id, guild_id: d.forward.srcCh.guild_id ?? undefined },
-      e2eeEnvelope: d.e2eeEnvelope, inTx,
+      e2eeEnvelope: d.e2eeEnvelope,
+      // checked again inside the write: the epoch or its wraps may have changed while the files were stored
+      inTx: d.e2eeEnvelope ? () => (recheckEpoch(ch, d.e2eeEnvelope), inTx?.()) : inTx,
     });
   } catch (e) {
     attachments.forEach(a => removeAttachment(ch.id, a.id));
