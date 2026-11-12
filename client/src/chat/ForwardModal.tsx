@@ -23,7 +23,7 @@ export function ForwardModal({ channelId, messageId, onClose }: { channelId: str
     ...Object.values(s.guilds).flatMap((g) => sidebar(s, g.id).flatMap((grp) => grp.channels)
       .filter((c) => [0, 5, 2, 13].includes(c.type) && has(permsOf(s, c.guild_id, c), P.SEND_MESSAGES))
       .map((c) => ({ c, label: `#${c.name}`, sub: g.name, dm: false }))),
-  ].filter((x) => !query || x.label.toLowerCase().includes(query) || x.sub.toLowerCase().includes(query))
+  ].filter((x) => !query || x.label?.toLowerCase().includes(query) || x.sub?.toLowerCase().includes(query))
   const send = () => {
     const target = dest && getState().channels[dest]
     if (!msg || !target) return

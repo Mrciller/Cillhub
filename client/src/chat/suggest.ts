@@ -28,7 +28,7 @@ function emojiSuggestions(s: State, channel: Channel, perms: bigint, q: string):
     if (g.id !== gid && !has(perms, P.USE_EXTERNAL_EMOJIS)) continue
     const mine = g.id === gid ? myMember(s, gid) : s.me ? s.members[g.id]?.[s.me.id] : undefined
     for (const e of g.emojis ?? [])
-      if (e.id && e.available !== false && e.name.toLowerCase().includes(q) && canUseEmoji(e.roles, mine, g.owner_id === s.me?.id))
+      if (e.id && e.available !== false && e.name?.toLowerCase().includes(q) && canUseEmoji(e.roles, mine, g.owner_id === s.me?.id))
         out.push({ key: e.id, label: `:${e.name}:`, sub: g.id === gid ? undefined : g.name, insert: `:${e.name}:`, syntax: `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`, kind: 'emoji', emoji: { id: e.id, animated: e.animated } })
   }
   for (const c of EMOJI)

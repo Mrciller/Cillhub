@@ -33,7 +33,7 @@ function MentionItem({ m, onJump, onRemove }: { m: Message; onJump: () => void; 
         <Avatar user={m.author} size={32} />
         <div className="inbox-text">
           <p><strong>{displayName(m.author)}</strong> <time className="hint small" dateTime={m.timestamp}>{stamp(m.timestamp)}</time></p>
-          <div className="content"><Markdown content={m.content.slice(0, 400)} ctx={ctx} /></div>
+          <div className="content"><Markdown content={(m.content ?? '').slice(0, 400)} ctx={ctx} /></div>
         </div>
         <div className="inbox-actions">
           <button className="secondary small-btn" onClick={onJump}>{t('Jump')}</button>

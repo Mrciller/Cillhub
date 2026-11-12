@@ -127,13 +127,16 @@ export const LIMITS = { depth: 32, list: 10_000, nodes: 500_000, budget: 200_000
 // Fields the UI renders, by type: a wrong-typed one refuses the payload instead of breaking the render.
 const strOrNull = (v: unknown) => v === null || typeof v === 'string'
 const objects = (v: unknown) => Array.isArray(v) && v.every((x) => x !== null && typeof x === 'object' && !Array.isArray(x))
+// custom emoji and sticker names are searched as text everywhere: every element has one (server/src/db.js)
+const named = (v: unknown) => objects(v) && (v as { name?: unknown }[]).every((x) => typeof x.name === 'string')
 // server/src/compose.js pollField: 1-10 answers, each with poll_media.text (also when it has an emoji)
 const poll = (v: any) => v === null || (typeof v?.question?.text === 'string' && objects(v.answers) && v.answers.every((a: any) => typeof a.poll_media?.text === 'string'))
 // Only keys every honest payload sends with that type (`value` is a number in choices, `roles` is checked as an id list;
 // under `resolved`, `members` and `channels` are maps, and module data is free-form).
 const SHAPES = new Map<string, (v: unknown) => boolean>([
   ...['name', 'content', 'username', 'global_name', 'topic', 'description', 'title', 'label', 'text', 'nick'].map((k) => [k, strOrNull] as const),
-  ...['mentions', 'attachments', 'reactions', 'channels', 'members', 'emojis'].map((k) => [k, Array.isArray] as const),
+  ...['mentions', 'attachments', 'reactions', 'channels', 'members'].map((k) => [k, Array.isArray] as const),
+  ...['emojis', 'stickers'].map((k) => [k, named] as const),
   ...['embeds', 'components', 'answers', 'choices', 'fields'].map((k) => [k, objects] as const), // rendered element by element
   ['poll', poll],
 ])
@@ -217,7 +220,6 @@ function inbound<T>(n: Live, data: T, moduleData = false): T | null {
         continue
       }
       if (key === 'emoji' && k === 'name' && typeof v === 'string') { if (v.length > LIMITS.emoji) throw bad; spend(`:${v}`) }
-      if (key === 'emojis' && k === 'name' && typeof v !== 'string') throw bad // custom emoji names are searched as text everywhere
       // a profile effect is named after a built-in preset, not a snowflake
       if (key === 'profile_effect' && k === 'id' && typeof v === 'string') { if (!PRESET.test(v)) throw bad; out[k] = v; continue }
       const typed = (key === 'emoji' && k === 'id') || key === 'default_values'
@@ -264,6 +266,8 @@ export const setView = (v: View) => void (view = v)
 // calls, saved messages, instance notices, …) never comes from a node. A missing or null target is refused.
 const BY_ID = ['GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE']
 const CHANNEL_BY_ID = ['VOICE_CHANNEL_STATUS_UPDATE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'THREAD_MEMBER_UPDATE', 'THREAD_MEMBERS_UPDATE']
+// The ones that put a channel in the store with the type they name (a deleted one is gone either way).
+const DM_EVENTS = ['CHANNEL_CREATE', 'CHANNEL_UPDATE', 'THREAD_CREATE']
 const BY_GUILD = ['GUILD_ROLE_CREATE', 'GUILD_ROLE_UPDATE', 'GUILD_ROLE_DELETE', 'GUILD_MEMBER_ADD', 'GUILD_MEMBER_UPDATE', 'GUILD_MEMBER_REMOVE', 'GUILD_BAN_ADD',
   'GUILD_BAN_REMOVE', 'GUILD_EMOJIS_UPDATE', 'GUILD_STICKERS_UPDATE', 'GUILD_SCHEDULED_EVENT_CREATE', 'GUILD_SCHEDULED_EVENT_UPDATE',
   'GUILD_SCHEDULED_EVENT_DELETE', 'GUILD_SCHEDULED_EVENT_USER_ADD', 'GUILD_SCHEDULED_EVENT_USER_REMOVE', 'GUILD_SOUNDBOARD_SOUND_CREATE',
@@ -284,7 +288,11 @@ function allowed(inst: string, t: string, d: any): boolean {
   if (d.member?.user && d.member.user.id !== d.user_id) delete d.member
   if (t === 'READY') return true
   if (BY_ID.includes(t)) return mine(inst, d.id)
-  if (CHANNEL_BY_ID.includes(t)) return mine(inst, d.id) && mine(inst, d.guild_id ?? view.channel(d.id)?.guild_id)
+  if (CHANNEL_BY_ID.includes(t)) {
+    // direct messages and group DMs are the hub's: a node cannot open one in our DM list
+    if (DM_EVENTS.includes(t) && (d.type === 1 || d.type === 3)) return false
+    return mine(inst, d.id) && mine(inst, d.guild_id ?? view.channel(d.id)?.guild_id)
+  }
   if (BY_GUILD.includes(t)) return mine(inst, d.guild_id) && (d.channel_id == null || mine(inst, d.channel_id))
   // read marks of other people (DM recipient reads) are the hub's; a node's ack may only be ours
   if (t === 'MESSAGE_ACK' && d.user_id != null && d.user_id !== hub.meId) return false
@@ -309,6 +317,7 @@ function allowed(inst: string, t: string, d: any): boolean {
 
 /** A node gateway event (or READY) as the store may apply it, or null to drop it. READY starts the node's id budget anew. */
 export function admit<T>(inst: string, t: string, raw: T): T | null {
+  if (live[inst]?.status === 'cut-off') return null // a cut-off node's late events are not applied
   if (t === 'READY' && readies.set(inst, (readies.get(inst) ?? 0) + 1).get(inst)! > 1) return null
   // a READY is read with the node account and session it names; instances/nodes.ts keeps them only once it is admitted
   const r = raw as { user?: { id?: unknown }; session_id?: unknown } | null

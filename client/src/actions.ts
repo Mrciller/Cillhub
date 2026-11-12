@@ -491,7 +491,9 @@ export const updateSticker = (guildId: string, id: string, body: { name?: string
 export const deleteSticker = (guildId: string, id: string) => api(`/guilds/${guildId}/stickers/${id}`, { method: 'DELETE' })
 
 export const loadSounds = (guildId: string) =>
-  api<{ items: Sound[] }>(`/guilds/${guildId}/soundboard-sounds`).then((r) => setState((s) => ({ sounds: { ...s.sounds, [guildId]: r.items } })))
+  api<{ items: Sound[] }>(`/guilds/${guildId}/soundboard-sounds`)
+    .then((r) => rows(r.items, (x) => typeof x?.sound_id === 'string')) // a sound's id is sound_id
+    .then((items) => setState((s) => ({ sounds: { ...s.sounds, [guildId]: items } })))
 export const createSound = (guildId: string, body: { name: string; sound: string; volume: number; emoji_name?: string | null; emoji_id?: string | null }) =>
   api<Sound>(`/guilds/${guildId}/soundboard-sounds`, { method: 'POST', body }).then((x) => (apply('GUILD_SOUNDBOARD_SOUND_CREATE', { ...x, guild_id: guildId }), x))
 export const updateSound = (guildId: string, id: string, body: { name?: string; volume?: number; emoji_name?: string | null }) =>
@@ -656,7 +658,7 @@ export const patchMyMember = (guildId: string, body: { nick?: string | null; ava
 
 // ---------- v4: inbox ----------
 export const recentMentions = (p: { before?: string; guild_id?: string; roles: boolean; everyone: boolean }) =>
-  api<Message[]>(`/users/@me/mentions${qs({ limit: 25, ...p })}`)
+  api<Message[]>(`/users/@me/mentions${qs({ limit: 25, ...p })}`).then((m) => rows(m))
 export const deleteMention = (id: string) => api(`/users/@me/mentions/${id}`, { method: 'DELETE' })
 /** "Mark all as read" (user docs: POST /read-states/ack-bulk), applied locally first. */
 export async function ackBulk(channels: Channel[]) {

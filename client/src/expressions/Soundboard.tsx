@@ -30,7 +30,7 @@ function SoundboardPopover({ at, onClose }: { at: Anchor; onClose: () => void })
   useEffect(() => {
     for (const g of shown) if (!sounds[g.id]) loadSounds(g.id).catch(() => {})
   }, [shown.map((g) => g.id).join()])
-  const groups = shown.map((g) => ({ g, list: (sounds[g.id] ?? []).filter((x) => x.available !== false) })).filter((x) => x.list.length)
+  const groups = shown.map((g) => ({ g, list: (sounds[g.id] ?? []).filter((x) => x?.available !== false) })).filter((x) => x.list.length)
   return (
     <Popover at={at} onClose={onClose} label={t('Soundboard')} className="soundboard">
       <h2 className="sb-title">{t('Soundboard')}</h2>

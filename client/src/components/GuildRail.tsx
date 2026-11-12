@@ -167,8 +167,8 @@ export function GuildRail({ guildId }: { guildId: string }) {
   const [adding, setAdding] = useState(!!templateCode)
   const [drop, setDrop] = useState<Drop>(null)
   const hub = useInstance()?.federation?.role === 'hub'
-  // DMs with unread mentions sit above the separator.
-  const dms = Object.values(state.channels).filter((c) => (c.type === 1 || c.type === 3) && mentionCount(state, c.id) > 0)
+  // DMs with unread mentions sit above the separator; a channel of a server (a node's) is never one.
+  const dms = Object.values(state.channels).filter((c) => !c.guild_id && (c.type === 1 || c.type === 3) && mentionCount(state, c.id) > 0)
   const layout = railLayout(state)
   return (
     <nav className="rail" aria-label={t('Servers')}>

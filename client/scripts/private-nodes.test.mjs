@@ -554,3 +554,35 @@ test('r9-8: node session id is 32 hex; replaced only at session_id', () => {
   const d = reg.admitRest('13', { session_id: 'nodesess', content: 'nodesess', url: 'nodesess' })
   assert.deepEqual([d.session_id, d.content, d.url], ['hubsess', 'nodesess', 'nodesess'])
 })
+
+test('r11-1: every emoji and sticker of a node list carries a name, as an honest server sends it', () => {
+  const ok = { id: '5', channel_id: '101' }
+  for (const bad of [{ emojis: [{}] }, { emojis: [{ id: '55' }] }, { emojis: [{ name: null }] }, { emojis: [{ name: 5 }] }, { emojis: [null] }, { emojis: [[]] },
+    { stickers: [null] }, { stickers: [{}] }, { stickers: [{ id: '56', name: null }] }, { stickers: 'x' }])
+    assert.equal(reg.admitRest('7', { ...ok, ...bad }), null, JSON.stringify(bad))
+  // server/src/db.js emojiObj and stickerObj: a name on every element (a template's emoji has one too)
+  assert.ok(reg.admitRest('7', { ...ok, emojis: [{ id: '55', name: 'wave', roles: [] }], stickers: [{ id: '56', name: 'hi', format_type: 1 }] }))
+  assert.equal(reg.admit('7', 'GUILD_EMOJIS_UPDATE', { guild_id: '100', emojis: [{ id: '55', name: 'wave' }] }).emojis[0].id, '7~55')
+  assert.equal(reg.admit('7', 'GUILD_STICKERS_UPDATE', { guild_id: '100', stickers: [{ id: '56' }] }), null)
+})
+
+test('r11-5: a node cannot open a conversation in our DM list: DM and group DM channel types are refused', () => {
+  for (const t of ['CHANNEL_CREATE', 'CHANNEL_UPDATE', 'THREAD_CREATE'])
+    for (const type of [1, 3])
+      assert.equal(reg.admit('7', t, { id: '105', guild_id: '100', type }), null, `${t} type ${type}`)
+  assert.ok(reg.admit('7', 'CHANNEL_CREATE', { id: '105', guild_id: '100', type: 0 }))
+  assert.ok(reg.admit('7', 'THREAD_CREATE', { id: '106', guild_id: '100', parent_id: '105', type: 11 }))
+})
+
+test('r11-6: a cut-off node sends nothing we apply, gateway events as well as REST answers', () => {
+  reg.testNode('14', 'https://n14.example', '914', '1')
+  const ev = { id: '100', name: 'a server' }
+  assert.ok(reg.admit('14', 'GUILD_UPDATE', ev))
+  reg.setLive('14', { status: 'cut-off', sticky: true })
+  assert.equal(reg.admit('14', 'GUILD_UPDATE', ev), null)
+  assert.equal(reg.admit('14', 'READY', { user: { id: '914' }, guilds: [] }), null, 'not even a READY comes back in')
+  assert.equal(reg.admitRest('14', { id: '5' }), null)
+  reg.setLive('14', { status: 'ready' }) // Reconnect
+  assert.ok(reg.admit('14', 'GUILD_UPDATE', ev))
+  reg.removeInstance('14')
+})

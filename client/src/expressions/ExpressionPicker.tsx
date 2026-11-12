@@ -43,7 +43,7 @@ function EmojiTab({ guildId, perms, onPick }: { guildId?: string; perms: bigint;
   const servers = !guildId && !has(perms, P.USE_EXTERNAL_EMOJIS) ? [] : Object.values(guilds)
     .filter((g) => g.emojis?.length && (g.id === guildId || has(perms, P.USE_EXTERNAL_EMOJIS)))
     .sort((a, b) => Number(b.id === guildId) - Number(a.id === guildId))
-    .map((g) => ({ g, list: (g.emojis ?? []).filter((e) => e.id && e.available !== false && canUseEmoji(e.roles, g.id === guildId ? member : members[g.id]?.[meId ?? ''], g.owner_id === meId) && (!query || e.name.toLowerCase().includes(query))) }))
+    .map((g) => ({ g, list: (g.emojis ?? []).filter((e) => e.id && e.available !== false && canUseEmoji(e.roles, g.id === guildId ? member : members[g.id]?.[meId ?? ''], g.owner_id === meId) && (!query || e.name?.toLowerCase().includes(query))) }))
     .filter((x) => x.list.length)
   const unicode = EMOJI.map((c) => ({ ...c, list: query ? c.list.filter((e) => e.keywords.includes(query)) : c.list })).filter((c) => c.list.length)
   const first = servers[0]?.list[0]
@@ -103,7 +103,7 @@ function StickerTab({ guildId, perms, onPick }: { guildId?: string; perms: bigin
   const groups = Object.values(guilds)
     .filter((g) => g.id === guildId || has(perms, P.USE_EXTERNAL_STICKERS))
     .sort((a, b) => Number(b.id === guildId) - Number(a.id === guildId))
-    .map((g) => ({ g, list: (g.stickers ?? []).filter((s) => s.available !== false && (!query || s.name.toLowerCase().includes(query) || s.tags?.toLowerCase().includes(query))) }))
+    .map((g) => ({ g, list: (g.stickers ?? []).filter((s) => s.available !== false && (!query || s.name?.toLowerCase().includes(query) || s.tags?.toLowerCase().includes(query))) }))
     .filter((x) => x.list.length)
   return (
     <>

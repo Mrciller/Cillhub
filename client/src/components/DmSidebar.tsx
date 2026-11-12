@@ -129,7 +129,8 @@ export function DmSidebar({ channelId }: { channelId?: string }) {
     saveList(PINNED_KEY, next)
   }
 
-  const rawDms = Object.values(channels).filter((c) => c.type === 1 || c.type === 3)
+  // A DM has no server: a node cannot pass a channel of its own off as one of our conversations.
+  const rawDms = Object.values(channels).filter((c) => !c.guild_id && (c.type === 1 || c.type === 3))
 
   const dms = [...rawDms].sort((a, b) => {
     const aPin = pinned.indexOf(a.id)
