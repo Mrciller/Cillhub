@@ -310,14 +310,17 @@ export async function toggleCamera() {
 
 export async function toggleScreen() {
   const r = room
+  const g = join.now()
   const v = getState().voice
   if (!r && !cv.active()) return
   try {
     if (cv.active()) await (v.stream ? cv.stopScreen() : cv.startScreen(voiceSettings().stream))
     else await r!.localParticipant.setScreenShareEnabled(!v.stream, { audio: true, selfBrowserSurface: 'exclude' })
+    if (staleSince(g)) return void (!cv.active() && !v.stream && r!.localParticipant.setScreenShareEnabled(false).catch(() => {}))
     setVoice({ stream: !v.stream })
     sendState()
   } catch (e) {
+    if (staleSince(g)) return
     // Cancelling the browser's picker lands here too; that is not worth an error.
     if (!(e instanceof Error && e.name === 'NotAllowedError')) setVoice({ error: `Couldn't share your screen${e instanceof Error ? `: ${e.message}` : '.'}` })
   }
@@ -400,9 +403,15 @@ const screenOptions = (q: StreamQuality, codecs: VideoCodecName[]) => {
 }
 
 /** Starts screen sharing with the chosen quality (remembered for next time). */
+// A screen share start or switch belongs to the call it began in: after a leave or switch it stops what it captured and
+// changes nothing (join generation, voice/join.ts).
+const stopAll = (m: MediaStream) => m.getTracks().forEach((t) => t.stop())
+const staleSince = (g: number) => join.now() !== g
+
 export async function startScreenShare(q: StreamQuality, captureCardDeviceId?: string) {
   saveVoiceSettings({ stream: q })
   const r = room
+  const g = join.now()
   if ((!r && !cv.active()) || getState().voice.stream) return
   try {
     if (cv.active()) await cv.startScreen(q, captureCardDeviceId)
@@ -417,25 +426,35 @@ export async function startScreenShare(q: StreamQuality, captureCardDeviceId?: s
           video: { deviceId: { exact: captureCardDeviceId }, width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: q.fps } },
           audio: captureAudio ? { deviceId: captureCardDeviceId } : false,
         })
-        const vTrack = m.getVideoTracks()[0]
-        if (!vTrack) throw new Error('No video track found on capture card')
-        vTrack.contentHint = q.mode
-        const localVideo = new lk.LocalVideoTrack(vTrack, undefined, false)
-        localVideo.source = 'screen_share' as Track.Source.ScreenShare
-        await r!.localParticipant.publishTrack(localVideo, { ...o.publish, source: 'screen_share' as Track.Source.ScreenShare })
-        const aTrack = m.getAudioTracks()[0]
-        if (aTrack) {
-          const localAudio = new lk.LocalAudioTrack(aTrack, undefined, false)
-          localAudio.source = 'screen_share_audio' as Track.Source.ScreenShareAudio
-          await r!.localParticipant.publishTrack(localAudio, { source: 'screen_share_audio' as Track.Source.ScreenShareAudio })
+        try {
+          if (staleSince(g)) return stopAll(m)
+          const vTrack = m.getVideoTracks()[0]
+          if (!vTrack) throw new Error('No video track found on capture card')
+          vTrack.contentHint = q.mode
+          const localVideo = new lk.LocalVideoTrack(vTrack, undefined, false)
+          localVideo.source = 'screen_share' as Track.Source.ScreenShare
+          await r!.localParticipant.publishTrack(localVideo, { ...o.publish, source: 'screen_share' as Track.Source.ScreenShare })
+          const aTrack = m.getAudioTracks()[0]
+          if (aTrack && !staleSince(g)) {
+            const localAudio = new lk.LocalAudioTrack(aTrack, undefined, false)
+            localAudio.source = 'screen_share_audio' as Track.Source.ScreenShareAudio
+            await r!.localParticipant.publishTrack(localAudio, { source: 'screen_share_audio' as Track.Source.ScreenShareAudio })
+          }
+          if (staleSince(g)) return stopAll(m)
+        } catch (e) {
+          stopAll(m)
+          throw e
         }
       } else {
         await r!.localParticipant.setScreenShareEnabled(true, o.capture, o.publish)
+        if (staleSince(g)) return void r!.localParticipant.setScreenShareEnabled(false).catch(() => {})
       }
     }
+    if (staleSince(g)) return
     setVoice({ stream: true })
     sendState()
   } catch (e) {
+    if (staleSince(g)) return
     // Cancelling the browser's picker lands here too; that is not worth an error.
     if (!(e instanceof Error && e.name === 'NotAllowedError')) setVoice({ error: `Couldn't share your screen${e instanceof Error ? `: ${e.message}` : '.'}` })
   }
@@ -445,6 +464,7 @@ export async function startScreenShare(q: StreamQuality, captureCardDeviceId?: s
 /** Changes which window/screen is streamed while screen sharing is active. */
 export async function switchScreenShare(q: StreamQuality = voiceSettings().stream, captureCardDeviceId?: string) {
   const r = room
+  const g = join.now()
   const v = getState().voice
   if ((!r && !cv.active()) || !v.stream) return
   try {
@@ -477,16 +497,20 @@ export async function switchScreenShare(q: StreamQuality = voiceSettings().strea
       } else {
         newTracks = await r!.localParticipant.createScreenTracks(o.capture)
       }
+      if (staleSince(g)) return newTracks.forEach((t) => t.stop())
       const oldScreen = r!.localParticipant.getTrackPublication('screen_share' as Track.Source.ScreenShare)
       if (oldScreen?.track) await r!.localParticipant.unpublishTrack(oldScreen.track)
       const oldAudio = r!.localParticipant.getTrackPublication('screen_share_audio' as Track.Source.ScreenShareAudio)
       if (oldAudio?.track) await r!.localParticipant.unpublishTrack(oldAudio.track)
       for (const t of newTracks) {
+        if (staleSince(g)) return newTracks.forEach((x) => x.stop())
         await r!.localParticipant.publishTrack(t, { ...o.publish, source: t.source })
       }
     }
+    if (staleSince(g)) return
     bump()
   } catch (e) {
+    if (staleSince(g)) return
     if (!(e instanceof Error && e.name === 'NotAllowedError')) {
       setVoice({ error: `Couldn't change screen share${e instanceof Error ? `: ${e.message}` : '.'}` })
     }

@@ -5,6 +5,8 @@ export function joins() {
   return {
     /** A leave or a switch: every join under way is stale from now on. */
     bump: () => void gen++,
+    /** The current generation: an operation that started under another one is stale (screen share start/switch). */
+    now: () => gen,
     /** Starts a join: `load` may be slow (a lazy import); resolves null when a leave or switch came in between. */
     async start<L>(load: () => Promise<L>): Promise<{ lib: L; live: () => boolean } | null> {
       const mine = ++gen

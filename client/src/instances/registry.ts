@@ -96,14 +96,18 @@ const onNode = (n: Live, a: unknown) => {
 }
 
 // Where an id names a user: these keys, these lists, and `id` of objects under the user object keys.
-const USER_ID_KEYS = new Set(['user_id', 'author_id', 'owner_id', 'creator_id', 'host_id', 'target_user_id'])
+const USER_ID_KEYS = new Set(['user_id', 'author_id', 'owner_id', 'creator_id', 'host_id', 'target_user_id', 'updated_by', 'created_by', 'added_by'])
 const USER_LISTS = new Set(['user_ids', 'removed_member_ids', 'speaking', 'participants'])
-const USER_OBJECTS = new Set(['user', 'author', 'users', 'recipients', 'mentions', 'creator', 'target_user'])
+const USER_OBJECTS = new Set(['user', 'author', 'users', 'recipients', 'mentions', 'creator', 'target_user', 'inviter', 'owner'])
 // Other id lists (strings only): member roles, bulk deletes, automod exemptions…
 const ID_LISTS = new Set(['ids', 'roles', 'mention_roles', 'applied_tags', 'exempt_roles', 'exempt_channels', ...USER_LISTS])
 const FREE_IDS = new Set(['custom_id', 'session_id', 'video_id', 'panel_id', 'module_id', 'sku_id', 'folder_id', 'sync_id', 'party_id'])
 // Inside these trees `id` is a component number or an activity's own string; their emoji and default_values ids are not.
-const FREE_TREES = new Set(['activities', 'components'])
+const FREE_TREES = new Set(['activities', 'components', 'serialized_source_guild']) // templates number their roles and channels
+// Numbers, not snowflakes: poll answers and quiz answer, display name font and effect, voice effect animation.
+const NUMERIC_IDS = new Set(['answer_id', 'correct_answer_id', 'font_id', 'effect_id', 'animation_id'])
+// cillvoice tracks are named `<user id>-<mid>`: opaque, scoped as they are (tracks[].id, track_id) and given back the same way.
+const TRACK = /^[\w-]{1,80}$/
 export const LIMITS = { depth: 32, list: 10_000, nodes: 500_000, budget: 200_000 }
 const isIdKey = (k: string) => (k === 'id' || k.endsWith('_id')) && !FREE_IDS.has(k)
 const isIdList = (k: string) => ID_LISTS.has(k) || k.endsWith('_ids')
@@ -161,9 +165,13 @@ function inbound<T>(n: Live, data: T): T | null {
         continue
       }
       const typed = (key === 'emoji' && k === 'id') || key === 'default_values'
-      // poll answers are numbered (answer_id, answer_counts[].id): numbers there are not snowflakes
-      if (typeof v === 'number' && (k === 'answer_id' || (k === 'id' && key === 'answer_counts'))) { out[k] = v; continue }
-      if (isIdKey(k) && v != null && (!inFree || typed)) {
+      if (typeof v === 'number' && (NUMERIC_IDS.has(k) || (k === 'id' && key === 'answer_counts'))) { out[k] = v; continue }
+      if (typeof v === 'string' && (k === 'track_id' || (k === 'id' && key === 'tracks'))) {
+        if (!TRACK.test(v)) throw bad
+        out[k] = scoped(inst, v)
+        continue
+      }
+      if ((isIdKey(k) || USER_ID_KEYS.has(k)) && v != null && (!inFree || typed)) {
         out[k] = USER_ID_KEYS.has(k) || (k === 'id' && (userObj || (key === 'default_values' && (x as { type?: unknown }).type === 'user'))) ? userRef(v) : ref(v)
         continue
       }
@@ -221,6 +229,8 @@ function allowed(inst: string, t: string, d: any): boolean {
   if (BY_ID.includes(t)) return mine(inst, d.id)
   if (CHANNEL_BY_ID.includes(t)) return mine(inst, d.id) && mine(inst, d.guild_id ?? view.channel(d.id)?.guild_id)
   if (BY_GUILD.includes(t)) return mine(inst, d.guild_id) && (d.channel_id == null || mine(inst, d.channel_id))
+  // read marks of other people (DM recipient reads) are the hub's; a node's ack may only be ours
+  if (t === 'MESSAGE_ACK' && d.user_id != null && d.user_id !== hub.meId) return false
   if (BY_CHANNEL.includes(t)) return mine(inst, d.channel_id) && mine(inst, d.guild_id ?? view.channel(d.channel_id)?.guild_id)
   if (t === 'USER_UPDATE') return mine(inst, d.id)
   if (t === 'PRESENCE_UPDATE') return mine(inst, d.user?.id) && (d.guild_id == null || mine(inst, d.guild_id))
@@ -282,7 +292,8 @@ export function outbound<T>(inst: string, data: T): T {
       b !== undefined ? (a === inst ? `<${kind}${b}>` : m) // our node's id, bare
       : (kind === '@' || kind === '@!') && me(a) ? `<${kind}${n!.meId}>` : m) // a user mention of us; one pass, never both
   const walk = (x: unknown, key: string, userObj: boolean): unknown =>
-    typeof x === 'string' ? strip(x, USER_ID_KEYS.has(key) || USER_LISTS.has(key) || (key === 'id' && userObj))
+    typeof x === 'string' && key === 'track_id' && x.startsWith(pre) ? x.slice(pre.length)
+    : typeof x === 'string' ? strip(x, USER_ID_KEYS.has(key) || USER_LISTS.has(key) || (key === 'id' && userObj))
     : Array.isArray(x) ? x.map((v) => walk(v, key, userObj))
     : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [bare(k), walk(v, k, USER_OBJECTS.has(k) || (k === 'id' && userObj))]))
     : x
@@ -306,6 +317,7 @@ export const outboundPath = (inst: string, path: string) => {
  *  node, every id (fields, id lists, id-keyed map keys, text tokens) is that node's or our own user id; to the hub, none
  *  is a node's, except the hub's own lists of rail servers (guild_folders, guild_positions). */
 const RAIL_LISTS = new Set(['guild_ids', 'guild_positions'])
+const TEXT_KEYS = new Set(['content', 'value', 'description', 'title', 'text', 'name', 'topic'])
 export function bodyFits(body: unknown, to: string | undefined) {
   const fits = (v: string) => (to ? nodeOf(v) === to || v === hub.meId : nodeOf(v) === undefined)
   const idLike = (v: unknown): v is string => typeof v === 'string' && /^\d{1,20}(~\d{1,20})?$/.test(v)
@@ -313,7 +325,7 @@ export function bodyFits(body: unknown, to: string | undefined) {
   const walk = (x: unknown, key: string, depth: number): void => {
     if (!ok || depth > LIMITS.depth) return
     if (typeof x === 'string') {
-      if (key === 'content' || key === 'value' || key === 'description' || key === 'title')
+      if (TEXT_KEYS.has(key))
         for (const m of x.matchAll(ANY_TOKEN)) if (!fits(m[3] !== undefined ? `${m[2]}~${m[3]}` : m[2])) ok = false
       return
     }
@@ -323,7 +335,7 @@ export function bodyFits(body: unknown, to: string | undefined) {
     }
     if (!x || typeof x !== 'object') return
     for (const [k, v] of Object.entries(x)) {
-      if (k === 'attachments') continue // upload slots ('0', '1', …) and attachment ids of the message itself
+      if (key === 'attachments' && k === 'id') continue // upload slots ('0', '1', …) and attachment ids of the message itself
       if (idLike(k) && !fits(k)) ok = false
       if (idLike(v) && isIdKey(k)) { if (!fits(v)) ok = false }
       else walk(v, k, depth + 1)

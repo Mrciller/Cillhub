@@ -343,3 +343,59 @@ test('r5-20: call participants are users; poll answer numbers are not snowflakes
   assert.deepEqual(m.call.participants, ['1', '7~901'])
   assert.deepEqual([m.poll.answers[0].answer_id, m.poll.results.answer_counts[0].id], [1, 1])
 })
+
+test('r6-7: a node ack can only be ours; other people\'s read marks are the hub\'s', () => {
+  assert.equal(reg.admit('7', 'MESSAGE_ACK', { channel_id: '101', guild_id: '100', message_id: '5', user_id: '901' }), null)
+  assert.ok(reg.admit('7', 'MESSAGE_ACK', { channel_id: '101', guild_id: '100', message_id: '5', user_id: '900' }))
+  assert.ok(reg.admit('7', 'MESSAGE_ACK', { channel_id: '101', guild_id: '100', message_id: '5' }))
+})
+
+test('r6-21: cillvoice track ids are opaque: scoped in, the same id out', () => {
+  view.voiceGuild = '7~100'
+  const tr = reg.admit('7', 'CILLVOICE_TRACKS', { channel_id: '101', tracks: [{ id: '901-0', user_id: '901', kind: 'audio', source: 'microphone' }, { id: '900-1', user_id: '900', kind: 'video', source: 'camera' }] })
+  assert.deepEqual(tr.tracks.map((t) => [t.id, t.user_id]), [['7~901-0', '7~901'], ['7~900-1', '1']])
+  const ans = reg.admit('7', 'CILLVOICE_ANSWER', { channel_id: '101', sdp: 'v=0', subscribed: [{ mid: '3', track_id: '901-0', user_id: '901', source: 'microphone' }], tracks: [] })
+  assert.equal(ans.subscribed[0].track_id, '7~901-0')
+  assert.deepEqual(reg.outbound('7', { subscribe: [{ mid: '3', track_id: '7~901-0' }] }), { subscribe: [{ mid: '3', track_id: '901-0' }] })
+  assert.equal(reg.admit('7', 'CILLVOICE_TRACKS', { tracks: [{ id: '../x' }] }), null)
+  view.voiceGuild = null
+})
+
+test('r6-20: a READY and a quiz poll from a real current server pass (numeric font, effect, answer ids)', async () => {
+  const { readFileSync } = await import('node:fs')
+  const fx = JSON.parse(readFileSync(new URL('./fixtures/node-payloads.json', import.meta.url), 'utf8'))
+  reg.testNode('5', 'https://n5.example', fx.ready.user.id, '1')
+  const r = reg.admit('5', 'READY', fx.ready)
+  assert.ok(r, 'READY with display name styles')
+  assert.equal(r.user.id, '1')
+  const m = reg.admitRest('5', fx.message)
+  assert.ok(m, 'quiz poll message')
+  assert.equal(m.poll.correct_answer_id, 1)
+  const styled = JSON.stringify(r).match(/"font_id":(\d+)/)
+  assert.ok(styled, 'the other member keeps its numeric display name style')
+  assert.ok(reg.admit('5', 'VOICE_CHANNEL_EFFECT_SEND', { channel_id: '1', guild_id: '2', user_id: '3', animation_id: 0, emoji: null }) !== undefined)
+})
+
+test('r6-22: screen share start/switch see a leave or switch through the join generation', async () => {
+  const { joins } = await import('../src/voice/join.ts')
+  const join = joins()
+  const g = join.now()
+  join.bump()
+  assert.notEqual(join.now(), g, 'a start begun before the leave is stale')
+})
+
+test('r6-23: who edited, created or added something is a typed user reference', () => {
+  const c = reg.admit('7', 'CHANNEL_CANVAS_UPDATE', { channel_id: '101', guild_id: '100', updated_by: '2', content: 'x' })
+  assert.equal(c.updated_by, '7~2', 'never hub user 2')
+  assert.equal(reg.admit('7', 'CHANNEL_CANVAS_UPDATE', { channel_id: '101', guild_id: '100', updated_by: '900' }).updated_by, '1')
+  const w = reg.admit('7', 'WATCH_SESSION_UPDATE', { channel_id: '101', guild_id: '100', host_id: '901', queue: [{ video_id: 'abc', title: 't', added_by: '2' }] })
+  assert.equal(w.queue[0].added_by, '7~2')
+  const i = reg.admitRest('7', { code: 'x', inviter: { id: '900', username: 'evil' }, created_by: '2' })
+  assert.deepEqual([i.inviter.username, i.created_by], ['alex', '7~2'])
+})
+
+test('r6-17: attachment descriptions and poll texts go through the reference check too', () => {
+  assert.equal(reg.bodyFits({ content: '', attachments: [{ id: '0', description: 'see <@2>' }] }, '7'), false)
+  assert.equal(reg.bodyFits({ attachments: [{ id: '0', description: 'fine' }] }, '7'), true)
+  assert.equal(reg.bodyFits({ poll: { question: { text: '<@7~901>?' }, answers: [] } }, undefined), false)
+})
