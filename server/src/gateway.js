@@ -10,7 +10,7 @@ import { I, ALL_INTENTS, PRIVILEGED, privilegedAllowed, wants, redact } from './
 import { settingsOf, customStatusActivity, guildSettingsReady, notesOf } from './userdata.js';
 import { callsOf, callConnect } from './calls.js';
 import { signal as cillvoiceSignal, endpoint as cillvoiceEndpoint } from './media/index.js';
-import { publicInstance } from './instance.js';
+import { publicInstance, legalGate } from './instance.js';
 import { limit } from './ratelimit.js';
 import { visibleChannels, viewersOf } from './permissions.js';
 
@@ -263,6 +263,8 @@ function identify(conn, d) {
   if (conn.session) return conn.ws.close(4005, 'Already authenticated');
   const user = typeof d?.token === 'string' ? sessionUser(d.token) : undefined;
   if (!user) return conn.ws.close(4004, 'Authentication failed');
+  // the REST terms gate: no session until the new terms are accepted (not 4004: the client must not log out)
+  if (legalGate(user)) return conn.ws.close(4003, 'Accept the updated terms of use first');
   const s = {
     id: randomBytes(16).toString('hex'), user, bot: !!user.bot, tokenHash: tokenHash(d.token.replace(/^Bot\s+/i, '')), url: conn.url,
     v: conn.v, seq: 0, buffer: [], ws: conn.ws, afk: false, status: null, activities: null, activitiesAt: 0, intents: ALL_INTENTS,
