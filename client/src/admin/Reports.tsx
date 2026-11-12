@@ -86,11 +86,11 @@ function ReportCard({ r, onDone }: { r: Report; onDone: () => void }) {
       {r.note && <p className="admin-note"><span className="sr-only">{t('Note')}: </span>“{r.note}”</p>}
       {m && (
         <figure className="admin-quote">
-          <figcaption>{author?.username ?? t('Unknown')} · {where} · <time dateTime={m.timestamp}>{when(m.timestamp)}</time>{!m.exists && ` · ${t('deleted since')}`}</figcaption>
+          <figcaption>{author?.username ?? t('Unknown')} · {where} · <time dateTime={m.timestamp}>{when(m.timestamp)}</time><Edited at={m.edited_timestamp} />{!m.exists && ` · ${t('deleted since')}`}</figcaption>
           {m.encrypted && <p className="hint small">{m.revealed ? t('Encrypted message, decrypted from the report') : t('Encrypted message, not revealed by the reporter')}</p>}
           {m.context?.map((c) => (
             <div key={c.id} className="admin-context">
-              <p className="hint small">{c.author_name ?? t('Unknown')} · <time dateTime={c.timestamp}>{when(c.timestamp)}</time> · {t('before the reported message')}</p>
+              <p className="hint small">{c.author_name ?? t('Unknown')} · <time dateTime={c.timestamp}>{when(c.timestamp)}</time><Edited at={c.edited_timestamp} /> · {t('before the reported message')}</p>
               <blockquote>{c.content || <em>{t('No text')}</em>}</blockquote>
               <Files list={c.attachments} />
             </div>
@@ -118,6 +118,9 @@ function ReportCard({ r, onDone }: { r: Report; onDone: () => void }) {
     </li>
   )
 }
+
+/** Edited before the report was made (the copy holds the edited text); older reports have no field and show nothing. */
+const Edited = ({ at }: { at?: string | null }) => (at ? <> · <time dateTime={at} title={when(at)}>{t('(edited)')}</time></> : null)
 
 /** Files of a revealed encrypted message: the key came with the report, so they are decrypted here, in the browser. */
 function Files({ list }: { list: A.RevealedFile[] }) {

@@ -277,7 +277,7 @@ function createReport(ctx) {
     webhook_id: m.webhook_id ?? null,
     ...(m.e2ee_envelope && { encrypted: true, revealed: !!own }),
     ...(revealed && revealed.length > 1 && { context: revealed.filter(r => r !== own).map(({ row, p }) => ({
-      id: row.id, author_id: row.author_id, author_name: userById(row.author_id)?.username ?? null, timestamp: row.timestamp, content: p.content, attachments: revealedFiles(row, p),
+      id: row.id, author_id: row.author_id, author_name: userById(row.author_id)?.username ?? null, timestamp: row.timestamp, edited_timestamp: row.edited_timestamp ?? null, content: p.content, attachments: revealedFiles(row, p),
     })) }),
   };
   const id = snowflake();

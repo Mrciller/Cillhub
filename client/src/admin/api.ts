@@ -93,10 +93,10 @@ export type Report = {
   reporter: User | null; author: User | null; guild: { id: string; name: string } | null; channel: { id: string; type?: number; name?: string | null }
   /** A copy taken when the report was made; `exists` is false once the original is deleted. */
   message: {
-    id: string; content: string; timestamp: string; attachments?: RevealedFile[]; exists: boolean
+    id: string; content: string; timestamp: string; edited_timestamp?: string | null; attachments?: RevealedFile[]; exists: boolean
     /** encrypted DM: revealed = the reporter's message keys opened it (checked by the server), with up to 10 older messages */
     encrypted?: boolean; revealed?: boolean
-    context?: { id: string; author_id: string; author_name: string | null; timestamp: string; content: string; attachments: RevealedFile[] }[]
+    context?: { id: string; author_id: string; author_name: string | null; timestamp: string; edited_timestamp?: string | null; content: string; attachments: RevealedFile[] }[]
   } | null
   link: string | null
 }
