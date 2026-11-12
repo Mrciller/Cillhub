@@ -1,7 +1,7 @@
 // Chat Markdown rendered straight to React elements (never innerHTML), so content can't inject markup.
 import { intlLocale, t } from '../i18n'
 import { Fragment, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import katex from 'katex'
+import { katexHtml } from './katex'
 import 'katex/dist/katex.min.css'
 import { cdn } from '../api'
 import { ask } from '../components/dialogs'
@@ -71,11 +71,7 @@ export function formatTimestamp(unix: number, style = 'f') {
 
 function renderKatex(tex: string, displayMode: boolean, key: number): ReactNode {
   try {
-    const html = katex.renderToString(tex, {
-      displayMode,
-      throwOnError: false,
-      output: 'htmlAndMathml',
-    })
+    const html = katexHtml(tex, displayMode)
     return <span key={key} className={displayMode ? 'md-katex-block' : 'md-katex-inline'} dangerouslySetInnerHTML={{ __html: html }} />
   } catch {
     return <code key={key} className="inline-code">{tex}</code>
