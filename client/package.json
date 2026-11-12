@@ -1,7 +1,7 @@
 {
   "name": "cillcord-client",
   "private": true,
-  "version": "7.11.0",
+  "version": "7.12.0",
   "license": "AGPL-3.0-only",
   "author": "Pascal Oraze",
   "type": "module",

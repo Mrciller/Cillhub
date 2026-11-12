@@ -21,7 +21,7 @@ Cillhub is a chat platform you can host yourself: servers with text channels, vo
 
 ### Chat
 - Text, announcement and forum channels, threads, direct messages and group DMs
-- End-to-end encrypted direct messages and group DMs (web and desktop client; Android follows). Only DMs are encrypted, not server channels, and the web client comes from the server you use, so you trust that server's code.
+- End-to-end encrypted direct messages and group DMs in the web, desktop and Android apps. Each device trusts a contact's key the first time it sees it and warns when it changes. Only DMs are encrypted, not server channels, and the web client comes from the server you use, so you trust that server's code.
 - Markdown, code blocks, spoilers, mentions, replies, reactions and pins
 - File and image uploads, link previews, message search
 - Custom emoji and stickers, a GIF picker with favourites
